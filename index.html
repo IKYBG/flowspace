@@ -4586,6 +4586,18 @@
               /* Start Realtime for returning users */
               window._fsStartRealtime(session.user.id);
               window._fsStartSessionRealtime(session.user.id);
+              /* ── Eagerly sync email into user_data so friend lookup works ── */
+              try {
+                const userEmail = session.user.email?.toLowerCase();
+                const userMeta = session.user.user_metadata;
+                const userName = userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
+                if (userEmail) {
+                  window._fsSb.from('user_data').upsert(
+                    { user_id: session.user.id, email: userEmail, name: userName, updated_at: new Date().toISOString() },
+                    { onConflict: 'user_id' }
+                  ).then(({ error }) => { if (error) console.warn('[fs] email sync failed', error); else console.log('[fs] email synced:', userEmail); });
+                }
+              } catch(_) {}
             } else if (localStorage.getItem('fs_user')) {
               try {
                 localStorage.removeItem('fs_user');
