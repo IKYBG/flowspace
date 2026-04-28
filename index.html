@@ -348,7 +348,7 @@
       try {
         const { data, error } = await _fsSb
           .from('user_data')
-          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email')
+          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends')
           .eq('user_id', userId)
           .maybeSingle();
         if (error) { console.warn('[fs] load remote failed', error); return null; }
@@ -2803,18 +2803,18 @@
       const [friendsOpen, setFriendsOpen] = React.useState(false);
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
       const cardRef = React.useRef(null);
-      const [friends, setFriendsCount] = React.useState(() => {
-        try { return JSON.parse(localStorage.getItem('fs_friends')||'[]').length; } catch(e) { return 0; }
-      });
+      const [friends, setFriendsCount] = React.useState(0);
 
       React.useEffect(() => {
+        const key = user?.id ? `fs_friends_${user.id}` : 'fs_friends';
         const sync = () => {
-          try { setFriendsCount(JSON.parse(localStorage.getItem('fs_friends')||'[]').length); } catch(e) {}
+          try { setFriendsCount(JSON.parse(localStorage.getItem(key)||'[]').length); } catch(e) {}
         };
+        sync();
         window.addEventListener('storage', sync);
         const id = setInterval(sync, 1200);
         return () => { window.removeEventListener('storage', sync); clearInterval(id); };
-      }, []);
+      }, [user?.id]);
 
       React.useEffect(() => {
         if (!popOpen) return;
@@ -4536,6 +4536,7 @@
           localStorage.removeItem('fs_bgtheme');
           localStorage.removeItem('fs_custom_bg');
           localStorage.removeItem('fs_widget_style');
+          localStorage.removeItem('fs_friends');
           /* Clear all image keys */
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const k = localStorage.key(i);
@@ -4608,6 +4609,7 @@
                 localStorage.removeItem('fs_bgtheme');
                 localStorage.removeItem('fs_custom_bg');
                 localStorage.removeItem('fs_widget_style');
+                localStorage.removeItem('fs_friends');
               } catch (_) { }
               setUser(null);
               setWidgets(DEFAULT_WIDGETS);
@@ -4891,18 +4893,46 @@
 
     /* ── FriendsPanel ───────────────────────────────────────────────────── */
     function FriendsPanel({ open, onClose, user }) {
+      const uid = user?.id || 'guest';
+      const storageKey = `fs_friends_${uid}`;
+
       const [friends, setFriends] = React.useState(() => {
-        try { return JSON.parse(localStorage.getItem('fs_friends')||'[]'); } catch(e) { return []; }
+        try { return JSON.parse(localStorage.getItem(storageKey)||'[]'); } catch(e) { return []; }
       });
+      const [loaded, setLoaded] = React.useState(false);
       const [email, setEmail] = React.useState('');
-      const [status, setStatus] = React.useState('idle'); // idle|loading|success|error
+      const [status, setStatus] = React.useState('idle');
       const [msg, setMsg] = React.useState('');
       const [preview, setPreview] = React.useState(null);
       const inputRef = React.useRef(null);
 
+      /* Load from Supabase (authoritative) when panel opens */
       React.useEffect(() => {
-        try { localStorage.setItem('fs_friends', JSON.stringify(friends)); } catch(e) {}
-      }, [friends]);
+        if (!open || !user?.id) return;
+        setLoaded(false);
+        window._fsLoadRemote(user.id).then(remote => {
+          console.log('[fs-friends] loaded for uid:', user.id, 'raw friends:', remote?.friends);
+          const raw = Array.isArray(remote?.friends) ? remote.friends : [];
+          /* Filter out self and corrupt entries */
+          const clean = raw.filter(f => f?.id && f.id !== user.id && f?.email);
+          console.log('[fs-friends] cleaned:', clean);
+          setFriends(clean);
+          try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
+          setLoaded(true);
+        });
+      }, [open, user?.id]);
+
+      /* Save — only after load, use UPDATE (not upsert) to guarantee only own row is touched */
+      React.useEffect(() => {
+        if (!loaded) return;
+        try { localStorage.setItem(storageKey, JSON.stringify(friends)); } catch(e) {}
+        if (!user?.id || !window._fsSb) return;
+        console.log('[fs-friends] saving for uid:', user.id, 'friends:', friends);
+        window._fsSb.from('user_data')
+          .update({ friends, updated_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .then(({ error }) => { if (error) console.warn('[fs] friends save failed', error); });
+      }, [friends, loaded]);
 
       React.useEffect(() => {
         if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 200);
@@ -4914,15 +4944,59 @@
         setStatus('loading');
         const found = await window._fsLookupUserByEmail(trimmed);
         if (!found) { setStatus('error'); setMsg('No FlowSpace account found'); setTimeout(()=>setStatus('idle'),2600); return; }
-        if (found.id === window._fsSbUser?.id) { setStatus('error'); setMsg("That's your own account!"); setTimeout(()=>setStatus('idle'),2600); return; }
+        const myId = user?.id || window._fsSbUser?.id;
+        if (found.id === myId) { setStatus('error'); setMsg("That's your own account!"); setTimeout(()=>setStatus('idle'),2600); return; }
         if (friends.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); setTimeout(()=>setStatus('idle'),2600); return; }
+
+        /* Add found user to MY list */
         setFriends(prev => [...prev, { ...found, addedAt: Date.now() }]);
+
+        /* Add ME to THEIR list (bidirectional) */
+        if (myId && window._fsSb) {
+          const myEmail = (user?.email || window._fsSbUser?.email || '').toLowerCase();
+          const myName  = user?.name  || window._fsSbUser?.email?.split('@')[0] || 'Unknown';
+          const { data: theirRow } = await window._fsSb
+            .from('user_data').select('friends').eq('user_id', found.id).maybeSingle();
+          const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
+          if (!theirFriends.some(f => f?.id === myId)) {
+            const meEntry = { id: myId, name: myName, email: myEmail,
+              initial: (myName[0] || '?').toUpperCase(), color: '#4ade80', addedAt: Date.now() };
+            await window._fsSb.from('user_data')
+              .update({ friends: [...theirFriends, meEntry], updated_at: new Date().toISOString() })
+              .eq('user_id', found.id);
+          }
+        }
+
         setEmail('');
         setStatus('success'); setMsg(`${found.name} added! 🎉`);
         setTimeout(()=>setStatus('idle'), 2200);
       };
 
-      const removeFriend = id => setFriends(prev => prev.filter(f => f.id !== id));
+      const removeFriend = async (id) => {
+        setFriends(prev => prev.filter(f => f.id !== id));
+        /* Remove self from that user's friends list too */
+        const myId = user?.id || window._fsSbUser?.id;
+        if (myId && window._fsSb) {
+          const { data: theirRow } = await window._fsSb
+            .from('user_data').select('friends').eq('user_id', id).maybeSingle();
+          const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
+          const updated = theirFriends.filter(f => f?.id !== myId);
+          if (updated.length !== theirFriends.length) {
+            await window._fsSb.from('user_data')
+              .update({ friends: updated, updated_at: new Date().toISOString() })
+              .eq('user_id', id);
+          }
+        }
+      };
+
+      /* Always filter self — by ID AND email for maximum safety */
+      const selfId = user?.id;
+      const selfEmail = (user?.email || '').toLowerCase();
+      const displayFriends = friends.filter(f =>
+        f?.id && f?.email &&
+        f.id !== selfId &&
+        f.email.toLowerCase() !== selfEmail
+      );
 
       const btnBg = { idle: T.c1, loading: c1(0.3), success: T.green, error: T.rose }[status];
 
@@ -4984,7 +5058,7 @@
 
             {/* Friends list */}
             <div style={{ flex:1, overflowY:'auto', padding:'12px 16px 24px' }}>
-              {friends.length===0 ? (
+              {displayFriends.length===0 ? (
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'80%', gap:16, padding:'20px 0' }}>
                   <div style={{ width:70, height:70, borderRadius:'50%', background:c1(0.07), border:`1px solid ${c1(0.15)}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
                     <svg width={30} height={30} viewBox="0 0 24 24" fill="none">
@@ -5001,7 +5075,7 @@
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:T.muted, paddingLeft:4, marginBottom:4 }}>Your friends</div>
-                  {friends.map((f, i) => (
+                  {displayFriends.map((f, i) => (
                     <FriendCard key={f.id} friend={f} index={i}
                       onPreview={()=>setPreview(f)}
                       onRemove={()=>removeFriend(f.id)}/>
