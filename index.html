@@ -1605,7 +1605,7 @@
 
                 {/* End button */}
                 <button
-                  onClick={onEnd}
+                  onClick={() => onEnd && onEnd(null)}
                   onMouseEnter={() => setHovEnd(true)}
                   onMouseLeave={() => setHovEnd(false)}
                   style={{
@@ -1628,7 +1628,7 @@
                   <svg width={9} height={9} viewBox="0 0 9 9" fill="none" style={{ flexShrink: 0 }}>
                     <rect x={0.5} y={0.5} width={8} height={8} rx={2} fill="currentColor" opacity={0.9} />
                   </svg>
-                  Terminer
+                  Arrêter
                 </button>
               </div>
 
@@ -1671,6 +1671,7 @@
               <span style={{ fontSize: 14, color: T.muted }}>{greeting}{user?.name ? `, ${user.name}` : ''}</span>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenQuests:()=>{}, onOpenStreaks:()=>{} })}
               {!session && (
                 <button onClick={() => onNavigate('session')}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--theme-c1)', border: 'none', borderRadius: 99, padding: '9px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, boxShadow: '0 0 28px rgba(var(--theme-c1-rgb),0.30)' }}>
@@ -2164,6 +2165,7 @@
       const [cfg, setCfg] = _uSA({ duration: 50, music: 'Ambient', breaks: true });
       const [emailUser, setEmailUser] = _uSA(null);
       const [emailLooking, setEmailLooking] = _uSA(false);
+      const [crystalShape, setCrystalShape] = _uSA('diamond');
       const MUSIC = ['Ambient', 'Lo-fi', 'Classical', 'Nature', 'Silence'];
 
       const MODES = [
@@ -2193,9 +2195,12 @@
           setStep(2);
         } else if (step === 2) {
           setStep(3);
+        } else if (step === 3) {
+          setStep(4);
         } else {
           const friendUserForLaunch = emailUser || (mode === 'together' && emailValid ? { email: email.trim(), name: email.trim().split('@')[0], initial: email.trim()[0].toUpperCase(), color: '#a5b8ff' } : null);
-          onLaunch({ type: mode, friendEmail: mode === 'together' ? email.trim() : null, friendUser: mode === 'together' ? friendUserForLaunch : null, friendId: emailUser?.id || null, duration: cfg.duration, music: cfg.music, breaks: cfg.breaks });
+          const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
+          onLaunch({ type: mode, friendEmail: mode === 'together' ? email.trim() : null, friendUser: mode === 'together' ? friendUserForLaunch : null, friendId: emailUser?.id || null, duration: cfg.duration, music: cfg.music, breaks: cfg.breaks, crystalShape, crystalGradient: autoGrad, startTime: Date.now() });
         }
       };
 
@@ -2212,7 +2217,7 @@
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted, marginBottom: 10 }}>LumenOS Session</div>
                   <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1.05 }}>
-                    {step === 1 ? 'Démarrer une session' : step === 2 ? 'Configurer' : 'Prêt à décoller'}
+                    {step===1?'Démarrer une session':step===2?'Ton cristal':step===3?'Configurer':'Prêt à décoller'}
                   </div>
                 </div>
                 <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: T.muted, fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
@@ -2221,7 +2226,7 @@
               </div>
               {/* Step progress bars */}
               <div style={{ display: 'flex', gap: 5, marginTop: 22, marginBottom: 28 }}>
-                {[1, 2, 3].map(s => (
+                {[1, 2, 3, 4].map(s => (
                   <div key={s} style={{ flex: 1, height: 3, borderRadius: 99, background: step >= s ? acol : 'rgba(255,255,255,0.07)', transition: 'background 0.45s cubic-bezier(0.4,0,0.2,1)', boxShadow: step >= s ? `0 0 8px ${acol}66` : 'none' }} />
                 ))}
               </div>
@@ -2296,8 +2301,64 @@
                 </div>
               )}
 
-              {/* ── Step 2: Config ── */}
-              {step === 2 && (
+              {/* ── Step 2: Crystal shape (no gradient — assigned randomly at launch) ── */}
+              {step === 2 && (() => {
+                const SHAPES = [
+                  { id:'diamond', name:'Diamant',  desc:'Taille brillant'    },
+                  { id:'shard',   name:'Éclat',    desc:'Pointe asymétrique' },
+                  { id:'geode',   name:'Géode',    desc:'Forme organique'    },
+                  { id:'prism',   name:'Prisme',   desc:'Section hexagonale' },
+                  { id:'cluster', name:'Grappe',   desc:'Trois pointes'      },
+                  { id:'quartz',  name:'Quartz',   desc:'Pilier naturel'     },
+                ];
+                return (
+                  <div style={{ paddingBottom: 28 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.muted, marginBottom: 6 }}>
+                      Forme du cristal
+                    </div>
+                    <div style={{ fontSize: 12, color: T.muted, marginBottom: 18, lineHeight: 1.6 }}>
+                      La couleur se révèle progressivement pendant ta session.
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+                      {SHAPES.map(s => {
+                        const sel = crystalShape === s.id;
+                        return (
+                          <button key={s.id} onClick={() => setCrystalShape(s.id)} style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9,
+                            padding: '18px 10px 14px', borderRadius: 20, outline: 'none', cursor: 'pointer',
+                            fontFamily: T.font,
+                            background: sel ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)',
+                            border: `1.5px solid ${sel ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.07)'}`,
+                            boxShadow: sel ? '0 0 28px rgba(200,210,220,0.18), 0 6px 20px rgba(0,0,0,0.38)' : 'none',
+                            transform: sel ? 'scale(1.05) translateY(-3px)' : 'scale(1)',
+                            transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)',
+                          }}>
+                            <div style={{ width: 66, height: 66, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                              {sel && <div style={{ position:'absolute', inset:-8, borderRadius:'50%', background:'radial-gradient(circle,rgba(220,230,240,0.18),transparent 70%)', pointerEvents:'none' }}/>}
+                              {window.ShapedCrystalGem
+                                ? React.createElement(window.ShapedCrystalGem, {
+                                    shape: s.id, gradientId: null,
+                                    colorProgress: 0, progress: 0,
+                                    size: 44,
+                                    seed: s.id.charCodeAt(0) * 137 + (s.id.charCodeAt(1) || 0) * 59,
+                                  })
+                                : <div style={{ width:40, height:40, borderRadius:12, background:sel?'rgba(200,210,220,0.18)':'rgba(255,255,255,0.06)', border:`1px solid ${sel?'rgba(200,215,230,0.4)':'rgba(255,255,255,0.1)'}` }}/>
+                              }
+                            </div>
+                            <div style={{ textAlign:'center' }}>
+                              <div style={{ fontSize:12, fontWeight:700, letterSpacing:'-0.01em', color:sel?'rgba(230,236,242,0.95)':T.text, transition:'color 0.22s' }}>{s.name}</div>
+                              <div style={{ fontSize:9, color:T.muted, marginTop:2 }}>{s.desc}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Step 3: Config ── */}
+              {step === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 28 }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -2332,19 +2393,23 @@
                 </div>
               )}
 
-              {/* ── Step 3: Launch ── */}
-              {step === 3 && (
+              {/* ── Step 4: Launch ── */}
+              {step === 4 && (
                 <div style={{ paddingBottom: 28 }}>
-                  {/* Mode banner */}
-                  <div style={{ background: `${acol}0e`, border: `1px solid ${acol}22`, borderRadius: 20, padding: '22px 24px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 16, background: `${acol}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {mode === 'solo'
-                        ? <svg width={24} height={24} viewBox="0 0 24 24" fill="none"><circle cx={12} cy={8} r={4} stroke={acol} strokeWidth={1.8} /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={acol} strokeWidth={1.8} strokeLinecap="round" /></svg>
-                        : <svg width={28} height={24} viewBox="0 0 30 24" fill="none"><circle cx={10} cy={8} r={4} stroke={acol} strokeWidth={1.8} /><path d="M2 20c0-4 3.6-6.5 8-6.5" stroke={acol} strokeWidth={1.8} strokeLinecap="round" /><circle cx={20} cy={8} r={4} stroke={acol} strokeWidth={1.8} /><path d="M28 20c0-4-3.6-6.5-8-6.5s-8 2.5-8 6.5" stroke={acol} strokeWidth={1.8} strokeLinecap="round" /></svg>}
+                  {/* Crystal preview + mode banner */}
+                  <div style={{ display:'flex', alignItems:'center', gap:20, padding:'22px 24px', marginBottom:18, borderRadius:22, background:`${acol}0e`, border:`1px solid ${acol}22` }}>
+                    <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:64, height:64 }}>
+                      {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+                        shape: crystalShape, gradientId: null, colorProgress: 0, progress: 0, size: 44,
+                        seed: crystalShape.charCodeAt(0) * 191 + (crystalShape.charCodeAt(1)||0) * 53,
+                      })}
                     </div>
                     <div>
                       <div style={{ fontSize: 17, fontWeight: 800, fontFamily: T.display, letterSpacing: '-0.02em', color: T.text }}>{mode === 'solo' ? 'Session Solo' : 'Session Ensemble'}</div>
                       {mode === 'together' && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>avec {email}</div>}
+                      <div style={{fontSize:11,color:T.muted,marginTop:5}}>
+                        {(window.CRYSTAL_SHAPE_DEFS||{})[crystalShape]?.name} · couleur surprise ✦
+                      </div>
                     </div>
                   </div>
                   {/* Summary rows */}
@@ -2372,8 +2437,8 @@
                 : <div />}
               <button onClick={handleNext}
                 disabled={step === 1 && !step1Ready}
-                style={{ background: step === 3 ? `linear-gradient(135deg,${acol},${mode === 'together' ? '#34d399' : '#c4b5fd'})` : `${acol}`, border: 'none', borderRadius: 12, padding: '11px 28px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: step === 1 && !step1Ready ? 'not-allowed' : 'pointer', fontFamily: T.font, boxShadow: step === 3 ? `0 0 28px ${acol}44` : `0 0 18px ${acol}33`, opacity: step === 1 && !step1Ready ? 0.45 : 1, transition: 'all 0.22s' }}>
-                {step === 3 ? '▶  Démarrer' : 'Continuer →'}
+                style={{ background: step === 4 ? `linear-gradient(135deg,${acol},${mode === 'together' ? '#34d399' : '#c4b5fd'})` : `${acol}`, border: 'none', borderRadius: 12, padding: '11px 28px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: step === 1 && !step1Ready ? 'not-allowed' : 'pointer', fontFamily: T.font, boxShadow: step === 4 ? `0 0 28px ${acol}44` : `0 0 18px ${acol}33`, opacity: step === 1 && !step1Ready ? 0.45 : 1, transition: 'all 0.22s' }}>
+                {step === 4 ? '▶  Démarrer' : 'Continuer →'}
               </button>
             </div>
           </div>
@@ -2567,11 +2632,20 @@
       place-items: center;
       background: rgba(255,255,255,0.03);
       border: 1px solid rgba(255,255,255,0.05);
+      color: rgba(235,239,255,0.92);
       opacity: 0;
       transform: scale(0.82) rotate(-25deg);
-      transition: opacity 180ms ease, transform 260ms var(--fs-ease);
+      transition: opacity 180ms ease, transform 260ms var(--fs-ease), background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
       margin-left: auto;
       flex: 0 0 auto;
+      cursor: pointer;
+      outline: none;
+    }
+    .fs-gear-dot:hover,
+    .fs-gear-dot.fs-account-open {
+      background: rgba(var(--theme-c1-rgb),0.14);
+      border-color: rgba(var(--theme-c1-rgb),0.28);
+      box-shadow: 0 0 24px rgba(var(--theme-c1-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.08);
     }
     .fs-gear-icon {
       width: 18px;
@@ -2735,6 +2809,7 @@
       width: 36px;
       height: 36px;
       border-radius: 50%;
+      overflow: hidden;
       background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),1), rgba(var(--theme-c2-rgb),0.88));
       border: 2px solid rgba(255,255,255,0.12);
       box-shadow: 0 8px 18px rgba(0,0,0,0.18);
@@ -2800,6 +2875,7 @@
     }
     .fs-pop-avatar {
       width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+      overflow: hidden;
       background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),1), rgba(var(--theme-c2-rgb),0.88));
       display: flex; align-items: center; justify-content: center;
       font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: #07070d;
@@ -2828,18 +2904,222 @@
       transition: background 0.18s;
     }
     .fs-pop-action:hover .fs-pop-action-icon { background: rgba(251,113,133,0.18); }
+    .fs-account-panel {
+      position: fixed;
+      width: 372px;
+      max-width: calc(100vw - 40px);
+      border-radius: 28px;
+      overflow: hidden;
+      z-index: 10000;
+      background:
+        radial-gradient(circle at 24% 0%, rgba(var(--theme-c1-rgb),0.24), transparent 34%),
+        linear-gradient(180deg, rgba(13,12,27,0.98), rgba(7,6,16,0.965));
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow:
+        0 36px 100px rgba(0,0,0,0.72),
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 0 90px rgba(var(--theme-c1-rgb),0.12);
+      backdrop-filter: blur(64px) saturate(190%);
+      -webkit-backdrop-filter: blur(64px) saturate(190%);
+      animation: fsAccountIn 0.32s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes fsAccountIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .fs-account-panel::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 24%;
+      right: 24%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.58), transparent);
+      pointer-events: none;
+    }
+    .fs-account-hero {
+      padding: 24px 24px 20px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: center;
+      position: relative;
+    }
+    .fs-account-photo-button {
+      width: 88px;
+      height: 88px;
+      border-radius: 28px;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.98), rgba(var(--theme-c2-rgb),0.86));
+      box-shadow: 0 18px 42px rgba(0,0,0,0.42), 0 0 34px rgba(var(--theme-c1-rgb),0.26);
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      display: grid;
+      place-items: center;
+      color: #07070d;
+      font-family: 'Syne', sans-serif;
+      font-size: 30px;
+      font-weight: 800;
+      transition: transform 220ms var(--fs-ease), border-color 180ms ease, box-shadow 180ms ease;
+    }
+    .fs-account-photo-button:hover {
+      transform: translateY(-2px) scale(1.02);
+      border-color: rgba(255,255,255,0.30);
+      box-shadow: 0 22px 54px rgba(0,0,0,0.50), 0 0 44px rgba(var(--theme-c1-rgb),0.34);
+    }
+    .fs-account-photo-button img,
+    .fs-avatar img,
+    .fs-pop-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .fs-account-photo-edit {
+      position: absolute;
+      inset: auto 8px 8px 8px;
+      height: 26px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: rgba(7,6,16,0.76);
+      color: rgba(248,246,252,0.94);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      backdrop-filter: blur(20px);
+    }
+    .fs-account-kicker {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: rgba(var(--theme-c1-rgb),0.92);
+      margin-bottom: 7px;
+    }
+    .fs-account-name {
+      font-family: 'Syne', sans-serif;
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: rgba(248,246,252,0.97);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .fs-account-email {
+      margin-top: 7px;
+      font-size: 12px;
+      color: rgba(248,246,252,0.45);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .fs-account-body {
+      padding: 0 14px 14px;
+    }
+    .fs-account-card {
+      border-radius: 22px;
+      padding: 14px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.07);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .fs-account-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 11px 2px;
+      border-bottom: 1px solid rgba(255,255,255,0.055);
+    }
+    .fs-account-row:last-child { border-bottom: none; }
+    .fs-account-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(248,246,252,0.34);
+    }
+    .fs-account-value {
+      min-width: 0;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 650;
+      color: rgba(248,246,252,0.88);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .fs-account-actions {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 14px;
+    }
+    .fs-account-primary,
+    .fs-account-secondary {
+      height: 44px;
+      border-radius: 15px;
+      border: none;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 180ms var(--fs-ease), background 180ms ease, box-shadow 180ms ease;
+    }
+    .fs-account-primary {
+      color: #07070d;
+      background: linear-gradient(135deg, rgb(var(--theme-c1-rgb)), rgb(var(--theme-c2-rgb)));
+      box-shadow: 0 14px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34);
+    }
+    .fs-account-primary:hover,
+    .fs-account-secondary:hover { transform: translateY(-1px); }
+    .fs-account-secondary {
+      width: 46px;
+      color: rgba(248,246,252,0.62);
+      background: rgba(255,255,255,0.055);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .fs-account-secondary:hover {
+      color: #fb7185;
+      background: rgba(251,113,133,0.12);
+      box-shadow: 0 12px 24px rgba(251,113,133,0.12);
+    }
   `;
       document.head.appendChild(s);
     }
 
-    function Sidebar({ screen, onNavigate, user, onLogout }) {
+    function Sidebar({ screen, onNavigate, user, onLogout, onUserUpdate }) {
       const [popOpen, setPopOpen] = React.useState(false);
+      const [accountOpen, setAccountOpen] = React.useState(false);
       const [friendsOpen, setFriendsOpen] = React.useState(false);
       const [cristauxOpen, setCristauxOpen] = React.useState(false);
+      const [streaksOpen, setStreaksOpen] = React.useState(false);
+      const [questsOpen, setQuestsOpen] = React.useState(false);
+      const [storeOpen, setStoreOpen] = React.useState(false);
+
+      const closeAllPanels = () => { setFriendsOpen(false); setCristauxOpen(false); setStreaksOpen(false); setQuestsOpen(false); setStoreOpen(false); setAccountOpen(false); };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
+      const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
       const cardRef = React.useRef(null);
+      const gearRef = React.useRef(null);
+      const accountRef = React.useRef(null);
+      const fileRef = React.useRef(null);
       const [friends, setFriendsCount] = React.useState(0);
       const [crystalCount, setCrystalCount] = React.useState(0);
+      const displayName = user?.name || 'LumenOS';
+      const displayEmail = user?.email || 'Crystal Productivity Focus';
+      const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
+      const profilePhoto = user?.photo || user?.avatar || null;
 
       React.useEffect(() => {
         const key = user?.id ? `fs_friends_${user.id}` : 'fs_friends';
@@ -2873,6 +3153,73 @@
         return () => document.removeEventListener('mousedown', close);
       }, [popOpen]);
 
+      React.useEffect(() => {
+        if (!accountOpen) return;
+        const place = () => {
+          if (!gearRef.current) return;
+          const r = gearRef.current.getBoundingClientRect();
+          const panelW = 372;
+          const left = Math.min(r.right + 14, window.innerWidth - panelW - 20);
+          setAccountPos({ top: Math.max(20, r.top - 8), left: Math.max(20, left) });
+        };
+        place();
+        const close = e => {
+          const inGear = gearRef.current && gearRef.current.contains(e.target);
+          const inPanel = accountRef.current && accountRef.current.contains(e.target);
+          if (!inGear && !inPanel) setAccountOpen(false);
+        };
+        window.addEventListener('resize', place);
+        document.addEventListener('mousedown', close);
+        return () => {
+          window.removeEventListener('resize', place);
+          document.removeEventListener('mousedown', close);
+        };
+      }, [accountOpen]);
+
+      const renderAvatar = className => (
+        <div className={className}>
+          {profilePhoto ? <img src={profilePhoto} alt={displayName} /> : userInitial}
+        </div>
+      );
+
+      const updateProfilePhoto = dataUrl => {
+        const nextUser = { ...(user || {}), name: displayName, email: displayEmail, photo: dataUrl };
+        try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (e) { }
+        onUserUpdate && onUserUpdate(nextUser);
+      };
+
+      const handlePhotoFile = e => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') return;
+          const img = new Image();
+          img.onload = () => {
+            const max = 512;
+            const scale = Math.min(1, max / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { updateProfilePhoto(reader.result); return; }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            updateProfilePhoto(canvas.toDataURL('image/jpeg', 0.86));
+          };
+          img.onerror = () => updateProfilePhoto(reader.result);
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      };
+
+      const openPersonalization = () => {
+        setAccountOpen(false);
+        setPopOpen(false);
+        closeAllPanels();
+        onNavigate('perso');
+      };
+
       const NAV = [
         {
           target: 'dashboard', label: 'Tableau de bord', meta: 'Vue principale',
@@ -2904,18 +3251,20 @@
                   <div className="fs-brand-title">LumenOS</div>
                   <div className="fs-brand-sub">Crystal Productivity </div>
                 </div>
-                <div className="fs-gear-dot">
+                <button ref={gearRef} type="button" className={'fs-gear-dot' + (accountOpen ? ' fs-account-open' : '')}
+                  onClick={e => { e.stopPropagation(); const o = !accountOpen; closeAllPanels(); setPopOpen(false); setAccountOpen(o); }}
+                  aria-label="Ouvrir le compte">
                   <svg className="fs-gear-icon" viewBox="0 0 24 24">
                     <path d="M12 6.2a5.8 5.8 0 1 0 0 11.6a5.8 5.8 0 0 0 0-11.6Z" />
                     <path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.5 4.5l1.7 1.7M17.8 17.8l1.7 1.7M4.5 19.5l1.7-1.7M17.8 6.2l1.7-1.7" />
                   </svg>
-                </div>
+                </button>
               </div>
               <nav className="fs-nav-group">
                 {NAV.map((item, i) => (
                   <button key={i}
                     className={'fs-nav-item' + (screen === item.target && item.target !== 'session' ? ' active' : '')}
-                    onClick={() => onNavigate(item.target)}>
+                    onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
                     <span className="fs-icon-wrap">{item.icon}</span>
                     <span className="fs-label-wrap">
                       <span className="fs-label">{item.label}</span>
@@ -2927,7 +3276,7 @@
                 {/* ── Friends nav item ── */}
                 <button
                   className={'fs-nav-item' + (friendsOpen ? ' active' : '')}
-                  onClick={() => { setFriendsOpen(o => !o); setPopOpen(false); setCristauxOpen(false); }}
+                  onClick={() => { const o=!friendsOpen; closeAllPanels(); setFriendsOpen(o); setPopOpen(false); }}
                   style={{ position: 'relative' }}>
                   <span className="fs-icon-wrap" style={{ position: 'relative' }}>
                     <svg className="fs-icon" viewBox="0 0 24 24">
@@ -2950,7 +3299,7 @@
                 {/* ── Mes Cristaux nav item ── */}
                 <button
                   className={'fs-nav-item' + (cristauxOpen ? ' active' : '')}
-                  onClick={() => { setCristauxOpen(o => !o); setPopOpen(false); setFriendsOpen(false); }}
+                  onClick={() => { const o=!cristauxOpen; closeAllPanels(); setCristauxOpen(o); setPopOpen(false); }}
                   style={{ position: 'relative' }}>
                   <span className="fs-icon-wrap" style={{ position: 'relative' }}>
                     <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -2967,17 +3316,74 @@
                     <span className="fs-meta">{crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Forger un cristal'}</span>
                   </span>
                 </button>
+
+                {/* ── Régularité (Streaks) ── */}
+                <button className={'fs-nav-item'+(streaksOpen?' active':'')}
+                  onClick={()=>{ const o=!streaksOpen; closeAllPanels(); setStreaksOpen(o); setPopOpen(false); }}>
+                  <span className="fs-icon-wrap">
+                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M12 2C8 8 6 12 6 16a6 6 0 0 0 12 0c0-4-2-8-6-14Z"/><path d="M12 12c-2 3-1 6 0 8"/>
+                    </svg>
+                  </span>
+                  <span className="fs-label-wrap">
+                    <span className="fs-label">Régularité</span>
+                    <span className="fs-meta">Streaks &amp; badges</span>
+                  </span>
+                </button>
+
+                {/* ── Quêtes ── */}
+                <button className={'fs-nav-item'+(questsOpen?' active':'')}
+                  onClick={()=>{ const o=!questsOpen; closeAllPanels(); setQuestsOpen(o); setPopOpen(false); }}>
+                  <span className="fs-icon-wrap">
+                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>
+                    </svg>
+                  </span>
+                  <span className="fs-label-wrap">
+                    <span className="fs-label">Quêtes</span>
+                    <span className="fs-meta">Objectifs du jour</span>
+                  </span>
+                </button>
+
+                {/* ── Boutique ── */}
+                <button className={'fs-nav-item'+(storeOpen?' active':'')}
+                  onClick={()=>{ const o=!storeOpen; closeAllPanels(); setStoreOpen(o); setPopOpen(false); }}>
+                  <span className="fs-icon-wrap">
+                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.5 8.5 22 9.5 17 14.5 18.5 21 12 17.5 5.5 21 7 14.5 2 9.5 8.5 8.5"/>
+                    </svg>
+                  </span>
+                  <span className="fs-label-wrap">
+                    <span className="fs-label">Boutique</span>
+                    <span className="fs-meta">Focus Points</span>
+                  </span>
+                </button>
+
+                {/* ── Progression ── */}
+                <button className={'fs-nav-item'+(screen==='progression'?' active':'')}
+                  onClick={()=>{ closeAllPanels(); onNavigate('progression'); setPopOpen(false); }}>
+                  <span className="fs-icon-wrap">
+                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="16" width="4" height="6" rx="1"/><rect x="9" y="10" width="4" height="12" rx="1"/><rect x="16" y="4" width="4" height="18" rx="1"/>
+                    </svg>
+                  </span>
+                  <span className="fs-label-wrap">
+                    <span className="fs-label">Progression</span>
+                    <span className="fs-meta">Heatmap &amp; stats</span>
+                  </span>
+                </button>
+
               </nav>
             </div>
             <div ref={cardRef} className={`fs-footer-card${popOpen ? ' fs-pop-open' : ''}`}
-              onClick={() => { setPopOpen(p => !p); setFriendsOpen(false); }}>
+              onClick={() => { setPopOpen(p => !p); setFriendsOpen(false); setAccountOpen(false); }}>
               {popOpen && (
                 <div className="fs-popover" style={{ bottom: popPos.bottom, left: popPos.left, width: popPos.width }} onClick={e => e.stopPropagation()}>
                   <div className="fs-pop-user">
-                    <div className="fs-pop-avatar">{user ? user.name[0].toUpperCase() : 'F'}</div>
+                    {renderAvatar('fs-pop-avatar')}
                     <div className="fs-pop-info">
-                      <div className="fs-pop-name">{user ? user.name : 'LumenOS'}</div>
-                      <div className="fs-pop-email">{user ? user.email : 'Crystal Productivity Focus'}</div>
+                      <div className="fs-pop-name">{displayName}</div>
+                      <div className="fs-pop-email">{displayEmail}</div>
                       <div className="fs-pop-badge">
                         <div className="fs-pop-dot" />
                         <span className="fs-pop-online">En ligne</span>
@@ -3000,11 +3406,11 @@
               )}
               <div className="fs-footer-head">
                 <div className="fs-avatar-wrap">
-                  <div className="fs-avatar">{user ? user.name[0].toUpperCase() : 'F'}</div>
+                  {renderAvatar('fs-avatar')}
                 </div>
                 <div className="fs-footer-copy">
-                  <div className="fs-footer-title">{user ? user.name : 'LumenOS'}</div>
-                  <div className="fs-footer-sub">{user ? user.email : 'Crystal Productivity Focus'}</div>
+                  <div className="fs-footer-title">{displayName}</div>
+                  <div className="fs-footer-sub">{displayEmail}</div>
                 </div>
                 <div className="fs-footer-chevron">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -3014,8 +3420,63 @@
               </div>
             </div>
           </aside>
-          {friendsOpen && window.FriendsPanel && React.createElement(window.FriendsPanel, { open: friendsOpen, onClose: () => setFriendsOpen(false), user })}
+          {accountOpen && (
+            <div ref={accountRef} className="fs-account-panel" style={{ top: accountPos.top, left: accountPos.left }} onClick={e => e.stopPropagation()}>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoFile} />
+              <div className="fs-account-hero">
+                <button type="button" className="fs-account-photo-button" onClick={() => fileRef.current && fileRef.current.click()} title="Changer la photo de profil">
+                  {profilePhoto ? <img src={profilePhoto} alt={displayName} /> : userInitial}
+                  <span className="fs-account-photo-edit">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    Photo
+                  </span>
+                </button>
+                <div style={{ minWidth:0 }}>
+                  <div className="fs-account-kicker">Compte LumenOS</div>
+                  <div className="fs-account-name">{displayName}</div>
+                  <div className="fs-account-email">{displayEmail}</div>
+                </div>
+              </div>
+              <div className="fs-account-body">
+                <div className="fs-account-card">
+                  <div className="fs-account-row">
+                    <span className="fs-account-label">Nom</span>
+                    <span className="fs-account-value">{displayName}</span>
+                  </div>
+                  <div className="fs-account-row">
+                    <span className="fs-account-label">Email</span>
+                    <span className="fs-account-value">{displayEmail}</span>
+                  </div>
+                  <div className="fs-account-row">
+                    <span className="fs-account-label">Profil</span>
+                    <span className="fs-account-value">{profilePhoto ? 'Photo personnalisée' : 'Initiale automatique'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="fs-account-actions">
+                <button type="button" className="fs-account-primary" onClick={openPersonalization}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 19.5V8" /><path d="M10 19.5V4" /><path d="M16 19.5v-8" /><path d="M22 19.5v-12" />
+                  </svg>
+                  Personnaliser
+                </button>
+                <button type="button" className="fs-account-secondary" onClick={() => { setAccountOpen(false); onLogout(); }} title="Se déconnecter">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          {friendsOpen  && window.FriendsPanel    && React.createElement(window.FriendsPanel,    { open: friendsOpen,  onClose: () => setFriendsOpen(false),  user })}
           {cristauxOpen && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open: cristauxOpen, onClose: () => setCristauxOpen(false), user })}
+          {streaksOpen  && window.StreaksPanel     && React.createElement(window.StreaksPanel,     { open: streaksOpen,  onClose: () => setStreaksOpen(false),  user })}
+          {questsOpen   && window.QuestsPanel      && React.createElement(window.QuestsPanel,      { open: questsOpen,   onClose: () => setQuestsOpen(false),   user })}
+          {storeOpen    && window.StorePanel       && React.createElement(window.StorePanel,       { open: storeOpen,    onClose: () => setStoreOpen(false),    user })}
         </>
       );
     }
@@ -4423,6 +4884,7 @@
     ];
 
     function App() {
+      const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
       const [screen, setScreen] = _uSC(() => {
         try {
           const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
@@ -4509,13 +4971,26 @@
       };
 
       const handleEndSession = async (crystalData = null) => {
-        if (crystalData && user?.id) {
+        const hasCrystalData = crystalData
+          && typeof crystalData === 'object'
+          && Object.prototype.hasOwnProperty.call(crystalData, 'completedAt');
+
+        if (hasCrystalData && user?.id) {
           try {
             const k = `fs_crystals_${user.id}`;
             const prev = JSON.parse(localStorage.getItem(k) || '[]');
-            localStorage.setItem(k, JSON.stringify([crystalData, ...prev.slice(0, 99)]));
+            /* apply active skin to saved crystal */
+            const g = window._gLoad ? window._gLoad(user.id) : null;
+            const skinned = g?.activeSkin && g.activeSkin !== 'default' ? { ...crystalData, skin: g.activeSkin } : crystalData;
+            localStorage.setItem(k, JSON.stringify([skinned, ...prev.slice(0, 99)]));
             window.dispatchEvent(new CustomEvent('fs-crystal-update'));
           } catch(e) {}
+          /* Process gamification (streaks, FP, quests) */
+          if (window._gProcessSession) {
+            window._gProcessSession(user.id, { duration: crystalData.duration || 25 }, msg => {
+              addToast({ message: msg, type: 'success', duration: 4000 });
+            });
+          }
         }
         if (activeSession?.type === 'together' && activeSession.broadcastId) {
           try {
@@ -4580,6 +5055,11 @@
           if (idx >= 0) return ws.map((w, i) => i === idx ? { ...w, variant } : w);
           return [...ws, { id: type, label: type.charAt(0).toUpperCase() + type.slice(1), col: '1/4', row: '1/2', variant }];
         });
+      };
+
+      const handleUserUpdate = nextUser => {
+        setUser(nextUser);
+        try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (e) { }
       };
 
       const handleLogout = async () => {
@@ -4710,14 +5190,15 @@
           )}
           {isApp && (
             <div key={screen} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
-              <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} />
+              <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} />}
                 {screen === 'tasks' && <TasksScreen />}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
-                {screen === 'variants' && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
+                {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
+                {screen === 'progression' && window.ProgressScreen && React.createElement(window.ProgressScreen, { onNavigate: go, user })}
               </div>
             </div>
           )}
@@ -5282,9 +5763,10 @@
     window._cStateIdx = _cStateIdx;
 
     /* ── Crystal Gem SVG ────────────────────────────────────────────────── */
-    function CrystalGem({ progress = 0, size = 90, shattered = false, animate = false, completed = false }) {
+    function CrystalGem({ progress = 0, size = 90, shattered = false, animate = false, completed = false, skin = null }) {
       const si  = _cStateIdx(progress);
-      const pal = CRYSTAL_PALETTES[si];
+      const skinDef = skin && skin !== 'default' && window.SKINS ? (window.SKINS || []).find(s => s.id === skin) : null;
+      const pal = skinDef || CRYSTAL_PALETTES[si];
       const glow = 3 + si * 3.5 + progress * 9;
       const uid  = `cg-${size}-${si}`;
       const rg   = si === 0 ? 7 : 0; // rough offset for raw shard
@@ -5292,13 +5774,16 @@
       return (
         <svg viewBox="0 0 100 145" style={{
           width: size, height: size * 1.45, display: 'block', overflow: 'visible',
-          filter: `drop-shadow(0 0 ${glow}px ${pal.glow}) drop-shadow(0 ${glow*0.5}px ${glow*1.2}px ${pal.glow})`,
+          filter: skinDef?.rainbow
+            ? undefined
+            : `drop-shadow(0 0 ${glow}px ${pal.glow}) drop-shadow(0 ${glow*0.5}px ${glow*1.2}px ${pal.glow})`,
           transition: 'filter 2s ease, transform 0.55s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease',
           transform: shattered ? 'scale(0) rotate(24deg)' : 'scale(1)',
           opacity:   shattered ? 0 : 1,
           animation: completed ? 'crystalComplete 0.85s cubic-bezier(0.34,1.56,0.64,1)' :
+                     skinDef?.rainbow && animate ? 'crystalFloat 4.2s ease-in-out infinite, auroraHue 4s linear infinite' :
                      animate   ? 'crystalFloat 4.2s ease-in-out infinite, crystalPulse 3.2s ease-in-out infinite' :
-                     'crystalPulse 5s ease-in-out infinite',
+                     skinDef?.rainbow ? 'auroraHue 4s linear infinite' : 'crystalPulse 5s ease-in-out infinite',
         }}>
           <defs>
             <linearGradient id={`${uid}-crown`} x1="18%" y1="0%" x2="82%" y2="100%">
@@ -5408,7 +5893,7 @@
           if (e >= totalMs) setPhase('complete');
         };
         tick();
-        const id = setInterval(tick, 1000);
+        const id = setInterval(tick, 250); // 4 fps → smooth sine-wave vertex oscillation
         return () => clearInterval(id);
       }, [session, phase, totalMs]);
 
@@ -5441,7 +5926,21 @@
 
       const progress  = Math.min(elapsed / totalMs, 1);
       const si        = phase === 'complete' ? 3 : _cStateIdx(progress);
-      const pal       = CRYSTAL_PALETTES[si];
+      /* Use session gradient if available, otherwise fall back to CRYSTAL_PALETTES */
+      const sessionGrad = session?.crystalGradient && window.CRYSTAL_GRADIENTS
+        ? window.CRYSTAL_GRADIENTS.find(g => g.id === session.crystalGradient)
+        : null;
+      /* colorProgress for the compact disc ring/border (matches crystal reveal) */
+      const cpDisc = phase === 'complete' ? 1 : Math.pow(Math.min(progress * 1.4, 1), 0.65);
+      const pal = sessionGrad
+        ? {
+            name: sessionGrad.name,
+            a: cpDisc < 0.15 ? '#8fa8b4' : sessionGrad.stops[0],
+            b: sessionGrad.stops[sessionGrad.stops.length - 1],
+            c: sessionGrad.stops[0],
+            glow: sessionGrad.glow.replace(/[\d.]+\)$/, `${(0.08 + cpDisc * 0.64).toFixed(2)})`),
+          }
+        : CRYSTAL_PALETTES[si];
       const remaining = Math.max(0, totalMs - elapsed);
       const remM      = String(Math.floor(remaining / 60000)).padStart(2,'0');
       const remS      = String(Math.floor((remaining % 60000) / 1000)).padStart(2,'0');
@@ -5451,7 +5950,7 @@
 
       const handleEnd = () => {
         const crystal = progress >= 0.5 ? _buildCrystal(progress, session) : null;
-        if (crystal) addToast({ message: `💎 ${pal.name} sauvegardé !`, type: 'success', duration: 3000 });
+        if (crystal) addToast({ message: `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(), type: 'success', duration: 3000 });
         onEnd && onEnd(crystal);
       };
 
@@ -5502,7 +6001,7 @@
                   cursor:'pointer', fontFamily:T.font, transition:'all 0.15s' }}
                   onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.12)';e.currentTarget.style.color=T.text;}}
                   onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color=T.muted;}}>
-                  Terminer
+                  Arrêter
                 </button>
               )}
             </div>
@@ -5532,7 +6031,18 @@
             <div style={{ animation: phase==='growing' ? 'crystalFloat 4.2s ease-in-out infinite' :
                            phase==='complete' ? 'crystalComplete 0.85s cubic-bezier(0.34,1.56,0.64,1)' : undefined,
               position:'relative', zIndex:1 }}>
-              <CrystalGem progress={phase==='complete'?1:progress} size={42} shattered={shattered}/>
+              {session?.crystalShape && window.ShapedCrystalGem
+                ? React.createElement(window.ShapedCrystalGem, {
+                    shape: session.crystalShape,
+                    gradientId: session.crystalGradient,
+                    progress: phase==='complete' ? 1 : progress,
+                    colorProgress: phase==='complete' ? 1 : Math.pow(progress, 0.62),
+                    timeOffset: elapsed,
+                    size: 42, shattered,
+                    seed: session.startTime || Date.now(),
+                  })
+                : <CrystalGem progress={phase==='complete'?1:progress} size={42} shattered={shattered}/>
+              }
             </div>
           </div>
         </div>
@@ -5548,6 +6058,9 @@
         name: CRYSTAL_PALETTES[si].name,
         duration: session?.duration || 25,
         type: session?.type || 'solo',
+        crystalShape: session?.crystalShape || 'diamond',
+        crystalGradient: session?.crystalGradient || null,
+        seed: session?.startTime || Date.now(),
         completedAt: new Date().toISOString(),
       };
     }
@@ -5639,7 +6152,10 @@
                             Nouveau
                           </div>
                         )}
-                        <CrystalGem progress={_cStateProgress(si)} size={46}/>
+                        {c.crystalShape && window.ShapedCrystalGem
+                          ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:c.crystalGradient, progress:0.85, size:46, seed:c.seed||c.id })
+                          : <CrystalGem progress={_cStateProgress(si)} size={46}/>
+                        }
                         <div style={{ textAlign:'center', width:'100%' }}>
                           <div style={{ fontSize:10, fontWeight:700, color:pal.b, letterSpacing:'-0.01em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{pal.name}</div>
                           <div style={{ fontSize:9, color:T.muted, marginTop:2 }}>{c.duration} min</div>
@@ -5656,6 +6172,1197 @@
       );
     }
     window.MesCristauxPanel = MesCristauxPanel;
+  </script>
+
+  <script type="text/babel">
+  /* ══════════════════════════════════════════════════════════════
+     LUMENOS — CRYSTAL SHAPE SYSTEM
+     Organic growth · Curated gradients · Shape picker
+  ══════════════════════════════════════════════════════════════ */
+
+  /* ── Curated gradient presets (color-theory: analogous/split-comp) ── */
+  window.CRYSTAL_GRADIENTS = [
+    { id:'aurora',   name:'Aurore',       stops:['#43e97b','#38f9d7'], glow:'rgba(56,249,215,0.72)'  },
+    { id:'crepusc',  name:'Crépuscule',   stops:['#f7797d','#c471ed'], glow:'rgba(196,113,237,0.72)' },
+    { id:'glacier2', name:'Glacier',      stops:['#4fc3f7','#a5d6ff'], glow:'rgba(79,195,247,0.72)'  },
+    { id:'jade2',    name:'Jade',         stops:['#26d0ce','#1a2980'], glow:'rgba(38,208,206,0.72)'  },
+    { id:'ameth2',   name:'Améthyste',    stops:['#a855f7','#ec4899'], glow:'rgba(168,85,247,0.75)'  },
+    { id:'braise',   name:'Braise',       stops:['#f97316','#fbbf24'], glow:'rgba(249,115,22,0.72)'  },
+    { id:'saphir2',  name:'Saphir',       stops:['#6366f1','#06b6d4'], glow:'rgba(99,102,241,0.72)'  },
+    { id:'rose2',    name:'Rose quartz',  stops:['#fb7185','#f472b6'], glow:'rgba(251,113,133,0.72)' },
+    { id:'foret2',   name:'Forêt',        stops:['#10b981','#34d399'], glow:'rgba(16,185,129,0.72)'  },
+    { id:'cosmos2',  name:'Cosmos',       stops:['#818cf8','#c084fc'], glow:'rgba(129,140,248,0.75)' },
+  ];
+  window._randomGradient = () => window.CRYSTAL_GRADIENTS[Math.floor(Math.random() * window.CRYSTAL_GRADIENTS.length)].id;
+
+  /* ── Shape definitions ── */
+  window.CRYSTAL_SHAPE_DEFS = {
+    diamond: { name:'Diamant',  desc:'Taille brillant classique'  },
+    shard:   { name:'Éclat',    desc:'Pointe asymétrique élancée' },
+    geode:   { name:'Géode',    desc:'Forme organique arrondie'   },
+    prism:   { name:'Prisme',   desc:'Section hexagonale nette'   },
+    cluster: { name:'Grappe',   desc:'Trois pointes cristallines' },
+    quartz:  { name:'Quartz',   desc:'Pilier hexagonal naturel'   },
+  };
+
+  /* ── Seeded RNG ── */
+  window._seedRng = (seed) => {
+    const v = []; let s = (seed || 12345) >>> 0;
+    for (let i = 0; i < 120; i++) { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; v.push(s / 4294967296 - 0.5); }
+    return v;
+  };
+
+  /* ── Hex color interpolation ── */
+  function _lerpHex(a, b, t) {
+    const h = s => [parseInt(s.slice(1,3),16), parseInt(s.slice(3,5),16), parseInt(s.slice(5,7),16)];
+    const [ar,ag,ab] = h(a), [br,bg,bb] = h(b);
+    const c = v => Math.max(0,Math.min(255,Math.round(v)));
+    return `#${c(ar+(br-ar)*t).toString(16).padStart(2,'0')}${c(ag+(bg-ag)*t).toString(16).padStart(2,'0')}${c(ab+(bb-ab)*t).toString(16).padStart(2,'0')}`;
+  }
+
+  /* ── Jitter polygon builder ── */
+  /* ── Polygon builder ──
+     stableAmt: irreversible sculpting that GROWS over the session
+                (0 at start = exact base shape, maxVal at end = unique organic form)
+     liveAmt:   tiny continuous sine oscillation for "alive" feel (optional)
+     timeMs:    elapsed ms for the live oscillation ── */
+  function _poly(pts, rng, stableAmt, off = 0, liveAmt = 0, timeMs = 0) {
+    const n = rng.length;
+    return pts.map(([x, y], i) => {
+      const idx = (i * 6 + off * 7) % n;
+      /* Stable directional deformation per vertex — unique, irreversible */
+      const sdx = rng[idx]         * stableAmt;
+      const sdy = rng[(idx+1) % n] * stableAmt * 0.58;
+      /* Tiny living pulse — barely perceptible, stops when crystal is complete */
+      let ldx = 0, ldy = 0;
+      if (liveAmt > 0.01 && timeMs > 0) {
+        const freqX = 0.0007 + Math.abs(rng[(idx+2)%n]) * 0.0005;
+        const freqY = 0.0006 + Math.abs(rng[(idx+3)%n]) * 0.0006;
+        const phX   = rng[(idx+4)%n] * Math.PI * 4;
+        const phY   = rng[(idx+5)%n] * Math.PI * 4;
+        ldx = Math.sin(timeMs * freqX + phX) * liveAmt;
+        ldy = Math.cos(timeMs * freqY + phY) * liveAmt * 0.55;
+      }
+      return `${(x + sdx + ldx).toFixed(1)},${(y + sdy + ldy).toFixed(1)}`;
+    }).join(' ');
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     ShapedCrystalGem
+     colorProgress : 0 = raw white/silver → 1 = full vivid gradient
+     timeOffset    : elapsed ms → continuous organic shape sculpting
+  ══════════════════════════════════════════════════════════════ */
+  function ShapedCrystalGem({ shape = 'diamond', gradientId = null, progress = 0, size = 90,
+                               animate = false, shattered = false, seed,
+                               colorProgress = 1,
+                               timeOffset = 0 }) {
+    const _s  = React.useRef(seed != null ? seed : Math.floor(Math.random() * 999983));
+    /* Single stable RNG — fixed for the whole session */
+    const rng = React.useMemo(() => window._seedRng(_s.current), [_s.current]);
+
+    /* ── Growth model ──────────────────────────────────────────────
+       Crystal starts as the EXACT chosen shape (no deformation).
+       Faces gradually sculpt into a unique organic variation.
+       stableDeform: 0 → 10px  (irreversible face displacement)
+       liveDeform:   0 → 2px   (tiny oscillation, crystal feels alive)
+       scale:        0.88 → 1.0 (subtle swelling as crystal matures)
+       alpha:        0.82 → 1.0 (solidifies as it crystallises)      ── */
+    const organicP    = Math.pow(progress, 0.58);   // fast start, decelerates
+    const stableDeform = organicP * 10;              // 0 → 10 px face displacement
+    const liveDeform   = organicP * 1.8;             // 0 → 1.8 px pulse
+    const scale        = 0.88 + progress * 0.12;
+    const alpha        = 0.82 + progress * 0.18;
+
+    /* ── Colour: starts white/silver, gradually reveals gradient ── */
+    const GREY1 = '#cdd5dc', GREY2 = '#a8b4be';
+    const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gradientId)
+                 || (window.CRYSTAL_GRADIENTS||[])[0]
+                 || { stops:['#a5b8ff','#c084fc'], glow:'rgba(165,184,255,0.72)' };
+    const targetC1 = grad.stops[0], targetC2 = grad.stops[grad.stops.length - 1];
+    const cp = Math.max(0, Math.min(1, colorProgress));
+    const c1 = cp >= 1 ? targetC1 : _lerpHex(GREY1, targetC1, cp);
+    const c2 = cp >= 1 ? targetC2 : _lerpHex(GREY2, targetC2, cp);
+
+    /* Glow: near-invisible silver at cp=0, full vivid at cp=1 */
+    const glowAlpha = (0.08 + cp * 0.64).toFixed(2);
+    const rawGlow   = grad.glow.replace(/[\d.]+\)$/, `${glowAlpha})`);
+    const glowPx   = 2 + progress * 7 + cp * 9;
+
+    const uid = `shcg-${shape}-${_s.current}`;
+    /* p() applies progressive face sculpting + subtle live pulse */
+    const p   = (pts, off = 0) => _poly(pts, rng, stableDeform, off, liveDeform, timeOffset);
+
+    /* ── Shape-specific SVG content ── */
+    let content = null;
+
+    if (shape === 'diamond') {
+      content = <>
+        <polygon points={p([[33,8],[67,8],[84,33],[92,52],[8,52],[16,33]])} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
+        <polygon points={p([[8,52],[92,52],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.28"/>
+        <polygon points={p([[33,8],[67,8],[74,22],[26,22]])} fill={`url(#${uid}-t)`}/>
+        <polygon points={p([[33,8],[26,22],[16,33],[8,52]])} fill={c2} opacity="0.2"/>
+        <polygon points={p([[40,9],[60,9],[66,19],[34,19]])} fill="rgba(255,255,255,0.7)"/>
+        {[[33,8,50,52],[67,8,50,52],[26,22,50,52],[74,22,50,52],[8,52,50,138],[92,52,50,138]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.22"/>
+        ))}
+      </>;
+    } else if (shape === 'shard') {
+      content = <>
+        <polygon points={p([[52,6],[74,20],[86,46],[82,70],[65,92],[50,140],[35,92],[17,66],[12,44],[26,18]])} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
+        <polygon points={p([[52,6],[38,22],[28,44],[35,92],[52,6]])} fill={c2} opacity="0.18"/>
+        <polygon points={p([[52,6],[68,22],[82,46],[65,92]])} fill={c1} opacity="0.1"/>
+        <polygon points={p([[44,9],[62,9],[70,21],[36,21]])} fill="rgba(255,255,255,0.68)"/>
+        {[[52,6,50,140],[17,66,82,46],[26,18,65,92]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
+        ))}
+      </>;
+    } else if (shape === 'geode') {
+      const body = [[50,10],[70,8],[86,22],[94,44],[90,68],[76,88],[56,95],[44,95],[24,86],[10,66],[6,44],[14,22],[30,10]];
+      const dome = [[50,10],[70,8],[86,22],[94,44],[50,44]];
+      content = <>
+        <polygon points={p(body)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.35"/>
+        <polygon points={p([[6,44],[10,66],[24,86],[44,95],[56,95],[76,88],[90,68],[94,44],[50,130]],8)} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.22"/>
+        <polygon points={p(dome)} fill="rgba(255,255,255,0.14)"/>
+        <polygon points={p([[43,11],[57,11],[62,22],[38,22]])} fill="rgba(255,255,255,0.65)"/>
+        {[[26,20,14,44],[50,10,50,95],[74,22,90,50]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
+        ))}
+      </>;
+    } else if (shape === 'prism') {
+      const hex = [[50,8],[77,24],[77,58],[50,74],[23,58],[23,24]];
+      content = <>
+        <polygon points={p(hex)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
+        <polygon points={p([[23,58],[77,58],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.25"/>
+        <polygon points={p([[50,8],[23,24],[23,58],[50,74]])} fill={c1} opacity="0.18"/>
+        <polygon points={p([[50,8],[77,24],[77,58],[50,74]])} fill={c2} opacity="0.12"/>
+        <polygon points={p([[50,8],[77,24],[63,30],[37,30],[23,24]])} fill="rgba(255,255,255,0.62)"/>
+        {[[50,8,50,74],[50,74,50,138],[77,58,50,138],[23,58,50,138],[23,24,77,24]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.22"/>
+        ))}
+      </>;
+    } else if (shape === 'cluster') {
+      const body = [[50,5],[60,28],[70,6],[81,30],[80,58],[68,88],[50,140],[32,88],[20,58],[19,30],[30,6],[40,28]];
+      content = <>
+        <polygon points={p(body)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
+        <polygon points={p([[50,5],[40,28],[60,28]])} fill="rgba(255,255,255,0.22)"/>
+        <polygon points={p([[30,6],[19,30],[40,28]])} fill={c1} opacity="0.18"/>
+        <polygon points={p([[70,6],[81,30],[60,28]])} fill={c2} opacity="0.15"/>
+        <polygon points={p([[47,7],[53,7],[56,18],[44,18]])} fill="rgba(255,255,255,0.65)"/>
+        {[[50,5,50,140],[30,6,32,88],[70,6,68,88],[40,28,32,88],[60,28,68,88]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.35" strokeOpacity="0.2"/>
+        ))}
+      </>;
+    } else if (shape === 'quartz') {
+      const pillar = [[50,5],[66,14],[66,90],[50,98],[34,90],[34,14]];
+      content = <>
+        <polygon points={p(pillar)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
+        <polygon points={p([[34,90],[66,90],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.25"/>
+        <polygon points={p([[50,5],[66,14],[66,90],[50,98]])} fill={c2} opacity="0.1"/>
+        <polygon points={p([[50,5],[66,14],[50,20],[34,14]])} fill="rgba(255,255,255,0.68)"/>
+        {[[50,5,50,98],[50,98,50,138],[66,90,50,138],[34,90,50,138]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
+        ))}
+        {[0.28,0.52,0.76].map((t,i)=>(
+          <line key={i} x1="34" y1={14+t*76} x2="66" y2={14+t*76} stroke={c2} strokeWidth="0.3" strokeOpacity="0.18"/>
+        ))}
+      </>;
+    }
+
+    /* ── 3D facet system ─────────────────────────────────────────────
+       Simplified crystal outlines for clip-path (one per shape)     */
+    const OUTLINES = {
+      diamond: [[33,8],[67,8],[92,52],[50,138],[8,52]],
+      shard:   [[52,6],[86,46],[65,92],[50,140],[35,92],[12,44],[26,18]],
+      geode:   [[50,10],[86,22],[94,44],[90,68],[76,88],[50,95],[24,86],[10,66],[6,44],[14,22],[30,10]],
+      prism:   [[50,8],[77,24],[77,58],[50,138],[23,58],[23,24]],
+      cluster: [[50,5],[81,30],[80,58],[68,88],[50,140],[32,88],[20,58],[19,30],[30,6]],
+      quartz:  [[50,5],[66,14],[66,90],[50,140],[34,90],[34,14]],
+    };
+
+    /* Clip region sculpts alongside the crystal (offset 70 → different deformation) */
+    const clipPts = _poly(OUTLINES[shape] || OUTLINES.diamond, rng, stableDeform * 0.52, 70);
+
+    /* Random light/shadow facets — computed once per session seed */
+    const facets = React.useMemo(() => {
+      const n = rng.length, res = [];
+      for (let i = 0; i < 18; i++) {
+        const idx = (i * 11 + 7) % n;
+        /* Anchor distributed across crystal face */
+        const ax = 12 + ((i % 5) / 4) * 76  + rng[idx]       * 7;
+        const ay = 8  + (Math.floor(i/5)/3)  * 120 + rng[(idx+1)%n] * 9;
+        const angle = rng[(idx+2)%n] * Math.PI * 2;
+        const da    = Math.PI * (0.18 + Math.abs(rng[(idx+3)%n]) * 0.72);
+        const r1    = 18 + Math.abs(rng[(idx+4)%n]) * 65;
+        const r2    = 18 + Math.abs(rng[(idx+5)%n]) * 65;
+        const p1    = [ax + Math.cos(angle)    * r1, ay + Math.sin(angle)    * r1 * 0.7];
+        const p2    = [ax + Math.cos(angle+da) * r2, ay + Math.sin(angle+da) * r2 * 0.7];
+        /* Brightness: top of crystal is lighter (top-lit), RNG adds randomness */
+        const topLight = 1 - ay / 145;
+        const bright   = rng[(idx+6)%n] * 0.65 + topLight * 0.32;
+        const pStr     = `${ax.toFixed(1)},${ay.toFixed(1)} ${p1[0].toFixed(1)},${p1[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+        res.push({ pStr, bright, ax, ay, p1x: p1[0], p1y: p1[1] });
+      }
+      return res;
+    }, [rng]);
+
+    /* Specular highlight position (stable per session) */
+    const spCx = 26 + Math.abs(rng[88]) * 26;
+    const spCy = 14 + Math.abs(rng[89]) * 32;
+    const spR  = 2.2 + Math.abs(rng[90]) * 5.5;
+    const sp2x = spCx + rng[91] * 28;
+    const sp2y = spCy + Math.abs(rng[92]) * 24;
+
+    /* Facet opacity grows with organic sculpting */
+    const facetOp  = Math.min(organicP * 1.1, 0.88);
+    const ridgeMax = Math.round(4 + organicP * 10); // more ridges as crystal sculpts
+
+    /* Sparkle: appears only late in session */
+    const sparkle = progress > 0.78 ? (
+      <g style={{animation:'crystalSparkle 1.9s ease-in-out infinite'}}>
+        <line x1="4" y1="38" x2="12" y2="38" stroke="white" strokeWidth="1.6" strokeOpacity="0.85" strokeLinecap="round"/>
+        <line x1="8" y1="34" x2="8"  y2="42" stroke="white" strokeWidth="1.6" strokeOpacity="0.85" strokeLinecap="round"/>
+        <line x1="5" y1="35" x2="11" y2="41" stroke="white" strokeWidth="0.8" strokeOpacity="0.55" strokeLinecap="round"/>
+        <line x1="11" y1="35" x2="5" y2="41" stroke="white" strokeWidth="0.8" strokeOpacity="0.55" strokeLinecap="round"/>
+      </g>
+    ) : null;
+
+    /* Shatter cracks */
+    const cracks = shattered ? (
+      <g stroke="rgba(255,255,255,0.88)" strokeLinecap="round">
+        <line x1="50" y1="8" x2="26" y2="58" strokeWidth="1.2"/>
+        <line x1="50" y1="8" x2="72" y2="44" strokeWidth="1"/>
+        <line x1="26" y1="58" x2="14" y2="82" strokeWidth="0.9"/>
+        <line x1="72" y1="44" x2="86" y2="76" strokeWidth="0.9"/>
+      </g>
+    ) : null;
+
+    return (
+      <svg viewBox="0 0 100 145" style={{
+        width: size, height: size * 1.45, display:'block', overflow:'visible',
+        filter: `drop-shadow(0 0 ${glowPx}px ${rawGlow}) drop-shadow(0 ${glowPx*0.5}px ${glowPx*1.3}px ${rawGlow})`,
+        transform: shattered ? 'scale(0) rotate(22deg)' : `scale(${scale})`,
+        transformOrigin: '50% 65%',
+        opacity: shattered ? 0 : alpha,
+        transition: 'filter 2s ease, transform 0.55s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease',
+        animation: animate ? 'crystalFloat 4.2s ease-in-out infinite, crystalPulse 3.2s ease-in-out infinite' : 'crystalPulse 5s ease-in-out infinite',
+      }}>
+        <defs>
+          <linearGradient id={`${uid}-g`} x1="18%" y1="0%" x2="82%" y2="100%">
+            <stop offset="0%" stopColor={c2} stopOpacity="0.93"/>
+            <stop offset="48%" stopColor={c1} stopOpacity="0.87"/>
+            <stop offset="100%" stopColor={c1} stopOpacity="0.96"/>
+          </linearGradient>
+          <linearGradient id={`${uid}-g2`} x1="28%" y1="0%" x2="72%" y2="100%">
+            <stop offset="0%" stopColor={c1} stopOpacity="0.68"/>
+            <stop offset="100%" stopColor={c2} stopOpacity="0.94"/>
+          </linearGradient>
+          <radialGradient id={`${uid}-t`} cx="42%" cy="38%" r="62%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.94"/>
+            <stop offset="100%" stopColor={c2} stopOpacity="0.40"/>
+          </radialGradient>
+          {/* Crystal outline for facet clipping */}
+          <clipPath id={`${uid}-clip`}>
+            <polygon points={clipPts}/>
+          </clipPath>
+        </defs>
+
+        {/* ── Base shape polygons ── */}
+        {content}
+
+        {/* ── 3D facet overlays (clipped to crystal shape) ── */}
+        {organicP > 0.02 && (
+          <g clipPath={`url(#${uid}-clip)`}>
+            {/* Light + shadow facet polygons */}
+            {facets.map((f, i) => {
+              const absB = Math.abs(f.bright);
+              if (absB < 0.05) return null;
+              const col = f.bright > 0
+                ? `rgba(255,255,255,${(Math.min(f.bright * 0.82, 0.52) * facetOp).toFixed(3)})`
+                : `rgba(0,5,22,${(Math.min(absB * 0.78, 0.48) * facetOp).toFixed(3)})`;
+              return <polygon key={i} points={f.pStr} fill={col}/>;
+            })}
+
+            {/* Ridge lines — facet boundary edges */}
+            {facets.slice(0, ridgeMax).map((f, i) => {
+              const absB = Math.abs(f.bright);
+              if (absB < 0.09) return null;
+              const strokeCol = f.bright > 0.12
+                ? `rgba(255,255,255,${(organicP * 0.42).toFixed(2)})`
+                : `rgba(0,8,44,${(organicP * 0.36).toFixed(2)})`;
+              return (
+                <line key={`r${i}`}
+                  x1={f.ax.toFixed(1)} y1={f.ay.toFixed(1)}
+                  x2={f.p1x.toFixed(1)} y2={f.p1y.toFixed(1)}
+                  stroke={strokeCol} strokeWidth="0.6" strokeLinecap="round"/>
+              );
+            })}
+
+            {/* Specular highlight — main bright spot */}
+            <circle cx={spCx.toFixed(1)} cy={spCy.toFixed(1)} r={(spR * organicP).toFixed(2)}
+              fill={`rgba(255,255,255,${(organicP * 0.62).toFixed(2)})`}/>
+
+            {/* Refraction streak from specular */}
+            {organicP > 0.35 && (
+              <line
+                x1={spCx.toFixed(1)} y1={spCy.toFixed(1)}
+                x2={sp2x.toFixed(1)} y2={sp2y.toFixed(1)}
+                stroke={`rgba(255,255,255,${(organicP * 0.30).toFixed(2)})`}
+                strokeWidth="1.3" strokeLinecap="round"/>
+            )}
+
+            {/* Secondary specular — smaller, offset */}
+            {organicP > 0.55 && (
+              <circle
+                cx={(spCx + rng[93] * 18).toFixed(1)}
+                cy={(spCy + Math.abs(rng[94]) * 20 + 15).toFixed(1)}
+                r={(1.5 + Math.abs(rng[95]) * 2.5).toFixed(2)}
+                fill={`rgba(255,255,255,${(organicP * 0.38).toFixed(2)})`}/>
+            )}
+          </g>
+        )}
+
+        {sparkle}
+        {cracks}
+      </svg>
+    );
+  }
+  window.ShapedCrystalGem = ShapedCrystalGem;
+
+  /* ══════════════════════════════════════════════════════════════
+     ShapeGradientPicker — embedded in SessionModal step 2
+  ══════════════════════════════════════════════════════════════ */
+  function ShapeGradientPicker({ selectedShape, onShape, selectedGradient, onGradient }) {
+    const [hov, setHov] = React.useState(null);
+    const shapes = Object.entries(window.CRYSTAL_SHAPE_DEFS || {}).map(([id,d]) => ({ id,...d }));
+    const grads  = window.CRYSTAL_GRADIENTS || [];
+    const activeGrad = grads.find(g => g.id === selectedGradient) || grads[0];
+
+    return (
+      <div style={{paddingBottom:28}}>
+        {/* Shape grid */}
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.09em',textTransform:'uppercase',color:T.muted,marginBottom:14}}>Forme du cristal</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:24}}>
+          {shapes.map((s,idx) => {
+            const sel = selectedShape === s.id;
+            const isHov = hov === s.id;
+            const grd = activeGrad || grads[0];
+            return (
+              <button key={s.id} onClick={() => onShape(s.id)}
+                onMouseEnter={() => setHov(s.id)} onMouseLeave={() => setHov(null)}
+                style={{
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:8,
+                  padding:'18px 12px 14px', borderRadius:20, outline:'none',
+                  background: sel ? `${grd.glow.replace(/[\d.]+\)$/,'0.09)')}` : isHov ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.025)',
+                  border: `1.5px solid ${sel ? grd.stops[0] : isHov ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)'}`,
+                  cursor:'pointer',
+                  transition:'all 0.28s cubic-bezier(0.34,1.56,0.64,1)',
+                  transform: sel ? 'scale(1.05) translateY(-3px)' : isHov ? 'scale(1.02) translateY(-1px)' : 'scale(1)',
+                  boxShadow: sel ? `0 0 28px ${grd.glow}, 0 8px 20px rgba(0,0,0,0.4)` : isHov ? '0 4px 14px rgba(0,0,0,0.3)' : 'none',
+                }}>
+                <div style={{width:68,height:68,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+                    shape: s.id, gradientId: selectedGradient,
+                    progress: sel ? 0.82 : isHov ? 0.58 : 0.35,
+                    size: 46, seed: (s.id.charCodeAt(0) * 137 + (s.id.charCodeAt(1) || 0) * 59),
+                  })}
+                </div>
+                <div style={{textAlign:'center'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:sel?(grd.stops[0]):'rgba(248,246,252,0.9)',letterSpacing:'-0.01em',transition:'color 0.22s'}}>{s.name}</div>
+                  <div style={{fontSize:9,color:T.muted,marginTop:2,lineHeight:1.4}}>{s.desc}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Gradient swatches */}
+        <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.09em',textTransform:'uppercase',color:T.muted,marginBottom:12}}>Couleur du cristal</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:20}}>
+          {grads.map(g => {
+            const sel = selectedGradient === g.id;
+            return (
+              <button key={g.id} onClick={() => onGradient(g.id)} title={g.name}
+                style={{
+                  width:30,height:30,borderRadius:'50%',padding:0,outline:'none',cursor:'pointer',
+                  background:`linear-gradient(135deg,${g.stops[0]},${g.stops[g.stops.length-1]})`,
+                  border:`2.5px solid ${sel?'rgba(255,255,255,0.92)':'transparent'}`,
+                  boxShadow: sel ? `0 0 0 3px ${g.glow}, 0 0 20px ${g.glow}` : '0 2px 6px rgba(0,0,0,0.3)',
+                  transition:'all 0.24s cubic-bezier(0.34,1.56,0.64,1)',
+                  transform: sel ? 'scale(1.28)' : 'scale(1)',
+                }}/>
+            );
+          })}
+        </div>
+
+        {/* Live preview */}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,padding:'12px 0 4px'}}>
+          <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center',width:96,height:96}}>
+            {/* Soft ambient glow behind preview */}
+            <div style={{position:'absolute',inset:-16,borderRadius:'50%',background:activeGrad?`radial-gradient(circle,${activeGrad.glow},transparent 70%)`:'none',pointerEvents:'none'}}/>
+            {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+              shape: selectedShape, gradientId: selectedGradient, progress: 0.72,
+              size: 66, animate: true,
+              seed: ((selectedShape||'diamond').charCodeAt(0) * 211 + ((selectedShape||'diamond').charCodeAt(1)||0) * 73),
+            })}
+          </div>
+          <div style={{fontSize:10,color:T.muted,letterSpacing:'0.05em',fontWeight:500}}>
+            {(window.CRYSTAL_SHAPE_DEFS||{})[selectedShape]?.name} · {activeGrad?.name}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  window.ShapeGradientPicker = ShapeGradientPicker;
+  </script>
+
+  <script type="text/babel">
+  /* ══════════════════════════════════════════════════════════════
+     LUMENOS — GAMIFICATION SYSTEM
+     Streaks · Quests · Focus Points · Store · Heatmap · Fusion
+  ══════════════════════════════════════════════════════════════ */
+  if (!document.getElementById('fs-gamif-css')) {
+    const s = document.createElement('style');
+    s.id = 'fs-gamif-css';
+    s.textContent = `
+      @keyframes auroraHue {
+        0%   { filter:hue-rotate(0deg)   drop-shadow(0 0 14px rgba(0,188,212,0.8)); }
+        50%  { filter:hue-rotate(200deg) drop-shadow(0 0 20px rgba(124,77,255,0.85)); }
+        100% { filter:hue-rotate(360deg) drop-shadow(0 0 14px rgba(0,188,212,0.8)); }
+      }
+      @keyframes gamifSlideIn {
+        from { opacity:0; transform:translateX(-20px) scale(0.97); }
+        to   { opacity:1; transform:translateX(0)     scale(1);    }
+      }
+      @keyframes barGrow    { from { transform:scaleY(0) } to { transform:scaleY(1) } }
+      @keyframes questDone  { 0%{transform:scale(1)} 40%{transform:scale(1.06)} 100%{transform:scale(1)} }
+      @keyframes fpCount    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+      .fs-gamif-panel {
+        position:fixed; left:106px; top:28px; bottom:28px; width:376px;
+        background:rgba(6,5,16,0.97);
+        backdrop-filter:blur(56px) saturate(200%);
+        -webkit-backdrop-filter:blur(56px) saturate(200%);
+        border:1px solid rgba(255,255,255,0.09);
+        border-radius:28px; z-index:200;
+        display:flex; flex-direction:column; overflow:hidden;
+        box-shadow:0 32px 96px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
+        animation:gamifSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+      }
+      .fs-gamif-backdrop { position:fixed; inset:0; z-index:199; }
+      .gf-sec-title {
+        font-size:9px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase;
+        color:rgba(248,246,252,0.3); margin-bottom:10px; padding-top:18px;
+        border-top:1px solid rgba(255,255,255,0.05); display:block;
+      }
+      .gf-quest-card {
+        display:flex; flex-direction:column; gap:9px;
+        padding:14px 16px; border-radius:18px;
+        background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+        margin-bottom:8px; transition:all 0.22s ease; position:relative; overflow:hidden;
+      }
+      .gf-quest-card.done { opacity:0.5; border-color:rgba(255,255,255,0.04); }
+      .gf-quest-card:not(.done):hover { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.13); }
+      .gf-quest-card.done::after {
+        content:''; position:absolute; inset:0;
+        background:rgba(74,222,128,0.04);
+      }
+      .gf-skin-card {
+        display:flex; flex-direction:column; align-items:center; gap:10px;
+        padding:16px 10px 14px; border-radius:22px;
+        background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07);
+        cursor:pointer; position:relative; overflow:hidden;
+        transition:all 0.28s cubic-bezier(0.34,1.56,0.64,1);
+      }
+      .gf-skin-card:hover:not(.locked) { background:rgba(255,255,255,0.065); transform:translateY(-5px) scale(1.03); }
+      .gf-skin-card.active-skin { border-width:1.5px; }
+      .gf-skin-card.locked { cursor:not-allowed; opacity:0.55; }
+      .heat-cell {
+        width:11px; height:11px; border-radius:3px; flex-shrink:0;
+        transition:transform 0.15s, opacity 0.15s;
+      }
+      .heat-cell:hover { transform:scale(1.5); opacity:0.85; }
+      .fp-badge {
+        display:inline-flex; align-items:center; gap:4px; padding:3px 9px;
+        border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.04em;
+        background:rgba(255,210,125,0.12); border:1px solid rgba(255,210,125,0.25); color:#ffd27d;
+      }
+      .xp-badge {
+        display:inline-flex; align-items:center; gap:4px; padding:3px 9px;
+        border-radius:99px; font-size:10px; font-weight:700; letter-spacing:0.04em;
+        background:rgba(165,184,255,0.12); border:1px solid rgba(165,184,255,0.25); color:#a5b8ff;
+      }
+      .gf-unlock-badge {
+        flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;
+        padding:14px 8px; border-radius:18px;
+        background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07);
+        transition:all 0.22s;
+      }
+      .gf-unlock-badge.unlocked { background:rgba(255,255,255,0.05); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  /* ── Constants ─────────────────────────────────────────────── */
+  window.SKINS = [
+    { id:'default',  name:'Cristal pur',  price:0,   unlockType:'free',     a:'#8fa8b4', b:'#dce8ee', c:'#4a6878', glow:'rgba(143,168,180,0.5)'  },
+    { id:'lava',     name:'Lave',          price:150, unlockType:'fp',       a:'#e25822', b:'#ffab40', c:'#7f2200', glow:'rgba(226,88,34,0.72)'  },
+    { id:'glacier',  name:'Glacier',       price:150, unlockType:'fp',       a:'#4fc3f7', b:'#e1f5fe', c:'#0d47a1', glow:'rgba(79,195,247,0.7)'  },
+    { id:'meteor',   name:'Météore',       price:200, unlockType:'fp',       a:'#b71c1c', b:'#ff6f00', c:'#3e0000', glow:'rgba(183,28,28,0.75)'  },
+    { id:'obsidian', name:'Obsidienne',    price:0,   unlockType:'streak7',  a:'#9c27b0', b:'#e1bee7', c:'#12005e', glow:'rgba(156,39,176,0.82)', streak:7  },
+    { id:'aurora',   name:'Aurora',        price:0,   unlockType:'streak14', a:'#00bcd4', b:'#ffffff', c:'#006064', glow:'rgba(0,188,212,0.8)',   streak:14, rainbow:true },
+    { id:'void',     name:'Vide',          price:0,   unlockType:'streak21', a:'#7c4dff', b:'#b388ff', c:'#120030', glow:'rgba(124,77,255,0.88)', streak:21 },
+  ];
+
+  window.QUEST_DEFS = {
+    daily: [
+      { id:'d_crystals', label:'Cristallise 3 gemmes',  desc:"Complète 3 sessions focus aujourd'hui", target:3,   key:'sessions', fp:50,  xp:100 },
+      { id:'d_marathon',  label:'Marathon de focus',      desc:'Une session de 45 min ou plus',          target:1,   key:'marathon', fp:80,  xp:150 },
+      { id:'d_early',     label:'Lève-tôt',               desc:'Complète une session avant 9h00',        target:1,   key:'early',    fp:60,  xp:120 },
+    ],
+    weekly: [
+      { id:'w_5h',   label:'Alchimiste du temps',  desc:'Forge 5 heures de cristaux cette semaine',   target:300, key:'minutes', fp:300, xp:500  },
+      { id:'w_7days',label:'Régularité parfaite',  desc:'7 sessions en 7 jours → gemme légendaire',   target:7,   key:'days',    fp:500, xp:1000 },
+    ],
+  };
+
+  const XP_TH = [0,100,250,500,1000,2000,3500,5500,8500,13000,20000];
+  window._gLevel  = xp => { for (let i=XP_TH.length-1;i>=0;i--) if(xp>=XP_TH[i]) return i+1; return 1; };
+  window._gLvlPct = xp => { const l=window._gLevel(xp),ci=l-1,curr=XP_TH[ci]||0,nxt=XP_TH[ci+1]||curr*1.5; return (xp-curr)/(nxt-curr); };
+  window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
+  window._gMul    = (d,w) => w>=1?3.0:d>=7?2.0:d>=3?1.5:1.0;
+
+  function _gDefault() {
+    return { streaks:{daily:0,weekly:0,lastDate:null,weekStart:null,jokers:1,jokersUsed:0},
+      fp:0, xp:0, heatmap:{}, fpmap:{}, unlocks:['default'], activeSkin:'default',
+      quests:{daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}} };
+  }
+  window._gLoad = uid => { try{ return JSON.parse(localStorage.getItem(`fs_gamif_${uid||'g'}`)||'null')||_gDefault(); }catch(e){ return _gDefault(); } };
+  window._gSave = (uid,data) => {
+    try{ localStorage.setItem(`fs_gamif_${uid||'g'}`,JSON.stringify(data)); }catch(e){}
+    window.dispatchEvent(new CustomEvent('fs-gamif-update',{detail:data}));
+    if(uid&&window._fsSb) window._fsSb.from('user_data').update({gamification:data,updated_at:new Date().toISOString()}).eq('user_id',uid).then(()=>{});
+  };
+
+  function _gResetQuests(g) {
+    const today=window._gToday(),mon=window._gMon();
+    if(!g.quests) g.quests={daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}};
+    if(g.quests.dailyReset!==today){ g.quests.daily=window.QUEST_DEFS.daily.map(q=>({id:q.id,progress:0,completed:false})); g.quests.dailyReset=today; }
+    if(g.quests.weeklyReset!==mon){ g.quests.weekly=window.QUEST_DEFS.weekly.map(q=>({id:q.id,progress:0,completed:false})); g.quests.weeklyReset=mon; g.quests.weekSessions={}; }
+  }
+
+  window._gProcessSession = (uid, session, onToast) => {
+    const g=window._gLoad(uid), today=window._gToday(), mon=window._gMon(), dur=session?.duration||0, hr=new Date().getHours();
+    const yest=(()=>{ const d=new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+    /* streaks */
+    if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?g.streaks.daily+1:1; g.streaks.lastDate=today; }
+    if(g.streaks.weekStart!==mon){ g.streaks.weekStart=mon; g.streaks.jokers=1; g.streaks.jokersUsed=0; }
+    g.streaks.weekly=Math.floor(g.streaks.daily/7);
+    /* fp */
+    const mul=window._gMul(g.streaks.daily,g.streaks.weekly), earned=Math.round(dur*mul);
+    g.fp=(g.fp||0)+earned; g.xp=(g.xp||0)+dur*2;
+    if(!g.heatmap)g.heatmap={}; if(!g.fpmap)g.fpmap={};
+    g.heatmap[today]=(g.heatmap[today]||0)+dur;
+    g.fpmap[today]=(g.fpmap[today]||0)+earned;
+    /* quests */
+    _gResetQuests(g);
+    g.quests.daily.forEach(q=>{
+      if(q.completed)return; const def=window.QUEST_DEFS.daily.find(d=>d.id===q.id); if(!def)return;
+      if(q.id==='d_crystals') q.progress=Math.min(q.progress+1,def.target);
+      if(q.id==='d_marathon'&&dur>=45) q.progress=1;
+      if(q.id==='d_early'&&hr<9) q.progress=1;
+      if(q.progress>=def.target&&!q.completed){ q.completed=true; g.fp+=def.fp; g.xp+=def.xp; onToast&&onToast(`✦ Quête : ${def.label} (+${def.fp} FP)`); }
+    });
+    g.quests.weekly.forEach(q=>{
+      if(q.completed)return; const def=window.QUEST_DEFS.weekly.find(d=>d.id===q.id); if(!def)return;
+      if(q.id==='w_5h') q.progress=Math.min((q.progress||0)+dur,def.target);
+      if(q.id==='w_7days'){ g.quests.weekSessions[today]=true; q.progress=Object.keys(g.quests.weekSessions).length; }
+      if(q.progress>=def.target&&!q.completed){ q.completed=true; g.fp+=def.fp; g.xp+=def.xp; onToast&&onToast(`🌟 Quête hebdo : ${def.label} (+${def.fp} FP)`); }
+    });
+    /* skin unlocks */
+    if(g.streaks.daily>=7  &&!g.unlocks.includes('obsidian')) g.unlocks.push('obsidian');
+    if(g.streaks.daily>=14 &&!g.unlocks.includes('aurora'))   g.unlocks.push('aurora');
+    if(g.streaks.daily>=21 &&!g.unlocks.includes('void'))     g.unlocks.push('void');
+    window._gSave(uid,g);
+    return { g, earned, mul };
+  };
+
+  /* ── useGamif hook ─────────────────────────────────────────── */
+  function useGamif(userId) {
+    const [g, setG] = React.useState(() => window._gLoad(userId));
+    React.useEffect(() => {
+      setG(window._gLoad(userId));
+      const h = e => setG(e.detail||window._gLoad(userId));
+      window.addEventListener('fs-gamif-update', h);
+      return () => window.removeEventListener('fs-gamif-update', h);
+    }, [userId]);
+    return [g, (data) => { setG(data); window._gSave(userId, data); }];
+  }
+
+  /* ── Shared panel header ──────────────────────────────────── */
+  function GfHeader({ title, sub, onClose }) {
+    return (
+      <div style={{padding:'28px 24px 0',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:22}}>
+          <div>
+            <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:6}}>LumenOS</div>
+            <div style={{fontFamily:T.display,fontWeight:800,fontSize:24,letterSpacing:'-0.04em',lineHeight:1}}>{title}</div>
+            {sub&&<div style={{fontSize:11,color:T.muted,marginTop:5}}>{sub}</div>}
+          </div>
+          <button onClick={onClose} style={{width:34,height:34,borderRadius:'50%',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.09)',cursor:'pointer',color:T.muted,fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.18s'}}
+            onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.11)';e.currentTarget.style.color=T.text;}}
+            onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color=T.muted;}}>×</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     1. STREAKS PANEL
+  ───────────────────────────────────────────────────────────── */
+  function StreaksPanel({ open, onClose, user, embed = false }) {
+    const [g, setG] = useGamif(user?.id);
+    if (!embed && !open) return null;
+    const { streaks={}, unlocks=[] } = g;
+    const unlockSkins = (window.SKINS||[]).filter(s => s.streak);
+
+    const useJoker = () => {
+      if ((streaks.jokers||0) <= 0 || (streaks.jokersUsed||0) > 0) return;
+      const ng = { ...g, streaks: { ...streaks, daily:(streaks.daily||0)+1, jokers:(streaks.jokers||1)-1, jokersUsed:(streaks.jokersUsed||0)+1 } };
+      setG(ng);
+    };
+
+    const flameScale = Math.min((streaks.daily||0) / 30, 1);
+    const mulLabel = { 1.0:'×1', 1.5:'×1.5', 2.0:'×2', 3.0:'×3' }[window._gMul(streaks.daily||0, streaks.weekly||0)] || '×1';
+
+    const _streaksBody = (
+          <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
+
+            {/* Hero streak card */}
+            <div style={{display:'flex',alignItems:'center',gap:20,padding:'22px 22px',borderRadius:24,background:'rgba(255,210,125,0.07)',border:'1px solid rgba(255,210,125,0.18)',margin:'18px 0 6px'}}>
+              {/* Flame SVG */}
+              <div style={{flexShrink:0,filter:'drop-shadow(0 0 16px rgba(255,150,0,0.65))'}}>
+                <svg viewBox="0 0 36 52" style={{width:48,height:68}}>
+                  <defs>
+                    <linearGradient id="flameG" x1="0%" y1="100%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#e25822"/>
+                      <stop offset="55%" stopColor="#ff8c00"/>
+                      <stop offset="100%" stopColor="#ffd700" stopOpacity={0.7+flameScale*0.3}/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M18 50C8 50 2 42 2 34C2 24 9 16 18 10C18 18 22 22 26 20C22 26 30 30 30 38C30 45 25 50 18 50Z" fill="url(#flameG)"/>
+                  <path d="M18 44C13 44 10 40 10 36C10 30 15 27 18 24C18 28 20 30 22 29C20 32 25 34 25 38C25 42 22 44 18 44Z" fill="rgba(255,230,100,0.75)"/>
+                </svg>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:T.mono,fontWeight:800,fontSize:56,lineHeight:1,color:'#ffd27d',letterSpacing:'-0.04em',textShadow:'0 0 32px rgba(255,210,125,0.45)'}}>
+                  {streaks.daily||0}
+                </div>
+                <div style={{fontSize:12,color:'rgba(255,210,125,0.65)',fontWeight:600,marginTop:4}}>jours consécutifs</div>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 14px',borderRadius:16,background:'rgba(255,210,125,0.12)',border:'1px solid rgba(255,210,125,0.22)'}}>
+                <div style={{fontSize:18,fontWeight:800,color:'#ffd27d',fontFamily:T.mono}}>{mulLabel}</div>
+                <div style={{fontSize:8,color:'rgba(255,210,125,0.6)',fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase'}}>FP/min</div>
+              </div>
+            </div>
+
+            {/* Weekly milestone track */}
+            <span className="gf-sec-title">Séries hebdomadaires</span>
+            <div style={{display:'flex',gap:6,marginBottom:4}}>
+              {[1,2,3,4].map(w => {
+                const active=(streaks.weekly||0)>=w;
+                return (
+                  <div key={w} style={{flex:1,padding:'10px 6px',borderRadius:14,background:active?'rgba(255,210,125,0.1)':'rgba(255,255,255,0.03)',border:`1px solid ${active?'rgba(255,210,125,0.28)':'rgba(255,255,255,0.07)'}`,textAlign:'center',transition:'all 0.35s'}}>
+                    <div style={{fontSize:11,fontWeight:800,color:active?'#ffd27d':T.muted,marginBottom:2}}>S{w}</div>
+                    <div style={{fontSize:8,color:T.muted}}>{w*7} jours</div>
+                    {active && <div style={{width:6,height:6,borderRadius:'50%',background:'#ffd27d',boxShadow:'0 0 8px #ffd27d',margin:'5px auto 0'}}/>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Joker */}
+            <span className="gf-sec-title">Joker hebdomadaire</span>
+            <div style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderRadius:18,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)'}}>
+              <div style={{width:38,height:38,borderRadius:12,background:'rgba(165,184,255,0.1)',border:'1px solid rgba(165,184,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#a5b8ff" strokeWidth={1.6} strokeLinecap="round"><circle cx={12} cy={12} r={10}/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx={12} cy={17} r={.5} fill="#a5b8ff"/></svg>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text}}>
+                  {(streaks.jokers||0)>0&&(streaks.jokersUsed||0)===0?'Joker disponible':'Joker utilisé cette semaine'}
+                </div>
+                <div style={{fontSize:11,color:T.muted,marginTop:2}}>Protège ta série en cas de journée manquée</div>
+              </div>
+              {(streaks.jokers||0)>0&&(streaks.jokersUsed||0)===0&&(
+                <button onClick={useJoker} style={{background:'rgba(165,184,255,0.12)',border:'1px solid rgba(165,184,255,0.28)',borderRadius:12,padding:'8px 14px',color:'#a5b8ff',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:T.font,transition:'all 0.18s',whiteSpace:'nowrap'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgba(165,184,255,0.22)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='rgba(165,184,255,0.12)'}>
+                  Utiliser
+                </button>
+              )}
+            </div>
+
+            {/* Rare unlock progression */}
+            <span className="gf-sec-title">Cristaux rares à débloquer</span>
+            <div style={{display:'flex',gap:8}}>
+              {unlockSkins.map(skin => {
+                const unlocked=unlocks.includes(skin.id);
+                const pct=Math.min((streaks.daily||0)/skin.streak,1);
+                return (
+                  <div key={skin.id} className={`gf-unlock-badge${unlocked?' unlocked':''}`}>
+                    <div style={{position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <window.CrystalGem progress={unlocked?0.9:0.08} size={42} skin={unlocked?skin.id:null}/>
+                      {!unlocked&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(6,5,16,0.55)',borderRadius:4}}>
+                        <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><rect x={2.5} y={6} width={9} height={7.5} rx={2} stroke="rgba(255,255,255,0.45)" strokeWidth={1.2}/><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="rgba(255,255,255,0.45)" strokeWidth={1.2}/></svg>
+                      </div>}
+                    </div>
+                    <div style={{fontSize:9,fontWeight:700,color:unlocked?skin.b:T.muted,textAlign:'center'}}>{skin.name}</div>
+                    {!unlocked&&(
+                      <div style={{width:'100%',height:3,borderRadius:99,background:'rgba(255,255,255,0.07)',overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${pct*100}%`,background:`linear-gradient(90deg,${skin.a},${skin.b})`,borderRadius:99,transition:'width 0.8s ease'}}/>
+                      </div>
+                    )}
+                    <div style={{fontSize:8,color:T.muted}}>{unlocked?'✦ Débloqué':`${Math.min(streaks.daily||0,skin.streak)}/${skin.streak}j`}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+    );
+    if (embed) return _streaksBody;
+    return (
+      <>
+        <div className="fs-gamif-backdrop" onClick={onClose}/>
+        <div className="fs-gamif-panel">
+          <GfHeader title="Régularité" sub={`${streaks.daily||0} jour${(streaks.daily||0)>1?'s':''} d'affilée`} onClose={onClose}/>
+          {_streaksBody}
+        </div>
+      </>
+    );
+  }
+  window.StreaksPanel = StreaksPanel;
+
+  /* ─────────────────────────────────────────────────────────────
+     2. QUESTS PANEL
+  ───────────────────────────────────────────────────────────── */
+  function QuestsPanel({ open, onClose, user, embed = false }) {
+    const [g] = useGamif(user?.id);
+    if (!embed && !open) return null;
+    const { quests={}, xp=0, fp=0 } = g;
+    const lvl = window._gLevel(xp), lvlPct = window._gLvlPct(xp);
+    const dq = quests.daily||window.QUEST_DEFS.daily.map(q=>({id:q.id,progress:0,completed:false}));
+    const wq = quests.weekly||window.QUEST_DEFS.weekly.map(q=>({id:q.id,progress:0,completed:false}));
+    const pendingCount = [...dq,...wq].filter(q=>!q.completed).length;
+
+    const QuestCard = ({ q, defs }) => {
+      const def = defs.find(d=>d.id===q.id); if(!def)return null;
+      const pct = Math.min(q.progress/def.target,1);
+      const accentColor = q.completed ? T.green : T.c1;
+      return (
+        <div className={`gf-quest-card${q.completed?' done':''}`} style={{animationDuration:'0.3s',animation:q.completed?'questDone 0.4s ease':undefined}}>
+          {/* Completion glow sweep */}
+          {q.completed&&<div style={{position:'absolute',inset:0,background:`linear-gradient(90deg,transparent,rgba(74,222,128,0.06),transparent)`,pointerEvents:'none'}}/>}
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                <div style={{width:5,height:5,borderRadius:'50%',background:accentColor,boxShadow:`0 0 6px ${accentColor}`,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:q.completed?T.muted:T.text,letterSpacing:'-0.01em'}}>{def.label}</span>
+              </div>
+              <div style={{fontSize:11,color:T.muted,lineHeight:1.5,paddingLeft:13}}>{def.desc}</div>
+            </div>
+            {q.completed
+              ? <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:28,height:28,borderRadius:'50%',background:'rgba(74,222,128,0.15)',border:'1px solid rgba(74,222,128,0.35)',flexShrink:0}}>
+                  <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke={T.green} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+              : <div style={{fontSize:11,fontWeight:700,color:T.muted,flexShrink:0}}>{q.progress}/{def.target}</div>
+            }
+          </div>
+          {/* Progress bar */}
+          <div style={{height:3,borderRadius:99,background:'rgba(255,255,255,0.07)',overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${pct*100}%`,background:q.completed?T.green:`linear-gradient(90deg,${T.c1},${accentColor})`,borderRadius:99,boxShadow:q.completed?`0 0 8px ${T.green}55`:`0 0 8px ${T.c1}55`,transition:'width 0.9s cubic-bezier(0.4,0,0.2,1)'}}/>
+          </div>
+          {/* Rewards */}
+          <div style={{display:'flex',gap:6}}>
+            <span className="fp-badge">+{def.fp} FP</span>
+            <span className="xp-badge">+{def.xp} XP</span>
+          </div>
+        </div>
+      );
+    };
+
+    const _questsInner = (
+      <>
+        <div style={{padding:'0 20px 6px',flexShrink:0}}>
+          <div style={{padding:'14px 16px',borderRadius:18,background:'rgba(165,184,255,0.06)',border:'1px solid rgba(165,184,255,0.14)',marginBottom:2}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+                <span style={{fontFamily:T.mono,fontSize:28,fontWeight:800,color:'#a5b8ff',letterSpacing:'-0.04em',lineHeight:1}}>Niv.{lvl}</span>
+                <span style={{fontSize:11,color:T.muted}}>· {xp.toLocaleString('fr')} XP</span>
+              </div>
+              <span style={{fontSize:10,color:T.muted}}>{Math.round(lvlPct*100)}%</span>
+            </div>
+            <div style={{height:5,borderRadius:99,background:'rgba(255,255,255,0.07)',overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${lvlPct*100}%`,background:'linear-gradient(90deg,#a5b8ff,#c084fc)',borderRadius:99,boxShadow:'0 0 10px rgba(165,184,255,0.5)',transition:'width 1s ease'}}/>
+            </div>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
+          <span className="gf-sec-title">Quêtes du jour</span>
+          {dq.map(q => <QuestCard key={q.id} q={q} defs={window.QUEST_DEFS.daily}/>)}
+          <span className="gf-sec-title">Quêtes hebdomadaires</span>
+          {wq.map(q => <QuestCard key={q.id} q={q} defs={window.QUEST_DEFS.weekly}/>)}
+        </div>
+      </>
+    );
+    if (embed) return _questsInner;
+    return (
+      <>
+        <div className="fs-gamif-backdrop" onClick={onClose}/>
+        <div className="fs-gamif-panel">
+          <GfHeader title="Quêtes" sub={`${pendingCount} en cours`} onClose={onClose}/>
+          {_questsInner}
+        </div>
+      </>
+    );
+  }
+  window.QuestsPanel = QuestsPanel;
+
+  /* ─────────────────────────────────────────────────────────────
+     3. STORE PANEL  (Focus Points Economy)
+  ───────────────────────────────────────────────────────────── */
+  function StorePanel({ open, onClose, user, embed = false }) {
+    const [g, setG] = useGamif(user?.id);
+    const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
+    if (!embed && !open) return null;
+    const { fp=0, unlocks=[], activeSkin='default' } = g;
+
+    const buy = (skin) => {
+      if (unlocks.includes(skin.id) || fp < skin.price) return;
+      const ng = { ...g, fp: fp - skin.price, unlocks: [...unlocks, skin.id] };
+      setG(ng);
+      addToast({ message: `💎 ${skin.name} débloquée !`, type: 'success', duration: 3000 });
+    };
+
+    const equip = (skinId) => {
+      const ng = { ...g, activeSkin: skinId };
+      setG(ng);
+    };
+
+    const SkinCard = ({ skin, i }) => {
+      const owned = unlocks.includes(skin.id);
+      const equipped = activeSkin === skin.id;
+      const canBuy = skin.price > 0 && !owned && fp >= skin.price;
+      const locked = !owned && (skin.unlockType === 'fp' ? fp < skin.price : !owned);
+      return (
+        <div className={`gf-skin-card${equipped?' active-skin':''}${locked&&!canBuy?' locked':''}`}
+          style={{animationDelay:`${i*0.04}s`,borderColor:equipped?skin.a:'rgba(255,255,255,0.07)',boxShadow:equipped?`0 0 24px ${skin.glow},0 4px 16px rgba(0,0,0,0.4)`:undefined}}
+          onClick={()=>owned?equip(skin.id):canBuy?buy(skin):undefined}>
+          {equipped&&<div style={{position:'absolute',top:8,right:8,width:8,height:8,borderRadius:'50%',background:skin.a,boxShadow:`0 0 8px ${skin.a}`}}/>}
+          {skin.rainbow&&owned&&<div style={{position:'absolute',inset:0,borderRadius:22,background:'linear-gradient(135deg,rgba(255,0,128,0.06),rgba(124,77,255,0.06),rgba(0,188,212,0.06),rgba(16,185,129,0.06))',pointerEvents:'none'}}/>}
+          <window.CrystalGem progress={0.88} size={52} skin={skin.id}/>
+          <div style={{textAlign:'center',width:'100%'}}>
+            <div style={{fontSize:11,fontWeight:700,color:skin.b,letterSpacing:'-0.01em'}}>{skin.name}</div>
+            <div style={{fontSize:9,color:T.muted,marginTop:3}}>
+              {owned
+                ? equipped ? <span style={{color:skin.a}}>✦ Équipé</span> : <span style={{color:T.muted}}>Cliquer pour équiper</span>
+                : skin.price > 0
+                  ? <span style={{color:fp>=skin.price?'#ffd27d':T.muted}}>{skin.price} FP</span>
+                  : <span style={{color:T.muted}}>{skin.streak}j de streak</span>
+              }
+            </div>
+          </div>
+          {!owned&&skin.price>0&&fp>=skin.price&&(
+            <div style={{position:'absolute',bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${skin.a},transparent)`,opacity:0.7}}/>
+          )}
+        </div>
+      );
+    };
+
+    const _storeInner = (
+      <>
+        <div style={{padding:'0 20px 16px',flexShrink:0}}>
+            {/* FP balance */}
+            <div style={{display:'flex',alignItems:'center',gap:16,padding:'16px 20px',borderRadius:20,background:'rgba(255,210,125,0.07)',border:'1px solid rgba(255,210,125,0.2)'}}>
+              <svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+                <polygon points="12,2 15.5,8.5 22,9.5 17,14.5 18.5,21 12,17.5 5.5,21 7,14.5 2,9.5 8.5,8.5" stroke="#ffd27d" strokeWidth={1.5} fill="rgba(255,210,125,0.15)" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <div>
+                <div style={{fontFamily:T.mono,fontSize:28,fontWeight:800,color:'#ffd27d',lineHeight:1,letterSpacing:'-0.03em',animation:'fpCount 0.4s ease both'}}>{fp.toLocaleString('fr')}</div>
+                <div style={{fontSize:10,color:'rgba(255,210,125,0.6)',fontWeight:600,marginTop:2}}>Focus Points disponibles</div>
+              </div>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:'0 16px 24px'}}>
+            <span className="gf-sec-title" style={{paddingLeft:4}}>Cristaux disponibles</span>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10}}>
+              {(window.SKINS||[]).map((skin,i) => <SkinCard key={skin.id} skin={skin} i={i}/>)}
+            </div>
+          </div>
+        </>
+    );
+    if (embed) return _storeInner;
+    return (
+      <>
+        <div className="fs-gamif-backdrop" onClick={onClose}/>
+        <div className="fs-gamif-panel">
+          <GfHeader title="Boutique" onClose={onClose}/>
+          {_storeInner}
+        </div>
+      </>
+    );
+  }
+  window.StorePanel = StorePanel;
+
+  /* ─────────────────────────────────────────────────────────────
+     4. PROGRESS SCREEN  (Heatmap · FP Chart · Vault)
+  ───────────────────────────────────────────────────────────── */
+  function FocusHeatmap({ heatmap={} }) {
+    const days = [];
+    for (let i=364; i>=0; i--) {
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      days.push({ k, min: heatmap[k]||0 });
+    }
+    const maxMin = Math.max(...days.map(d=>d.min), 1);
+    const getCol = min => {
+      if (!min) return 'rgba(255,255,255,0.05)';
+      const t = min/maxMin;
+      if (t < 0.25) return `rgba(103,232,249,${0.22+t*1.2})`;
+      if (t < 0.5)  return `rgba(103,232,249,${0.55+t*0.5})`;
+      if (t < 0.75) return `rgba(165,128,255,${0.65+t*0.4})`;
+      return `rgba(255,255,255,${0.75+t*0.25})`;
+    };
+    const weeks = [];
+    for (let i=0; i<days.length; i+=7) weeks.push(days.slice(i,i+7));
+    const months=['J','F','M','A','M','J','J','A','S','O','N','D'];
+    return (
+      <div style={{overflowX:'auto',paddingBottom:6}}>
+        <div style={{display:'flex',gap:3,minWidth:'fit-content'}}>
+          {weeks.map((wk,wi)=>(
+            <div key={wi} style={{display:'flex',flexDirection:'column',gap:3}}>
+              {wk.map((day,di)=>(
+                <div key={di} className="heat-cell" title={`${day.k} · ${day.min} min`} style={{background:getCol(day.min)}}/>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:6,marginTop:10,alignItems:'center'}}>
+          <span style={{fontSize:9,color:T.muted}}>Moins</span>
+          {[0,0.25,0.5,0.75,1].map((t,i)=>(
+            <div key={i} style={{width:11,height:11,borderRadius:3,background:getCol(t*maxMin||0)}}/>
+          ))}
+          <span style={{fontSize:9,color:T.muted}}>Plus</span>
+        </div>
+      </div>
+    );
+  }
+
+  function FPBarChart({ fpmap={} }) {
+    const days = [];
+    for (let i=6; i>=0; i--) {
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const labels = ['D','L','M','M','J','V','S'];
+      days.push({ k, fp: fpmap[k]||0, label: labels[d.getDay()] });
+    }
+    const maxFP = Math.max(...days.map(d=>d.fp), 1);
+    return (
+      <div style={{display:'flex',gap:8,alignItems:'flex-end',height:80}}>
+        {days.map((day,i) => {
+          const h = Math.max((day.fp/maxFP)*72, day.fp>0?4:1);
+          const isToday = i===6;
+          return (
+            <div key={i} className="bar-col">
+              {day.fp>0&&<div style={{fontSize:8,color:T.muted,marginBottom:3}}>{day.fp}</div>}
+              <div className="bar-fill" style={{height:h,background:isToday?'linear-gradient(180deg,#ffd27d,rgba(255,210,125,0.4))':'rgba(255,255,255,0.1)',boxShadow:isToday?'0 0 12px rgba(255,210,125,0.4)':undefined,animationDelay:`${i*0.05}s`}}/>
+              <div style={{fontSize:9,color:isToday?'#ffd27d':T.muted,fontWeight:isToday?700:400,marginTop:5}}>{day.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function ProgressScreen({ onNavigate, user, embedded = false }) {
+    const [g] = useGamif(user?.id);
+    const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
+    const { heatmap={}, fpmap={}, fp=0, xp=0 } = g;
+    const totalMin = Object.values(heatmap).reduce((a,b)=>a+b,0);
+    const totalFP  = Object.values(fpmap).reduce((a,b)=>a+b,0);
+
+    return (
+      <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
+        {/* Header — hidden when embedded in EvolutionPanel */}
+        {!embedded && (
+          <div style={{padding:'32px 36px 0',flexShrink:0}}>
+            <button onClick={()=>onNavigate('dashboard')} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'7px 15px',color:T.muted,fontSize:12,cursor:'pointer',fontFamily:T.font,transition:'all 0.15s',marginBottom:24}}
+              onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.09)';e.currentTarget.style.color=T.text;}}
+              onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}>← Retour</button>
+            <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.1em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Progression</div>
+            <div style={{fontFamily:T.display,fontWeight:800,fontSize:32,letterSpacing:'-0.04em',lineHeight:1.05,marginBottom:6}}>Ta progression</div>
+          </div>
+        )}
+        <div style={{flex:1,overflowY:'auto',padding:'20px 36px 36px'}}>
+
+          {/* Stats row */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:28}}>
+            {[
+              { label:'Cristaux forgés', value:crystals.length, unit:'gemmes' },
+              { label:'Temps total',     value:Math.round(totalMin/60*10)/10, unit:'heures' },
+              { label:'FP gagnés',       value:totalFP.toLocaleString('fr'), unit:'points' },
+            ].map((s,i)=>(
+              <div key={i} style={{padding:'16px 18px',borderRadius:20,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                <div style={{fontFamily:T.mono,fontSize:24,fontWeight:800,color:T.text,letterSpacing:'-0.03em',lineHeight:1}}>{s.value}</div>
+                <div style={{fontSize:9,color:T.muted,marginTop:6,letterSpacing:'0.02em'}}>{s.unit.toUpperCase()}</div>
+                <div style={{fontSize:10,color:T.muted,marginTop:3}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Heatmap */}
+          <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>Carte d'activité</div>
+              <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
+            </div>
+            <FocusHeatmap heatmap={heatmap}/>
+          </div>
+
+          {/* Weekly FP chart */}
+          <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.text}}>Focus Points — 7 derniers jours</div>
+              <span className="fp-badge">{(g.fp||0).toLocaleString('fr')} FP total</span>
+            </div>
+            <FPBarChart fpmap={fpmap}/>
+          </div>
+
+          {/* Crystal Vault */}
+          {crystals.length > 0 && (
+            <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:16}}>Coffre de cristaux</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(72px,1fr))',gap:10}}>
+                {crystals.slice(0,24).map((c,i)=>{
+                  const si=Math.min(c.stateIdx??3,3);
+                  const pal=CRYSTAL_PALETTES[si];
+                  const sz=36+Math.min((c.duration||25)/90,1)*24;
+                  return (
+                    <div key={c.id} title={`${pal.name} · ${c.duration}min · ${new Date(c.completedAt).toLocaleDateString('fr-FR')}`}
+                      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'10px 6px',borderRadius:16,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',transition:'all 0.22s',cursor:'pointer',animationDelay:`${i*0.04}s`,animation:'crystalCardIn 0.3s both'}}
+                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.07)';e.currentTarget.style.transform='translateY(-3px)';}}
+                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateY(0)';}}>
+                      {c.crystalShape && window.ShapedCrystalGem
+                        ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:c.crystalGradient, progress:0.88, size:sz, seed:c.seed||c.id })
+                        : React.createElement(window.CrystalGem, { progress:window._cStateProgress(si), size:sz, skin:c.skin })
+                      }
+                      <div style={{fontSize:8,color:T.muted,fontWeight:600}}>{c.duration}m</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  window.ProgressScreen = ProgressScreen;
+
+  /* ─────────────────────────────────────────────────────────────
+     ÉVOLUTION PANEL — Régularité · Quêtes · Boutique · Progression
+  ───────────────────────────────────────────────────────────── */
+  function EvolutionPanel({ open, onClose, user }) {
+    const [tab, setTab] = React.useState('streaks');
+    const [g] = useGamif(user?.id);
+    if (!open) return null;
+
+    const TABS = [
+      { id:'streaks',     label:'Régularité' },
+      { id:'quests',      label:'Quêtes'     },
+      { id:'store',       label:'Boutique'   },
+      { id:'progression', label:'Progression'},
+    ];
+
+    return (
+      <>
+        <div className="fs-gamif-backdrop" onClick={onClose}/>
+        <div className="fs-gamif-panel">
+          {/* Header */}
+          <GfHeader title="Évolution" onClose={onClose}/>
+
+          {/* Tab strip */}
+          <div style={{padding:'0 16px 14px',flexShrink:0}}>
+            <div style={{display:'flex',gap:3,background:'rgba(255,255,255,0.04)',borderRadius:13,padding:3}}>
+              {TABS.map(t => (
+                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                  flex:1, padding:'8px 4px', borderRadius:10, border:'none', cursor:'pointer',
+                  fontFamily:T.font, fontSize:10, fontWeight:600,
+                  background: tab===t.id ? 'rgba(255,255,255,0.10)' : 'transparent',
+                  color: tab===t.id ? T.text : T.muted,
+                  boxShadow: tab===t.id ? 'inset 0 1px 0 rgba(255,255,255,0.09)' : 'none',
+                  transition: 'all 0.22s',
+                }}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{height:1,background:'rgba(255,255,255,0.05)',flexShrink:0}}/>
+
+          {/* Tab content — embed each panel's inner content */}
+          <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            {tab==='streaks'     && window.StreaksPanel     && React.createElement(window.StreaksPanel,     { embed:true, user })}
+            {tab==='quests'      && window.QuestsPanel      && React.createElement(window.QuestsPanel,      { embed:true, user })}
+            {tab==='store'       && window.StorePanel       && React.createElement(window.StorePanel,       { embed:true, user })}
+            {tab==='progression' && window.ProgressScreen   && React.createElement(window.ProgressScreen,   { onNavigate:()=>{}, user, embedded:true })}
+          </div>
+        </div>
+      </>
+    );
+  }
+  window.EvolutionPanel = EvolutionPanel;
+
+  /* ─────────────────────────────────────────────────────────────
+     6. GAMIF MINI WIDGET  (Dashboard compact stats)
+  ───────────────────────────────────────────────────────────── */
+  function GamifMiniWidget({ user, onOpenQuests, onOpenStreaks }) {
+    const [g] = useGamif(user?.id);
+    const { fp=0, xp=0, streaks={}, quests={} } = g;
+    const lvl = window._gLevel(xp);
+    const pending = [...(quests.daily||[]),...(quests.weekly||[])].filter(q=>!q.completed).length;
+    const mul = window._gMul(streaks.daily||0, streaks.weekly||0);
+
+    return (
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        {/* Streak badge */}
+        <button onClick={onOpenStreaks} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:12,background:'rgba(255,210,125,0.08)',border:'1px solid rgba(255,210,125,0.2)',cursor:'pointer',transition:'all 0.18s'}}
+          onMouseEnter={e=>e.currentTarget.style.background='rgba(255,210,125,0.15)'}
+          onMouseLeave={e=>e.currentTarget.style.background='rgba(255,210,125,0.08)'}>
+          <svg width={12} height={14} viewBox="0 0 36 52" fill="url(#mFlame)" style={{filter:'drop-shadow(0 0 5px rgba(255,150,0,0.6))'}}>
+            <defs><linearGradient id="mFlame" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stopColor="#e25822"/><stop offset="100%" stopColor="#ffd700"/></linearGradient></defs>
+            <path d="M18 50C8 50 2 42 2 34C2 24 9 16 18 10C18 18 22 22 26 20C22 26 30 30 30 38C30 45 25 50 18 50Z" fill="url(#mFlame)"/>
+          </svg>
+          <span style={{fontFamily:T.mono,fontWeight:800,fontSize:12,color:'#ffd27d'}}>{streaks.daily||0}</span>
+          {mul>1&&<span style={{fontSize:8,fontWeight:700,color:'rgba(255,210,125,0.7)',letterSpacing:'0.02em'}}>×{mul}</span>}
+        </button>
+        {/* Level badge */}
+        <div style={{display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:12,background:'rgba(165,184,255,0.08)',border:'1px solid rgba(165,184,255,0.18)'}}>
+          <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><polygon points="7,1 8.5,5 13,5.5 9.5,8.5 10.5,13 7,10.5 3.5,13 4.5,8.5 1,5.5 5.5,5" stroke="#a5b8ff" strokeWidth={1} fill="rgba(165,184,255,0.2)"/></svg>
+          <span style={{fontFamily:T.mono,fontWeight:800,fontSize:11,color:'#a5b8ff'}}>Niv.{lvl}</span>
+        </div>
+        {/* Quest badge */}
+        {pending>0&&(
+          <button onClick={onOpenQuests} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:12,background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',cursor:'pointer',transition:'all 0.18s'}}
+            onMouseEnter={e=>e.currentTarget.style.background='rgba(74,222,128,0.15)'}
+            onMouseLeave={e=>e.currentTarget.style.background='rgba(74,222,128,0.08)'}>
+            <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><circle cx={7} cy={7} r={6} stroke={T.green} strokeWidth={1.2}/><path d="M4.5 7l2 2 3-3" stroke={T.green} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <span style={{fontSize:10,fontWeight:700,color:T.green}}>{pending}</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+  window.GamifMiniWidget = GamifMiniWidget;
+
   </script>
 </body>
 
