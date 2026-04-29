@@ -848,51 +848,195 @@
   </script>
 
   <script type="text/babel">
-    const { useState: _uS5, useRef: _uR5 } = React;
-
-    const TRACKS = [
-      { title: 'Weightless', artist: 'Marconi Union', album: 'Ambient', prog: 0.52, dur: '8:09' },
-      { title: 'Snow', artist: 'Øneheart', album: 'Reflections', prog: 0.28, dur: '3:14' },
-      { title: 'lo-fi study', artist: 'ChillHop', album: 'Focus', prog: 0.41, dur: '3:42' },
-    ];
+    // ── Spotify OAuth / PKCE ─────────────────────────────────────────
+    const SPOTIFY_CLIENT_ID = 'cbbffeb55791479688f52e26960b5459';
+    const SPOTIFY_REDIRECT_URI = window.location.origin + (window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/');
+    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
     const SP = '#1db954';
 
+    function _spRand(n) {
+      const ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+      const b = new Uint8Array(n);
+      crypto.getRandomValues(b);
+      return Array.from(b).map(x => ch[x % ch.length]).join('');
+    }
+    function _spB64u(buf) {
+      return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    }
+
+    async function initiateSpotifyAuth() {
+      if (!SPOTIFY_CLIENT_ID || SPOTIFY_CLIENT_ID === 'YOUR_SPOTIFY_CLIENT_ID') {
+        alert('Configure ton Spotify Client ID dans index.html (variable SPOTIFY_CLIENT_ID).\n\nCrée une app sur developer.spotify.com, ajoute ' + SPOTIFY_REDIRECT_URI + ' comme Redirect URI.');
+        return;
+      }
+      const verifier = _spRand(64);
+      const challenge = _spB64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+      localStorage.setItem('sp_code_verifier', verifier);
+      const p = new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, response_type: 'code', redirect_uri: SPOTIFY_REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: SPOTIFY_SCOPES });
+      window.location.href = 'https://accounts.spotify.com/authorize?' + p;
+    }
+
+    async function _spExchange(code) {
+      const verifier = localStorage.getItem('sp_code_verifier');
+      if (!verifier) throw new Error('no verifier');
+      const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'authorization_code', code, redirect_uri: SPOTIFY_REDIRECT_URI, code_verifier: verifier }) });
+      if (!r.ok) throw new Error('exchange failed ' + r.status);
+      const d = await r.json();
+      localStorage.setItem('sp_access_token', d.access_token);
+      localStorage.setItem('sp_refresh_token', d.refresh_token);
+      localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
+      localStorage.removeItem('sp_code_verifier');
+    }
+
+    async function _spRefresh() {
+      const rt = localStorage.getItem('sp_refresh_token');
+      if (!rt) throw new Error('no refresh token');
+      const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'refresh_token', refresh_token: rt }) });
+      if (!r.ok) throw new Error('refresh failed');
+      const d = await r.json();
+      localStorage.setItem('sp_access_token', d.access_token);
+      localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
+      if (d.refresh_token) localStorage.setItem('sp_refresh_token', d.refresh_token);
+      return d.access_token;
+    }
+
+    async function _spToken() {
+      const exp = parseInt(localStorage.getItem('sp_token_expiry') || '0');
+      if (Date.now() < exp - 60000) return localStorage.getItem('sp_access_token');
+      return _spRefresh();
+    }
+
+    async function spotifyApi(path, opts = {}) {
+      const token = await _spToken();
+      const r = await fetch('https://api.spotify.com/v1' + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
+      if (r.status === 204 || r.status === 202) return null;
+      if (r.status === 401) { disconnectSpotify(); throw Object.assign(new Error('unauthorized'), { status: 401 }); }
+      if (!r.ok) throw new Error('Spotify API ' + r.status);
+      const ct = r.headers.get('content-type') || '';
+      return ct.includes('json') ? r.json() : null;
+    }
+
+    function disconnectSpotify() {
+      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier'].forEach(k => localStorage.removeItem(k));
+      window.dispatchEvent(new Event('sp_disconnected'));
+    }
+
+    // Gestion du callback OAuth (appelé depuis App au montage)
+    window._spHandleCallback = async () => {
+      const p = new URLSearchParams(window.location.search);
+      const code = p.get('code');
+      if (!code || !localStorage.getItem('sp_code_verifier')) return;
+      window.history.replaceState({}, '', window.location.pathname);
+      try { await _spExchange(code); window.dispatchEvent(new Event('sp_connected')); }
+      catch (e) { console.error('Spotify callback:', e); }
+    };
+
+    // ── SpotifyWidget ────────────────────────────────────────────────
     function SpotifyWidget({ variant = 1, style }) {
-      const [idx, setIdx] = _uS5(0);
-      const [play, setPlay] = _uS5(true);
-      const t = TRACKS[idx];
-      const waveH = _uR5([...Array(24)].map(() => 25 + Math.random() * 70)).current;
-      const waveDur = _uR5([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
-      const waveDelay = _uR5([...Array(24)].map((_, i) => i * 0.04)).current;
+      const [connected, setConnected] = React.useState(() => !!localStorage.getItem('sp_access_token'));
+      const [track, setTrack] = React.useState(null);
+      const [playing, setPlaying] = React.useState(false);
+      const [progressMs, setProgressMs] = React.useState(0);
+      const [durationMs, setDurationMs] = React.useState(0);
+      const [busy, setBusy] = React.useState(false);
+      const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
+      const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
+      const waveDelay = React.useRef([...Array(24)].map((_, i) => i * 0.04)).current;
+
+      React.useEffect(() => {
+        const onConn = () => setConnected(true);
+        const onDisc = () => { setConnected(false); setTrack(null); };
+        window.addEventListener('sp_connected', onConn);
+        window.addEventListener('sp_disconnected', onDisc);
+        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); };
+      }, []);
+
+      React.useEffect(() => {
+        if (!connected) return;
+        let dead = false;
+        async function poll() {
+          try {
+            const d = await spotifyApi('/me/player');
+            if (dead) return;
+            if (d && d.item) { setTrack(d.item); setPlaying(d.is_playing); setProgressMs(d.progress_ms || 0); setDurationMs(d.item.duration_ms || 0); }
+          } catch (e) { if (e.status === 401) setConnected(false); }
+        }
+        poll();
+        const iv = setInterval(poll, 4000);
+        return () => { dead = true; clearInterval(iv); };
+      }, [connected]);
+
+      function fmt(ms) { const s = Math.floor(ms / 1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+      async function cmd(path, method = 'PUT') {
+        setBusy(true);
+        try { await spotifyApi(path, { method }); } catch(e) {}
+        setTimeout(() => setBusy(false), 700);
+      }
+      const togglePlay = () => { if (playing) { cmd('/me/player/pause'); setPlaying(false); } else { cmd('/me/player/play'); setPlaying(true); } };
+      const next = () => cmd('/me/player/next', 'POST');
+      const prev = () => cmd('/me/player/previous', 'POST');
+
+      const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url;
+      const title = track?.name || (connected ? 'Aucune lecture active' : '—');
+      const artist = track?.artists?.map(a => a.name).join(', ') || '';
+      const prog = durationMs ? progressMs / durationMs : 0;
 
       function AlbumArt({ size = 52 }) {
+        if (albumUrl) return <img src={albumUrl} alt="" style={{ width: size, height: size, borderRadius: size > 60 ? 16 : 12, objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }} />;
         return (
           <div style={{ width: size, height: size, borderRadius: size > 60 ? 16 : 12, background: 'linear-gradient(135deg,#1a1030,#0d1e35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.5)', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ width: size * 0.4, height: size * 0.4, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ position: 'absolute', width: size * 0.12, height: size * 0.12, borderRadius: '50%', background: 'rgba(255,255,255,0.15)' }} />
+            <svg width={size*0.45} height={size*0.45} viewBox="0 0 24 24" fill={SP} opacity={0.5}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
           </div>
         );
       }
 
+      // ── État non connecté ──
+      if (!connected) {
+        const ConnectView = ({ compact }) => (
+          <div style={{ height: '100%', display: 'flex', flexDirection: compact ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? 10 : 14, padding: compact ? '12px 18px' : '20px 24px' }}>
+            <div style={{ width: compact ? 34 : 46, height: compact ? 34 : 46, borderRadius: '50%', background: 'rgba(29,185,84,0.12)', border: '1.5px solid rgba(29,185,84,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width={compact ? 17 : 23} height={compact ? 17 : 23} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
+            </div>
+            {!compact && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 3 }}>Musique Spotify</div>
+                <Sub ch="Connecte ton compte pour contrôler ta musique" style={{ fontSize: 11 }} />
+              </div>
+            )}
+            <button onClick={initiateSpotifyAuth} style={{ display: 'flex', alignItems: 'center', gap: 7, background: SP, border: 'none', borderRadius: 20, padding: compact ? '7px 13px' : '9px 18px', color: '#000', fontSize: compact ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 0 14px rgba(29,185,84,0.3)', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = '0 0 22px rgba(29,185,84,0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 0 14px rgba(29,185,84,0.3)'; }}>
+              <span style={{ fontSize: compact ? 16 : 18, lineHeight: 1, fontWeight: 400 }}>+</span>
+              {compact ? 'Connecter' : 'Connecter Spotify'}
+            </button>
+          </div>
+        );
+        if (variant === 1) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
+        if (variant === 5) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
+        return <Shell flat style={style}><ConnectView compact /></Shell>;
+      }
+
+      // ── Connecté : player réel ──
       if (variant === 1) return (
         <Shell glow={SP} style={style}>
           <div style={{ padding: '22px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <AlbumArt size={52} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
-                <Sub ch={t.artist} style={{ marginTop: 3 }} />
+                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                {artist && <Sub ch={artist} style={{ marginTop: 3 }} />}
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-                <button onClick={() => setIdx(i => (i + 2) % 3)} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2 }}>⏮</button>
-                <button onClick={() => setPlay(p => !p)} style={{ width: 36, height: 36, borderRadius: '50%', background: SP, border: 'none', cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 20px ${SP}44`, fontWeight: 700 }}>{play ? '⏸' : '▶'}</button>
-                <button onClick={() => setIdx(i => (i + 1) % 3)} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2 }}>⏭</button>
+                <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏮</button>
+                <button onClick={togglePlay} disabled={busy} style={{ width: 36, height: 36, borderRadius: '50%', background: SP, border: 'none', cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 20px ${SP}44`, fontWeight: 700, opacity: busy ? 0.7 : 1 }}>{playing ? '⏸' : '▶'}</button>
+                <button onClick={next} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏭</button>
               </div>
             </div>
             <div>
-              <Bar value={t.prog} color={SP} h={2} />
+              <Bar value={prog} color={SP} h={2} />
               <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
-                <Sub ch="2:14" /><Sub ch={t.dur} />
+                <Sub ch={fmt(progressMs)} /><Sub ch={fmt(durationMs)} />
               </div>
             </div>
           </div>
@@ -903,16 +1047,16 @@
         <Shell glow={SP} style={style}>
           <div style={{ padding: '22px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <Lbl ch="en cours de lecture" />
-                <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>{t.title}</div>
-                <Sub ch={t.artist} style={{ marginTop: 2 }} />
+              <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                <Lbl ch={playing ? 'en lecture' : 'en pause'} />
+                <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                {artist && <Sub ch={artist} style={{ marginTop: 2 }} />}
               </div>
-              <button onClick={() => setPlay(p => !p)} style={{ background: SP, border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{play ? '⏸' : '▶'}</button>
+              <button onClick={togglePlay} disabled={busy} style={{ background: SP, border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{playing ? '⏸' : '▶'}</button>
             </div>
             <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 40 }}>
               {waveH.map((h, i) => (
-                <div key={i} style={{ flex: 1, height: `${h}%`, background: SP, borderRadius: '2px 2px 0 0', transformOrigin: 'bottom', animation: play ? `fwWave ${waveDur[i]}s ${waveDelay[i]}s ease-in-out infinite` : 'none', opacity: 0.8 }} />
+                <div key={i} style={{ flex: 1, height: `${h}%`, background: SP, borderRadius: '2px 2px 0 0', transformOrigin: 'bottom', animation: playing ? `fwWave ${waveDur[i]}s ${waveDelay[i]}s ease-in-out infinite` : 'none', opacity: 0.8 }} />
               ))}
             </div>
           </div>
@@ -923,12 +1067,14 @@
         <Shell flat style={style}>
           <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
-              <Sub ch={t.artist} style={{ marginTop: 3, fontSize: 11 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+              {artist && <Sub ch={artist} style={{ marginTop: 3, fontSize: 11 }} />}
             </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: SP, boxShadow: `0 0 8px ${SP}`, animation: play ? 'fwPulse 1.5s infinite' : '' }} />
-              <button onClick={() => setPlay(p => !p)} style={{ background: 'none', border: 'none', color: T.text, fontSize: 20, cursor: 'pointer', padding: 2 }}>{play ? '⏸' : '▶'}</button>
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexShrink: 0 }}>
+              <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 12, cursor: 'pointer', padding: 2 }}>⏮</button>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: SP, boxShadow: `0 0 8px ${SP}`, animation: playing ? 'fwPulse 1.5s infinite' : '' }} />
+              <button onClick={togglePlay} disabled={busy} style={{ background: 'none', border: 'none', color: T.text, fontSize: 20, cursor: 'pointer', padding: 2 }}>{playing ? '⏸' : '▶'}</button>
+              <button onClick={next} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 12, cursor: 'pointer', padding: 2 }}>⏭</button>
             </div>
           </div>
         </Shell>
@@ -4736,7 +4882,7 @@
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
       const CARDS = [
-        { id: 'fond', target: 'fond', eyebrow: '21 thèmes', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec nos thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc' },
+        { id: 'fond', target: 'fond', eyebrow: 'PERSONNALISés', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec nos thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc' },
         { id: 'fonts', target: 'fonts', eyebrow: '5 polices', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4' },
         { id: 'widgets', target: 'variants', eyebrow: '10 widgets', title: 'Widgets', desc: 'Choisissez et personnalisez vos widgets pour composer un tableau de bord qui vous ressemble.', c1: '#4ade80', c2: '#2dd4bf' },
       ];
@@ -5363,9 +5509,7 @@
 
     /* ── Widget Variants + Appearance Screen ─────────────────────────────────── */
     function WidgetVariantsScreen({ onNavigate, onUseVariant, widgetStyle, onWidgetStyleChange }) {
-      const [tab, setTab] = _uSC('style');
       const [active, setActive] = _uSC('clock');
-      const [hovSeg, setHovSeg] = _uSC(null);
 
       const CATALOG = [
         { id: 'clock', label: 'Clock', Component: ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
@@ -5380,220 +5524,217 @@
         { id: 'notes', label: 'Notes', Component: NotesWidget, variants: [1, 2] },
       ];
       const GLOW_PRESETS = [
-        { color: '#a5b8ff', name: 'Aurora' },
-        { color: '#4ade80', name: 'Emerald' },
-        { color: '#c084fc', name: 'Cosmic' },
-        { color: '#ffd27d', name: 'Gold' },
-        { color: '#2dd4bf', name: 'Teal' },
-        { color: '#fb7185', name: 'Rose' },
-        { color: '#fb923c', name: 'Ember' },
-        { color: '#f8f8ff', name: 'Pure' },
+        { color: '#a5b8ff', name: 'Aurora' }, { color: '#4ade80', name: 'Emerald' },
+        { color: '#c084fc', name: 'Cosmic' }, { color: '#ffd27d', name: 'Gold' },
+        { color: '#2dd4bf', name: 'Teal' },   { color: '#fb7185', name: 'Rose' },
+        { color: '#fb923c', name: 'Ember' },  { color: '#f8f8ff', name: 'Pure' },
       ];
-      const SEGS = [{ id: 'style', label: 'Style' }, { id: 'appearance', label: 'Apparence' }];
+
       const current = CATALOG.find(c => c.id === active);
       const ws = widgetStyle || { opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 };
       const { opacity, radius, glowColor, glowIntensity } = ws;
       const update = patch => onWidgetStyleChange(s => ({ ...s, ...patch }));
+      const isCustomGlow = !GLOW_PRESETS.find(p => p.color === glowColor);
 
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {/* ── Header ── */}
-          <div style={{ padding: '24px 32px 0', flexShrink: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-
-              {/* Back + Title */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <button onClick={() => onNavigate('perso')}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '8px 14px', color: T.muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = T.muted; }}>
-                  <svg width={10} height={10} viewBox="0 0 10 10" fill="none"><path d="M6.5 2L3 5l3.5 3" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  Retour
-                </button>
-                <div>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted, marginBottom: 2 }}>Personnalisation</div>
-                  <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 20, letterSpacing: '-0.035em', lineHeight: 1 }}>Bibliothèque de widgets</div>
-                </div>
-              </div>
-
-              {/* Segmented control */}
-              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 3, border: '1px solid rgba(255,255,255,0.07)', gap: 2 }}>
-                {SEGS.map(s => (
-                  <button key={s.id} onClick={() => setTab(s.id)}
-                    onMouseEnter={() => setHovSeg(s.id)}
-                    onMouseLeave={() => setHovSeg(null)}
-                    style={{ padding: '7px 20px', borderRadius: 9, cursor: 'pointer', fontFamily: T.font, fontSize: 12, fontWeight: 600, transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)', border: 'none', outline: 'none', background: tab === s.id ? 'rgba(255,255,255,0.10)' : hovSeg === s.id ? 'rgba(255,255,255,0.045)' : 'transparent', color: tab === s.id ? T.text : T.muted, boxShadow: tab === s.id ? 'inset 0 1px 0 rgba(255,255,255,0.09), 0 1px 4px rgba(0,0,0,0.3)' : 'none' }}>
-                    {s.label}
-                  </button>
-                ))}
+          <div style={{ padding: '22px 32px 0', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+              <button onClick={() => onNavigate('perso')}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '7px 13px', color: T.muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s', flexShrink: 0 }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.text; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = T.muted; }}>
+                <svg width={10} height={10} viewBox="0 0 10 10" fill="none"><path d="M6.5 2L3 5l3.5 3" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Retour
+              </button>
+              <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.muted, marginBottom: 2 }}>Personnalisation</div>
+                <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 19, letterSpacing: '-0.035em', lineHeight: 1 }}>Bibliothèque de widgets</div>
               </div>
             </div>
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.055)' }} />
           </div>
 
-          {/* ── Content ── */}
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* ── Split body: STYLE | APPARENCE ── */}
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1px 420px', overflow: 'hidden' }}>
 
-            {/* ─── STYLE TAB ─── */}
-            {tab === 'style' && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* Category pills */}
-                <div style={{ padding: '14px 32px 0', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', gap: 5, overflowX: 'auto', paddingBottom: 2 }}>
-                    {CATALOG.map(c => (
-                      <button key={c.id} onClick={() => setActive(c.id)}
-                        style={{ background: active === c.id ? `${c1(0.094)}` : 'transparent', border: `1px solid ${active === c.id ? c1(0.267) : 'rgba(255,255,255,0.07)'}`, borderRadius: 99, padding: '6px 15px', cursor: 'pointer', color: active === c.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.18s', flexShrink: 0, boxShadow: active === c.id ? `0 0 16px ${c1(0.133)}, 0 2px 8px rgba(0,0,0,0.22)` : '0 2px 6px rgba(0,0,0,0.12)' }}>
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginTop: 12 }} />
+            {/* ════════ LEFT — STYLE ════════ */}
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 32px 0', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+                    <rect x={1} y={1} width={4.2} height={4.2} rx={1.2} fill={T.c1} opacity={0.8}/>
+                    <rect x={6.8} y={1} width={4.2} height={4.2} rx={1.2} fill={T.c1} opacity={0.45}/>
+                    <rect x={1} y={6.8} width={4.2} height={4.2} rx={1.2} fill={T.c1} opacity={0.45}/>
+                    <rect x={6.8} y={6.8} width={4.2} height={4.2} rx={1.2} fill={T.c1} opacity={0.25}/>
+                  </svg>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.muted }}>Style</span>
                 </div>
-                {/* Variant grid */}
-                <div style={{ flex: 1, padding: '20px 32px 32px', overflowY: 'auto' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(265px, 1fr))', gap: 20 }}>
-                    {current && current.variants.map(v => (
-                      <div key={v} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.c1, opacity: 0.55 }} />
-                            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: T.muted }}>Variante {v}</span>
-                          </div>
-                          <button onClick={() => { onUseVariant(current.id, v); onNavigate('dashboard'); }}
-                            style={{ background: `linear-gradient(135deg,${c1(0.125)},${c1(0.047)})`, border: `1px solid ${c1(0.22)}`, borderRadius: 99, padding: '4px 14px', color: T.c1, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, letterSpacing: '0.06em', transition: 'all 0.18s' }}
-                            onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.196)},${c1(0.094)})`; e.currentTarget.style.boxShadow = `0 0 18px ${c1(0.2)}`; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.125)},${c1(0.047)})`; e.currentTarget.style.boxShadow = 'none'; }}>
-                            UTILISER
-                          </button>
+                <div style={{ display: 'flex', gap: 5, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'none' }}>
+                  {CATALOG.map(c => (
+                    <button key={c.id} onClick={() => setActive(c.id)}
+                      style={{ background: active === c.id ? c1(0.10) : 'transparent', border: `1px solid ${active === c.id ? c1(0.28) : 'rgba(255,255,255,0.07)'}`, borderRadius: 99, padding: '5px 14px', cursor: 'pointer', color: active === c.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.17s cubic-bezier(0.4,0,0.2,1)', flexShrink: 0, boxShadow: active === c.id ? `0 0 14px ${c1(0.14)}, 0 2px 6px rgba(0,0,0,0.2)` : 'none' }}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.04)' }} />
+              </div>
+              <div style={{ flex: 1, padding: '18px 32px 28px', overflowY: 'auto', scrollbarWidth: 'none' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 18 }}>
+                  {current && current.variants.map(v => (
+                    <div key={v} style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: T.c1, opacity: 0.5 }} />
+                          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.muted }}>Variante {v}</span>
                         </div>
-                        <div style={{ minHeight: 140, position: 'relative', borderRadius: 20, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 4px 20px rgba(0,0,0,0.28)' }}>
-                          <current.Component variant={v} style={{ minHeight: 140, height: 'auto' }} />
-                        </div>
+                        <button onClick={() => { onUseVariant(current.id, v); onNavigate('dashboard'); }}
+                          style={{ background: `linear-gradient(135deg,${c1(0.13)},${c1(0.05)})`, border: `1px solid ${c1(0.22)}`, borderRadius: 99, padding: '4px 13px', color: T.c1, fontSize: 9.5, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, letterSpacing: '0.07em', transition: 'all 0.18s' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.20)},${c1(0.10)})`; e.currentTarget.style.boxShadow = `0 0 16px ${c1(0.22)}`; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.13)},${c1(0.05)})`; e.currentTarget.style.boxShadow = 'none'; }}>
+                          UTILISER
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ minHeight: 136, position: 'relative', borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.055)', boxShadow: '0 4px 22px rgba(0,0,0,0.3)' }}>
+                        <current.Component variant={v} style={{ minHeight: 136, height: 'auto' }} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* ─── APPEARANCE TAB ─── */}
-            {tab === 'appearance' && (
-              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1.25fr', overflow: 'hidden' }}>
+            {/* Divider */}
+            <div style={{ background: 'rgba(255,255,255,0.055)', flexShrink: 0 }} />
 
-                {/* Left — Live preview */}
-                <div style={{ padding: '22px 18px 22px 32px', display: 'flex', flexDirection: 'column', gap: 14, borderRight: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 7px ${T.c1}` }} />
+            {/* ════════ RIGHT — APPARENCE ════════ */}
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(255,255,255,0.012)' }}>
+              <div style={{ padding: '16px 28px 0', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+                      <circle cx={6} cy={6} r={4.5} stroke={T.c2} strokeWidth={1.2} fill="none" opacity={0.7}/>
+                      <circle cx={6} cy={6} r={2} fill={T.c2} opacity={0.6}/>
+                    </svg>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.muted }}>Apparence</span>
+                  </div>
+                  <button onClick={() => update({ opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 })}
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '4px 11px', color: T.muted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.16s' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = T.text; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = T.muted; }}>
+                    Réinitialiser
+                  </button>
+                </div>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.04)' }} />
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'none', padding: '0 28px 28px' }}>
+
+                {/* Live preview */}
+                <div style={{ paddingTop: 16, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 6px ${T.c1}`, animation: 'fwPulse 2s ease-in-out infinite' }} />
                     <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Aperçu en direct</span>
                   </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 9, background: 'rgba(0,0,0,0.16)', borderRadius: 22, border: '1px solid rgba(255,255,255,0.04)', padding: '18px', minHeight: 0, overflow: 'hidden' }}>
-                    <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                      <ClockWidget variant={1} style={{ height: '100%', minHeight: 100 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7, background: 'rgba(0,0,0,0.18)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.04)', padding: '14px' }}>
+                    <div style={{ height: 90, position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
+                      <ClockWidget variant={1} style={{ height: '100%' }} />
                     </div>
-                    <div style={{ display: 'flex', gap: 7, height: 50, flexShrink: 0 }}>
-                      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 16 }}>
+                    <div style={{ display: 'flex', gap: 7, height: 46 }}>
+                      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
                         <SpotifyWidget variant={1} style={{ height: '100%' }} />
                       </div>
-                      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 16 }}>
+                      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
                         <StreakWidget variant={2} style={{ height: '100%' }} />
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => update({ opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 })}
-                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '9px 16px', color: T.muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.18s', letterSpacing: '0.02em', textAlign: 'center' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = T.text; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.muted; }}>
-                    Réinitialiser
-                  </button>
                 </div>
 
-                {/* Right — Controls */}
-                <div style={{ padding: '22px 32px 22px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-                  {/* § Glass Surface */}
-                  <div style={{ paddingBottom: 22, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
-                          <rect x={1.5} y={1.5} width={11} height={11} rx={3} stroke={T.c1} strokeWidth={1.2} fill="none" opacity={0.7} />
-                          <rect x={3.5} y={3.5} width={7} height={7} rx={2} fill={T.c1} opacity={0.18} />
-                        </svg>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Surface vitrée</div>
-                        <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Transparence du widget</div>
-                      </div>
+                {/* § Surface vitrée */}
+                <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
+                        <rect x={1.5} y={1.5} width={11} height={11} rx={3} stroke={T.c1} strokeWidth={1.2} fill="none" opacity={0.7}/>
+                        <rect x={3.5} y={3.5} width={7} height={7} rx={2} fill={T.c1} opacity={0.18}/>
+                      </svg>
                     </div>
-                    <PremiumSlider label="Opacité" value={opacity} min={0.3} max={1} step={0.01}
-                      formatValue={v => `${Math.round(v * 100)}%`}
-                      onChange={v => update({ opacity: v })} accent={T.c1} />
-                  </div>
-
-                  {/* § Corner Radius */}
-                  <div style={{ paddingTop: 20, paddingBottom: 22, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
-                          <path d="M2 9 C2 11 3 12 5 12 L12 12 L12 5 C12 3 11 2 9 2 L2 2 Z" stroke={T.teal} strokeWidth={1.2} fill="none" opacity={0.75} />
-                        </svg>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Arrondi des coins</div>
-                        <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Bordure arrondie du widget</div>
-                      </div>
-                    </div>
-                    <PremiumSlider label="Rayon" value={radius} min={8} max={40} step={1}
-                      formatValue={v => `${Math.round(v)}px`}
-                      onChange={v => update({ radius: v })} accent={T.c2} />
-                  </div>
-
-                  {/* § Glow Contour */}
-                  <div style={{ paddingTop: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                      <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
-                          <circle cx={7} cy={7} r={2.5} fill={glowColor} opacity={0.9} />
-                          <circle cx={7} cy={7} r={5} stroke={glowColor} strokeWidth={1.1} opacity={0.45} />
-                          <circle cx={7} cy={7} r={6.5} stroke={glowColor} strokeWidth={0.6} opacity={0.2} />
-                        </svg>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Contour lumineux</div>
-                        <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Halo de bordure lumineux</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      <PremiumSlider label="Intensité" value={glowIntensity} min={0} max={1} step={0.01}
-                        formatValue={v => v < 0.01 ? 'Off' : `${Math.round(v * 100)}%`}
-                        onChange={v => update({ glowIntensity: v })} accent={glowColor} />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: T.muted }}>Couleur</span>
-                        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-                          {GLOW_PRESETS.map(p => (
-                            <button key={p.color} title={p.name} onClick={() => update({ glowColor: p.color })}
-                              style={{ width: 26, height: 26, borderRadius: '50%', background: p.color, border: `2px solid ${glowColor === p.color ? 'rgba(255,255,255,0.88)' : 'transparent'}`, cursor: 'pointer', padding: 0, outline: 'none', boxShadow: glowColor === p.color ? `0 0 0 3.5px ${p.color}44, 0 0 16px ${p.color}66` : '0 2px 6px rgba(0,0,0,0.32)', transition: 'all 0.22s cubic-bezier(0.34,1.56,0.64,1)', transform: glowColor === p.color ? 'scale(1.22)' : 'scale(1)' }} />
-                          ))}
-                          {/* Custom color picker */}
-                          <label title="Custom color" style={{ position: 'relative', width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: '1.5px dashed rgba(255,255,255,0.22)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s', boxShadow: !GLOW_PRESETS.find(p => p.color === glowColor) ? `0 0 0 3.5px ${glowColor}44, 0 0 16px ${glowColor}66` : '0 2px 6px rgba(0,0,0,0.28)', outline: !GLOW_PRESETS.find(p => p.color === glowColor) ? `2px solid rgba(255,255,255,0.88)` : 'none', transform: !GLOW_PRESETS.find(p => p.color === glowColor) ? 'scale(1.22)' : 'scale(1)' }}
-                            onMouseEnter={e => { if (GLOW_PRESETS.find(p => p.color === glowColor)) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; }}
-                            onMouseLeave={e => { if (GLOW_PRESETS.find(p => p.color === glowColor)) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)'; }}>
-                            {!GLOW_PRESETS.find(p => p.color === glowColor)
-                              ? <div style={{ width: 14, height: 14, borderRadius: '50%', background: glowColor, boxShadow: `0 0 6px ${glowColor}` }} />
-                              : <svg width={11} height={11} viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5v8M1.5 5.5h8" stroke="rgba(255,255,255,0.55)" strokeWidth={1.6} strokeLinecap="round" /></svg>
-                            }
-                            <input type="color" value={glowColor} onChange={e => update({ glowColor: e.target.value })}
-                              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }} />
-                          </label>
-                        </div>
-                      </div>
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Surface vitrée</div>
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Transparence du widget</div>
                     </div>
                   </div>
-
+                  <PremiumSlider label="Opacité" value={opacity} min={0.3} max={1} step={0.01}
+                    formatValue={v => `${Math.round(v * 100)}%`}
+                    onChange={v => update({ opacity: v })} accent={T.c1} />
                 </div>
+
+                {/* § Arrondi */}
+                <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
+                        <path d="M2 9 C2 11 3 12 5 12 L12 12 L12 5 C12 3 11 2 9 2 L2 2 Z" stroke={T.teal} strokeWidth={1.2} fill="none" opacity={0.75}/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Arrondi des coins</div>
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Bordure arrondie du widget</div>
+                    </div>
+                  </div>
+                  <PremiumSlider label="Rayon" value={radius} min={8} max={40} step={1}
+                    formatValue={v => `${v}px`}
+                    onChange={v => update({ radius: v })} accent={T.c2} />
+                </div>
+
+                {/* § Contour lumineux */}
+                <div style={{ paddingTop: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width={13} height={13} viewBox="0 0 14 14" fill="none">
+                        <circle cx={7} cy={7} r={2.5} fill={glowColor} opacity={0.9}/>
+                        <circle cx={7} cy={7} r={5} stroke={glowColor} strokeWidth={1.1} opacity={0.45}/>
+                        <circle cx={7} cy={7} r={6.5} stroke={glowColor} strokeWidth={0.6} opacity={0.2}/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Contour lumineux</div>
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Halo de bordure lumineux</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <PremiumSlider label="Intensité" value={glowIntensity} min={0} max={1} step={0.01}
+                      formatValue={v => v < 0.01 ? 'Off' : `${Math.round(v * 100)}%`}
+                      onChange={v => update({ glowIntensity: v })} accent={glowColor} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.muted }}>Couleur</span>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {GLOW_PRESETS.map(p => (
+                          <button key={p.color} title={p.name} onClick={() => update({ glowColor: p.color })}
+                            style={{ width: 24, height: 24, borderRadius: '50%', background: p.color, border: `2px solid ${glowColor === p.color ? 'rgba(255,255,255,0.9)' : 'transparent'}`, cursor: 'pointer', padding: 0, outline: 'none', boxShadow: glowColor === p.color ? `0 0 0 3px ${p.color}44, 0 0 14px ${p.color}66` : '0 2px 5px rgba(0,0,0,0.32)', transition: 'all 0.2s cubic-bezier(0.34,1.56,0.64,1)', transform: glowColor === p.color ? 'scale(1.2)' : 'scale(1)' }} />
+                        ))}
+                        <label title="Couleur personnalisée" style={{ position: 'relative', width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: `1.5px dashed ${isCustomGlow ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.22)'}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s', boxShadow: isCustomGlow ? `0 0 0 3px ${glowColor}44, 0 0 14px ${glowColor}66` : '0 2px 5px rgba(0,0,0,0.28)', transform: isCustomGlow ? 'scale(1.2)' : 'scale(1)' }}
+                          onMouseEnter={e => { if (!isCustomGlow) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)'; }}
+                          onMouseLeave={e => { if (!isCustomGlow) e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)'; }}>
+                          {isCustomGlow
+                            ? <div style={{ width: 12, height: 12, borderRadius: '50%', background: glowColor, boxShadow: `0 0 6px ${glowColor}` }} />
+                            : <svg width={10} height={10} viewBox="0 0 10 10" fill="none"><path d="M5 1.5v7M1.5 5h7" stroke="rgba(255,255,255,0.55)" strokeWidth={1.5} strokeLinecap="round"/></svg>
+                          }
+                          <input type="color" value={glowColor} onChange={e => update({ glowColor: e.target.value })}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
-            )}
+            </div>
 
           </div>
         </div>
@@ -5601,15 +5742,7 @@
     }
 
     const DEFAULT_WIDGETS = [
-      { id: 'clock', label: 'Clock', col: '1/5', row: '1/3', variant: 1 },
-      { id: 'pomodoro', label: 'Pomodoro', col: '5/9', row: '1/3', variant: 1 },
-      { id: 'tasks', label: 'Tasks', col: '9/13', row: '1/4', variant: 1 },
-      { id: 'spotify', label: 'Spotify', col: '1/6', row: '3/4', variant: 1 },
-      { id: 'goal', label: 'Goal', col: '6/9', row: '3/4', variant: 2 },
-      { id: 'streak', label: 'Streak', col: '1/4', row: '4/5', variant: 2 },
-      { id: 'countdown', label: 'Countdown', col: '4/7', row: '4/5', variant: 1 },
-      { id: 'links', label: 'Links', col: '7/9', row: '4/5', variant: 2 },
-      { id: 'image', label: 'Image', col: '9/13', row: '4/5', variant: 1 },
+      { id: 'clock', label: 'Clock', col: '5/9', row: '2/4', variant: 1 },
     ];
 
     function App() {
@@ -5677,6 +5810,9 @@
           hostEmail: session.hostEmail || '',
         };
       };
+
+      /* Spotify OAuth callback – traite le code retourné par Spotify au chargement */
+      _uEC(() => { if (window._spHandleCallback) window._spHandleCallback(); }, []);
 
       /* Crystallization Reveal – show once per session on dashboard entry */
       const [showReveal, setShowReveal] = _uSC(() => {
