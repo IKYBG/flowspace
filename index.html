@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Syne:wght@600;700;800&display=swap"
     rel="stylesheet" />
   <style>
     *,
@@ -24,6 +24,9 @@
       --theme-c2-rgb: 160, 100, 255;
       --theme-c1: rgb(100, 120, 255);
       --theme-c2: rgb(160, 100, 255);
+      --font-body: 'DM Sans', sans-serif;
+      --font-display: 'Syne', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Courier New', monospace;
     }
 
     html,
@@ -33,7 +36,7 @@
       overflow: hidden;
       background: #07070d;
       color: rgba(248, 246, 252, 0.95);
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-body);
       -webkit-font-smoothing: antialiased;
     }
 
@@ -295,7 +298,7 @@
     }
 
     .cr-wordmark {
-      font-family: 'Syne', sans-serif;
+      font-family: var(--font-display);
       font-weight: 800;
       font-size: 22px;
       letter-spacing: -0.04em;
@@ -418,12 +421,14 @@
       else _fsRawRemove('fs_widget_style');
 
       /* Images – clear old keys then restore from remote */
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
-      }
-      if (remote && remote.images && typeof remote.images === 'object') {
-        Object.entries(remote.images).forEach(([k, v]) => _fsRawSet(k, v));
+      if (remote && remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
+        }
+        Object.entries(remote.images).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+        });
       }
 
       setTimeout(() => { _fsIgnorePush = false; }, 2000);
@@ -454,7 +459,7 @@
         const k = localStorage.key(i);
         if (k && k.startsWith('fs_img_')) images[k] = localStorage.getItem(k);
       }
-      payload.images = images;
+      if (Object.keys(images).length > 0) payload.images = images;
 
       const { error } = await _fsSb.from('user_data').upsert(payload, { onConflict: 'user_id' });
       if (error) console.warn('[fs] push failed', error);
@@ -556,8 +561,8 @@
       rose: '#fb7185', teal: '#2dd4bf', orange: '#fb923c',
       text: 'rgba(248,246,252,0.95)', muted: 'rgba(248,246,252,0.32)',
       faint: 'rgba(248,246,252,0.10)', surface: 'rgba(255,255,255,0.042)',
-      font: "'DM Sans',sans-serif", display: "'Syne',sans-serif",
-      mono: "'JetBrains Mono','Courier New',monospace",
+      font: "var(--font-body)", display: "var(--font-display)",
+      mono: "var(--font-mono)",
       c1: 'var(--theme-c1)', c2: 'var(--theme-c2)',
     };
     /* theme-aware color helpers — c1(0.27) → rgba(var(--theme-c1-rgb),0.27) */
@@ -1295,13 +1300,202 @@
       );
     }
 
+    const FS_DEFAULT_LINKS = [
+      { id: 'figma', title: 'Figma', url: 'https://figma.com', color: '#a259ff' },
+      { id: 'notion', title: 'Notion', url: 'https://notion.so', color: 'rgba(248,246,252,0.72)' },
+      { id: 'github', title: 'GitHub', url: 'https://github.com', color: 'rgba(248,246,252,0.62)' },
+      { id: 'linear', title: 'Linear', url: 'https://linear.app', color: '#5e6ad2' },
+    ];
+
+    function fsNormalizeLinkUrl(raw, title = '') {
+      const text = String(raw || '').trim();
+      if (!text) return { ok: false, href: 'https://www.google.com/search?q=' + encodeURIComponent(title || 'Lumen'), display: '' };
+      const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`;
+      try {
+        const url = new URL(withScheme);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported');
+        return { ok: true, href: url.href, display: url.hostname.replace(/^www\./, '') };
+      } catch (e) {
+        return { ok: false, href: 'https://www.google.com/search?q=' + encodeURIComponent(text), display: 'URL invalide' };
+      }
+    }
+    window.fsNormalizeLinkUrl = fsNormalizeLinkUrl;
+
+    LinksWidget = function LinksWidget({ variant = 1, style, widgetId = 'default', readOnly = false }) {
+      const storageKey = `fs_links_${widgetId || 'default'}`;
+      const [links, setLinks] = React.useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+          if (Array.isArray(saved) && saved.length) return saved;
+        } catch (e) { }
+        return FS_DEFAULT_LINKS;
+      });
+      const [editing, setEditing] = React.useState(false);
+      const [draft, setDraft] = React.useState(links);
+
+      React.useEffect(() => {
+        try { localStorage.setItem(storageKey, JSON.stringify(links)); } catch (e) { }
+      }, [links, storageKey]);
+
+      const startEdit = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (readOnly) return;
+        setDraft(links);
+        setEditing(true);
+      };
+      const saveEdit = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const clean = draft
+          .map((l, i) => ({ ...l, title: (l.title || `Lien ${i + 1}`).trim(), url: (l.url || '').trim() }))
+          .filter(l => l.title || l.url)
+          .slice(0, 8);
+        setLinks(clean.length ? clean : FS_DEFAULT_LINKS.slice(0, 1));
+        setEditing(false);
+      };
+      const updateDraft = (id, patch) => setDraft(ds => ds.map(l => l.id === id ? { ...l, ...patch } : l));
+      const addLink = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const palette = ['#a5b8ff', '#4ade80', '#f0c38e', '#fb7185', '#2dd4bf', '#c084fc'];
+        setDraft(ds => [...ds, { id: `link_${Date.now()}`, title: 'Nouveau lien', url: 'https://', color: palette[ds.length % palette.length] }].slice(0, 8));
+      };
+      const removeLink = (e, id) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDraft(ds => ds.filter(l => l.id !== id));
+      };
+      const openLink = (e, link) => {
+        const parsed = fsNormalizeLinkUrl(link.url, link.title);
+        if (!parsed.ok) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(parsed.href, '_blank', 'noopener,noreferrer');
+        }
+      };
+      const editButton = !readOnly && (
+        <button onClick={startEdit} title="Modifier les liens" style={{ width: 28, height: 28, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.045)', color: T.muted, cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: T.font, fontSize: 13, fontWeight: 800, transition: 'all 0.18s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = c1(0.12); e.currentTarget.style.color = T.text; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.045)'; e.currentTarget.style.color = T.muted; }}>
+          ...
+        </button>
+      );
+
+      if (editing) return (
+        <Shell style={{ padding: 0, ...style }}>
+          <div style={{ height: '100%', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <Lbl ch="modifier liens" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={addLink} style={{ border: `1px solid ${c1(0.22)}`, background: c1(0.10), color: T.c1, borderRadius: 10, padding: '6px 10px', fontSize: 11, fontWeight: 800, fontFamily: T.font, cursor: 'pointer' }}>+ Ajouter</button>
+                <button onClick={saveEdit} style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.10)', color: T.text, borderRadius: 10, padding: '6px 10px', fontSize: 11, fontWeight: 800, fontFamily: T.font, cursor: 'pointer' }}>OK</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
+              {draft.map((link, i) => {
+                const parsed = fsNormalizeLinkUrl(link.url, link.title);
+                return (
+                  <div key={link.id} style={{ borderRadius: 16, padding: 10, background: 'rgba(255,255,255,0.045)', border: `1px solid ${parsed.ok ? 'rgba(255,255,255,0.07)' : 'rgba(251,113,133,0.32)'}`, display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                    <input value={link.title} onChange={e => updateDraft(link.id, { title: e.target.value })} placeholder={`Lien ${i + 1}`} style={{ minWidth: 0, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)', color: T.text, borderRadius: 10, padding: '8px 9px', fontSize: 12, fontFamily: T.font, outline: 'none' }} />
+                    <input value={link.url} onChange={e => updateDraft(link.id, { url: e.target.value })} placeholder="https://site.com" style={{ minWidth: 0, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)', color: parsed.ok ? T.text : T.rose, borderRadius: 10, padding: '8px 9px', fontSize: 12, fontFamily: T.font, outline: 'none' }} />
+                    <button onClick={e => removeLink(e, link.id)} disabled={draft.length <= 1} style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.045)', color: draft.length <= 1 ? T.faint : T.muted, cursor: draft.length <= 1 ? 'default' : 'pointer', fontSize: 15 }}>x</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Shell>
+      );
+
+      const header = label => (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <Lbl ch={label} />
+          {editButton}
+        </div>
+      );
+
+      if (variant === 1) return (
+        <Shell style={style}>
+          <div style={{ padding: '18px 20px', height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {header('liens rapides')}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 8, flex: 1, minHeight: 0 }}>
+              {links.slice(0, 6).map(l => {
+                const parsed = fsNormalizeLinkUrl(l.url, l.title);
+                return (
+                  <a key={l.id} href={parsed.href} target="_blank" rel="noopener noreferrer" onClick={e => openLink(e, l)}
+                    style={{ textDecoration: 'none', background: 'rgba(255,255,255,0.045)', border: `1px solid ${parsed.ok ? 'rgba(255,255,255,0.065)' : 'rgba(251,113,133,0.22)'}`, borderRadius: 14, padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, transition: 'all 0.2s', fontFamily: T.font, minWidth: 0 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.045)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 10, background: `${l.color || T.c1}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 9, height: 9, borderRadius: 3, background: parsed.ok ? (l.color || T.c1) : T.rose }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.title || 'Lien'}</div>
+                      <div style={{ fontSize: 9, color: parsed.ok ? T.muted : T.rose, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{parsed.display || 'URL'}</div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </Shell>
+      );
+
+      if (variant === 2) return (
+        <Shell flat style={style}>
+          <div style={{ padding: '16px 18px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 9 }}>
+            {header('liens')}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+              {links.map(l => {
+                const parsed = fsNormalizeLinkUrl(l.url, l.title);
+                return (
+                  <a key={l.id} href={parsed.href} target="_blank" rel="noopener noreferrer" onClick={e => openLink(e, l)}
+                    style={{ textDecoration: 'none', background: 'rgba(255,255,255,0.055)', border: `1px solid ${parsed.ok ? 'rgba(255,255,255,0.08)' : 'rgba(251,113,133,0.24)'}`, borderRadius: 99, padding: '6px 12px', cursor: 'pointer', color: parsed.ok ? T.muted : T.rose, fontSize: 11, fontWeight: 700, fontFamily: T.font, transition: 'all 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = parsed.ok ? T.muted : T.rose; e.currentTarget.style.background = 'rgba(255,255,255,0.055)'; }}>
+                    {l.title || 'Lien'}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </Shell>
+      );
+
+      return (
+        <Shell flat style={style}>
+          <div style={{ padding: '14px 16px', height: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {header('liens')}
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {links.slice(0, 5).map(l => {
+                const parsed = fsNormalizeLinkUrl(l.url, l.title);
+                return (
+                  <a key={l.id} href={parsed.href} target="_blank" rel="noopener noreferrer" onClick={e => openLink(e, l)}
+                    style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 6px', borderRadius: 10, cursor: 'pointer', transition: 'background 0.15s', color: T.text, minWidth: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <div style={{ width: 18, height: 18, borderRadius: 6, background: `${l.color || T.c1}22`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 5, height: 5, borderRadius: 2, background: parsed.ok ? (l.color || T.c1) : T.rose }} />
+                    </div>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.title || 'Lien'}</span>
+                    <Sub ch="open" style={{ fontSize: 10, color: T.faint }} />
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </Shell>
+      );
+    };
+
     window.LinksWidget = LinksWidget;
   </script>
 
   <script type="text/babel">
     const { useState: _uSI, useRef: _uRI, useEffect: _uEI } = React;
 
-    function ImageWidget({ style, widgetId, initialSrc = null, readOnly = false }) {
+    function ImageWidget({ style, widgetId, initialSrc, readOnly = false }) {
       const storageKey = widgetId ? `fs_img_${widgetId}` : 'fs_img_widget';
       const [imgSrc, setImgSrc] = _uSI(() => {
         if (initialSrc) return initialSrc;
@@ -1311,7 +1505,7 @@
       const inputRef = _uRI(null);
 
       _uEI(() => {
-        if (initialSrc !== undefined) setImgSrc(initialSrc || null);
+        if (typeof initialSrc !== 'undefined') setImgSrc(initialSrc || null);
       }, [initialSrc]);
 
       const handleFile = e => {
@@ -1499,7 +1693,7 @@
       goal: (v) => React.createElement(GoalWidget, { variant: v }),
       streak: (v) => React.createElement(StreakWidget, { variant: v }),
       countdown: (v) => React.createElement(CountdownWidget, { variant: v }),
-      links: (v) => React.createElement(LinksWidget, { variant: v }),
+      links: (v, id) => React.createElement(LinksWidget, { variant: v, widgetId: id }),
       image: (v, id) => React.createElement(ImageWidget, { variant: v, widgetId: id }),
       notes: (v) => React.createElement(NotesWidget, { variant: v }),
     };
@@ -1864,19 +2058,19 @@
       const [snapTransform, setSnapTransform] = _uS9(null);
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
-      const TRAY = ['Clock', 'Pomodoro', 'Tasks', 'Spotify', 'Goal', 'Streak', 'Countdown', 'Links', 'Image', 'Notes'];
       const CATALOG = [
-        { id: 'clock', label: 'Clock', C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
-        { id: 'pomodoro', label: 'Pomodoro', C: window.PomodoroWidget, variants: [1, 2, 9] },
-        { id: 'tasks', label: 'Tasks', C: window.TasksWidget, variants: [1, 2, 3] },
-        { id: 'spotify', label: 'Spotify', C: window.SpotifyWidget, variants: [1, 5, 10] },
-        { id: 'goal', label: 'Goal', C: window.GoalWidget, variants: [1, 2, 10] },
-        { id: 'streak', label: 'Streak', C: window.StreakWidget, variants: [1, 2, 10] },
-        { id: 'countdown', label: 'Countdown', C: window.CountdownWidget, variants: [1, 10] },
-        { id: 'links', label: 'Links', C: window.LinksWidget, variants: [1, 2, 8] },
-        { id: 'image', label: 'Image', C: window.ImageWidget, variants: [1] },
-        { id: 'notes', label: 'Notes', C: window.NotesWidget, variants: [1, 2] },
+        { id: 'clock', label: 'Clock', name: 'Horloge', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
+        { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
+        { id: 'tasks', label: 'Tasks', name: 'Tâches', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
+        { id: 'spotify', label: 'Spotify', name: 'Musique', category: 'Ambiance', desc: 'Ajouter une zone musicale visuelle pour accompagner le focus.', best: 'Mood de travail', icon: '♪', color: T.green, C: window.SpotifyWidget, variants: [1, 5, 10] },
+        { id: 'goal', label: 'Goal', name: 'Objectif', category: 'Progression', desc: 'Suivre un objectif mesurable avec une barre ou une jauge claire.', best: 'Objectif hebdo', icon: '◎', color: T.c1, C: window.GoalWidget, variants: [1, 2, 10] },
+        { id: 'streak', label: 'Streak', name: 'Régularité', category: 'Habitude', desc: 'Visualiser la série de jours actifs et garder le rythme.', best: 'Habitude focus', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
+        { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
+        { id: 'links', label: 'Links', name: 'Liens rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: '⊞', color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
+        { id: 'image', label: 'Image', name: 'Image', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: '◈', color: T.rose, C: window.ImageWidget, variants: [1] },
+        { id: 'notes', label: 'Notes', name: 'Note rapide', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: '✎', color: T.warm, C: window.NotesWidget, variants: [1, 2] },
       ];
+      const TRAY = CATALOG.map(c => c.label);
 
       const parseSpan = s => s.split('/').map(Number);
 
@@ -2071,34 +2265,48 @@
 
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', userSelect: drag ? 'none' : 'auto', cursor: drag?.type === 'move' ? 'grabbing' : drag?.type === 'resize' ? `${drag.corner}-resize` : 'auto', position: 'relative' }}>
-          <div style={{ padding: '18px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.rose, boxShadow: `0 0 10px ${T.rose}88` }} />
+          <div style={{ padding: '18px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0, gap: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, maxWidth: 360, overflow: 'hidden' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 17, letterSpacing: '-0.03em' }}>Personnaliser le dashboard</span>
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.c1, background: c1(0.09), border: `1px solid ${c1(0.18)}`, borderRadius: 99, padding: '4px 8px' }}>{widgets.length} widgets</span>
+                </div>
+                <div style={{ display: 'none' }}>
+                  <span>1. Ajouter</span><span style={{ opacity: .35 }}>•</span>
+                  <span>2. Choisir un style</span><span style={{ opacity: .35 }}>•</span>
+                  <span>3. Glisser ou redimensionner</span>
+                </div>
+                <div style={{ marginTop: 6, color: T.muted, fontSize: 11 }}>Ajouter · choisir · déplacer</div>
+              </div>
+              <div style={{ display: 'none' }}>
                 <span style={{ fontFamily: T.display, fontWeight: 700, fontSize: 14 }}>Mode Édition</span>
               </div>
               <span style={{ fontSize: 12, color: T.muted }}>Cliquer pour sélectionner · glisser les coins pour redimensionner</span>
             </div>
             <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
               <button onClick={() => setShowPicker(p => !p)}
-                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 10, padding: '8px 16px', color: showPicker ? T.c1 : T.muted, fontSize: 12, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Widget</button>
+                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter un widget</button>
               {showPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: 10, zIndex: 9999, display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 5, width: 272, backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
-                  <div style={{ gridColumn: '1/-1', padding: '2px 4px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.muted }}>Ajouter un widget</span>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 7, width: 380, maxHeight: 'min(620px, calc(100vh - 110px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+                  <div style={{ gridColumn: '1/-1', padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.c1 }}>Bibliothèque de widgets</span>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Choisis ce que tu veux voir sur ton dashboard. Tu pourras sélectionner un style avant de l'ajouter.</div>
                   </div>
                   {TRAY.map(name => {
                     const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.rose }, Tasks: { icon: '✓', c: T.green }, Spotify: { icon: '♪', c: T.green }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.warm }, Countdown: { icon: '⏱', c: T.teal }, Links: { icon: '⊞', c: T.muted }, Image: { icon: '◈', c: T.rose }, Notes: { icon: '✎', c: T.warm } };
                     const m = META[name] || { icon: '◇', c: T.muted };
                     const cat = CATALOG.find(c => c.label === name);
+                    const friendly = cat || { name, desc: '', best: '', category: '', color: T.muted };
                     return (
                       <button key={name} onClick={() => { setPickerWidget(name); setShowPicker(false); }}
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, transition: 'all 0.15s', textAlign: 'left', fontFamily: T.font }}
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: 14, padding: '12px 13px', cursor: 'pointer', display: 'grid', gridTemplateColumns: '34px 1fr auto', alignItems: 'center', gap: 12, transition: 'all 0.15s', textAlign: 'left', fontFamily: T.font }}
                         onMouseEnter={e => { e.currentTarget.style.background = `${c1(0.078)}`; e.currentTarget.style.borderColor = `${c1(0.2)}`; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
-                        <span style={{ fontSize: 15, lineHeight: 1, color: m.c, flexShrink: 0 }}>{m.icon}</span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: T.text, lineHeight: 1 }}>{name}</span>
+                        <span style={{ width: 34, height: 34, borderRadius: 12, background: `${friendly.color || m.c || T.muted}16`, border: `1px solid ${friendly.color || m.c || T.muted}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, lineHeight: 1, color: friendly.color || m.c || T.muted, flexShrink: 0 }}>{friendly.icon || m.icon}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: T.text, lineHeight: 1 }}>{friendly.name || name}</span>
+                          <span style={{ fontSize: 11, color: T.muted, lineHeight: 1.35 }}>{friendly.desc}</span>
                           <span style={{ fontSize: 10, color: T.muted, lineHeight: 1 }}>{cat ? cat.variants.length : 1} styles →</span>
                         </div>
                       </button>
@@ -2111,6 +2319,12 @@
           </div>
           <div style={{ flex: 1, padding: '16px 32px', position: 'relative', overflow: 'hidden' }}>
             {showPicker && <div onClick={() => setShowPicker(false)} style={{ position: 'absolute', inset: 0, zIndex: 100 }} />}
+            {false && !selected && !drag && !showPicker && !pickerWidget && (
+              <div style={{ position:'absolute', left:32, top:16, zIndex:60, width:300, borderRadius:18, padding:'14px 16px', background:'rgba(8,8,20,0.72)', border:'1px solid rgba(255,255,255,0.08)', backdropFilter:'blur(28px)', boxShadow:'0 18px 48px rgba(0,0,0,0.38)' }}>
+                <div style={{ fontSize:10, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:T.c1, marginBottom:7 }}>Comment ça marche</div>
+                <div style={{ fontSize:12, color:'rgba(248,246,252,0.72)', lineHeight:1.55 }}>Clique sur un widget pour voir ses poignées. Glisse le bloc pour le déplacer, ou tire les coins blancs pour changer sa taille.</div>
+              </div>
+            )}
             <div style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(4,1fr)', gap: 14, pointerEvents: 'none' }}>
               {[...Array(48)].map((_, i) => <div key={i} style={{ borderRadius: 16, border: '1px dashed rgba(255,255,255,0.045)' }} />)}
             </div>
@@ -2201,13 +2415,16 @@
           </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '14px 32px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, overflowX: 'auto' }}>
             <Lbl ch="ajouter un widget" style={{ whiteSpace: 'nowrap', marginRight: 8 }} />
-            {TRAY.map(name => (
-              <button key={name} onClick={() => setPickerWidget(name)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: T.muted, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: T.font, transition: 'all 0.2s', flexShrink: 0 }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.text; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = T.muted; }}>
-                {name}
-              </button>
-            ))}
+            {TRAY.map(name => {
+              const cat = CATALOG.find(c => c.label === name);
+              return (
+                <button key={name} onClick={() => setPickerWidget(name)} title={cat?.desc || name} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '8px 13px', cursor: 'pointer', color: T.muted, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: T.font, transition: 'all 0.2s', flexShrink: 0, display:'flex', alignItems:'center', gap:8 }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.text; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = T.muted; }}>
+                  <span style={{ color:cat?.color || T.c1 }}>{cat?.icon || '◇'}</span>{cat?.name || name}
+                </button>
+              );
+            })}
           </div>
           {/* ── Variant-picker overlay ─────────────────────────────────────── */}
           {pickerWidget && (() => {
@@ -2223,9 +2440,12 @@
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = T.muted; }}>
                     ← Retour
                   </button>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                    <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 20, letterSpacing: '-0.03em' }}>{cat.label}</span>
-                    <span style={{ fontSize: 11, color: T.muted }}>{cat.variants.length} styles</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                      <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 22, letterSpacing: '-0.035em' }}>{cat.name || cat.label}</span>
+                      <span style={{ fontSize: 10, color: cat.color || T.c1, background: `${cat.color || T.c1}12`, border: `1px solid ${cat.color || T.c1}22`, borderRadius: 99, padding: '3px 8px', fontWeight: 800 }}>{cat.category}</span>
+                    </div>
+                    <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.45 }}>{cat.desc}</span>
                   </div>
                 </div>
                 {/* Category tab strip */}
@@ -2233,7 +2453,7 @@
                   {CATALOG.map(c => (
                     <button key={c.id} onClick={() => setPickerWidget(c.label)}
                       style={{ background: cat.id === c.id ? `${c1(0.094)}` : 'transparent', border: `1px solid ${cat.id === c.id ? c1(0.267) : 'rgba(255,255,255,0.07)'}`, borderRadius: 99, padding: '5px 14px', cursor: 'pointer', color: cat.id === c.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.15s', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      {c.label}
+                      {c.name || c.label}
                     </button>
                   ))}
                 </div>
@@ -2244,7 +2464,10 @@
                     {cat.variants.map(v => (
                       <div key={v} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.muted }}>Style {v}</span>
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.muted }}>Style {v}</span>
+                            <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>{cat.best} · aperçu interactif</div>
+                          </div>
                           <button
                             onClick={() => addWidget(cat.label, v)}
                             style={{ background: `${c1(0.078)}`, border: `1px solid ${c1(0.2)}`, borderRadius: 99, padding: '5px 16px', color: T.c1, fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)', letterSpacing: '0.04em' }}
@@ -2930,7 +3153,7 @@
       cursor: pointer;
       width: 100%;
       text-align: left;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-body);
     }
     .fs-nav-item::before {
       content: "";
@@ -3062,7 +3285,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: 'Syne', sans-serif;
+      font-family: var(--font-display);
       font-weight: 800;
       font-size: 13px;
       color: #07070d;
@@ -3122,7 +3345,7 @@
       overflow: hidden;
       background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),1), rgba(var(--theme-c2-rgb),0.88));
       display: flex; align-items: center; justify-content: center;
-      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: #07070d;
+      font-family: var(--font-display); font-weight: 800; font-size: 16px; color: #07070d;
       box-shadow: 0 4px 20px rgba(var(--theme-c1-rgb),0.38), 0 0 0 2px rgba(var(--theme-c1-rgb),0.18);
     }
     .fs-pop-info { flex: 1; min-width: 0; }
@@ -3137,7 +3360,7 @@
       display: flex; align-items: center; gap: 11px;
       width: 100%; padding: 11px 13px; border-radius: 13px;
       border: none; cursor: pointer; background: transparent;
-      color: rgba(248,246,252,0.5); font-family: 'DM Sans', sans-serif;
+      color: rgba(248,246,252,0.5); font-family: var(--font-body);
       font-size: 13px; font-weight: 500; text-align: left;
       transition: background 0.18s, color 0.18s, transform 0.18s cubic-bezier(0.34,1.56,0.64,1);
     }
@@ -3203,7 +3426,7 @@
       display: grid;
       place-items: center;
       color: #07070d;
-      font-family: 'Syne', sans-serif;
+      font-family: var(--font-display);
       font-size: 30px;
       font-weight: 800;
       transition: transform 220ms var(--fs-ease), border-color 180ms ease, box-shadow 180ms ease;
@@ -3246,7 +3469,7 @@
       margin-bottom: 7px;
     }
     .fs-account-name {
-      font-family: 'Syne', sans-serif;
+      font-family: var(--font-display);
       font-size: 24px;
       line-height: 1;
       font-weight: 800;
@@ -3311,7 +3534,7 @@
       border-radius: 15px;
       border: none;
       cursor: pointer;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-body);
       font-size: 12px;
       font-weight: 800;
       display: flex;
@@ -3471,7 +3694,7 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3.5 6h.01" /><path d="M3.5 12h.01" /><path d="M3.5 18h.01" /></svg>,
         },
         {
-          target: 'notes', label: 'Notes', meta: 'Markdown & idÃ©es',
+          target: 'notes', label: 'Notes', meta: 'Markdown & idées',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z" /><path d="M15 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></svg>,
         },
         {
@@ -4196,7 +4419,7 @@
       width:100%; background:rgba(255,255,255,0.04);
       border:1px solid rgba(255,255,255,0.1); border-radius:14px;
       padding:14px 16px; color:rgba(248,246,252,0.95);
-      font-size:14px; font-family:'DM Sans',sans-serif;
+      font-size:14px; font-family:var(--font-body);
       outline:none; box-sizing:border-box;
       transition:border-color 0.22s ease,box-shadow 0.22s ease,background 0.22s ease;
     }
@@ -4488,12 +4711,34 @@
     }
     window.buildGrad = buildGrad;
 
+    const FONT_PRESETS = [
+      { id: 'signature', name: 'Signature', vibe: 'Lumen', desc: 'Net, moderne et tres lisible.', body: "'DM Sans', sans-serif", display: "'Syne', sans-serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#a5b8ff', c2: '#c084fc' },
+      { id: 'editorial', name: 'Editorial', vibe: 'Calme premium', desc: 'Elegant, inspire des interfaces editoriales.', body: "'Inter', sans-serif", display: "'Playfair Display', serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#f0c38e', c2: '#f7a8c4' },
+      { id: 'executive', name: 'Executive', vibe: 'SaaS sharp', desc: 'Propre, dense et tres professionnel.', body: "'Manrope', sans-serif", display: "'Space Grotesk', sans-serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#67e8f9', c2: '#60a5fa' },
+      { id: 'atelier', name: 'Atelier', vibe: 'Creative luxe', desc: 'Chaleureux, distinctif et haut de gamme.', body: "'Sora', sans-serif", display: "'Fraunces', serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#fda4af', c2: '#facc15' },
+      { id: 'neo', name: 'Neo System', vibe: 'Digital', desc: 'Precise, futuriste et fluide.', body: "'Plus Jakarta Sans', sans-serif", display: "'Space Grotesk', sans-serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#86efac', c2: '#2dd4bf' },
+    ];
+    window.FONT_PRESETS = FONT_PRESETS;
+
+    function applyFontPreset(id) {
+      const preset = FONT_PRESETS.find(f => f.id === id) || FONT_PRESETS[0];
+      const root = document.documentElement.style;
+      root.setProperty('--font-body', preset.body);
+      root.setProperty('--font-display', preset.display);
+      root.setProperty('--font-mono', preset.mono);
+      try { localStorage.setItem('fs_font_preset', preset.id); } catch (e) { }
+      return preset;
+    }
+    window.applyFontPreset = applyFontPreset;
+    applyFontPreset((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })());
+
     /* ── Personnalisation Hub ─────────────────────────────────────────────────── */
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
       const CARDS = [
-        { id: 'fond', target: 'fond', eyebrow: '21 thèmes', title: 'Ambiance & Fond', desc: "Définissez l'atmosphère visuelle de votre espace avec nos thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc' },
-        { id: 'widgets', target: 'variants', eyebrow: '10 widgets', title: 'Widgets & Styles', desc: 'Choisissez et personnalisez vos widgets pour composer un tableau de bord qui vous ressemble.', c1: '#4ade80', c2: '#2dd4bf' },
+        { id: 'fond', target: 'fond', eyebrow: '21 thèmes', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec nos thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc' },
+        { id: 'fonts', target: 'fonts', eyebrow: '5 polices', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4' },
+        { id: 'widgets', target: 'variants', eyebrow: '10 widgets', title: 'Widgets', desc: 'Choisissez et personnalisez vos widgets pour composer un tableau de bord qui vous ressemble.', c1: '#4ade80', c2: '#2dd4bf' },
       ];
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -4509,7 +4754,7 @@
               Adaptez chaque détail de LumenOS à votre identité. L'espace de travail qui vous ressemble vraiment.
             </div>
           </div>
-          <div style={{ flex: 1, padding: '32px 44px 44px', display: 'grid', gridTemplateRows: '1fr 1fr', gap: 14, minHeight: 0 }}>
+          <div style={{ flex: 1, padding: '32px 44px 44px', display: 'grid', gridTemplateRows: 'repeat(3,minmax(0,1fr))', gap: 14, minHeight: 0 }}>
             {CARDS.map(card => {
               const h = hov === card.id;
               return (
@@ -4528,7 +4773,7 @@
                   </div>
                   {/* Preview bars */}
                   <div style={{ display: 'flex', gap: 5, marginTop: 26, position: 'relative' }}>
-                    {[...Array(card.id === 'fond' ? 8 : 5)].map((_, i) => (
+                    {[...Array(card.id === 'fond' ? 8 : card.id === 'fonts' ? 6 : 5)].map((_, i) => (
                       <div key={i} style={{ height: 4, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
                     ))}
                   </div>
@@ -4743,6 +4988,102 @@
       );
     }
     window.FondScreen = FondScreen;
+
+    function FontScreen({ onNavigate, fontId, onApply }) {
+      const presets = window.FONT_PRESETS || [];
+      const [hovered, setHovered] = _uPX(null);
+      const activeId = fontId || (() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })();
+      const active = presets.find(p => p.id === activeId) || presets[0];
+      const preview = presets.find(p => p.id === hovered) || active;
+      const selectFont = preset => {
+        if (!preset) return;
+        onApply && onApply(preset);
+      };
+
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '22px 36px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+            <button onClick={() => onNavigate('perso')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '7px 15px', color: T.muted, fontSize: 12, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = T.muted; }}>
+              Retour
+            </button>
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted, marginBottom: 3 }}>Personnalisation</div>
+              <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 19, letterSpacing: '-0.03em' }}>Polices</div>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflow: 'auto', padding: '30px 36px 36px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18, alignItems: 'stretch' }}>
+            <div style={{ borderRadius: 28, padding: 30, minHeight: 0, position: 'relative', overflow: 'hidden', background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.022))', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 24px 70px rgba(0,0,0,0.32)' }}>
+              <div style={{ position: 'absolute', inset: -80, background: `radial-gradient(circle at 20% 12%, ${preview?.c1 || T.c1}24, transparent 34%), radial-gradient(circle at 82% 78%, ${preview?.c2 || T.c2}18, transparent 38%)`, pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'inline-flex', alignSelf: 'flex-start', alignItems: 'center', gap: 8, background: `${preview?.c1 || '#fff'}14`, border: `1px solid ${preview?.c1 || '#fff'}26`, borderRadius: 99, padding: '6px 12px', marginBottom: 26, color: preview?.c1 || T.c1, fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  {preview?.vibe || 'Premium'}
+                </div>
+                <div style={{ fontFamily: preview?.display || T.display, fontSize: 58, lineHeight: 0.92, fontWeight: 800, letterSpacing: '-0.045em', color: T.text, marginBottom: 22 }}>
+                  Aa<br />Lumen
+                </div>
+                <div style={{ fontFamily: preview?.body || T.font, color: 'rgba(248,246,252,0.72)', fontSize: 14, lineHeight: 1.75, maxWidth: 430 }}>
+                  Dashboard, notes, taches et focus gardent une lecture claire avec une personnalite visuelle plus premium.
+                </div>
+                <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ borderRadius: 18, padding: 16, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div style={{ fontFamily: preview?.mono || T.mono, fontSize: 11, color: T.muted, marginBottom: 8 }}>09:41</div>
+                    <div style={{ fontFamily: preview?.display || T.display, fontWeight: 800, fontSize: 22, letterSpacing: '-0.03em' }}>Focus</div>
+                  </div>
+                  <div style={{ borderRadius: 18, padding: 16, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div style={{ fontFamily: preview?.mono || T.mono, fontSize: 11, color: T.muted, marginBottom: 8 }}>+24%</div>
+                    <div style={{ fontFamily: preview?.body || T.font, fontWeight: 800, fontSize: 14 }}>Progression</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted, marginBottom: 8 }}>Bibliotheque</div>
+                  <div style={{ fontFamily: T.display, fontSize: 30, fontWeight: 800, letterSpacing: '-0.04em' }}>5 styles premium</div>
+                </div>
+                <div style={{ fontSize: 12, color: T.muted }}>{active?.name || 'Signature'} actif</div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
+                {presets.map(preset => {
+                  const selected = activeId === preset.id;
+                  const hot = hovered === preset.id;
+                  return (
+                    <button key={preset.id}
+                      onClick={() => selectFont(preset)}
+                      onMouseEnter={() => setHovered(preset.id)}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{ textAlign: 'left', cursor: 'pointer', minHeight: 154, borderRadius: 22, padding: 20, background: selected ? `linear-gradient(145deg,${preset.c1}18,rgba(255,255,255,0.04))` : hot ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.032)', border: `1px solid ${selected ? `${preset.c1}66` : hot ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.07)'}`, color: T.text, fontFamily: preset.body, transition: 'transform 0.28s cubic-bezier(0.34,1.56,0.64,1), background 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease', transform: hot ? 'translateY(-3px)' : 'none', boxShadow: selected ? `0 16px 44px ${preset.c1}18, inset 0 1px 0 rgba(255,255,255,0.10)` : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                        <div>
+                          <div style={{ fontFamily: preset.display, fontSize: 25, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.035em' }}>{preset.name}</div>
+                          <div style={{ marginTop: 7, fontSize: 11, color: T.muted }}>{preset.desc}</div>
+                        </div>
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: selected ? preset.c1 : 'rgba(255,255,255,0.06)', border: `1px solid ${selected ? 'transparent' : 'rgba(255,255,255,0.12)'}`, display: 'grid', placeItems: 'center', color: selected ? '#07070d' : T.muted, fontSize: 12, fontWeight: 900 }}>
+                          {selected ? '✓' : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gap: 7 }}>
+                        <div style={{ height: 6, width: '82%', borderRadius: 99, background: `linear-gradient(90deg,${preset.c1},${preset.c2})` }} />
+                        <div style={{ height: 5, width: '62%', borderRadius: 99, background: 'rgba(255,255,255,0.14)' }} />
+                        <div style={{ height: 5, width: '40%', borderRadius: 99, background: 'rgba(255,255,255,0.08)' }} />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.FontScreen = FontScreen;
   </script>
 
   <script type="text/babel">
@@ -5482,6 +5823,19 @@
         setBgThemeId(theme.id);
       };
 
+      const [fontPresetId, setFontPresetId] = _uSC(() => {
+        try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; }
+      });
+      _uEC(() => {
+        if (window.applyFontPreset) window.applyFontPreset(fontPresetId);
+      }, [fontPresetId]);
+      const applyFontPreset = preset => {
+        const nextId = typeof preset === 'string' ? preset : preset?.id;
+        if (!nextId) return;
+        if (window.applyFontPreset) window.applyFontPreset(nextId);
+        setFontPresetId(nextId);
+      };
+
       const [widgetStyle, setWidgetStyle] = _uSC(() => {
         try { return JSON.parse(localStorage.getItem('fs_widget_style') || 'null') || { opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 }; } catch (e) { return { opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 }; }
       });
@@ -5526,6 +5880,7 @@
           localStorage.removeItem('fs_widgets');
           localStorage.removeItem('fs_bgtheme');
           localStorage.removeItem('fs_custom_bg');
+          localStorage.removeItem('fs_font_preset');
           localStorage.removeItem('fs_widget_style');
           localStorage.removeItem('fs_friends');
           /* Clear all image keys */
@@ -5539,6 +5894,7 @@
         setShowSession(false);
         setWidgets(DEFAULT_WIDGETS);
         setBgThemeId('cosmos');
+        setFontPresetId('signature');
         setWidgetStyle({ opacity: 1, radius: 24, glowColor: '#a5b8ff', glowIntensity: 0 });
         setScreen('auth');
       };
@@ -5598,11 +5954,13 @@
                 localStorage.removeItem('fs_widgets');
                 localStorage.removeItem('fs_bgtheme');
                 localStorage.removeItem('fs_custom_bg');
+                localStorage.removeItem('fs_font_preset');
                 localStorage.removeItem('fs_widget_style');
                 localStorage.removeItem('fs_friends');
               } catch (_) { }
               setUser(null);
               setWidgets(DEFAULT_WIDGETS);
+              setFontPresetId('signature');
               setScreen('auth');
             }
           } catch (e) { console.warn('[fs] session check failed', e); }
@@ -5648,6 +6006,7 @@
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
+                {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'session' && window.SessionScreen && React.createElement(window.SessionScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
@@ -5731,7 +6090,7 @@
         width:100%; background:rgba(255,255,255,0.06);
         border:1.5px solid rgba(255,255,255,0.1); border-radius:14px;
         padding:12px 16px; color:rgba(248,246,252,0.95);
-        font-size:13px; font-family:'DM Sans',sans-serif;
+        font-size:13px; font-family:var(--font-body);
         outline:none; box-sizing:border-box;
         transition:border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
       }
