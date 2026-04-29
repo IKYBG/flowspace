@@ -142,6 +142,127 @@
       }
     }
 
+    /* ══════════════ MOBILE RESPONSIVE ══════════════ */
+    @media (max-width: 768px) {
+      /* App shell: full screen, no gap/padding, single column */
+      .fs-app-shell {
+        grid-template-columns: 1fr !important;
+        padding: 0 !important;
+        gap: 0 !important;
+        height: 100% !important;
+      }
+      /* Sidebar: hidden on mobile */
+      .fs-sidebar { display: none !important; }
+      /* Bottom mobile nav: visible */
+      .fs-mobile-nav { display: flex !important; }
+      /* Main content panel: full screen */
+      .fs-app-main {
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+      /* Dashboard header */
+      .fs-dashboard-header {
+        padding: 14px 14px 0 !important;
+        flex-wrap: nowrap !important;
+        gap: 8px !important;
+      }
+      .fs-dh-greeting { display: none !important; }
+      .fs-dh-sep { display: none !important; }
+      /* Dashboard grid: vertical list, scrollable */
+      .fs-dashboard-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding: 12px 12px 76px !important;
+        gap: 10px !important;
+        height: auto !important;
+        max-height: 100% !important;
+      }
+      .fs-dashboard-grid > * {
+        grid-column: unset !important;
+        grid-row: unset !important;
+        min-height: 140px !important;
+        height: 140px !important;
+        flex-shrink: 0 !important;
+      }
+      /* Widgets that were 2-row tall: taller on mobile */
+      .fs-widget-tall {
+        height: 200px !important;
+        min-height: 200px !important;
+      }
+    }
+    @media (max-width: 480px) {
+      .fs-dashboard-header { padding: 12px 12px 0 !important; }
+      .fs-dashboard-grid { padding: 10px 10px 76px !important; gap: 8px !important; }
+    }
+    /* Safe area for notch/home indicator */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      @media (max-width: 768px) {
+        .fs-mobile-nav {
+          padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+          height: calc(60px + env(safe-area-inset-bottom)) !important;
+        }
+        .fs-dashboard-grid {
+          padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+        }
+      }
+    }
+
+    /* Mobile bottom navigation bar */
+    .fs-mobile-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      z-index: 200;
+      background: rgba(7,7,15,0.96);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 4px 8px;
+    }
+    .fs-mobile-nav-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 6px 10px;
+      background: none;
+      border: none;
+      color: rgba(182,189,205,0.50);
+      cursor: pointer;
+      border-radius: 12px;
+      min-width: 48px;
+      font-family: var(--font-body);
+      transition: color 0.16s, background 0.16s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .fs-mobile-nav-btn svg {
+      width: 22px; height: 22px;
+      stroke: currentColor; fill: none;
+      stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+      transition: stroke 0.16s;
+    }
+    .fs-mobile-nav-btn.active {
+      color: var(--theme-c1);
+    }
+    .fs-mobile-nav-btn.active svg {
+      filter: drop-shadow(0 0 6px rgba(var(--theme-c1-rgb),0.5));
+    }
+    .fs-mobile-nav-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
     @keyframes handleIn {
       from {
         transform: scale(0.4);
@@ -347,8 +468,45 @@
 
     /* Reduced-motion: skip the overlay entirely */
     @media (prefers-reduced-motion: reduce) {
-      .cr-overlay {
-        display: none;
+      .cr-overlay { display: none; }
+    }
+
+    /* ── EditMode mobile: make the grid scrollable ── */
+    @media (max-width: 768px) {
+      .fs-edit-grid-wrap {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        height: auto !important;
+        min-height: 0 !important;
+      }
+      /* Auth / onboarding: add padding for safe area */
+      .fs-auth-wrap {
+        padding: 20px 16px !important;
+      }
+      /* Cristaux / friends panel: full-screen on mobile */
+      .fs-friends-panel {
+        top: 0 !important; bottom: 60px !important;
+        left: 0 !important; right: 0 !important;
+        width: 100% !important;
+        border-radius: 0 0 0 0 !important;
+      }
+      /* Account panel: bottom sheet on mobile */
+      .fs-account-panel {
+        top: auto !important;
+        bottom: 68px !important;
+        left: 12px !important;
+        right: 12px !important;
+        width: auto !important;
+        max-width: 100% !important;
+        border-radius: 20px !important;
+      }
+      /* Popover: bottom sheet */
+      .fs-popover {
+        left: 12px !important;
+        right: 12px !important;
+        bottom: 68px !important;
+        width: auto !important;
+        max-width: 100% !important;
       }
     }
   </style>
@@ -2139,18 +2297,18 @@
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {session && <SessionBar session={session} onEnd={onEndSession} />}
-          <div style={{ padding: '24px 32px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div className="fs-dashboard-header" style={{ padding: '24px 32px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div className="fs-dashboard-header-left" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 7, background: 'var(--theme-c1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: '#07070d' }} />
                 </div>
                 <span style={{ fontFamily: T.display, fontWeight: 700, fontSize: 14, letterSpacing: '-0.02em' }}>LumenOS</span>
               </div>
-              <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.08)' }} />
-              <span style={{ fontSize: 14, color: T.muted }}>{greeting}{user?.name ? `, ${user.name}` : ''}</span>
+              <div className="fs-dh-sep" style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.08)' }} />
+              <span className="fs-dh-greeting" style={{ fontSize: 14, color: T.muted }}>{greeting}{user?.name ? `, ${user.name}` : ''}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="fs-dashboard-header-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenQuests:()=>{}, onOpenStreaks:()=>{} })}
               {!session && (
                 <button onClick={() => onNavigate('session')}
@@ -2168,12 +2326,15 @@
               <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.display, fontWeight: 800, fontSize: 13, color: '#07070d', cursor: 'pointer' }}>A</div>
             </div>
           </div>
-          <div style={{ flex: 1, padding: '18px 32px 28px', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14, overflow: 'hidden', minHeight: 0 }}>
-            {widgets.map((w, i) => (
-              <div key={w.id} className={animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait'} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms` }}>
-                {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id) : null}
-              </div>
-            ))}
+          <div className="fs-dashboard-grid" style={{ flex: 1, padding: '18px 32px 28px', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14, overflow: 'hidden', minHeight: 0 }}>
+            {widgets.map((w, i) => {
+              const rowSpan = w.row ? parseInt(w.row.split('/')[1]) - parseInt(w.row.split('/')[0]) : 1;
+              return (
+                <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms` }}>
+                  {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       );
@@ -2434,7 +2595,7 @@
               <button onClick={() => setShowPicker(p => !p)}
                 style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter un widget</button>
               {showPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 7, width: 380, maxHeight: 'min(620px, calc(100vh - 110px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 7, width: 'min(380px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
                   <div style={{ gridColumn: '1/-1', padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
                     <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.c1 }}>Bibliothèque de widgets</span>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Choisis ce que tu veux voir sur ton dashboard. Tu pourras sélectionner un style avant de l'ajouter.</div>
@@ -2718,7 +2879,7 @@
       return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(28px)' }}
           onClick={e => e.target === e.currentTarget && onClose()}>
-          <div style={{ width: 500, maxHeight: '90vh', background: 'rgba(9,8,17,0.98)', borderRadius: 28, overflow: 'hidden', boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 48px 120px rgba(0,0,0,0.88), 0 0 80px ${acol}0a`, fontFamily: T.font, display: 'flex', flexDirection: 'column', animation: 'scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+          <div style={{ width: 'min(500px, calc(100vw - 24px))', maxHeight: '90vh', background: 'rgba(9,8,17,0.98)', borderRadius: 28, overflow: 'hidden', boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 48px 120px rgba(0,0,0,0.88), 0 0 80px ${acol}0a`, fontFamily: T.font, display: 'flex', flexDirection: 'column', animation: 'scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both' }}>
 
             {/* Header */}
             <div style={{ padding: '32px 36px 0' }}>
@@ -3166,15 +3327,24 @@
       backdrop-filter: blur(26px) saturate(140%);
       -webkit-backdrop-filter: blur(26px) saturate(140%);
       box-shadow: 0 18px 60px rgba(0,0,0,0.45);
-      padding: 18px 14px;
+      padding: 14px 12px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       transition: width 260ms var(--fs-ease), transform 220ms var(--fs-ease), box-shadow 220ms var(--fs-ease), border-color 220ms var(--fs-ease);
       position: relative;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: hidden;
       isolation: isolate;
       flex-shrink: 0;
+    }
+    /* Top section stretches to fill available space; nav scrolls when zoomed */
+    .fs-sidebar > div:first-child {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
     .fs-sidebar::before {
       content: "";
@@ -3195,13 +3365,14 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      min-height: 48px;
-      padding: 8px 10px;
+      min-height: 36px;
+      padding: 4px 8px;
+      flex-shrink: 0;
     }
     .fs-brand-mark {
-      width: 40px;
-      height: 40px;
-      border-radius: 14px;
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
       background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), transparent 42%),
                   linear-gradient(145deg, rgba(var(--theme-c1-rgb),0.95), rgba(var(--theme-c2-rgb),0.72));
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.26), 0 8px 24px rgba(var(--theme-c1-rgb),0.30);
@@ -3279,17 +3450,24 @@
     .fs-nav-group {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 14px;
+      gap: 4px;
+      margin-top: 8px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
     }
+    .fs-nav-group::-webkit-scrollbar { display: none; }
     .fs-nav-item {
       position: relative;
       display: flex;
       align-items: center;
       gap: 14px;
-      min-height: 56px;
-      padding: 10px 12px;
-      border-radius: 20px;
+      min-height: 42px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      flex-shrink: 0;
       color: rgba(182,189,205,0.72);
       text-decoration: none;
       background: transparent;
@@ -3378,12 +3556,13 @@
     .fs-meta { font-size: 12px; color: rgba(150,158,178,0.46); margin-top: 2px; }
     .fs-footer-card {
       position: relative;
-      border-radius: 22px;
-      padding: 12px;
-      min-height: 72px;
+      border-radius: 18px;
+      padding: 10px;
+      min-height: 56px;
       border: 1px solid rgba(255,255,255,0.04);
       background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
       overflow: hidden;
+      flex-shrink: 0;
     }
     .fs-footer-card::before {
       content: "";
@@ -3396,8 +3575,8 @@
     }
     .fs-footer-head { display: flex; align-items: center; gap: 12px; }
     .fs-avatar-wrap {
-      width: 38px;
-      height: 38px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       position: relative;
       flex: 0 0 auto;
@@ -3419,8 +3598,8 @@
       50% { transform: scale(1.03); opacity: 1; }
     }
     .fs-avatar {
-      width: 36px;
-      height: 36px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       overflow: hidden;
       background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),1), rgba(var(--theme-c2-rgb),0.88));
@@ -4049,6 +4228,24 @@
           )}
           {friendsOpen  && window.FriendsPanel    && React.createElement(window.FriendsPanel,    { open: friendsOpen,  onClose: () => setFriendsOpen(false),  user })}
           {cristauxOpen && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open: cristauxOpen, onClose: () => setCristauxOpen(false), user })}
+
+          {/* ── Bottom navigation (mobile only) ── */}
+          <nav className="fs-mobile-nav">
+            {[
+              { target: 'dashboard', label: 'Accueil', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
+              { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
+              { target: 'session',   label: 'Session', icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 20c0-4 3.1-7 7-7s7 3 7 7"/><path d="M19 8v6M16 11h6"/></svg> },
+              { target: 'perso',     label: 'Style',   icon: <svg viewBox="0 0 24 24"><path d="M4 19.5V8"/><path d="M10 19.5V4"/><path d="M16 19.5v-8"/><path d="M22 19.5v-12"/></svg> },
+              { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
+            ].map(item => (
+              <button key={item.target}
+                className={'fs-mobile-nav-btn' + (screen === item.target ? ' active' : '')}
+                onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
+                {item.icon}
+                <span className="fs-mobile-nav-label">{item.label}</span>
+              </button>
+            ))}
+          </nav>
         </>
       );
     }
@@ -4888,39 +5085,37 @@
       ];
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '44px 44px 0', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+          <div style={{ padding: 'clamp(20px,3vh,36px) clamp(20px,3vw,40px) 0', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}` }} />
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Personnalisation</span>
             </div>
-            <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 38, letterSpacing: '-0.04em', lineHeight: 1.05, marginBottom: 16 }}>
+            <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(22px,3.2vh,36px)', letterSpacing: '-0.04em', lineHeight: 1.08, marginBottom: 10 }}>
               Faites-en<br />votre espace.
             </div>
-            <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.75, maxWidth: 400 }}>
-              Adaptez chaque détail de LumenOS à votre identité. L'espace de travail qui vous ressemble vraiment.
+            <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.65 }}>
+              Adaptez chaque détail de LumenOS à votre identité.
             </div>
           </div>
-          <div style={{ flex: 1, padding: '32px 44px 44px', display: 'grid', gridTemplateRows: 'repeat(3,minmax(0,1fr))', gap: 14, minHeight: 0 }}>
+          <div style={{ flex: 1, padding: 'clamp(14px,2vh,24px) clamp(20px,3vw,40px) clamp(16px,2.5vh,32px)', display: 'grid', gridTemplateRows: 'repeat(3,minmax(0,1fr))', gap: 10, minHeight: 0 }}>
             {CARDS.map(card => {
               const h = hov === card.id;
               return (
                 <div key={card.id} onClick={() => onNavigate(card.target)}
                   onMouseEnter={() => setHov(card.id)} onMouseLeave={() => setHov(null)}
-                  style={{ borderRadius: 28, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.048)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)'}`, backdropFilter: 'blur(32px)', padding: '32px 36px', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-4px)' : 'none', boxShadow: h ? `0 32px 72px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.09), 0 0 80px ${card.c1}18` : '0 4px 28px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  {/* Ambient orb */}
-                  <div style={{ position: 'absolute', top: -90, right: -90, width: 280, height: 280, borderRadius: '50%', background: `radial-gradient(circle, ${card.c1}${h ? '2a' : '18'} 0%, ${card.c2}10 55%, transparent 72%)`, transition: 'all 0.45s', transform: h ? 'scale(1.12)' : 'scale(1)', pointerEvents: 'none' }} />
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, position: 'relative' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', background: `linear-gradient(135deg,${card.c1}20,${card.c2}14)`, border: `1px solid ${card.c1}30`, borderRadius: 99, padding: '4px 12px', marginBottom: 18, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: card.c1 }}>{card.eyebrow}</div>
-                      <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 24, letterSpacing: '-0.03em', marginBottom: 10 }}>{card.title}</div>
-                      <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.7, maxWidth: 340 }}>{card.desc}</div>
+                  style={{ borderRadius: 22, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.048)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)'}`, backdropFilter: 'blur(32px)', padding: 'clamp(14px,2.2vh,24px) clamp(16px,2vw,28px)', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.09), 0 0 60px ${card.c1}18` : '0 4px 24px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div style={{ position: 'absolute', top: -70, right: -70, width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${card.c1}${h ? '2a' : '18'} 0%, ${card.c2}10 55%, transparent 72%)`, transition: 'all 0.45s', transform: h ? 'scale(1.12)' : 'scale(1)', pointerEvents: 'none' }} />
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', background: `linear-gradient(135deg,${card.c1}20,${card.c2}14)`, border: `1px solid ${card.c1}30`, borderRadius: 99, padding: '3px 10px', marginBottom: 10, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: card.c1 }}>{card.eyebrow}</div>
+                      <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(16px,2.2vh,22px)', letterSpacing: '-0.03em', marginBottom: 6 }}>{card.title}</div>
+                      <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.6 }}>{card.desc}</div>
                     </div>
-                    <div style={{ width: 46, height: 46, borderRadius: '50%', flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', fontSize: 18, color: h ? '#07070d' : T.muted, boxShadow: h ? `0 8px 28px ${card.c1}44` : 'none', transform: h ? 'scale(1.1)' : 'scale(1)' }}>→</div>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', fontSize: 16, color: h ? '#07070d' : T.muted, boxShadow: h ? `0 6px 22px ${card.c1}44` : 'none', transform: h ? 'scale(1.1)' : 'scale(1)' }}>→</div>
                   </div>
-                  {/* Preview bars */}
-                  <div style={{ display: 'flex', gap: 5, marginTop: 26, position: 'relative' }}>
+                  <div style={{ display: 'flex', gap: 5, marginTop: 14, position: 'relative' }}>
                     {[...Array(card.id === 'fond' ? 8 : card.id === 'fonts' ? 6 : 5)].map((_, i) => (
-                      <div key={i} style={{ height: 4, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
+                      <div key={i} style={{ height: 3, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
                     ))}
                   </div>
                 </div>
@@ -6123,19 +6318,19 @@
       return (
         <>
           {screen === 'auth' && (
-            <div key="auth" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key="auth" className="fs-auth-wrap" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <AuthScreen onAuth={handleAuth} />
             </div>
           )}
           {screen === 'onboarding' && (
-            <div key="onboarding" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key="onboarding" className="fs-auth-wrap" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <OnboardingScreen onDone={handleOnboardDone} />
             </div>
           )}
           {isApp && (
-            <div key={screen} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key={screen} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
-              <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
+              <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} />}
                 {screen === 'tasks' && <TasksScreen />}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen)}
@@ -6175,7 +6370,9 @@
         to   { opacity:1; transform:translateY(0); }
       }
       .fs-friends-panel {
-        position:fixed; top:28px; bottom:28px; left:136px; width:340px;
+        position:fixed; top:28px; bottom:28px;
+        left: max(136px, calc(50vw - 170px));
+        width: min(340px, calc(100vw - 24px));
         z-index:9991;
         background:rgba(8,7,18,0.98);
         border:1px solid rgba(255,255,255,0.09);
