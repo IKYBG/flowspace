@@ -2162,7 +2162,7 @@
             <div style={{position:'absolute',inset:0,pointerEvents:'none',backgroundImage:'linear-gradient(rgba(255,255,255,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.06) 1px,transparent 1px)',backgroundSize:`${FRAME_W/3}px ${FRAME_H/3}px`}} />
             {/* Corner brackets */}
             {[{t:0,l:0,bt:'borderTop',bl:'borderLeft'},{t:0,r:0,bt:'borderTop',bl:'borderRight'},{b:0,l:0,bt:'borderBottom',bl:'borderLeft'},{b:0,r:0,bt:'borderBottom',bl:'borderRight'}].map((c,i)=>(
-              <div key={i} style={{position:'absolute',width:20,height:20,...(c.t!==undefined?{top:0}:{}),..( c.b!==undefined?{bottom:0}:{}),...(c.l!==undefined?{left:0}:{}),...(c.r!==undefined?{right:0}:{}),[c.bt]:'2.5px solid var(--theme-c1)',[c.bl]:'2.5px solid var(--theme-c1)',pointerEvents:'none'}} />
+              <div key={i} style={{position:'absolute',width:20,height:20,...(c.t!==undefined?{top:0}:{}),...(c.b!==undefined?{bottom:0}:{}),...(c.l!==undefined?{left:0}:{}),...(c.r!==undefined?{right:0}:{}),[c.bt]:'2.5px solid var(--theme-c1)',[c.bl]:'2.5px solid var(--theme-c1)',pointerEvents:'none'}} />
             ))}
           </div>
 
