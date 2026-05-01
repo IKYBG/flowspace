@@ -258,72 +258,102 @@
 
     /* ══════════════ MOBILE RESPONSIVE ══════════════ */
     @media (max-width: 768px) {
-      /* App shell: full screen, no gap/padding, single column */
-      .fs-app-shell {
-        grid-template-columns: 1fr !important;
-        padding: 0 !important;
-        gap: 0 !important;
-        height: 100% !important;
-      }
-      /* Sidebar: hidden on mobile */
+      /* ─── Shell ───────────────────────────────────── */
+      .fs-app-shell { grid-template-columns: 1fr !important; padding: 0 !important; gap: 0 !important; height: 100% !important; }
       .fs-sidebar { display: none !important; }
-      /* Bottom mobile nav: visible */
       .fs-mobile-nav { display: flex !important; }
-      /* Main content panel: full screen */
-      .fs-app-main {
-        border-radius: 0 !important;
-        border-left: none !important;
-        border-right: none !important;
-        border-bottom: none !important;
-        box-shadow: none !important;
-      }
-      /* Dashboard header */
-      .fs-dashboard-header {
-        padding: 14px 14px 0 !important;
-        flex-wrap: nowrap !important;
-        gap: 8px !important;
-      }
+      .fs-app-main { border-radius: 0 !important; border: none !important; box-shadow: none !important; }
+
+      /* ─── Dashboard ────────────────────────────────── */
+      .fs-dashboard-header { padding: 16px 16px 0 !important; flex-wrap: nowrap !important; gap: 8px !important; }
       .fs-dh-greeting { display: none !important; }
       .fs-dh-sep { display: none !important; }
-      /* Dashboard grid: vertical list, scrollable */
       .fs-dashboard-grid {
-        display: flex !important;
-        flex-direction: column !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        padding: 12px 12px 94px !important;
-        gap: 10px !important;
-        height: auto !important;
-        max-height: 100% !important;
+        display: flex !important; flex-direction: column !important;
+        overflow-y: auto !important; overflow-x: hidden !important;
+        padding: 10px 12px 94px !important; gap: 10px !important;
+        height: auto !important; max-height: 100% !important;
+        -webkit-overflow-scrolling: touch;
       }
       .fs-dashboard-grid > * {
-        grid-column: unset !important;
-        grid-row: unset !important;
-        min-height: 140px !important;
-        height: 140px !important;
-        flex-shrink: 0 !important;
+        grid-column: unset !important; grid-row: unset !important;
+        min-height: 168px !important; height: 168px !important; flex-shrink: 0 !important;
       }
-      /* Widgets that were 2-row tall: taller on mobile */
-      .fs-widget-tall {
-        height: 200px !important;
-        min-height: 200px !important;
+      .fs-widget-tall { height: 238px !important; min-height: 238px !important; }
+
+      /* ─── Focus / Session ──────────────────────────── */
+      .fs-focus-screen-head { padding: 20px 16px 0 !important; }
+      .fs-focus-screen-head-inner { gap: 14px !important; margin-bottom: 18px !important; }
+      .fs-focus-screen-title { font-size: 28px !important; letter-spacing: -0.04em !important; }
+      .fs-focus-screen-desc { display: none !important; }
+      .fs-focus-screen-badges { gap: 6px !important; }
+      .fs-focus-screen-content { padding: 14px 16px 94px !important; }
+
+      /* ─── Note edit modal → bottom sheet ─────────── */
+      .fs-note-edit-overlay { padding: 0 !important; align-items: flex-end !important; }
+      .fs-note-edit-dialog {
+        border-radius: 28px 28px 0 0 !important;
+        height: 92dvh !important; max-height: 92dvh !important;
+        border-left: none !important; border-right: none !important; border-bottom: none !important;
+        box-shadow: 0 -20px 60px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.06) !important;
       }
+      .fs-note-edit-head { padding: 16px 20px 12px !important; }
+      .fs-note-edit-head-meta { flex-wrap: wrap !important; gap: 6px !important; }
+      .fs-note-edit-head-meta input { flex: 1 1 100px !important; }
+      .fs-note-edit-head-actions { flex-shrink: 0 !important; }
+      .fs-note-edit-title { font-size: 25px !important; }
+      .fs-note-edit-body { padding: 14px 20px 20px !important; }
+
+      /* ─── Mind map: FAB nouvelle note ─────────────── */
+      .fs-map-mobile-fab { display: flex !important; }
     }
+
     @media (max-width: 480px) {
       .fs-dashboard-header { padding: 12px 12px 0 !important; }
-      .fs-dashboard-grid { padding: 10px 10px 94px !important; gap: 8px !important; }
+      .fs-dashboard-grid { padding: 8px 10px 94px !important; gap: 8px !important; }
+      .fs-note-edit-dialog { height: 96dvh !important; max-height: 96dvh !important; }
+      .fs-focus-screen-title { font-size: 24px !important; }
     }
-    /* Safe area for notch/home indicator */
+
+    /* Safe area — notch / home indicator */
     @supports (padding-bottom: env(safe-area-inset-bottom)) {
       @media (max-width: 768px) {
         .fs-mobile-nav {
           padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
           height: calc(76px + env(safe-area-inset-bottom)) !important;
         }
-        .fs-dashboard-grid {
-          padding-bottom: calc(104px + env(safe-area-inset-bottom)) !important;
+        .fs-dashboard-grid,
+        .fs-task-list,
+        .fs-notes-list,
+        .fs-notes-body {
+          padding-bottom: calc(94px + env(safe-area-inset-bottom)) !important;
+        }
+        .fs-note-edit-dialog {
+          padding-bottom: env(safe-area-inset-bottom) !important;
+        }
+        .fs-map-mobile-fab {
+          bottom: calc(88px + env(safe-area-inset-bottom)) !important;
         }
       }
+    }
+
+    /* ─── FAB base (hidden desktop, shown mobile) ────── */
+    .fs-map-mobile-fab {
+      display: none;
+      position: absolute;
+      bottom: 90px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      height: 50px; padding: 0 22px;
+      border-radius: 25px; border: none;
+      background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+      color: #07070d; font-size: 13px; font-weight: 900;
+      font-family: var(--font-body); letter-spacing: -0.01em;
+      cursor: pointer; white-space: nowrap;
+      align-items: center; gap: 8px;
+      box-shadow: 0 14px 38px rgba(var(--theme-c1-rgb), 0.34), 0 4px 10px rgba(0,0,0,0.28);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     /* Mobile bottom navigation bar */
@@ -3459,14 +3489,14 @@
       ];
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
-          <div style={{padding:'32px 36px 0',flexShrink:0}}>
-            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
+          <div className="fs-focus-screen-head" style={{padding:'32px 36px 0',flexShrink:0}}>
+            <div className="fs-focus-screen-head-inner" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Focus</div>
-                <div style={{fontFamily:T.display,fontWeight:850,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Focus</div>
-                <div style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:560,lineHeight:1.55}}>Focus, sessions et cristaux regroupés dans un seul espace à onglets.</div>
+                <div className="fs-focus-screen-title" style={{fontFamily:T.display,fontWeight:850,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Focus</div>
+                <div className="fs-focus-screen-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:560,lineHeight:1.55}}>Focus, sessions et cristaux regroupés dans un seul espace à onglets.</div>
               </div>
-              <div style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
+              <div className="fs-focus-screen-badges" style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
                 <span className="fp-badge">{Math.round(total)} min</span>
                 <span className="xp-badge">{crystalCount} cristaux</span>
               </div>
@@ -3490,7 +3520,7 @@
               })}
             </div>
           </div>
-          <div style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
+          <div className="fs-focus-screen-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
             <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
               {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true })}
@@ -4820,7 +4850,7 @@
                   linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
                 overflow: hidden !important;
               }
-              .fs-tasks-head { padding: 16px 14px 0 !important; flex-shrink: 0 !important; }
+              .fs-tasks-head { padding: 18px 16px 0 !important; flex-shrink: 0 !important; }
               .fs-tasks-hero { align-items: center !important; margin-bottom: 14px !important; gap: 12px !important; }
               .fs-tasks-kicker,
               .fs-tasks-hero > div:first-child > :first-child { display: none !important; }
@@ -4828,25 +4858,26 @@
               .fs-tasks-hero > div:first-child > div:nth-child(2) { font-size: 26px !important; line-height: 0.96 !important; margin-top: 0 !important; letter-spacing: -0.035em !important; }
               .fs-tasks-stats,
               .fs-tasks-hero > div:first-child > div:nth-child(3) { margin-top: 8px !important; gap: 7px !important; font-size: 12px !important; flex-wrap: wrap !important; }
-              .fs-tasks-progress { width: 56px !important; height: 56px !important; transform: scale(0.88); transform-origin: center right; }
+              .fs-tasks-progress { width: 54px !important; height: 54px !important; flex-shrink: 0 !important; }
               .fs-task-composer { display: grid !important; grid-template-columns: 1fr auto !important; gap: 9px !important; align-items: center !important; margin-bottom: 12px !important; }
-              .fs-task-input-wrap { grid-column: 1 / -1 !important; height: 48px !important; border-radius: 16px !important; padding: 0 13px !important; gap: 9px !important; background: rgba(255,255,255,0.055) !important; }
+              .fs-task-input-wrap { grid-column: 1 / -1 !important; height: 50px !important; border-radius: 16px !important; padding: 0 14px !important; gap: 10px !important; background: rgba(255,255,255,0.058) !important; border-color: rgba(255,255,255,0.10) !important; }
               .fs-task-input-wrap input { min-width: 0 !important; font-size: 16px !important; }
               .fs-task-priority-row { gap: 7px !important; }
-              .fs-task-priority-row button { width: 40px !important; height: 40px !important; border-radius: 13px !important; }
-              .fs-task-add-btn { height: 40px !important; min-width: 108px !important; padding: 0 16px !important; border-radius: 13px !important; box-shadow: none !important; }
-              .fs-task-filters { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 7px !important; padding-bottom: 12px !important; }
-              .fs-task-filters button { justify-content: center !important; min-width: 0 !important; height: 38px !important; padding: 0 7px !important; font-size: 11px !important; border-radius: 13px !important; }
-              .fs-task-filters button span { padding: 1px 5px !important; }
-              .fs-task-list { padding: 10px 14px 104px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+              .fs-task-priority-row button { width: 42px !important; height: 42px !important; border-radius: 14px !important; }
+              .fs-task-add-btn { height: 42px !important; min-width: 108px !important; padding: 0 16px !important; border-radius: 14px !important; box-shadow: none !important; font-size: 13px !important; }
+              .fs-task-filters { display: flex !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; scrollbar-width: none !important; flex-wrap: nowrap !important; gap: 7px !important; padding-bottom: 14px !important; }
+              .fs-task-filters::-webkit-scrollbar { display: none !important; }
+              .fs-task-filters button { flex-shrink: 0 !important; height: 38px !important; padding: 0 14px !important; font-size: 12px !important; border-radius: 99px !important; }
+              .fs-task-filters button span { padding: 1px 6px !important; }
+              .fs-task-list { padding: 10px 16px 94px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
               .fs-task-section-list { gap: 8px !important; }
-              .fs-task-row { align-items: flex-start !important; gap: 10px !important; padding: 14px !important; border-radius: 18px !important; background: rgba(255,255,255,0.04) !important; transform: none !important; }
-              .fs-task-row > div:first-child { width: 24px !important; height: 24px !important; border-radius: 8px !important; margin-top: 1px !important; }
-              .fs-task-row > span:first-of-type { min-width: 0 !important; font-size: 14px !important; line-height: 1.35 !important; white-space: normal !important; }
-              .fs-task-row > span:nth-of-type(2), .fs-task-row > span:nth-of-type(3) { font-size: 9px !important; padding: 3px 7px !important; margin-top: 1px !important; }
-              .fs-task-row > button { opacity: 1 !important; width: 32px !important; height: 32px !important; font-size: 18px !important; background: rgba(251,113,133,0.12) !important; margin-top: -4px !important; }
+              .fs-task-row { align-items: flex-start !important; gap: 12px !important; padding: 15px !important; border-radius: 18px !important; background: rgba(255,255,255,0.04) !important; border-color: rgba(255,255,255,0.06) !important; transform: none !important; min-height: 56px !important; }
+              .fs-task-row > div:first-child { width: 24px !important; height: 24px !important; border-radius: 8px !important; margin-top: 2px !important; flex-shrink: 0 !important; }
+              .fs-task-row > span:first-of-type { min-width: 0 !important; font-size: 14px !important; line-height: 1.38 !important; white-space: normal !important; }
+              .fs-task-row > span:nth-of-type(2), .fs-task-row > span:nth-of-type(3) { font-size: 9px !important; padding: 3px 7px !important; margin-top: 2px !important; }
+              .fs-task-row > button { opacity: 1 !important; width: 34px !important; height: 34px !important; font-size: 18px !important; background: rgba(251,113,133,0.12) !important; margin-top: -6px !important; border-radius: 10px !important; }
               .fs-task-done-head { margin: 18px 0 10px !important; }
-              .fs-task-done-head button { height: 32px !important; padding: 0 10px !important; transform: none !important; }
+              .fs-task-done-head button { height: 34px !important; padding: 0 12px !important; transform: none !important; font-size: 11px !important; }
               .fs-task-empty { height: 260px !important; padding-bottom: 82px !important; }
             }
           `}</style>
@@ -4999,7 +5030,10 @@
       const [tagFilter, setTagFilter] = React.useState('all');
       const [folderFilter, setFolderFilter] = React.useState('all');
       const [preview, setPreview] = React.useState(false);
+      const [view, setView] = React.useState('edit');
       const [mobilePane, setMobilePane] = React.useState('list');
+      const [mapPan, setMapPan] = React.useState({ x: 0, y: 0 });
+      const [drag, setDrag] = React.useState(null);
 
       React.useEffect(() => { if (window.fsWriteNotes) window.fsWriteNotes(notes); }, [notes]);
       React.useEffect(() => {
@@ -5013,6 +5047,14 @@
         window.addEventListener('fs-remote-update', handler);
         return () => window.removeEventListener('fs-remote-update', handler);
       }, []);
+      React.useEffect(() => {
+        if (!drag) return;
+        const move = e => setMapPan({ x: e.clientX - drag.x, y: e.clientY - drag.y });
+        const up = () => setDrag(null);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+      }, [drag]);
 
       const allTags = Array.from(new Set(notes.flatMap(n => n.tags || []))).sort();
       const folders = Array.from(new Set(notes.map(n => n.folder || FS_NOTE_DEFAULT_FOLDER))).sort();
@@ -5031,21 +5073,27 @@
         const now = new Date().toISOString();
         setNotes(list => list.map(n => n.id === selected?.id ? { ...n, ...patch, updatedAt:now } : n));
       };
-      const createNote = () => {
+      const createNote = (seed = {}) => {
         const now = new Date().toISOString();
         const note = fsNormalizeNote({
           id:`note-${Date.now()}`,
-          title:'Nouvelle note',
-          content:'# Nouvelle note\n\n- Capture une idée\n- Relie-la avec des tags',
-          folder: folderFilter !== 'all' ? folderFilter : FS_NOTE_DEFAULT_FOLDER,
-          tags: tagFilter !== 'all' ? [tagFilter] : [],
+          title: seed.title || 'Nouvelle note',
+          content: seed.content || '# Nouvelle note\n\n- Capture une idée\n- Relie-la avec [[une autre note]] ou un #tag',
+          folder: seed.folder || (folderFilter !== 'all' ? folderFilter : FS_NOTE_DEFAULT_FOLDER),
+          tags: seed.tags || (tagFilter !== 'all' ? [tagFilter] : []),
           createdAt:now,
           updatedAt:now,
         });
         setNotes(list => [note, ...list]);
         setSelectedId(note.id);
         setPreview(false);
+        setView('edit');
         setMobilePane('editor');
+        addToast({ message:'Nouvelle note créée', type:'success', icon:'+' });
+      };
+      const duplicateNote = () => {
+        if (!selected) return;
+        createNote({ title:`${selected.title || 'Note'} copie`, content:selected.content, folder:selected.folder, tags:selected.tags || [] });
       };
       const deleteNote = id => {
         const deleted = notes.find(n => n.id === id);
@@ -5053,119 +5101,118 @@
         setNotes(next);
         setSelectedId(next[0]?.id || null);
         setMobilePane('list');
-        if (deleted) addToast({ message:`"${deleted.title}" supprimée`, type:'success', icon:'✕', action:{ label:'Annuler', fn:() => { setNotes(list => [deleted, ...list]); setSelectedId(deleted.id); } } });
+        if (deleted) addToast({ message:`"${deleted.title}" supprimée`, type:'success', icon:'x', action:{ label:'Annuler', fn:() => { setNotes(list => [deleted, ...list]); setSelectedId(deleted.id); } } });
       };
       const fmtDate = iso => {
         try { return new Date(iso).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }); } catch(e) { return 'Maintenant'; }
       };
       const previewText = note => String(note.content || '').replace(/[#*_`[\]()]/g, '').split('\n').map(l => l.trim()).filter(Boolean).slice(0,2).join(' · ') || 'Aucun contenu';
+      const noteWords = note => String(note?.content || '').trim().split(/\s+/).filter(Boolean).length;
+      const backlinks = selected ? notes.filter(n => n.id !== selected.id && String(n.content || '').toLowerCase().includes((selected.title || '').toLowerCase())) : [];
+      const graphNotes = filtered.slice(0, 34);
+      const graphLinks = [];
+      graphNotes.forEach(a => {
+        graphNotes.forEach(b => {
+          if (a.id !== b.id && String(a.content || '').toLowerCase().includes((b.title || '').toLowerCase())) graphLinks.push([a.id,b.id]);
+        });
+      });
+      const graphPos = id => {
+        const i = Math.max(0, graphNotes.findIndex(n => n.id === id));
+        const angle = (i / Math.max(1, graphNotes.length)) * Math.PI * 2;
+        const ring = 145 + (i % 3) * 54;
+        return { x: 460 + Math.cos(angle) * ring + mapPan.x, y: 310 + Math.sin(angle) * ring + mapPan.y };
+      };
 
       return (
         <div className={`fs-notes-screen fs-notes-mobile-${mobilePane}`}>
           <style>{`
-            .fs-notes-screen{width:100%;height:100%;display:grid;grid-template-columns:minmax(280px,34%) 1fr;overflow:hidden;font-family:${T.font};}
-            .fs-notes-left{border-right:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.012));display:flex;flex-direction:column;min-width:0;}
+            .fs-notes-screen{width:100%;height:100%;display:grid;grid-template-columns:300px minmax(0,1fr) 260px;overflow:hidden;font-family:${T.font};background:linear-gradient(180deg,rgba(255,255,255,0.018),rgba(255,255,255,0.006));}
+            .fs-notes-left{border-right:1px solid rgba(255,255,255,0.065);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.42),rgba(var(--mineral-bg-rgb),0.34));display:flex;flex-direction:column;min-width:0;}
             .fs-notes-editor{display:flex;flex-direction:column;min-width:0;overflow:hidden;}
-            .fs-note-card{transition:all .2s cubic-bezier(.16,1,.3,1);}
-            .fs-note-card:hover{transform:translateY(-1px);background:rgba(255,255,255,0.052)!important;border-color:rgba(255,255,255,0.105)!important;}
+            .fs-notes-inspector{border-left:1px solid rgba(255,255,255,0.065);background:linear-gradient(180deg,rgba(255,255,255,0.026),rgba(255,255,255,0.01));display:flex;flex-direction:column;min-width:0;}
+            .fs-note-card{transition:transform .2s cubic-bezier(.16,1,.3,1),background .2s,border-color .2s,box-shadow .2s;}
+            .fs-note-card:hover{transform:translateY(-1px);background:rgba(255,255,255,0.052)!important;border-color:rgba(255,255,255,0.12)!important;}
             .fs-note-input::placeholder,.fs-note-textarea::placeholder{color:rgba(248,246,252,0.24);}
             .fs-note-textarea{scrollbar-width:thin;}
-            @media (max-width: 920px){
-              .fs-notes-screen{grid-template-columns:1fr;grid-template-rows:320px 1fr;}
-              .fs-notes-left{border-right:none;border-bottom:1px solid rgba(255,255,255,0.06);}
-            }
-            @media (max-width: 768px){
-              .fs-notes-screen{display:block!important;height:100%!important;background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01));position:relative!important;}
-              .fs-notes-mobile-list .fs-notes-editor{display:none!important;}
-              .fs-notes-mobile-editor .fs-notes-left{display:none!important;}
-              .fs-notes-left{height:100%!important;max-height:none!important;border-right:none!important;border-bottom:none!important;background:rgba(8,9,20,0.74)!important;}
-              .fs-notes-head{position:sticky!important;top:0!important;z-index:2!important;padding:16px 16px 12px!important;background:linear-gradient(180deg,rgba(8,9,20,0.98),rgba(8,9,20,0.86))!important;border-bottom:1px solid rgba(255,255,255,0.06)!important;}
-              .fs-notes-kicker{display:none!important;}
-              .fs-notes-title{font-size:25px!important;margin-top:0!important;letter-spacing:-0.04em!important;}
-              .fs-notes-title + div{font-size:11px!important;margin-top:4px!important;}
-              .fs-notes-sub{font-size:11px!important;margin-top:4px!important;}
-              .fs-notes-head > div:first-child > button,
-              .fs-notes-create{width:42px!important;height:42px!important;border-radius:15px!important;box-shadow:0 10px 24px rgba(var(--theme-c1-rgb),0.18)!important;}
-              .fs-notes-head > div:nth-child(2),
-              .fs-notes-search{height:42px!important;margin-top:14px!important;border-radius:14px!important;}
-              .fs-notes-head > div:nth-child(3),
-              .fs-notes-filters{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin-top:10px!important;}
-              .fs-notes-head select,
-              .fs-notes-filter{height:40px!important;font-size:12px!important;border-radius:13px!important;min-width:0!important;}
-              .fs-notes-list{flex:1 1 auto!important;display:block!important;overflow-x:hidden!important;overflow-y:auto!important;padding:12px 16px 104px!important;scroll-snap-type:none;-webkit-overflow-scrolling:touch;}
-              .fs-notes-list::-webkit-scrollbar{display:none;}
-              .fs-note-card{width:100%!important;max-width:none!important;min-height:116px!important;margin-bottom:10px!important;padding:15px 15px!important;border-radius:18px!important;scroll-snap-align:none;animation:none!important;}
-              .fs-note-card:hover{transform:none!important;}
-              .fs-notes-editor{height:100%!important;min-height:0!important;background:rgba(2,3,11,0.18);}
-              .fs-notes-back{display:flex!important;}
-              .fs-notes-editor-head{padding:12px 14px 12px!important;border-bottom-color:rgba(255,255,255,0.06)!important;background:rgba(7,8,18,0.92)!important;}
-              .fs-notes-editor-top{align-items:stretch!important;flex-direction:column!important;gap:10px!important;margin-bottom:12px!important;}
-              .fs-notes-meta-row{width:100%!important;display:grid!important;grid-template-columns:1fr 1.35fr!important;gap:8px!important;}
-              .fs-notes-meta-row input{width:100%!important;min-width:0!important;height:40px!important;border-radius:13px!important;font-size:12px!important;}
-              .fs-notes-actions{width:100%!important;display:grid!important;grid-template-columns:1fr 44px!important;gap:8px!important;}
-              .fs-notes-actions button{height:40px!important;border-radius:13px!important;}
-              .fs-notes-title-input{font-size:27px!important;line-height:1.08!important;letter-spacing:-0.045em!important;}
-              .fs-notes-updated{font-size:10px!important;margin-top:6px!important;line-height:1.35!important;}
-              .fs-notes-body{padding:14px 14px 104px!important;overflow:auto!important;}
-              .fs-note-textarea{min-height:100%!important;border-radius:20px!important;padding:18px 17px!important;font-size:16px!important;line-height:1.65!important;}
-              .fs-notes-preview{border-radius:20px!important;padding:19px 18px!important;}
-              .fs-notes-empty{padding:22px 18px 106px!important;}
+            .fs-notes-rail-btn{height:34px;border-radius:12px;border:1px solid rgba(255,255,255,0.065);background:rgba(255,255,255,0.03);color:${T.muted};font:800 11px var(--font-body);cursor:pointer;}
+            .fs-notes-rail-btn.active{background:rgba(var(--theme-c1-rgb),0.12);border-color:rgba(var(--theme-c1-rgb),0.28);color:${T.c1};}
+            .fs-map-canvas{position:relative;width:100%;height:100%;overflow:hidden;cursor:grab;background-image:radial-gradient(rgba(255,255,255,0.055) 1px,transparent 1px);background-size:28px 28px;}
+            .fs-map-canvas.dragging{cursor:grabbing;}
+            .fs-map-node{position:absolute;width:178px;min-height:82px;border-radius:20px;padding:14px 15px;text-align:left;border:1px solid rgba(255,255,255,0.08);background:rgba(var(--mineral-surface-rgb),0.78);color:${T.text};box-shadow:0 18px 42px rgba(0,0,0,0.28);transition:transform .18s,border-color .18s,background .18s;}
+            .fs-map-node:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),0.30);background:rgba(var(--mineral-surface-rgb),0.94);}
+            @media (max-width:1180px){.fs-notes-screen{grid-template-columns:280px minmax(0,1fr)}.fs-notes-inspector{display:none}}
+            @media (max-width:768px){
+              .fs-notes-screen{display:block!important;height:100%!important}
+              .fs-notes-mobile-list .fs-notes-editor,.fs-notes-mobile-list .fs-notes-inspector{display:none!important}
+              .fs-notes-mobile-editor .fs-notes-left,.fs-notes-mobile-editor .fs-notes-inspector{display:none!important}
+              .fs-notes-left,.fs-notes-editor{height:100%!important}
+              .fs-notes-head{padding:18px 16px 12px!important}
+              .fs-notes-list{padding:8px 14px 94px!important;-webkit-overflow-scrolling:touch;}
+              .fs-note-card{border-radius:16px!important;padding:14px 15px!important;margin-bottom:8px!important;}
+              .fs-notes-editor-head{padding:14px 16px 10px!important}
+              .fs-notes-editor-top{flex-direction:column!important;align-items:stretch!important;gap:10px!important}
+              .fs-notes-meta-row{gap:6px!important;flex-wrap:wrap!important}
+              .fs-notes-meta-row input{flex:1 1 100px!important;min-width:0!important}
+              .fs-notes-actions{justify-content:flex-end!important;gap:6px!important}
+              .fs-notes-back{display:flex!important}
+              .fs-notes-title-input{font-size:26px!important;letter-spacing:-0.04em!important}
+              .fs-notes-body{padding:12px 14px 94px!important}
+              .fs-note-textarea{border-radius:16px!important;padding:16px!important;font-size:15px!important;line-height:1.82!important}
+              .fs-notes-preview{border-radius:16px!important;padding:18px!important}
+              .fs-notes-rail-btn{height:40px!important;font-size:12px!important;border-radius:14px!important}
             }
           `}</style>
 
           <aside className="fs-notes-left">
-            <div className="fs-notes-head" style={{ padding:'26px 26px 18px', flexShrink:0 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:14 }}>
+            <div className="fs-notes-head" style={{ padding:'22px 20px 16px', flexShrink:0 }}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
                 <div>
-                  <div className="fs-notes-kicker"><Lbl ch="knowledge vault" /></div>
-                  <div className="fs-notes-title" style={{ fontFamily:T.display, fontWeight:850, fontSize:30, letterSpacing:'-0.045em', marginTop:8, color:T.text }}>Bibliothèque</div>
-                  <div style={{ fontSize:12, color:T.muted, marginTop:7 }}>{notes.length} note{notes.length>1?'s':''} · dossiers, tags, markdown</div>
+                  <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Vault</div>
+                  <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Notes</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:5}}>{notes.length} notes · {folders.length} dossiers · {allTags.length} tags</div>
                 </div>
-                <button onClick={createNote} title="Créer une note" style={{ width:44, height:44, borderRadius:15, border:'none', cursor:'pointer', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#07070d', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 16px 38px rgba(var(--theme-c1-rgb),0.24)' }}>
+                <button className="fs-notes-create" onClick={()=>createNote()} title="Créer une note" style={{width:44,height:44,borderRadius:16,border:'none',cursor:'pointer',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',display:'grid',placeItems:'center',boxShadow:'0 16px 38px rgba(var(--theme-c1-rgb),0.24)'}}>
                   <svg width={18} height={18} viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="#07070d" strokeWidth={2.2} strokeLinecap="round"/></svg>
                 </button>
               </div>
-
-              <div style={{ marginTop:18, height:44, borderRadius:15, background:'rgba(255,255,255,0.045)', border:'1px solid rgba(255,255,255,0.075)', display:'flex', alignItems:'center', gap:10, padding:'0 14px' }}>
-                <svg width={15} height={15} viewBox="0 0 16 16" fill="none" style={{ opacity:.35, flexShrink:0 }}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
-                <input className="fs-note-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher une note..." style={{ flex:1, minWidth:0, background:'none', border:'none', outline:'none', color:T.text, fontFamily:T.font, fontSize:13 }} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:16}}>
+                {['edit','map'].map(v => <button key={v} onClick={()=>setView(v)} className={'fs-notes-rail-btn'+(view===v?' active':'')}>{v === 'edit' ? 'Écrire' : 'Carte mentale'}</button>)}
               </div>
-
-              <div style={{ display:'flex', gap:8, marginTop:12 }}>
-                <select value={folderFilter} onChange={e=>setFolderFilter(e.target.value)} style={{ flex:1, minWidth:0, height:36, borderRadius:12, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.075)', color:T.text, fontFamily:T.font, fontSize:11, outline:'none', padding:'0 10px' }}>
-                  <option value="all">Tous les dossiers</option>
+              <div className="fs-notes-search" style={{ marginTop:12, height:42, borderRadius:15, background:'rgba(255,255,255,0.045)', border:'1px solid rgba(255,255,255,0.075)', display:'flex', alignItems:'center', gap:10, padding:'0 13px' }}>
+                <svg width={15} height={15} viewBox="0 0 16 16" fill="none" style={{ opacity:.35, flexShrink:0 }}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
+                <input className="fs-note-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher titre, contenu, tag..." style={{ flex:1, minWidth:0, background:'none', border:'none', outline:'none', color:T.text, fontFamily:T.font, fontSize:12 }} />
+              </div>
+              <div className="fs-notes-filters" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:10 }}>
+                <select className="fs-notes-filter" value={folderFilter} onChange={e=>setFolderFilter(e.target.value)} style={{minWidth:0,height:36,borderRadius:12,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,fontFamily:T.font,fontSize:11,outline:'none',padding:'0 9px'}}>
+                  <option value="all">Dossiers</option>
                   {folders.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
-                <select value={tagFilter} onChange={e=>setTagFilter(e.target.value)} style={{ flex:1, minWidth:0, height:36, borderRadius:12, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.075)', color:T.text, fontFamily:T.font, fontSize:11, outline:'none', padding:'0 10px' }}>
-                  <option value="all">Tous les tags</option>
+                <select className="fs-notes-filter" value={tagFilter} onChange={e=>setTagFilter(e.target.value)} style={{minWidth:0,height:36,borderRadius:12,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,fontFamily:T.font,fontSize:11,outline:'none',padding:'0 9px'}}>
+                  <option value="all">Tags</option>
                   {allTags.map(t => <option key={t} value={t}>#{t}</option>)}
                 </select>
               </div>
             </div>
-
-            <div className="fs-notes-list" style={{ flex:1, overflowY:'auto', padding:'0 18px 22px' }}>
+            <div className="fs-notes-list" style={{ flex:1, overflowY:'auto', padding:'0 14px 18px' }}>
               {filtered.length ? filtered.map((n,i) => {
                 const active = selected?.id === n.id;
                 return (
-                  <button key={n.id} onClick={()=>{ setSelectedId(n.id); setMobilePane('editor'); }} className="fs-note-card" style={{ width:'100%', textAlign:'left', borderRadius:18, border:`1px solid ${active ? c1(0.34) : 'rgba(255,255,255,0.055)'}`, background:active ? c1(0.115) : 'rgba(255,255,255,0.025)', padding:'14px 15px', marginBottom:9, cursor:'pointer', fontFamily:T.font, animation:`friendCardIn .32s ${i*0.025}s both` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}>
-                      <div style={{ color:T.text, fontWeight:800, fontSize:13, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{n.title || 'Note sans titre'}</div>
-                      <div style={{ color:active ? T.c1 : T.muted, fontSize:9, fontFamily:T.mono, flexShrink:0 }}>{fmtDate(n.updatedAt)}</div>
+                  <button key={n.id} onClick={()=>{ setSelectedId(n.id); setMobilePane('editor'); }} className="fs-note-card" style={{width:'100%',textAlign:'left',borderRadius:18,border:`1px solid ${active ? c1(0.34) : 'rgba(255,255,255,0.055)'}`,background:active ? c1(0.12) : 'rgba(255,255,255,0.025)',padding:'14px 14px',marginBottom:9,cursor:'pointer',fontFamily:T.font,animation:`friendCardIn .28s ${i*0.018}s both`}}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center'}}>
+                      <div style={{color:T.text,fontWeight:850,fontSize:13,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.title || 'Note sans titre'}</div>
+                      <div style={{color:active ? T.c1 : T.muted,fontSize:9,fontFamily:T.mono,flexShrink:0}}>{fmtDate(n.updatedAt)}</div>
                     </div>
-                    <div style={{ color:'rgba(248,246,252,0.38)', fontSize:11, lineHeight:1.45, marginTop:7, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{previewText(n)}</div>
-                    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
-                      <span style={{ fontSize:9, color:T.muted, border:'1px solid rgba(255,255,255,0.07)', borderRadius:99, padding:'3px 7px' }}>{n.folder || FS_NOTE_DEFAULT_FOLDER}</span>
-                      {(n.tags || []).slice(0,3).map(t => <span key={t} style={{ fontSize:9, color:T.c1, background:c1(0.09), border:`1px solid ${c1(0.16)}`, borderRadius:99, padding:'3px 7px' }}>#{t}</span>)}
+                    <div style={{color:'rgba(248,246,252,0.40)',fontSize:11,lineHeight:1.45,marginTop:7,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{previewText(n)}</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>
+                      <span style={{fontSize:9,color:T.muted,border:'1px solid rgba(255,255,255,0.07)',borderRadius:99,padding:'3px 7px'}}>{n.folder || FS_NOTE_DEFAULT_FOLDER}</span>
+                      {(n.tags || []).slice(0,2).map(t => <span key={t} style={{fontSize:9,color:T.c1,background:c1(0.09),border:`1px solid ${c1(0.16)}`,borderRadius:99,padding:'3px 7px'}}>#{t}</span>)}
                     </div>
                   </button>
                 );
               }) : (
-                <div style={{ height:220, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', textAlign:'center', gap:10, color:T.muted }}>
-                  <div style={{ width:50, height:50, borderRadius:18, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <svg width={22} height={22} viewBox="0 0 24 24" fill="none"><path d="M5 4h10l4 4v12H5V4Z" stroke="rgba(248,246,252,0.32)" strokeWidth={1.7}/><path d="M15 4v5h5M8 13h8M8 17h6" stroke="rgba(248,246,252,0.32)" strokeWidth={1.7} strokeLinecap="round"/></svg>
-                  </div>
-                  <div style={{ fontSize:13, fontWeight:700, color:'rgba(248,246,252,0.48)' }}>Aucune note trouvée</div>
-                  <button onClick={createNote} style={{ marginTop:3, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.045)', color:T.text, borderRadius:12, padding:'8px 13px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:T.font }}>Créer une note</button>
+                <div style={{height:220,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',textAlign:'center',gap:10,color:T.muted}}>
+                  <div style={{fontSize:13,fontWeight:800,color:'rgba(248,246,252,0.50)'}}>Aucune note trouvée</div>
+                  <button onClick={()=>createNote()} style={{border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.045)',color:T.text,borderRadius:12,padding:'8px 13px',fontSize:11,fontWeight:800,cursor:'pointer',fontFamily:T.font}}>Créer une note</button>
                 </div>
               )}
             </div>
@@ -5173,50 +5220,406 @@
 
           <main className="fs-notes-editor">
             {selected ? (
-              <>
-                <div className="fs-notes-editor-head" style={{ padding:'26px 32px 16px', borderBottom:'1px solid rgba(255,255,255,0.055)', flexShrink:0 }}>
-                  <button className="fs-notes-back" onClick={()=>setMobilePane('list')} style={{ display:'none', alignItems:'center', gap:8, height:38, padding:'0 12px', marginBottom:10, borderRadius:13, border:'1px solid rgba(255,255,255,0.075)', background:'rgba(255,255,255,0.04)', color:T.text, fontFamily:T.font, fontSize:12, fontWeight:800, cursor:'pointer' }}>
-                    <svg width={15} height={15} viewBox="0 0 16 16" fill="none"><path d="M10 3 5 8l5 5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Notes
-                  </button>
-                  <div className="fs-notes-editor-top" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:16 }}>
-                    <div className="fs-notes-meta-row" style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                      <input value={selected.folder || FS_NOTE_DEFAULT_FOLDER} onChange={e=>persistSelected({ folder:e.target.value || FS_NOTE_DEFAULT_FOLDER })} style={{ height:34, width:140, borderRadius:11, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.075)', color:T.text, outline:'none', fontFamily:T.font, fontSize:11, padding:'0 11px' }} />
-                      <input value={(selected.tags || []).join(', ')} onChange={e=>persistSelected({ tags:e.target.value.split(',').map(t=>t.trim().replace(/^#/, '')).filter(Boolean) })} placeholder="tags, séparés, par virgules" style={{ height:34, minWidth:220, borderRadius:11, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.075)', color:T.text, outline:'none', fontFamily:T.font, fontSize:11, padding:'0 11px' }} />
+              view === 'map' ? (
+                <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+                  <div style={{padding:'18px 24px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+                    <div>
+                      <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text}}>Carte mentale</div>
+                      <div style={{fontSize:11,color:T.muted,marginTop:5}}>Clique-glisse le canevas. Les liens viennent des titres cités dans tes notes.</div>
                     </div>
-                    <div className="fs-notes-actions" style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <button onClick={()=>setPreview(p=>!p)} style={{ height:34, borderRadius:11, border:`1px solid ${preview ? c1(0.28) : 'rgba(255,255,255,0.075)'}`, background:preview ? c1(0.105) : 'rgba(255,255,255,0.035)', color:preview ? T.c1 : T.muted, padding:'0 12px', cursor:'pointer', fontSize:11, fontWeight:800, fontFamily:T.font }}>{preview ? 'Éditer' : 'Aperçu'}</button>
-                      <button onClick={()=>deleteNote(selected.id)} title="Supprimer" style={{ width:34, height:34, borderRadius:11, border:'1px solid rgba(251,113,133,0.22)', background:'rgba(251,113,133,0.09)', color:T.rose, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <svg width={14} height={14} viewBox="0 0 14 14" fill="none"><path d="M2 3.5h10M5.4 1.8h3.2M4 3.5l.6 8.2h4.8l.6-8.2" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </button>
-                    </div>
+                    <button onClick={()=>setMapPan({x:0,y:0})} style={{height:36,borderRadius:12,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:T.muted,fontFamily:T.font,fontSize:11,fontWeight:850,cursor:'pointer',padding:'0 13px'}}>Recentrer</button>
                   </div>
-                  <input className="fs-notes-title-input" value={selected.title} onChange={e=>persistSelected({ title:e.target.value })} placeholder="Titre de la note" style={{ width:'100%', background:'none', border:'none', outline:'none', color:T.text, fontFamily:T.display, fontSize:42, fontWeight:850, letterSpacing:'-0.055em', lineHeight:1.05 }} />
-                  <div style={{ color:T.muted, fontSize:11, marginTop:8 }}>Modifiée {fmtDate(selected.updatedAt)} · titres, listes, **gras**, *italique*, [liens](https://...)</div>
+                  <div className={'fs-map-canvas'+(drag?' dragging':'')} onMouseDown={e => { if (e.target === e.currentTarget || e.target.tagName === 'svg') setDrag({ x:e.clientX-mapPan.x, y:e.clientY-mapPan.y }); }}>
+                    <svg width="100%" height="100%" style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+                      {graphLinks.map(([a,b],i) => {
+                        const pa = graphPos(a), pb = graphPos(b);
+                        return <line key={i} x1={pa.x+89} y1={pa.y+41} x2={pb.x+89} y2={pb.y+41} stroke="rgba(var(--theme-c1-rgb),0.24)" strokeWidth="1.2" />;
+                      })}
+                    </svg>
+                    {graphNotes.map(n => {
+                      const p = graphPos(n.id);
+                      const active = n.id === selected.id;
+                      return (
+                        <button key={n.id} className="fs-map-node" onClick={()=>setSelectedId(n.id)} style={{left:p.x,top:p.y,borderColor:active?'rgba(var(--theme-c1-rgb),0.42)':'rgba(255,255,255,0.08)',background:active?'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.18),rgba(var(--mineral-surface-rgb),0.86))':undefined}}>
+                          <div style={{fontSize:13,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{n.title}</div>
+                          <div style={{fontSize:10,color:T.muted,marginTop:6,lineHeight:1.35,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{previewText(n)}</div>
+                          <div style={{fontSize:9,color:active?T.c1:T.muted,marginTop:9}}>{n.folder || FS_NOTE_DEFAULT_FOLDER}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="fs-notes-body" style={{ flex:1, overflow:'hidden', padding:'22px 32px 32px' }}>
-                  {preview ? (
-                    <div className="fs-notes-preview" style={{ height:'100%', overflowY:'auto', borderRadius:24, background:'rgba(255,255,255,0.026)', border:'1px solid rgba(255,255,255,0.06)', padding:'26px 28px', boxSizing:'border-box' }}>
-                      <MarkdownPreview content={selected.content} />
+              ) : (
+                <>
+                  <div className="fs-notes-editor-head" style={{padding:'22px 28px 15px',borderBottom:'1px solid rgba(255,255,255,0.055)',flexShrink:0}}>
+                    <button className="fs-notes-back" onClick={()=>setMobilePane('list')} style={{display:'none',alignItems:'center',gap:8,height:38,padding:'0 12px',marginBottom:10,borderRadius:13,border:'1px solid rgba(255,255,255,0.075)',background:'rgba(255,255,255,0.04)',color:T.text,fontFamily:T.font,fontSize:12,fontWeight:800,cursor:'pointer'}}>Notes</button>
+                    <div className="fs-notes-editor-top" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14}}>
+                      <div className="fs-notes-meta-row" style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                        <input value={selected.folder || FS_NOTE_DEFAULT_FOLDER} onChange={e=>persistSelected({ folder:e.target.value || FS_NOTE_DEFAULT_FOLDER })} style={{height:34,width:140,borderRadius:11,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,outline:'none',fontFamily:T.font,fontSize:11,padding:'0 11px'}} />
+                        <input value={(selected.tags || []).join(', ')} onChange={e=>persistSelected({ tags:e.target.value.split(',').map(t=>t.trim().replace(/^#/, '')).filter(Boolean) })} placeholder="tags séparés par virgules" style={{height:34,minWidth:220,borderRadius:11,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,outline:'none',fontFamily:T.font,fontSize:11,padding:'0 11px'}} />
+                      </div>
+                      <div className="fs-notes-actions" style={{display:'flex',gap:8,alignItems:'center'}}>
+                        <button onClick={()=>setPreview(p=>!p)} style={{height:34,borderRadius:11,border:`1px solid ${preview ? c1(0.28) : 'rgba(255,255,255,0.075)'}`,background:preview ? c1(0.105) : 'rgba(255,255,255,0.035)',color:preview ? T.c1 : T.muted,padding:'0 12px',cursor:'pointer',fontSize:11,fontWeight:800,fontFamily:T.font}}>{preview ? 'Éditer' : 'Aperçu'}</button>
+                        <button onClick={duplicateNote} title="Dupliquer" style={{width:34,height:34,borderRadius:11,border:'1px solid rgba(255,255,255,0.075)',background:'rgba(255,255,255,0.035)',color:T.muted,cursor:'pointer'}}>⧉</button>
+                        <button onClick={()=>deleteNote(selected.id)} title="Supprimer" style={{width:34,height:34,borderRadius:11,border:'1px solid rgba(251,113,133,0.22)',background:'rgba(251,113,133,0.09)',color:T.rose,cursor:'pointer'}}>×</button>
+                      </div>
                     </div>
-                  ) : (
-                    <textarea className="fs-note-textarea" value={selected.content} onChange={e=>persistSelected({ content:e.target.value })} placeholder={"Commence à écrire...\n\n# Titre\n- Point important\n**gras**, *italique*, [lien](https://example.com)"} style={{ width:'100%', height:'100%', resize:'none', outline:'none', border:'1px solid rgba(255,255,255,0.06)', borderRadius:24, background:'rgba(255,255,255,0.026)', color:'rgba(248,246,252,0.86)', padding:'24px 26px', boxSizing:'border-box', fontFamily:T.font, fontSize:15, lineHeight:1.8 }} />
-                  )}
-                </div>
-              </>
+                    <input className="fs-notes-title-input" value={selected.title} onChange={e=>persistSelected({ title:e.target.value })} placeholder="Titre de la note" style={{width:'100%',background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.display,fontSize:42,fontWeight:850,letterSpacing:'-0.055em',lineHeight:1.05}} />
+                    <div style={{color:T.muted,fontSize:11,marginTop:8}}>Modifiée {fmtDate(selected.updatedAt)} · {noteWords(selected)} mots · supporte Markdown, [[liens internes]] et #tags</div>
+                  </div>
+                  <div className="fs-notes-body" style={{flex:1,overflow:'hidden',padding:'20px 28px 28px'}}>
+                    {preview ? (
+                      <div className="fs-notes-preview" style={{height:'100%',overflowY:'auto',borderRadius:24,background:'rgba(255,255,255,0.026)',border:'1px solid rgba(255,255,255,0.06)',padding:'26px 28px',boxSizing:'border-box'}}>
+                        <MarkdownPreview content={selected.content} />
+                      </div>
+                    ) : (
+                      <textarea className="fs-note-textarea" value={selected.content} onChange={e=>persistSelected({ content:e.target.value })} placeholder={"Commence à écrire...\n\n# Titre\n- Point important\nRelie avec [[Nom d'une note]] ou #tag"} style={{width:'100%',height:'100%',resize:'none',outline:'none',border:'1px solid rgba(255,255,255,0.06)',borderRadius:24,background:'rgba(255,255,255,0.026)',color:'rgba(248,246,252,0.88)',padding:'24px 26px',boxSizing:'border-box',fontFamily:T.font,fontSize:15,lineHeight:1.8}} />
+                    )}
+                  </div>
+                </>
+              )
             ) : (
-              <div className="fs-notes-empty" style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', textAlign:'center', color:T.muted, padding:32 }}>
+              <div className="fs-notes-empty" style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',color:T.muted,padding:32}}>
                 <div>
-                  <div style={{ fontFamily:T.display, fontSize:30, fontWeight:850, color:T.text, letterSpacing:'-0.045em' }}>Un espace calme pour tes idées.</div>
-                  <div style={{ fontSize:13, marginTop:10, lineHeight:1.6 }}>Crée une note pour commencer à organiser tes pensées par dossiers, tags et Markdown.</div>
-                  <button onClick={createNote} style={{ marginTop:20, height:44, padding:'0 18px', borderRadius:14, border:'none', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#07070d', fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer' }}>Créer ma première note</button>
+                  <div style={{fontFamily:T.display,fontSize:30,fontWeight:850,color:T.text,letterSpacing:'-0.045em'}}>Un espace calme pour tes idées.</div>
+                  <div style={{fontSize:13,marginTop:10,lineHeight:1.6}}>Crée une note pour organiser tes pensées par dossiers, tags, Markdown et carte mentale.</div>
+                  <button onClick={()=>createNote()} style={{marginTop:20,height:44,padding:'0 18px',borderRadius:14,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontSize:12,fontWeight:900,fontFamily:T.font,cursor:'pointer'}}>Créer ma première note</button>
                 </div>
               </div>
             )}
           </main>
+
+          <aside className="fs-notes-inspector">
+            <div style={{padding:'22px 18px',borderBottom:'1px solid rgba(255,255,255,0.055)'}}>
+              <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Contexte</div>
+              <div style={{fontFamily:T.display,fontWeight:850,fontSize:22,letterSpacing:'-0.04em',marginTop:7,color:T.text}}>Structure</div>
+            </div>
+            <div style={{padding:18,display:'grid',gap:12,overflowY:'auto'}}>
+              {[
+                ['Dossier', selected?.folder || FS_NOTE_DEFAULT_FOLDER],
+                ['Tags', selected?.tags?.length ? selected.tags.map(t=>`#${t}`).join(' ') : 'Aucun'],
+                ['Mots', selected ? noteWords(selected) : 0],
+                ['Backlinks', backlinks.length],
+              ].map(([k,v]) => (
+                <div key={k} style={{borderRadius:18,border:'1px solid rgba(255,255,255,0.065)',background:'rgba(255,255,255,0.028)',padding:'14px 15px'}}>
+                  <div style={{fontSize:9,color:T.muted,textTransform:'uppercase',letterSpacing:'0.08em'}}>{k}</div>
+                  <div style={{fontSize:13,color:T.text,fontWeight:800,marginTop:7,lineHeight:1.35}}>{v}</div>
+                </div>
+              ))}
+              <div style={{borderRadius:18,border:'1px solid rgba(var(--theme-c1-rgb),0.16)',background:c1(0.055),padding:'14px 15px'}}>
+                <div style={{fontSize:12,fontWeight:850,color:T.text}}>Backlinks</div>
+                <div style={{display:'grid',gap:7,marginTop:10}}>
+                  {backlinks.length ? backlinks.slice(0,5).map(n => <button key={n.id} onClick={()=>setSelectedId(n.id)} style={{textAlign:'left',border:'1px solid rgba(255,255,255,0.065)',background:'rgba(255,255,255,0.035)',borderRadius:12,padding:'9px 10px',color:T.muted,fontFamily:T.font,fontSize:11,cursor:'pointer'}}>{n.title}</button>) : <div style={{fontSize:11,color:T.muted,lineHeight:1.55}}>Mentionne le titre d’une autre note ou utilise [[Nom de note]] pour créer des relations visibles dans la carte.</div>}
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       );
     }
+    NotesScreen = function NotesScreen() {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
+      const [notes, setNotes] = React.useState(() => window.fsReadNotes ? window.fsReadNotes() : []);
+      const [selectedId, setSelectedId] = React.useState(() => notes[0]?.id || null);
+      const [query, setQuery] = React.useState('');
+      const [zoom, setZoom] = React.useState(1);
+      const [pan, setPan] = React.useState({ x: 0, y: 0 });
+      const [drag, setDrag] = React.useState(null);
+      const [editingId, setEditingId] = React.useState(null);
+      const [previewModal, setPreviewModal] = React.useState(false);
+      const [draft, setDraft] = React.useState({
+        title: '',
+        folder: FS_NOTE_DEFAULT_FOLDER,
+        tags: '',
+        content: ''
+      });
+
+      React.useEffect(() => { if (window.fsWriteNotes) window.fsWriteNotes(notes); }, [notes]);
+      React.useEffect(() => {
+        const handler = e => {
+          if (e.detail?.notes != null && window.fsReadNotes) {
+            const remote = window.fsReadNotes();
+            setNotes(remote);
+            setSelectedId(id => remote.some(n => n.id === id) ? id : remote[0]?.id || null);
+          }
+        };
+        window.addEventListener('fs-remote-update', handler);
+        return () => window.removeEventListener('fs-remote-update', handler);
+      }, []);
+      React.useEffect(() => {
+        if (!drag) return;
+        const move = e => setPan({ x: e.clientX - drag.x, y: e.clientY - drag.y });
+        const up = () => setDrag(null);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        const touchMove = e => { e.preventDefault(); const t = e.touches[0]; setPan({ x: t.clientX - drag.x, y: t.clientY - drag.y }); };
+        const touchEnd = () => setDrag(null);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        window.addEventListener('touchmove', touchMove, { passive: false });
+        window.addEventListener('touchend', touchEnd);
+        return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('touchmove', touchMove); window.removeEventListener('touchend', touchEnd); };
+      }, [drag]);
+      React.useEffect(() => {
+        const onKey = e => { if (e.key === 'Escape') setEditingId(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+
+      const selected = notes.find(n => n.id === selectedId) || notes[0] || null;
+      const editingNote = editingId ? (notes.find(n => n.id === editingId) || null) : null;
+      const normalizedQuery = query.trim().toLowerCase();
+      const allTags = Array.from(new Set(notes.flatMap(n => n.tags?.length ? n.tags : ['sans-tag']))).sort();
+      const primaryTag = n => (n.tags && n.tags[0]) || 'sans-tag';
+      const exactMatch = normalizedQuery
+        ? notes.find(n => (n.title || '').toLowerCase() === normalizedQuery)
+        : null;
+      const matchesQuery = n => {
+        if (!normalizedQuery) return true;
+        return `${n.title} ${n.content} ${(n.tags || []).join(' ')} ${n.folder}`.toLowerCase().includes(normalizedQuery);
+      };
+      const visibleNotes = normalizedQuery ? notes.filter(matchesQuery) : notes;
+
+      const fmtDate = iso => {
+        try { return new Date(iso).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }); } catch(e) { return 'Maintenant'; }
+      };
+      const previewText = note => String(note?.content || '').replace(/[#*_`[\]()]/g, '').split('\n').map(l => l.trim()).filter(Boolean).slice(0,2).join(' · ') || 'Aucun contenu';
+      const parseTags = value => String(value || '').split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean);
+      const noteWords = note => String(note?.content || '').trim().split(/\s+/).filter(Boolean).length;
+
+      const persistNote = (id, patch) => {
+        const now = new Date().toISOString();
+        setNotes(list => list.map(n => n.id === id ? { ...n, ...patch, updatedAt: now } : n));
+      };
+      const createNote = () => {
+        const now = new Date().toISOString();
+        const cleanTitle = draft.title.trim() || 'Nouvelle note';
+        const note = fsNormalizeNote({
+          id: `note-${Date.now()}`,
+          title: cleanTitle,
+          folder: draft.folder.trim() || FS_NOTE_DEFAULT_FOLDER,
+          tags: parseTags(draft.tags),
+          content: draft.content.trim() || `# ${cleanTitle}\n\n- Nouvelle idée\n- Relie cette note avec [[Nom de note]] ou #tag`,
+          createdAt: now,
+          updatedAt: now,
+        });
+        setNotes(list => [note, ...list]);
+        setSelectedId(note.id);
+        setDraft({ title: '', folder: note.folder, tags: '', content: '' });
+        addToast({ message: `"${note.title}" ajoutée à la carte`, type: 'success', icon: '+' });
+      };
+      const deleteSelected = () => {
+        if (!selected) return;
+        const deleted = selected;
+        const next = notes.filter(n => n.id !== deleted.id);
+        setNotes(next);
+        setSelectedId(next[0]?.id || null);
+        addToast({ message: `"${deleted.title}" supprimée`, type:'success', icon:'x', action:{ label:'Annuler', fn:() => { setNotes(list => [deleted, ...list]); setSelectedId(deleted.id); } } });
+      };
+
+      // ── Layout constants ──────────────────────────────────────────────────
+      const NW = 176, NH = 98;           // node width / height (fixed)
+      const NGX = 14, NGY = 12;          // gap between nodes inside a cluster
+      const CPH = 28, CPT = 54, CPB = 22; // cluster padding: horizontal, top, bottom
+      const CGX = 46, CGY = 50;          // gap between clusters
+      const SX = 56, SY = 56;            // canvas start offset
+      const MRW = 1720;                  // max row width before wrapping
+      // ── Flow layout: each cluster gets its real size, no overlaps ─────────
+      let _rX = SX, _rY = SY, _rH = 0, _worldH = 800;
+      const groups = allTags
+        .map(tag => ({ tag, notes: visibleNotes.filter(n => primaryTag(n) === tag) }))
+        .filter(g => g.notes.length)
+        .map(g => {
+          const cols = Math.min(3, Math.max(1, g.notes.length === 1 ? 1 : Math.ceil(Math.sqrt(g.notes.length))));
+          const rows = Math.ceil(g.notes.length / cols);
+          const clW = CPH * 2 + cols * NW + (cols - 1) * NGX;
+          const clH = CPT + rows * NH + (rows - 1) * NGY + CPB;
+          if (_rX + clW > MRW && _rX > SX) { _rY += _rH + CGY; _rX = SX; _rH = 0; }
+          const x = _rX, y = _rY;
+          _rX += clW + CGX; _rH = Math.max(_rH, clH); _worldH = _rY + _rH + SY + 80;
+          return { ...g, x, y, cols, clW, clH };
+        });
+      const posById = {};
+      groups.forEach(g => g.notes.forEach((note, i) => {
+        posById[note.id] = {
+          x: g.x + CPH + (i % g.cols) * (NW + NGX),
+          y: g.y + CPT + Math.floor(i / g.cols) * (NH + NGY),
+        };
+      }));
+      const links = [];
+      visibleNotes.forEach(a => {
+        visibleNotes.forEach(b => {
+          if (a.id !== b.id && String(a.content || '').toLowerCase().includes((b.title || '').toLowerCase())) links.push([a.id, b.id]);
+        });
+      });
+      const selectPrecise = () => {
+        const target = exactMatch || visibleNotes[0];
+        if (!target) return;
+        setSelectedId(target.id);
+        const p = posById[target.id];
+        if (p) setPan({ x: 470 - (p.x + NW / 2) * zoom, y: 310 - (p.y + NH / 2) * zoom });
+      };
+      const zoomBy = delta => setZoom(z => Math.max(0.38, Math.min(2.0, Number((z + delta).toFixed(2)))));
+      const resetView = () => { setZoom(1); setPan({ x:0, y:0 }); };
+
+      return (
+        <div className="fs-notes-mind">
+          <style>{`
+            .fs-notes-mind{width:100%;height:100%;display:grid;grid-template-columns:360px minmax(0,1fr);overflow:hidden;font-family:${T.font};background:linear-gradient(180deg,rgba(255,255,255,0.018),rgba(255,255,255,0.006));}
+            .fs-note-builder{border-right:1px solid rgba(255,255,255,0.065);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.48),rgba(var(--mineral-bg-rgb),0.36));display:flex;flex-direction:column;min-width:0;}
+            .fs-note-field{width:100%;border:1px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.04);border-radius:14px;color:${T.text};font-family:${T.font};outline:none;}
+            .fs-note-field::placeholder{color:rgba(248,246,252,0.25);}
+            .fs-note-field:focus{border-color:rgba(var(--theme-c1-rgb),0.42);box-shadow:0 0 0 3px rgba(var(--theme-c1-rgb),0.10);}
+            .fs-map-shell{position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;}
+            .fs-map-toolbar{height:78px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 24px;background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01));}
+            .fs-map-search{height:42px;min-width:320px;border-radius:15px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.045);display:flex;align-items:center;gap:10px;padding:0 13px;}
+            .fs-map-canvas{position:relative;flex:1;overflow:hidden;cursor:grab;background-image:radial-gradient(rgba(255,255,255,0.055) 1px,transparent 1px);background-size:28px 28px;}
+            .fs-map-canvas.dragging{cursor:grabbing;}
+            .fs-map-world{position:absolute;left:0;top:0;transform-origin:0 0;}
+            .fs-tag-cluster{position:absolute;border-radius:24px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.012);box-shadow:inset 0 1px 0 rgba(255,255,255,0.025);}
+            .fs-map-node{position:absolute;border-radius:18px;padding:12px 14px;text-align:left;border:1px solid rgba(255,255,255,0.085);background:rgba(var(--mineral-surface-rgb),0.84);color:${T.text};box-shadow:0 8px 24px rgba(0,0,0,0.22),0 1px 0 rgba(255,255,255,0.03) inset;transition:transform .16s,border-color .16s,background .16s,opacity .16s,box-shadow .16s;overflow:hidden;cursor:pointer;}
+            .fs-map-node:hover{transform:translateY(-2px) scale(1.025);border-color:rgba(var(--theme-c1-rgb),0.32);background:rgba(var(--mineral-surface-rgb),0.97);box-shadow:0 16px 40px rgba(0,0,0,0.30);}
+            .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.52);background:linear-gradient(160deg,rgba(var(--theme-c1-rgb),0.14),rgba(var(--mineral-surface-rgb),0.92));box-shadow:0 14px 44px rgba(var(--theme-c1-rgb),0.13),0 8px 24px rgba(0,0,0,0.22);}
+            .fs-map-control{height:36px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:${T.muted};font:850 12px var(--font-body);cursor:pointer;padding:0 12px;}
+            @media(max-width:1020px){.fs-notes-mind{grid-template-columns:1fr}.fs-note-builder{display:none}.fs-map-search{min-width:0;flex:1}.fs-map-toolbar{padding:0 14px}}
+            @media(max-width:768px){
+              .fs-map-toolbar{height:64px!important;padding:0 14px!important}
+              .fs-map-toolbar > div:first-child > div:first-child{font-size:22px!important}
+              .fs-map-toolbar > div:first-child > div:nth-child(2){display:none!important}
+              .fs-map-search{min-width:0!important;flex:1!important;height:38px!important}
+              .fs-map-control{height:32px!important;padding:0 9px!important;font-size:11px!important}
+              .fs-map-node{border-radius:14px!important;padding:10px 12px!important}
+            }
+            @keyframes noteOverlayIn{from{opacity:0}to{opacity:1}}
+            @keyframes noteModalIn{from{opacity:0;transform:scale(0.95) translateY(18px)}to{opacity:1;transform:scale(1) translateY(0)}}
+          `}</style>
+
+          <aside className="fs-note-builder">
+            <div style={{padding:'24px 22px 18px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+              <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Ajouter</div>
+              <div style={{fontFamily:T.display,fontWeight:850,fontSize:29,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Nouvelle note</div>
+              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Clique sur un nœud de la carte pour l'éditer. Même premier tag = même cluster.</div>
+            </div>
+            <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
+              <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre précis" style={{height:42,padding:'0 13px',fontSize:13,flexShrink:0}} />
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,flexShrink:0}}>
+                <input className="fs-note-field" value={draft.folder} onChange={e=>setDraft(d=>({...d,folder:e.target.value}))} placeholder="Dossier" style={{height:40,padding:'0 12px',fontSize:12}} />
+                <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12}} />
+              </div>
+              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} placeholder={"Contenu...\nMentionne [[une note]] ou #tag"} style={{flex:1,minHeight:120,resize:'none',padding:'13px',fontSize:13,lineHeight:1.7}} />
+              <button onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
+            </div>
+          </aside>
+
+          <main className="fs-map-shell">
+            <div className="fs-map-toolbar">
+              <div>
+                <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text}}>Carte mentale</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:4}}>{visibleNotes.length} carte{visibleNotes.length>1?'s':''} visibles · regroupées par tag principal</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                <div className="fs-map-search">
+                  <svg width={15} height={15} viewBox="0 0 16 16" fill="none" style={{opacity:.38,flexShrink:0}}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
+                  <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')selectPrecise();}} placeholder="Chercher précisément une note..." style={{flex:1,minWidth:0,background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.font,fontSize:12}} />
+                  <button onClick={selectPrecise} style={{border:'none',background:c1(0.12),color:T.c1,borderRadius:10,height:28,padding:'0 10px',fontSize:10,fontWeight:850,cursor:'pointer'}}>Aller</button>
+                </div>
+                <button className="fs-map-control" onClick={()=>zoomBy(-0.12)}>−</button>
+                <button className="fs-map-control" onClick={()=>zoomBy(0.12)}>+</button>
+                <button className="fs-map-control" onClick={resetView}>{Math.round(zoom*100)}%</button>
+              </div>
+            </div>
+            <div className={'fs-map-canvas'+(drag?' dragging':'')} onWheel={e=>{e.preventDefault(); zoomBy(e.deltaY > 0 ? -0.08 : 0.08);}} onMouseDown={e => { if (e.target === e.currentTarget || e.target.classList.contains('fs-map-world')) setDrag({ x:e.clientX-pan.x, y:e.clientY-pan.y }); }}>
+              <div className="fs-map-world" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,width:MRW+200,height:_worldH}}>
+                <svg width={MRW+200} height={_worldH} style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+                  {links.map(([a,b],i) => {
+                    const pa = posById[a], pb = posById[b];
+                    if (!pa || !pb) return null;
+                    const x1=pa.x+NW/2, y1=pa.y+NH/2, x2=pb.x+NW/2, y2=pb.y+NH/2;
+                    return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(var(--theme-c1-rgb),0.20)" strokeWidth="1.2" strokeDasharray="5 5"/>;
+                  })}
+                </svg>
+                {groups.map(g => (
+                  <div key={g.tag} className="fs-tag-cluster" style={{left:g.x,top:g.y,width:g.clW,height:g.clH}}>
+                    <div style={{position:'absolute',left:CPH,top:16,display:'flex',alignItems:'center',gap:7}}>
+                      <div style={{width:5,height:5,borderRadius:'50%',background:T.c1,opacity:.55,flexShrink:0}}/>
+                      <span style={{fontSize:9,fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase',color:T.c1}}>#{g.tag}</span>
+                      <span style={{fontSize:9,color:T.muted,opacity:.7,fontWeight:700,letterSpacing:'0.04em'}}>{g.notes.length} note{g.notes.length>1?'s':''}</span>
+                    </div>
+                  </div>
+                ))}
+                {visibleNotes.map(n => {
+                  const p = posById[n.id] || {x:0,y:0};
+                  const active = selected?.id === n.id;
+                  const muted = normalizedQuery && !matchesQuery(n);
+                  return (
+                    <button key={n.id} className={'fs-map-node'+(active?' active':'')} onClick={()=>{ setSelectedId(n.id); setEditingId(n.id); setPreviewModal(false); }} style={{left:p.x,top:p.y,width:NW,height:NH,opacity:muted?0.22:1}}>
+                      <div style={{fontSize:12,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',letterSpacing:'-0.025em',lineHeight:1.2,marginBottom:5}}>{n.title||'Sans titre'}</div>
+                      <div style={{fontSize:10,color:'rgba(207,216,235,0.48)',lineHeight:1.42,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:1}}>{previewText(n)}</div>
+                      <div style={{display:'flex',gap:5,alignItems:'center',marginTop:8,overflow:'hidden'}}>
+                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:T.c1,background:c1(0.09),border:`1px solid ${c1(0.15)}`,borderRadius:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
+                        {n.tags?.length>1&&<span style={{fontSize:8,color:T.muted,opacity:.55}}>+{n.tags.length-1}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </main>
+
+          {editingNote && (
+            <div className="fs-note-edit-overlay" onClick={e=>{if(e.target===e.currentTarget)setEditingId(null);}} style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(7,8,16,0.82)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'28px 20px',animation:'noteOverlayIn .22s ease both'}}>
+              <div className="fs-note-edit-dialog" style={{width:'100%',maxWidth:860,height:'90vh',maxHeight:900,borderRadius:28,border:'1px solid rgba(255,255,255,0.08)',background:'linear-gradient(180deg,rgba(16,19,31,0.99),rgba(7,8,16,0.995))',boxShadow:'0 48px 120px rgba(0,0,0,0.70),inset 0 1px 0 rgba(255,255,255,0.04)',display:'flex',flexDirection:'column',overflow:'hidden',animation:'noteModalIn .28s cubic-bezier(.16,1,.3,1) both'}}>
+                <div className="fs-note-edit-head" style={{padding:'20px 28px 16px',borderBottom:'1px solid rgba(255,255,255,0.055)',flexShrink:0}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14}}>
+                    <div className="fs-note-edit-head-meta" style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',minWidth:0}}>
+                      <input value={editingNote.folder||FS_NOTE_DEFAULT_FOLDER} onChange={e=>persistNote(editingNote.id,{folder:e.target.value||FS_NOTE_DEFAULT_FOLDER})} style={{height:30,width:120,borderRadius:10,background:'rgba(255,255,255,0.045)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,fontFamily:T.font,fontSize:11,outline:'none',padding:'0 10px'}} />
+                      <input value={(editingNote.tags||[]).join(', ')} onChange={e=>persistNote(editingNote.id,{tags:parseTags(e.target.value)})} placeholder="tags séparés par virgule" style={{height:30,minWidth:150,borderRadius:10,background:'rgba(255,255,255,0.045)',border:'1px solid rgba(255,255,255,0.075)',color:T.text,fontFamily:T.font,fontSize:11,outline:'none',padding:'0 10px'}} />
+                    </div>
+                    <div className="fs-note-edit-head-actions" style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
+                      <button onClick={()=>setPreviewModal(p=>!p)} style={{height:30,borderRadius:10,border:`1px solid ${previewModal?c1(0.28):'rgba(255,255,255,0.075)'}`,background:previewModal?c1(0.10):'rgba(255,255,255,0.04)',color:previewModal?T.c1:T.muted,padding:'0 12px',cursor:'pointer',fontSize:11,fontWeight:800,fontFamily:T.font}}>{previewModal?'Éditer':'Aperçu'}</button>
+                      <button onClick={()=>{const d=editingNote;const nx=notes.filter(n=>n.id!==d.id);setNotes(nx);setSelectedId(nx[0]?.id||null);setEditingId(null);addToast({message:`"${d.title}" supprimée`,type:'success',icon:'x',action:{label:'Annuler',fn:()=>{setNotes(l=>[d,...l]);setSelectedId(d.id);}}});}} title="Supprimer" style={{width:30,height:30,borderRadius:10,border:'1px solid rgba(251,113,133,0.24)',background:'rgba(251,113,133,0.09)',color:T.rose,cursor:'pointer',fontSize:16,display:'grid',placeItems:'center'}}>×</button>
+                      <button onClick={()=>setEditingId(null)} title="Fermer" style={{width:30,height:30,borderRadius:10,border:'1px solid rgba(255,255,255,0.075)',background:'rgba(255,255,255,0.04)',color:T.muted,cursor:'pointer',display:'grid',placeItems:'center'}}>
+                        <svg width={10} height={10} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <input className="fs-note-edit-title" value={editingNote.title} onChange={e=>persistNote(editingNote.id,{title:e.target.value})} placeholder="Titre de la note" style={{width:'100%',background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.display,fontSize:34,fontWeight:850,letterSpacing:'-0.05em',lineHeight:1.05}} />
+                  <div style={{color:T.muted,fontSize:11,marginTop:8,display:'flex',gap:12,flexWrap:'wrap'}}>
+                    <span>Modifiée {fmtDate(editingNote.updatedAt)}</span>
+                    <span>·</span>
+                    <span>{noteWords(editingNote)} mots</span>
+                    <span>·</span>
+                    <span style={{opacity:.6}}>Markdown · [[liens internes]] · #tags</span>
+                  </div>
+                </div>
+                <div className="fs-note-edit-body" style={{flex:1,overflow:'hidden',padding:'22px 28px 20px',display:'flex',flexDirection:'column',gap:0}}>
+                  {previewModal ? (
+                    <div style={{flex:1,overflowY:'auto',borderRadius:20,background:'rgba(255,255,255,0.018)',border:'1px solid rgba(255,255,255,0.055)',padding:'26px 30px',boxSizing:'border-box',scrollbarWidth:'thin',scrollbarColor:'rgba(255,255,255,0.10) transparent'}}>
+                      <MarkdownPreview content={editingNote.content} />
+                    </div>
+                  ) : (
+                    <textarea
+                      value={editingNote.content}
+                      onChange={e=>persistNote(editingNote.id,{content:e.target.value})}
+                      placeholder={"Commence à écrire...\n\n# Titre\n\n- Point important\n- Relie avec [[Nom d'une note]] ou #tag\n\nLes notes longues sont maintenant faciles à lire ici."}
+                      autoFocus
+                      style={{flex:1,width:'100%',resize:'none',outline:'none',border:'none',background:'transparent',color:'rgba(248,246,252,0.88)',padding:'0',boxSizing:'border-box',fontFamily:T.font,fontSize:15,lineHeight:1.9,caretColor:'var(--mineral-cyan)',scrollbarWidth:'thin',scrollbarColor:'rgba(255,255,255,0.12) transparent',letterSpacing:'-0.006em'}}
+                    />
+                  )}
+                  <div style={{flexShrink:0,marginTop:14,paddingTop:12,borderTop:'1px solid rgba(255,255,255,0.042)',display:'flex',gap:12,fontSize:10,color:T.muted,fontFamily:T.mono,letterSpacing:'0.04em',alignItems:'center'}}>
+                    <span style={{color:T.c1,fontWeight:700}}>{noteWords(editingNote)} mots</span>
+                    <span>·</span>
+                    <span>{String(editingNote.content||'').length} caractères</span>
+                    <div style={{flex:1}}/>
+                    <span style={{opacity:.5}}>Échap ou clic en dehors pour fermer</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
     window.NotesScreen = NotesScreen;
   </script>
 
