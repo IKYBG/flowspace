@@ -293,12 +293,26 @@
       .fs-widget-tall { height: 238px !important; min-height: 238px !important; }
 
       /* ─── Focus / Session ──────────────────────────── */
-      .fs-focus-screen-head { padding: 24px 18px 12px !important; }
-      .fs-focus-screen-head-inner { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; margin-bottom: 16px !important; }
-      .fs-focus-screen-title { font-size: clamp(26px, 7vw, 32px) !important; letter-spacing: -0.04em !important; }
-      .fs-focus-screen-desc { display: block !important; font-size: 13px !important; margin-top: 4px !important; }
+      .fs-focus-screen-head { padding: 22px 16px 0 !important; }
+      .fs-focus-screen-head-inner { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; margin-bottom: 14px !important; }
+      .fs-focus-screen-title { font-size: 30px !important; letter-spacing: -0.04em !important; }
+      .fs-focus-screen-desc { display: block !important; font-size: 13px !important; margin-top: 4px !important; max-width: 100% !important; }
       .fs-focus-screen-badges { gap: 6px !important; align-self: flex-start !important; }
-      .fs-focus-screen-content { padding: 12px 14px 94px !important; }
+      .fs-focus-screen-content { padding: 10px 12px 94px !important; }
+      /* Focus tabs */
+      .fs-focus-tabs { gap: 6px !important; padding: 3px !important; border-radius: 20px !important; }
+      .fs-focus-tab-btn { padding: 14px 10px !important; border-radius: 17px !important; min-height: 64px !important; }
+      /* FocusHomeTab grid → single column on mobile */
+      .fs-fht-root { padding: 14px 14px 94px !important; }
+      .fs-fht-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+      .fs-fht-cta { min-height: auto !important; padding: 22px 20px 20px !important; border-radius: 24px !important; }
+      .fs-fht-cta-title { font-size: 26px !important; line-height: 1.1 !important; }
+      .fs-fht-cta-desc { display: none !important; }
+      .fs-fht-start-btn { width: 100% !important; justify-content: center !important; align-self: stretch !important; padding: 15px 20px !important; border-radius: 14px !important; font-size: 14px !important; margin-top: 16px !important; }
+      .fs-fht-stats { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
+      .fs-fht-stat-card { padding: 14px 10px !important; border-radius: 16px !important; text-align: center !important; }
+      .fs-fht-stat-card > div:first-child { font-size: 20px !important; }
+      .fs-fht-history { margin-top: 12px !important; border-radius: 20px !important; }
 
       /* ─── Note edit modal → bottom sheet ─────────── */
       .fs-note-edit-overlay { padding: 0 !important; align-items: flex-end !important; }
@@ -3434,27 +3448,30 @@
     function FocusHomeTab({ user, sessions = [], onStart }) {
       const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
       const last = [...sessions].sort((a,b) => new Date(b.endedAt || b.startedAt || 0) - new Date(a.endedAt || a.startedAt || 0))[0];
+      const stats = [
+        { label:'Sessions', value:sessions.length, unit:'total' },
+        { label:'Temps focus', value:Math.round(total), unit:'min' },
+        { label:'Dernière', value:last ? (last.completed ? 'Faite' : 'En cours') : '—', unit:last ? (last.type === 'together' ? 'ensemble' : 'solo') : 'aucune' },
+      ];
       return (
-        <div style={{height:'100%',overflowY:'auto',padding:'20px 36px 36px',fontFamily:T.font}}>
-          <div style={{display:'grid',gridTemplateColumns:'minmax(0,1.15fr) minmax(280px,0.85fr)',gap:18,alignItems:'stretch'}}>
-            <div style={{borderRadius:30,background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(255,255,255,0.035))',border:'1px solid rgba(var(--theme-c1-rgb),0.20)',padding:'30px 32px',minHeight:260,display:'flex',flexDirection:'column',justifyContent:'space-between',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)'}}>
+        <div className="fs-fht-root" style={{height:'100%',overflowY:'auto',padding:'20px 36px 36px',fontFamily:T.font}}>
+          <div className="fs-fht-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1.15fr) minmax(280px,0.85fr)',gap:18,alignItems:'stretch'}}>
+
+            <div className="fs-fht-cta" style={{borderRadius:30,background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(255,255,255,0.035))',border:'1px solid rgba(var(--theme-c1-rgb),0.20)',padding:'30px 32px',minHeight:260,display:'flex',flexDirection:'column',justifyContent:'space-between',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)'}}>
               <div>
                 <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:12}}>LumenOS · Focus</div>
-                <div style={{fontFamily:T.display,fontWeight:850,fontSize:42,letterSpacing:'-0.05em',lineHeight:1,color:T.text,maxWidth:560}}>Démarrer une session de concentration.</div>
-                <div style={{fontSize:13,color:T.muted,lineHeight:1.65,marginTop:14,maxWidth:520}}>Lance un focus solo ou ensemble, puis retrouve tes sessions et tes cristaux dans les onglets de ce même espace.</div>
+                <div className="fs-fht-cta-title" style={{fontFamily:T.display,fontWeight:850,fontSize:42,letterSpacing:'-0.05em',lineHeight:1.05,color:T.text}}>Démarrer une session de concentration.</div>
+                <div className="fs-fht-cta-desc" style={{fontSize:13,color:T.muted,lineHeight:1.65,marginTop:14,maxWidth:520}}>Lance un focus solo ou ensemble, puis retrouve tes sessions et tes cristaux dans les onglets.</div>
               </div>
-              <button onClick={onStart} style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:10,border:'none',borderRadius:16,padding:'13px 20px',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:13,fontWeight:900,fontFamily:T.font,cursor:'pointer',boxShadow:'0 18px 40px rgba(var(--theme-c1-rgb),0.20), inset 0 1px 0 rgba(255,255,255,0.36)'}}>
+              <button className="fs-fht-start-btn" onClick={onStart} style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:10,border:'none',borderRadius:16,padding:'13px 20px',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:13,fontWeight:900,fontFamily:T.font,cursor:'pointer',boxShadow:'0 18px 40px rgba(var(--theme-c1-rgb),0.20), inset 0 1px 0 rgba(255,255,255,0.36)',marginTop:24}}>
                 <svg width={15} height={15} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
                 Démarrer un focus
               </button>
             </div>
-            <div style={{display:'grid',gap:12}}>
-              {[
-                { label:'Sessions', value:sessions.length, unit:'total' },
-                { label:'Temps focus', value:Math.round(total), unit:'minutes' },
-                { label:'Dernière session', value:last ? (last.completed ? 'Terminée' : 'En cours') : 'Aucune', unit:last ? (last.type === 'together' ? 'ensemble' : 'solo') : 'pour le moment' },
-              ].map((s,i)=>(
-                <div key={i} style={{borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',padding:'18px 20px'}}>
+
+            <div className="fs-fht-stats" style={{display:'grid',gap:12}}>
+              {stats.map((s,i)=>(
+                <div key={i} className="fs-fht-stat-card" style={{borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',padding:'18px 20px'}}>
                   <div style={{fontFamily:T.mono,fontSize:24,fontWeight:850,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
                   <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
                   <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
@@ -3462,13 +3479,14 @@
               ))}
             </div>
           </div>
-          <div style={{marginTop:18,borderRadius:24,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden'}}>
+
+          <div className="fs-fht-history" style={{marginTop:18,borderRadius:24,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden'}}>
             <div style={{padding:'18px 20px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,borderBottom:'1px solid rgba(255,255,255,0.055)'}}>
               <div>
-                <div style={{fontSize:15,fontWeight:850,color:T.text}}>Historique de session</div>
+                <div style={{fontSize:15,fontWeight:850,color:T.text}}>Historique</div>
                 <div style={{fontSize:11,color:T.muted,marginTop:4}}>Tes dernières sessions solo ou ensemble.</div>
               </div>
-              <span style={{fontSize:10,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.c1}}>{sessions.length} total</span>
+              <span style={{fontSize:10,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.c1,flexShrink:0}}>{sessions.length} total</span>
             </div>
             <div style={{padding:14}}>
               {window.SessionHistoryList
@@ -3512,11 +3530,11 @@
                 <span className="xp-badge">{crystalCount} cristaux</span>
               </div>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+            <div className="fs-focus-tabs" style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
               {TABS.map(t => {
                 const active = tab === t.id;
                 return (
-                  <button key={t.id} onClick={() => setTab(t.id)} style={{
+                  <button key={t.id} onClick={() => setTab(t.id)} className={s-focus-tab-btn+(active?' active':'')} style={{
                     minWidth:0,borderRadius:20,padding:'14px 16px',cursor:'pointer',
                     background:active?'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.20),rgba(255,255,255,0.07))':'transparent',
                     color:active?T.text:T.muted,
