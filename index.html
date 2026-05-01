@@ -314,6 +314,22 @@
       .fs-fht-stat-card > div:first-child { font-size: 20px !important; }
       .fs-fht-history { margin-top: 12px !important; border-radius: 20px !important; }
 
+      /* ─── Évolution ───────────────────────────────── */
+      .fs-evo-head { padding: 20px 16px 0 !important; }
+      .fs-evo-head-inner { flex-direction: column !important; gap: 10px !important; margin-bottom: 14px !important; align-items: flex-start !important; }
+      .fs-evo-title { font-size: 28px !important; }
+      .fs-evo-desc { display: none !important; }
+      .fs-evo-badges { align-self: flex-start !important; }
+      .fs-evo-tabs { display: flex !important; overflow-x: auto !important; gap: 6px !important; padding: 4px !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch; border-radius: 20px !important; }
+      .fs-evo-tabs::-webkit-scrollbar { display: none !important; }
+      .fs-evo-tab-btn { flex: 0 0 auto !important; min-width: 100px !important; padding: 11px 13px !important; border-radius: 16px !important; }
+      .fs-evo-content { padding: 10px 12px 94px !important; }
+      .fs-evo-stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; margin-bottom: 10px !important; }
+      .fs-evo-content-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+      .fs-prog-body { padding: 16px 14px 94px !important; }
+      .fs-prog-stats { grid-template-columns: repeat(3,1fr) !important; gap: 8px !important; }
+      .fs-heatmap-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
       /* ─── Note edit modal → bottom sheet ─────────── */
       .fs-note-edit-overlay { padding: 0 !important; align-items: flex-end !important; }
       .fs-note-edit-dialog {
@@ -9978,10 +9994,10 @@
             <div style={{fontFamily:T.display,fontWeight:800,fontSize:32,letterSpacing:'-0.04em',lineHeight:1.05,marginBottom:6}}>Ta progression</div>
           </div>
         )}
-        <div style={{flex:1,overflowY:'auto',padding:'20px 36px 36px'}}>
+        <div className="fs-prog-body" style={{flex:1,overflowY:'auto',padding:'20px 36px 36px'}}>
 
           {/* Stats row */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:28}}>
+          <div className="fs-prog-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:28}}>
             {[
               { label:'Cristaux forgés', value:crystals.length, unit:'gemmes' },
               { label:'Temps total',     value:Math.round(totalMin/60*10)/10, unit:'heures' },
@@ -10001,7 +10017,7 @@
               <div style={{fontSize:13,fontWeight:700,color:T.text}}>Carte d'activité</div>
               <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
             </div>
-            <FocusHeatmap heatmap={heatmap}/>
+            <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={heatmap}/></div>
           </div>
 
           {/* Weekly FP chart */}
@@ -10071,23 +10087,23 @@
 
     return (
       <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
-        <div style={{padding:'32px 36px 0',flexShrink:0}}>
-          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
+        <div className="fs-evo-head" style={{padding:'32px 36px 0',flexShrink:0}}>
+          <div className="fs-evo-head-inner" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
             <div style={{minWidth:0}}>
               <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Évolution</div>
-              <div style={{fontFamily:T.display,fontWeight:800,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Évolution</div>
-              <div style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:520,lineHeight:1.55}}>Régularité, quêtes, boutique et progression réunies dans un seul espace.</div>
+              <div className="fs-evo-title" style={{fontFamily:T.display,fontWeight:800,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Évolution</div>
+              <div className="fs-evo-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:520,lineHeight:1.55}}>Régularité, quêtes, boutique et progression réunies dans un seul espace.</div>
             </div>
-            <div style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
+            <div className="fs-evo-badges" style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
               <span className="fp-badge">{fp.toLocaleString('fr')} FP</span>
               <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
             </div>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+          <div className="fs-evo-tabs" style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
             {TABS.map(t => {
               const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                <button key={t.id} onClick={() => setTab(t.id)} className={"fs-evo-tab-btn"+(active?' active':'')} style={{
                   minWidth:0, border:'none', borderRadius:20, padding:'14px 16px', cursor:'pointer',
                   background: active ? 'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.20),rgba(255,255,255,0.07))' : 'transparent',
                   color: active ? T.text : T.muted,
@@ -10102,12 +10118,12 @@
             })}
           </div>
         </div>
-        <div style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
+        <div className="fs-evo-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
           <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
             <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column',paddingTop:20}}>
               {tab==='overview' && (
                 <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,marginBottom:18}}>
+                  <div className="fs-evo-stats-grid" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,marginBottom:18}}>
                     {[
                       { label:'Niveau', value:lvl, unit:`${xp.toLocaleString('fr')} XP` },
                       { label:'Régularité', value:streaks.daily||0, unit:'jours' },
@@ -10121,13 +10137,13 @@
                       </div>
                     ))}
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(260px,0.65fr)',gap:14}}>
+                  <div className="fs-evo-content-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(260px,0.65fr)',gap:14}}>
                     <div style={{padding:'20px',borderRadius:24,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
                         <div style={{fontSize:13,fontWeight:800,color:T.text}}>Activité récente</div>
                         <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
                       </div>
-                      <FocusHeatmap heatmap={g.heatmap||{}}/>
+                      <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={g.heatmap||{}}/></div>
                     </div>
                     <div style={{padding:'20px',borderRadius:24,background:'rgba(255,210,125,0.055)',border:'1px solid rgba(255,210,125,0.16)',display:'flex',flexDirection:'column',justifyContent:'space-between',gap:18}}>
                       <div>
