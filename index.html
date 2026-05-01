@@ -4512,7 +4512,7 @@
         onNavigate(tab === 'progression' ? 'progression' : 'evolution');
       };
       const currentEvolutionTab = (() => {
-        try { return localStorage.getItem('fs_evolution_initial_tab') || 'overview'; } catch(e) { return 'overview'; }
+        try { return localStorage.getItem('fs_evolution_initial_tab') || 'streaks'; } catch(e) { return 'overview'; }
       })();
 
       const NAV = [
@@ -10067,7 +10067,7 @@
   function EvolutionScreen({ user, initialTab = null }) {
     const readInitialTab = () => {
       if (initialTab) return initialTab;
-      try { return localStorage.getItem('fs_evolution_initial_tab') || 'overview'; } catch(e) { return 'overview'; }
+      try { return localStorage.getItem('fs_evolution_initial_tab') || 'streaks'; } catch(e) { return 'overview'; }
     };
     const [tab, setTab] = React.useState(readInitialTab);
     React.useEffect(() => setTab(readInitialTab()), [initialTab]);
@@ -10079,7 +10079,6 @@
     const totalMin = Object.values(g.heatmap||{}).reduce((a,b)=>a+b,0);
 
     const TABS = [
-      { id:'overview',    label:'Aperçu', meta:`Niv. ${lvl}` },
       { id:'streaks',     label:'Régularité', meta:`${streaks.daily||0} jour${(streaks.daily||0)>1?'s':''}` },
       { id:'quests',      label:'Quêtes', meta:`${pending} en cours` },
       { id:'store',       label:'Boutique', meta:`${fp.toLocaleString('fr')} FP` },
@@ -10100,7 +10099,7 @@
               <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
             </div>
           </div>
-          <div className="fs-evo-tabs" style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+          <div className="fs-evo-tabs" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
             {TABS.map(t => {
               const active = tab === t.id;
               return (
@@ -10122,44 +10121,6 @@
         <div className="fs-evo-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
           <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
             <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column',paddingTop:20}}>
-              {tab==='overview' && (
-                <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
-                  <div className="fs-evo-stats-grid" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,marginBottom:18}}>
-                    {[
-                      { label:'Niveau', value:lvl, unit:`${xp.toLocaleString('fr')} XP` },
-                      { label:'Régularité', value:streaks.daily||0, unit:'jours' },
-                      { label:'Quêtes', value:pending, unit:'en cours' },
-                      { label:'Cristaux', value:crystals.length, unit:'forgés' },
-                    ].map((s,i)=>(
-                      <div key={i} style={{padding:'18px',borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)'}}>
-                        <div style={{fontFamily:T.mono,fontSize:28,fontWeight:850,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
-                        <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
-                        <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="fs-evo-content-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(260px,0.65fr)',gap:14}}>
-                    <div style={{padding:'20px',borderRadius:24,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                        <div style={{fontSize:13,fontWeight:800,color:T.text}}>Activité récente</div>
-                        <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
-                      </div>
-                      <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={g.heatmap||{}}/></div>
-                    </div>
-                    <div style={{padding:'20px',borderRadius:24,background:'rgba(255,210,125,0.055)',border:'1px solid rgba(255,210,125,0.16)',display:'flex',flexDirection:'column',justifyContent:'space-between',gap:18}}>
-                      <div>
-                        <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:'rgba(255,210,125,0.66)',marginBottom:10}}>Résumé</div>
-                        <div style={{fontFamily:T.display,fontWeight:850,fontSize:30,letterSpacing:'-0.045em',lineHeight:1,color:T.text}}>{Math.round(totalMin)} minutes de focus capturées.</div>
-                        <div style={{fontSize:12,color:T.muted,lineHeight:1.6,marginTop:12}}>Utilise les onglets pour passer de la régularité aux quêtes, à la boutique et aux détails de progression.</div>
-                      </div>
-                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                        <span className="fp-badge">{fp.toLocaleString('fr')} FP</span>
-                        <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
               {tab==='streaks'     && window.StreaksPanel     && React.createElement(window.StreaksPanel,     { embed:true, user })}
               {tab==='quests'      && window.QuestsPanel      && React.createElement(window.QuestsPanel,      { embed:true, user })}
               {tab==='store'       && window.StorePanel       && React.createElement(window.StorePanel,       { embed:true, user })}
