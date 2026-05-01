@@ -26,8 +26,12 @@
       --theme-c2: rgb(184, 145, 255);
       --mineral-bg: #070810;
       --mineral-bg-2: #0b0d18;
+      --mineral-bg-rgb: 7, 8, 16;
+      --mineral-bg-2-rgb: 11, 13, 24;
       --mineral-surface: #10131f;
       --mineral-surface-2: #171b2a;
+      --mineral-surface-rgb: 16, 19, 31;
+      --mineral-surface-2-rgb: 23, 27, 42;
       --mineral-line: rgba(220, 230, 255, 0.08);
       --mineral-line-strong: rgba(220, 230, 255, 0.13);
       --mineral-text: #f4f6fb;
@@ -183,7 +187,9 @@
     /* Mineral OS: opinionated premium layer */
     .fs-app-main {
       background:
-        linear-gradient(180deg, rgba(16,19,31,0.96), rgba(7,8,16,0.98)) !important;
+        radial-gradient(ellipse 70% 42% at 16% 0%, rgba(var(--theme-c1-rgb),0.055), transparent 62%),
+        radial-gradient(ellipse 58% 45% at 88% 98%, rgba(var(--theme-c2-rgb),0.045), transparent 64%),
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.94), rgba(var(--mineral-bg-rgb),0.985)) !important;
       border-color: var(--mineral-line) !important;
       box-shadow: 0 30px 90px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.035) !important;
     }
@@ -210,7 +216,7 @@
     .fs-dashboard-header,
     .fs-notes-head,
     .fs-tasks-head {
-      background: linear-gradient(180deg, rgba(7,8,16,0.42), rgba(7,8,16,0)) !important;
+      background: linear-gradient(180deg, rgba(var(--mineral-bg-rgb),0.42), rgba(var(--mineral-bg-rgb),0)) !important;
     }
     .fs-note-card,
     .fs-task-row,
@@ -232,7 +238,7 @@
     .fs-note-textarea,
     .fs-notes-preview {
       background:
-        linear-gradient(180deg, rgba(16,19,31,0.72), rgba(9,11,20,0.86)) !important;
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.72), rgba(var(--mineral-bg-2-rgb),0.86)) !important;
       border-color: var(--mineral-line) !important;
     }
     .fs-task-filters button,
@@ -241,7 +247,7 @@
       transition: transform 0.18s var(--mineral-ease), background 0.18s var(--mineral-ease), border-color 0.18s var(--mineral-ease), color 0.18s var(--mineral-ease) !important;
     }
     .fs-cristaux-panel.embedded {
-      background: linear-gradient(180deg, rgba(8,10,18,0.98), rgba(4,6,13,0.99)) !important;
+      background: linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.88), rgba(var(--mineral-bg-rgb),0.97)) !important;
     }
     .fs-cave-title {
       max-width: min(440px, 62vw);
@@ -706,7 +712,7 @@
       try {
         const { data, error } = await _fsSb
           .from('user_data')
-          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends')
+          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, updated_at')
           .eq('user_id', userId)
           .maybeSingle();
         if (error) { console.warn('[fs] load remote failed', error); return null; }
@@ -854,14 +860,14 @@
         const trimmed = email.trim().toLowerCase();
         const { data, error } = await _fsSb
           .from('user_data')
-          .select('user_id, name, email')
+          .select('user_id, name, email, updated_at')
           .ilike('email', trimmed)
           .maybeSingle();
         if (error) { console.warn('[fs] email lookup error:', error); return null; }
         if (!data) { console.warn('[fs] no user found for email:', trimmed); return null; }
         return { id: data.user_id, name: data.name || trimmed.split('@')[0], email: data.email,
                  initial: (data.name || '?')[0].toUpperCase(),
-                 color: '#4ade80' };
+                 color: '#4ade80', updatedAt: data.updated_at };
       } catch (e) { console.warn('[fs] email lookup threw:', e); return null; }
     }
     window._fsLookupUserByEmail = _fsLookupUserByEmail;
@@ -876,7 +882,7 @@
       accent: '#8fdcff', warm: '#f8d28b', green: '#7af6a4',
       rose: '#ff6b8a', teal: '#49f0d2', orange: '#ffb36b',
       text: 'var(--mineral-text)', muted: 'var(--mineral-muted)',
-      faint: 'rgba(207,216,235,0.13)', surface: 'rgba(16,19,31,0.72)',
+      faint: 'rgba(207,216,235,0.13)', surface: 'rgba(var(--mineral-surface-rgb),0.72)',
       font: "var(--font-body)", display: "var(--font-display)",
       mono: "var(--font-mono)",
       c1: 'var(--theme-c1)', c2: 'var(--theme-c2)',
@@ -903,8 +909,8 @@
           background: dark
             ? 'linear-gradient(180deg, rgba(8,10,18,0.96), rgba(5,6,12,0.98))'
             : flat
-              ? 'rgba(16,19,31,0.46)'
-              : 'linear-gradient(180deg, rgba(23,27,42,0.82), rgba(13,16,28,0.88))',
+              ? 'rgba(var(--mineral-surface-rgb),0.46)'
+              : 'linear-gradient(180deg, rgba(var(--mineral-surface-2-rgb),0.82), rgba(var(--mineral-bg-2-rgb),0.88))',
           backdropFilter: 'blur(18px) saturate(125%)', WebkitBackdropFilter: 'blur(18px) saturate(125%)',
           boxShadow: elev(hov, glow) + ', 0 0 var(--widget-glow-size,0px) var(--widget-glow,transparent), inset 0 0 0 1.5px var(--widget-glow-ring,transparent)',
           transform: hov ? 'translateY(-2px)' : 'none',
@@ -2480,7 +2486,7 @@
                 </button>
               )}
               <button onClick={() => onNavigate('edit')}
-                style={{ background: 'rgba(16,19,31,0.72)', border: '1px solid var(--mineral-line)', borderRadius: 14, padding: '10px 16px', color: T.muted, fontSize: 12, fontWeight: 750, cursor: 'pointer', fontFamily: T.font }}
+                style={{ background: 'rgba(var(--mineral-surface-rgb),0.72)', border: '1px solid var(--mineral-line)', borderRadius: 14, padding: '10px 16px', color: T.muted, fontSize: 12, fontWeight: 750, cursor: 'pointer', fontFamily: T.font }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.055)'; e.currentTarget.style.color = T.muted; }}>
                 Éditer
@@ -2562,6 +2568,7 @@
         setWidgets(ws => [...ws, { id, label: name, col: spot.col, row: spot.row, variant }]);
         setShowPicker(false);
         setPickerWidget(null);
+        addToast({ message: `${name} ajouté au dashboard`, type: 'success', icon: '+' });
       };
 
       const getGridMetrics = () => {
@@ -2782,7 +2789,7 @@
                   })}
                 </div>
               )}
-              <button onClick={() => { onSave(widgets); onNavigate('dashboard'); }} style={{ background: T.c1, border: 'none', borderRadius: 10, padding: '8px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Terminé</button>
+              <button onClick={() => { onSave(widgets); addToast({ message: 'Dashboard personnalisé enregistré', type: 'success', icon: '✓' }); onNavigate('dashboard'); }} style={{ background: T.c1, border: 'none', borderRadius: 10, padding: '8px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Terminé</button>
             </div>
           </div>
           <div style={{ flex: 1, padding: '16px 32px', position: 'relative', overflow: 'hidden' }}>
@@ -3382,6 +3389,117 @@
       );
     }
     window.SessionScreen = SessionScreen;
+
+    function FocusHomeTab({ user, sessions = [], onStart }) {
+      const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
+      const last = [...sessions].sort((a,b) => new Date(b.endedAt || b.startedAt || 0) - new Date(a.endedAt || a.startedAt || 0))[0];
+      return (
+        <div style={{height:'100%',overflowY:'auto',padding:'20px 36px 36px',fontFamily:T.font}}>
+          <div style={{display:'grid',gridTemplateColumns:'minmax(0,1.15fr) minmax(280px,0.85fr)',gap:18,alignItems:'stretch'}}>
+            <div style={{borderRadius:30,background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(255,255,255,0.035))',border:'1px solid rgba(var(--theme-c1-rgb),0.20)',padding:'30px 32px',minHeight:260,display:'flex',flexDirection:'column',justifyContent:'space-between',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)'}}>
+              <div>
+                <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:12}}>LumenOS · Focus</div>
+                <div style={{fontFamily:T.display,fontWeight:850,fontSize:42,letterSpacing:'-0.05em',lineHeight:1,color:T.text,maxWidth:560}}>Démarrer une session de concentration.</div>
+                <div style={{fontSize:13,color:T.muted,lineHeight:1.65,marginTop:14,maxWidth:520}}>Lance un focus solo ou ensemble, puis retrouve tes sessions et tes cristaux dans les onglets de ce même espace.</div>
+              </div>
+              <button onClick={onStart} style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:10,border:'none',borderRadius:16,padding:'13px 20px',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:13,fontWeight:900,fontFamily:T.font,cursor:'pointer',boxShadow:'0 18px 40px rgba(var(--theme-c1-rgb),0.20), inset 0 1px 0 rgba(255,255,255,0.36)'}}>
+                <svg width={15} height={15} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
+                Démarrer un focus
+              </button>
+            </div>
+            <div style={{display:'grid',gap:12}}>
+              {[
+                { label:'Sessions', value:sessions.length, unit:'total' },
+                { label:'Temps focus', value:Math.round(total), unit:'minutes' },
+                { label:'Dernière session', value:last ? (last.completed ? 'Terminée' : 'En cours') : 'Aucune', unit:last ? (last.type === 'together' ? 'ensemble' : 'solo') : 'pour le moment' },
+              ].map((s,i)=>(
+                <div key={i} style={{borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',padding:'18px 20px'}}>
+                  <div style={{fontFamily:T.mono,fontSize:24,fontWeight:850,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
+                  <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:18,borderRadius:24,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden'}}>
+            <div style={{padding:'18px 20px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,borderBottom:'1px solid rgba(255,255,255,0.055)'}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:850,color:T.text}}>Historique de session</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:4}}>Tes dernières sessions solo ou ensemble.</div>
+              </div>
+              <span style={{fontSize:10,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.c1}}>{sessions.length} total</span>
+            </div>
+            <div style={{padding:14}}>
+              {window.SessionHistoryList
+                ? React.createElement(window.SessionHistoryList, { sessions, emptyText:"Lance ta première session pour remplir l'historique." })
+                : null}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function FocusScreen({ user, sessions, onStart, initialTab = 'focus' }) {
+      const [tab, setTab] = React.useState(initialTab);
+      React.useEffect(() => setTab(initialTab), [initialTab]);
+      const crystalKey = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
+      const [crystalCount, setCrystalCount] = React.useState(0);
+      React.useEffect(() => {
+        const sync = () => {
+          try { setCrystalCount(JSON.parse(localStorage.getItem(crystalKey)||'[]').length); } catch(e) { setCrystalCount(0); }
+        };
+        sync();
+        window.addEventListener('fs-crystal-update', sync);
+        return () => window.removeEventListener('fs-crystal-update', sync);
+      }, [crystalKey]);
+      const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
+      const TABS = [
+        { id:'focus', label:'Focus', meta:'Démarrer' },
+        { id:'cristaux', label:'Mes cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
+      ];
+      return (
+        <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
+          <div style={{padding:'32px 36px 0',flexShrink:0}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Focus</div>
+                <div style={{fontFamily:T.display,fontWeight:850,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Focus</div>
+                <div style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:560,lineHeight:1.55}}>Focus, sessions et cristaux regroupés dans un seul espace à onglets.</div>
+              </div>
+              <div style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
+                <span className="fp-badge">{Math.round(total)} min</span>
+                <span className="xp-badge">{crystalCount} cristaux</span>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+              {TABS.map(t => {
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTab(t.id)} style={{
+                    minWidth:0,borderRadius:20,padding:'14px 16px',cursor:'pointer',
+                    background:active?'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.20),rgba(255,255,255,0.07))':'transparent',
+                    color:active?T.text:T.muted,
+                    boxShadow:active?'0 14px 30px rgba(var(--theme-c1-rgb),0.14), inset 0 1px 0 rgba(255,255,255,0.10)':'none',
+                    border:`1px solid ${active?'rgba(var(--theme-c1-rgb),0.22)':'transparent'}`,
+                    fontFamily:T.font,textAlign:'left',transition:'all 0.22s cubic-bezier(0.34,1.56,0.64,1)'
+                  }}>
+                    <div style={{fontSize:13,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.label}</div>
+                    <div style={{fontSize:10,color:active?'rgba(248,246,252,0.52)':T.muted,marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.meta}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
+            <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
+              {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
+              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.FocusScreen = FocusScreen;
   </script>
 
   <script type="text/babel">
@@ -3480,19 +3598,22 @@
       s.textContent = `
     .fs-sidebar {
       --fs-ease: cubic-bezier(.16,1,.3,1);
-      width: 88px;
+      width: 284px;
       height: 100%;
       border-radius: 28px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025));
-      border: 1px solid rgba(255,255,255,0.08);
-      backdrop-filter: blur(26px) saturate(140%);
-      -webkit-backdrop-filter: blur(26px) saturate(140%);
-      box-shadow: 0 18px 60px rgba(0,0,0,0.45);
-      padding: 14px 12px;
+      background:
+        radial-gradient(ellipse 90% 34% at 20% 0%, rgba(var(--theme-c1-rgb),0.105), transparent 64%),
+        radial-gradient(ellipse 90% 40% at 100% 100%, rgba(var(--theme-c2-rgb),0.075), transparent 66%),
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.74), rgba(var(--mineral-bg-rgb),0.66));
+      border: 1px solid rgba(var(--theme-c1-rgb),0.12);
+      backdrop-filter: blur(34px) saturate(150%);
+      -webkit-backdrop-filter: blur(34px) saturate(150%);
+      box-shadow: 0 24px 74px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.075);
+      padding: 14px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      transition: width 260ms var(--fs-ease), transform 220ms var(--fs-ease), box-shadow 220ms var(--fs-ease), border-color 220ms var(--fs-ease);
+      transition: transform 220ms var(--fs-ease), box-shadow 220ms var(--fs-ease), border-color 220ms var(--fs-ease);
       position: relative;
       overflow-x: hidden;
       overflow-y: hidden;
@@ -3512,23 +3633,25 @@
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 28%, transparent 72%, rgba(255,255,255,0.03));
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.10), transparent 24%, transparent 72%, rgba(255,255,255,0.035)),
+        linear-gradient(90deg, rgba(255,255,255,0.04), transparent 34%, transparent);
       pointer-events: none;
       z-index: -1;
     }
     .fs-sidebar:hover {
-      width: 268px;
       transform: translateY(-2px);
-      box-shadow: 0 24px 70px rgba(0,0,0,0.5);
-      border-color: rgba(255,255,255,0.11);
+      box-shadow: 0 30px 86px rgba(0,0,0,0.54), inset 0 1px 0 rgba(255,255,255,0.09);
+      border-color: rgba(var(--theme-c1-rgb),0.18);
     }
     .fs-brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      min-height: 36px;
-      padding: 4px 8px;
+      min-height: 48px;
+      padding: 6px 8px 12px;
       flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.055);
     }
     .fs-brand-mark {
       width: 34px;
@@ -3557,17 +3680,13 @@
       object-fit: contain;
     }
     .fs-brand-copy {
-      opacity: 0;
-      transform: translateX(-8px);
-      transition: opacity 160ms ease, transform 220ms var(--fs-ease);
-      white-space: nowrap;
-    }
-    .fs-sidebar:hover .fs-brand-copy {
       opacity: 1;
       transform: translateX(0);
-      transition-delay: 60ms;
+      transition: opacity 160ms ease, transform 220ms var(--fs-ease);
+      white-space: nowrap;
+      min-width: 0;
     }
-    .fs-brand-title { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; color: rgba(248,246,252,0.95); }
+    .fs-brand-title { font-size: 14px; font-weight: 740; letter-spacing: 0.01em; color: rgba(248,246,252,0.95); }
     .fs-brand-sub { font-size: 12px; color: rgba(248,246,252,0.32); margin-top: 2px; }
     .fs-gear-dot {
       width: 34px;
@@ -3578,8 +3697,8 @@
       background: rgba(255,255,255,0.03);
       border: 1px solid rgba(255,255,255,0.05);
       color: rgba(235,239,255,0.92);
-      opacity: 0;
-      transform: scale(0.82) rotate(-25deg);
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
       transition: opacity 180ms ease, transform 260ms var(--fs-ease), background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
       margin-left: auto;
       flex: 0 0 auto;
@@ -3602,39 +3721,41 @@
       stroke-linejoin: round;
       transition: transform 500ms linear;
     }
-    .fs-sidebar:hover .fs-gear-dot {
-      opacity: 1;
-      transform: scale(1) rotate(0deg);
-      transition-delay: 70ms;
-    }
     .fs-sidebar:hover .fs-gear-icon { transform: rotate(360deg); }
     .fs-nav-group {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      margin-top: 8px;
+      gap: 6px;
+      margin-top: 12px;
       flex: 1;
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
       scrollbar-width: none;
+      padding: 2px 0 6px;
     }
     .fs-nav-group::-webkit-scrollbar { display: none; }
+    .fs-nav-cluster {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
     .fs-nav-item {
       position: relative;
       display: flex;
       align-items: center;
-      gap: 14px;
-      min-height: 42px;
-      padding: 6px 10px;
-      border-radius: 16px;
+      gap: 12px;
+      min-height: 46px;
+      padding: 7px 10px;
+      border-radius: 17px;
       flex-shrink: 0;
       color: rgba(182,189,205,0.72);
       text-decoration: none;
       background: transparent;
       border: none;
       overflow: hidden;
-      transition: color 180ms var(--fs-ease), transform 220ms var(--fs-ease);
+      transition: color 180ms var(--fs-ease), transform 220ms var(--fs-ease), background 180ms ease;
       cursor: pointer;
       width: 100%;
       text-align: left;
@@ -3645,7 +3766,9 @@
       position: absolute;
       inset: 4px;
       border-radius: 16px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035));
+      background:
+        radial-gradient(ellipse 80% 120% at 0% 0%, rgba(var(--theme-c1-rgb),0.10), transparent 58%),
+        linear-gradient(180deg, rgba(255,255,255,0.072), rgba(255,255,255,0.028));
       border: 1px solid rgba(255,255,255,0.02);
       opacity: 0;
       transform: scale(0.96);
@@ -3674,6 +3797,11 @@
       border-color: rgba(var(--theme-c1-rgb),0.20);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 24px rgba(var(--theme-c1-rgb),0.16);
     }
+    .fs-nav-parent.active::before {
+      background:
+        radial-gradient(ellipse 90% 120% at 0% 0%, rgba(var(--theme-c1-rgb),0.18), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+    }
     .fs-icon-wrap {
       position: relative;
       width: 32px;
@@ -3688,6 +3816,91 @@
     .fs-nav-item.active .fs-icon-wrap {
       filter: drop-shadow(0 0 14px rgba(var(--theme-c1-rgb),0.28));
     }
+    .fs-nav-submenu {
+      display: grid;
+      grid-template-rows: 0fr;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: grid-template-rows 360ms var(--fs-ease), opacity 220ms ease, transform 360ms var(--fs-ease);
+    }
+    .fs-nav-submenu.open {
+      grid-template-rows: 1fr;
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .fs-nav-submenu-inner {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 2px 0 8px 47px;
+    }
+    .fs-nav-submenu-inner::before {
+      content: "";
+      position: absolute;
+      left: 24px;
+      top: 5px;
+      bottom: 14px;
+      width: 1px;
+      background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.30), rgba(255,255,255,0.045));
+      border-radius: 999px;
+    }
+    .fs-nav-subitem {
+      position: relative;
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      color: rgba(248,246,252,0.42);
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 11.5px;
+      font-weight: 760;
+      text-align: left;
+      padding: 0 12px 0 14px;
+      transition: color 180ms ease, background 180ms ease, border-color 180ms ease, transform 220ms var(--fs-ease), box-shadow 180ms ease;
+    }
+    .fs-nav-subitem::before {
+      content: "";
+      position: absolute;
+      left: -25px;
+      top: 50%;
+      width: 15px;
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-50%);
+    }
+    .fs-nav-subitem:hover {
+      color: rgba(248,246,252,0.86);
+      background: rgba(255,255,255,0.045);
+      border-color: rgba(255,255,255,0.07);
+      transform: translateX(2px);
+    }
+    .fs-nav-subitem.active {
+      color: rgb(var(--theme-c1-rgb));
+      background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.125), rgba(255,255,255,0.035));
+      border-color: rgba(var(--theme-c1-rgb),0.22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .fs-nav-caret {
+      position: relative;
+      z-index: 1;
+      margin-left: auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      color: rgba(248,246,252,0.34);
+      background: rgba(255,255,255,0.035);
+      transition: transform 240ms var(--fs-ease), color 180ms ease, background 180ms ease;
+    }
+    .fs-nav-caret.open {
+      transform: rotate(180deg);
+      color: rgba(var(--theme-c1-rgb),0.92);
+      background: rgba(var(--theme-c1-rgb),0.10);
+    }
     .fs-icon {
       width: 20px;
       height: 20px;
@@ -3701,20 +3914,16 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      flex: 1;
       z-index: 1;
-      opacity: 0;
-      transform: translateX(-8px);
+      opacity: 1;
+      transform: translateX(0);
       transition: opacity 160ms ease, transform 220ms var(--fs-ease);
       white-space: nowrap;
       pointer-events: none;
     }
-    .fs-sidebar:hover .fs-label-wrap {
-      opacity: 1;
-      transform: translateX(0);
-      transition-delay: 55ms;
-    }
-    .fs-label { font-size: 14px; font-weight: 560; letter-spacing: -0.01em; color: inherit; }
-    .fs-meta { font-size: 12px; color: rgba(150,158,178,0.46); margin-top: 2px; }
+    .fs-label { font-size: 13.5px; font-weight: 680; letter-spacing: -0.01em; color: inherit; overflow: hidden; text-overflow: ellipsis; }
+    .fs-meta { font-size: 11px; color: rgba(150,158,178,0.54); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
     .fs-footer-card {
       position: relative;
       border-radius: 18px;
@@ -3777,15 +3986,11 @@
       color: #07070d;
     }
     .fs-footer-copy {
-      opacity: 0;
-      transform: translateX(-8px);
-      transition: opacity 160ms ease, transform 220ms var(--fs-ease);
-      white-space: nowrap;
-    }
-    .fs-sidebar:hover .fs-footer-copy {
       opacity: 1;
       transform: translateX(0);
-      transition-delay: 80ms;
+      transition: opacity 160ms ease, transform 220ms var(--fs-ease);
+      white-space: nowrap;
+      min-width: 0;
     }
     .fs-footer-title { font-size: 13px; font-weight: 600; color: rgba(248,246,252,0.95); }
     .fs-footer-sub { font-size: 11px; color: rgba(182,189,205,0.55); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3798,16 +4003,37 @@
       width: 22px; height: 22px; border-radius: 7px; border: none;
       display: flex; align-items: center; justify-content: center;
       color: rgba(248,246,252,0.22); flex-shrink: 0;
-      opacity: 0; transform: translateX(-4px) scale(0.85);
+      opacity: 1; transform: translateX(0) scale(1);
       transition: opacity 160ms ease, transform 220ms var(--fs-ease), color 0.18s, background 0.18s;
       transition-delay: 0ms; pointer-events: none;
       background: transparent;
     }
-    .fs-sidebar:hover .fs-footer-chevron {
-      opacity: 1; transform: translateX(0) scale(1); transition-delay: 90ms;
-    }
     .fs-footer-card:hover .fs-footer-chevron { color: rgba(248,246,252,0.5); }
     .fs-footer-card.fs-pop-open .fs-footer-chevron { color: rgba(var(--theme-c1-rgb),0.85); }
+    @media (min-width: 769px) and (max-width: 1180px) {
+      .fs-sidebar {
+        width: 244px;
+        padding: 12px;
+        border-radius: 24px;
+      }
+      .fs-nav-item {
+        min-height: 42px;
+        gap: 10px;
+        padding: 6px 8px;
+      }
+      .fs-icon-wrap {
+        width: 30px;
+        height: 30px;
+      }
+      .fs-label { font-size: 12.5px; }
+      .fs-meta { font-size: 10px; }
+      .fs-nav-submenu-inner {
+        padding-left: 42px;
+      }
+      .fs-footer-sub {
+        max-width: 148px;
+      }
+    }
     /* Premium popover — position:fixed so overflow:hidden on sidebar never clips it */
     .fs-popover {
       position: fixed;
@@ -4056,6 +4282,8 @@
       const [accountOpen, setAccountOpen] = React.useState(false);
       const [friendsOpen, setFriendsOpen] = React.useState(false);
       const [cristauxOpen, setCristauxOpen] = React.useState(false);
+      const [focusMenuOpen, setFocusMenuOpen] = React.useState(false);
+      const [evolutionMenuOpen, setEvolutionMenuOpen] = React.useState(false);
 
       const closeAllPanels = () => { setFriendsOpen(false); setCristauxOpen(false); setAccountOpen(false); };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
@@ -4169,6 +4397,16 @@
         closeAllPanels();
         onNavigate('perso');
       };
+      const goEvolutionTab = tab => {
+        try { localStorage.setItem('fs_evolution_initial_tab', tab); } catch(e) {}
+        closeAllPanels();
+        setPopOpen(false);
+        setEvolutionMenuOpen(true);
+        onNavigate(tab === 'progression' ? 'progression' : 'evolution');
+      };
+      const currentEvolutionTab = (() => {
+        try { return localStorage.getItem('fs_evolution_initial_tab') || 'overview'; } catch(e) { return 'overview'; }
+      })();
 
       const NAV = [
         {
@@ -4184,7 +4422,7 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z" /><path d="M15 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></svg>,
         },
         {
-          target: 'session', label: 'Sessions', meta: 'Collaboration live',
+          target: 'session', label: 'Focus', meta: 'Sessions & cristaux',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
         },
         {
@@ -4215,8 +4453,66 @@
                 </button>
               </div>
               <nav className="fs-nav-group">
-                {NAV.map((item, i) => (
+                {NAV.filter(item => !['session','perso'].includes(item.target)).map((item, i) => (
                   <button key={i}
+                    className={'fs-nav-item' + (screen === item.target ? ' active' : '')}
+                    onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
+                    <span className="fs-icon-wrap">{item.icon}</span>
+                    <span className="fs-label-wrap">
+                      <span className="fs-label">{item.label}</span>
+                      <span className="fs-meta">{item.meta}</span>
+                    </span>
+                  </button>
+                ))}
+
+                <div className="fs-nav-cluster" onMouseLeave={() => setFocusMenuOpen(false)}>
+                  <button aria-expanded={focusMenuOpen} className={'fs-nav-item fs-nav-parent' + (['session','cristaux'].includes(screen) ? ' active' : '')}
+                    onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(o => !o); }}>
+                    <span className="fs-icon-wrap">
+                      <svg className="fs-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg>
+                    </span>
+                    <span className="fs-label-wrap">
+                      <span className="fs-label">Focus</span>
+                      <span className="fs-meta">Sessions & cristaux</span>
+                    </span>
+                    <span className={'fs-nav-caret' + (focusMenuOpen ? ' open' : '')}>⌄</span>
+                  </button>
+                  <div className={'fs-nav-submenu' + (focusMenuOpen ? ' open' : '')}>
+                    <div className="fs-nav-submenu-inner">
+                      <button className={'fs-nav-subitem' + (screen === 'session' ? ' active' : '')}
+                        onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(true); onNavigate('session'); }}>Sessions</button>
+                      <button className={'fs-nav-subitem' + (screen === 'cristaux' ? ' active' : '')}
+                        onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(true); onNavigate('cristaux'); }}>Mes cristaux</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="fs-nav-cluster" onMouseLeave={() => setEvolutionMenuOpen(false)}>
+                  <button aria-expanded={evolutionMenuOpen} className={'fs-nav-item fs-nav-parent' + (['evolution','progression'].includes(screen) ? ' active' : '')}
+                    onClick={() => { closeAllPanels(); setPopOpen(false); setEvolutionMenuOpen(o => !o); }}>
+                    <span className="fs-icon-wrap">
+                      <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/><path d="M17 6h2v2"/>
+                      </svg>
+                    </span>
+                    <span className="fs-label-wrap">
+                      <span className="fs-label">Évolution</span>
+                      <span className="fs-meta">Quêtes, boutique, progression</span>
+                    </span>
+                    <span className={'fs-nav-caret' + (evolutionMenuOpen ? ' open' : '')}>⌄</span>
+                  </button>
+                  <div className={'fs-nav-submenu' + (evolutionMenuOpen ? ' open' : '')}>
+                    <div className="fs-nav-submenu-inner">
+                      <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'streaks' ? ' active' : '')} onClick={() => goEvolutionTab('streaks')}>Régularité</button>
+                      <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'quests' ? ' active' : '')} onClick={() => goEvolutionTab('quests')}>Quêtes</button>
+                      <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'store' ? ' active' : '')} onClick={() => goEvolutionTab('store')}>Boutique</button>
+                      <button className={'fs-nav-subitem' + (screen === 'progression' ? ' active' : '')} onClick={() => goEvolutionTab('progression')}>Progression</button>
+                    </div>
+                  </div>
+                </div>
+
+                {NAV.filter(item => item.target === 'perso').map((item, i) => (
+                  <button key={`tail-${i}`}
                     className={'fs-nav-item' + (screen === item.target ? ' active' : '')}
                     onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
                     <span className="fs-icon-wrap">{item.icon}</span>
@@ -4247,44 +4543,6 @@
                   <span className="fs-label-wrap">
                     <span className="fs-label">Amis</span>
                     <span className="fs-meta">{friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}</span>
-                  </span>
-                </button>
-
-                {/* ── Mes Cristaux nav item ── */}
-                <button
-                  className={'fs-nav-item' + (screen === 'cristaux' ? ' active' : '')}
-                  onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('cristaux'); }}
-                  style={{ position: 'relative' }}>
-                  <span className="fs-icon-wrap" style={{ position: 'relative' }}>
-                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 15.5 8.5 22 9.5 17 14.5 18.5 21 12 17.5 5.5 21 7 14.5 2 9.5 8.5 8.5 12 2"/>
-                    </svg>
-                    {crystalCount > 0 && (
-                      <span style={{ position:'absolute', top:-3, right:-4, minWidth:16, height:16, borderRadius:99, background:'var(--theme-c1)', color:'#07070d', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', lineHeight:1, fontFamily:"'DM Sans',sans-serif", boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.55)' }}>
-                        {crystalCount}
-                      </span>
-                    )}
-                  </span>
-                  <span className="fs-label-wrap">
-                    <span className="fs-label">Mes Cristaux</span>
-                    <span className="fs-meta">{crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Forger un cristal'}</span>
-                  </span>
-                </button>
-
-                {/* ── Évolution ── */}
-                <button className={'fs-nav-item'+(screen==='evolution'?' active':'')}
-                  onClick={()=>{ closeAllPanels(); setPopOpen(false); onNavigate('evolution'); }}>
-                  <span className="fs-icon-wrap">
-                    <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 19V5"/>
-                      <path d="M4 19h16"/>
-                      <path d="M8 15l3-4 3 2 5-7"/>
-                      <path d="M17 6h2v2"/>
-                    </svg>
-                  </span>
-                  <span className="fs-label-wrap">
-                    <span className="fs-label">Évolution</span>
-                    <span className="fs-meta">Quêtes, boutique, progression</span>
                   </span>
                 </button>
 
@@ -4395,7 +4653,7 @@
               { target: 'dashboard', label: 'Accueil', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
-              { target: 'cristaux',  label: 'Cristaux', icon: <svg viewBox="0 0 24 24"><path d="m12 2 4 7-4 13L8 9l4-7Z"/><path d="M8 9h8"/><path d="m4 13 4-4"/><path d="m20 13-4-4"/></svg> },
+              { target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
             ].map(item => (
               <button key={item.target}
@@ -5304,6 +5562,41 @@
     }
     window.buildGrad = buildGrad;
 
+    function clampChannel(v) {
+      return Math.max(0, Math.min(255, Math.round(v)));
+    }
+    function rgbStrToArray(rgb) {
+      return String(rgb || '143,220,255').split(',').map(v => clampChannel(Number(v.trim()) || 0));
+    }
+    function rgbArrayToStr(rgb) {
+      return rgb.map(clampChannel).join(', ');
+    }
+    function rgbArrayToHex(rgb) {
+      return '#' + rgb.map(v => clampChannel(v).toString(16).padStart(2, '0')).join('');
+    }
+    function themeTone(theme, strength) {
+      const a = rgbStrToArray(theme?.g1?.rgb);
+      const b = rgbStrToArray(theme?.g2?.rgb);
+      return [0, 1, 2].map(i => ((a[i] + b[i]) / 2) * strength);
+    }
+    function buildThemePalette(theme) {
+      const bg = themeTone(theme, 0.075);
+      const bg2 = themeTone(theme, 0.105);
+      const surface = themeTone(theme, 0.155);
+      const surface2 = themeTone(theme, 0.215);
+      return {
+        bg,
+        bg2,
+        surface,
+        surface2,
+        bgHex: rgbArrayToHex(bg),
+        bg2Hex: rgbArrayToHex(bg2),
+        surfaceHex: rgbArrayToHex(surface),
+        surface2Hex: rgbArrayToHex(surface2),
+      };
+    }
+    window.buildThemePalette = buildThemePalette;
+
     const FONT_PRESETS = [
       { id: 'signature', name: 'Signature', vibe: 'Lumen', desc: 'Net, moderne et tres lisible.', body: "'DM Sans', sans-serif", display: "'Syne', sans-serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#a5b8ff', c2: '#c084fc' },
       { id: 'editorial', name: 'Editorial', vibe: 'Calme premium', desc: 'Elegant, inspire des interfaces editoriales.', body: "'Inter', sans-serif", display: "'Playfair Display', serif", mono: "'JetBrains Mono', 'Courier New', monospace", c1: '#f0c38e', c2: '#f7a8c4' },
@@ -5382,16 +5675,20 @@
       return `${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}`;
     }
     function buildCustomTheme(c1hex, c2hex) {
+      const g1rgb = hexToRgbStr(c1hex);
+      const g2rgb = hexToRgbStr(c2hex);
+      const palette = window.buildThemePalette ? window.buildThemePalette({ g1: { rgb: g1rgb }, g2: { rgb: g2rgb } }) : null;
       return {
-        id: 'custom', name: 'Custom', desc: 'Personnalisé', base: '#07070d',
-        g1: { rgb: hexToRgbStr(c1hex), o: 0.14, x: '18%', y: '15%' },
-        g2: { rgb: hexToRgbStr(c2hex), o: 0.10, x: '82%', y: '82%' }
+        id: 'custom', name: 'Custom', desc: 'Personnalisé', base: palette?.bgHex || '#07070d',
+        g1: { rgb: g1rgb, o: 0.14, x: '18%', y: '15%' },
+        g2: { rgb: g2rgb, o: 0.10, x: '82%', y: '82%' }
       };
     }
     window.buildCustomTheme = buildCustomTheme;
 
     /* ── Fond (Background) Screen ────────────────────────────────────────────── */
     function FondScreen({ onNavigate, bgThemeId, onApply }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const KEPT = BG_THEMES.filter(t => ['ocean', 'sakura', 'crimson'].includes(t.id));
       const VALID_IDS = ['ocean', 'sakura', 'crimson', 'custom'];
       const initId = VALID_IDS.includes(bgThemeId) ? bgThemeId : null;
@@ -5401,13 +5698,21 @@
       const [customC1, setCustomC1] = _uPX(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c1 || '#a5b8ff'; } catch (e) { return '#a5b8ff'; } });
       const [customC2, setCustomC2] = _uPX(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c2 || '#c084fc'; } catch (e) { return '#c084fc'; } });
       const [customOpen, setCustomOpen] = _uPX(initId === 'custom');
+      const customRef = React.useRef(null);
 
       const customTheme = buildCustomTheme(customC1, customC2);
       const allThemes = [...KEPT, customTheme];
       const prev = allThemes.find(t => t.id === previewId) || KEPT[0];
 
       const saveCustom = (c1h, c2h) => { try { localStorage.setItem('fs_custom_bg', JSON.stringify({ c1: c1h, c2: c2h })); } catch (e) { } };
-      const apply = t => { setAppliedId(t.id); setPreviewId(t.id); onApply(t); };
+      const apply = t => { setAppliedId(t.id); setPreviewId(t.id); onApply(t); addToast({ message: `Thème ${t.name} appliqué`, type: 'success', icon: '✓' }); };
+
+      React.useEffect(() => {
+        if (!customOpen) return;
+        const close = e => { if (customRef.current && !customRef.current.contains(e.target)) setCustomOpen(false); };
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+      }, [customOpen]);
 
       const handleC1 = e => {
         const v = e.target.value; setCustomC1(v); saveCustom(v, customC2);
@@ -5456,7 +5761,7 @@
           </div>
 
           {/* Grid + custom editor */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 36px 36px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 36px 36px', position:'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Thèmes</span>
               <span style={{ fontSize: 11, color: T.muted }}>3 presets · 1 custom</span>
@@ -5543,7 +5848,7 @@
 
             {/* ── Custom gradient editor ── */}
             {customOpen && (
-              <div style={{ marginTop: 14, borderRadius: 18, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, backdropFilter: 'blur(24px)', animation: 'scaleIn 0.24s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+              <div ref={customRef} style={{ position:'absolute', top:138, right:36, width:300, zIndex:40, borderRadius: 18, background: 'rgba(8,8,20,0.96)', border: '1px solid rgba(255,255,255,0.10)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, backdropFilter: 'blur(36px)', boxShadow:'0 24px 70px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.06)', animation: 'scaleIn 0.24s cubic-bezier(0.34,1.56,0.64,1) both' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.c1, boxShadow: `0 0 7px ${T.c1}` }} />
                   <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Gradient personnalisé</span>
@@ -5581,6 +5886,7 @@
     window.FondScreen = FondScreen;
 
     function FontScreen({ onNavigate, fontId, onApply }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const presets = window.FONT_PRESETS || [];
       const [hovered, setHovered] = _uPX(null);
       const activeId = fontId || (() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })();
@@ -5589,6 +5895,7 @@
       const selectFont = preset => {
         if (!preset) return;
         onApply && onApply(preset);
+        addToast({ message: `Police ${preset.name} appliquée`, type: 'success', icon: 'Aa' });
       };
 
       return (
@@ -5954,6 +6261,7 @@
 
     /* ── Widget Variants + Appearance Screen ─────────────────────────────────── */
     function WidgetVariantsScreen({ onNavigate, onUseVariant, widgetStyle, onWidgetStyleChange }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [active, setActive] = _uSC('clock');
 
       const CATALOG = [
@@ -6037,7 +6345,7 @@
                           <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: T.c1, opacity: 0.5 }} />
                           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.muted }}>Variante {v}</span>
                         </div>
-                        <button onClick={() => { onUseVariant(current.id, v); onNavigate('dashboard'); }}
+                        <button onClick={() => { onUseVariant(current.id, v); addToast({ message: `${current.label} variante ${v} appliquée`, type: 'success', icon: '✓' }); onNavigate('dashboard'); }}
                           style={{ background: `linear-gradient(135deg,${c1(0.13)},${c1(0.05)})`, border: `1px solid ${c1(0.22)}`, borderRadius: 99, padding: '4px 13px', color: T.c1, fontSize: 9.5, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, letterSpacing: '0.07em', transition: 'all 0.18s' }}
                           onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.20)},${c1(0.10)})`; e.currentTarget.style.boxShadow = `0 0 16px ${c1(0.22)}`; }}
                           onMouseLeave={e => { e.currentTarget.style.background = `linear-gradient(135deg,${c1(0.13)},${c1(0.05)})`; e.currentTarget.style.boxShadow = 'none'; }}>
@@ -6067,7 +6375,7 @@
                     </svg>
                     <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.muted }}>Apparence</span>
                   </div>
-                  <button onClick={() => update({ opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 })}
+                  <button onClick={() => { update({ opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 }); addToast({ message: 'Apparence des widgets réinitialisée', type: 'info', icon: '↺' }); }}
                     style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '4px 11px', color: T.muted, fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.16s' }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = T.text; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = T.muted; }}>
@@ -6338,7 +6646,7 @@
               started_at: new Date(enriched.startTime).toISOString(),
             }).select('id').single();
             if (data) setActiveSession(prev => ({ ...prev, broadcastId: data.id }));
-          } catch (e) { console.warn('[fs] session insert failed', e); }
+          } catch (e) { console.warn('[fs] session insert failed', e); addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' }); }
         }
       };
 
@@ -6367,7 +6675,7 @@
         if (activeSession?.type === 'together' && activeSession.broadcastId) {
           try {
             await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).eq('id', activeSession.broadcastId);
-          } catch (e) { console.warn('[fs] session end failed', e); }
+          } catch (e) { console.warn('[fs] session end failed', e); addToast({ message: 'Fin de session non synchronisée', type: 'warning', icon: '!' }); }
         }
         saveSessionRecord(buildSessionRecord(activeSession, hasCrystalData, new Date().toISOString()));
         setActiveSession(null);
@@ -6395,7 +6703,20 @@
         r.setProperty('--theme-c2-rgb', theme.g2.rgb);
         r.setProperty('--theme-c1', `rgb(${theme.g1.rgb})`);
         r.setProperty('--theme-c2', `rgb(${theme.g2.rgb})`);
-        document.body.style.background = theme.base;
+        const palette = window.buildThemePalette ? window.buildThemePalette(theme) : null;
+        if (palette) {
+          r.setProperty('--mineral-bg', palette.bgHex);
+          r.setProperty('--mineral-bg-2', palette.bg2Hex);
+          r.setProperty('--mineral-surface', palette.surfaceHex);
+          r.setProperty('--mineral-surface-2', palette.surface2Hex);
+          r.setProperty('--mineral-bg-rgb', rgbArrayToStr(palette.bg));
+          r.setProperty('--mineral-bg-2-rgb', rgbArrayToStr(palette.bg2));
+          r.setProperty('--mineral-surface-rgb', rgbArrayToStr(palette.surface));
+          r.setProperty('--mineral-surface-2-rgb', rgbArrayToStr(palette.surface2));
+          r.setProperty('--mineral-line', `rgba(${theme.g1.rgb},0.095)`);
+          r.setProperty('--mineral-line-strong', `rgba(${theme.g1.rgb},0.16)`);
+        }
+        document.body.style.background = palette?.bgHex || theme.base;
       }, [bgThemeId]);
 
       const applyBgTheme = theme => {
@@ -6583,16 +6904,16 @@
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} />}
                 {screen === 'tasks' && <TasksScreen />}
-                {screen === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open: true, user, embedded: true })}
+                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux' })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen)}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
-                {screen === 'session' && window.SessionScreen && React.createElement(window.SessionScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
+                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
-                {screen === 'progression' && window.ProgressScreen && React.createElement(window.ProgressScreen, { onNavigate: go, user })}
+                {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
               </div>
             </div>
           )}
@@ -6713,7 +7034,6 @@
     /* ── FriendDashboardPreview ─────────────────────────────────────────── */
     function FriendDashboardPreview({ friend, onClose }) {
       const [data, setData] = React.useState(null);
-      const [togetherSessions, setTogetherSessions] = React.useState([]);
       const [loading, setLoading] = React.useState(true);
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
@@ -6723,60 +7043,23 @@
           setLoading(true);
           const remote = await window._fsLoadRemote(friend.id);
           setData(remote);
-          const myId = (() => {
-            try {
-              const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
-              return u?.id || window._fsSbUser?.id || '';
-            } catch(e) { return window._fsSbUser?.id || ''; }
-          })();
-          const localTogether = (() => {
-            try {
-              return JSON.parse(localStorage.getItem(`fs_session_history_${myId || 'guest'}`) || '[]')
-                .filter(s => s.type === 'together' && (s.friendId === friend.id || s.friendEmail === friend.email || s.hostEmail === friend.email));
-            } catch(e) { return []; }
-          })();
-          let remoteTogether = [];
-          if (window._fsSb && myId && friend.id) {
-            try {
-              const hosted = await window._fsSb.from('sessions')
-                .select('id, host_id, friend_id, type, duration, music, breaks, active, started_at, ended_at')
-                .eq('host_id', myId).eq('friend_id', friend.id)
-                .order('started_at', { ascending:false }).limit(8);
-              const joined = await window._fsSb.from('sessions')
-                .select('id, host_id, friend_id, type, duration, music, breaks, active, started_at, ended_at')
-                .eq('host_id', friend.id).eq('friend_id', myId)
-                .order('started_at', { ascending:false }).limit(8);
-              remoteTogether = [...(hosted?.data || []), ...(joined?.data || [])].map(r => {
-                const started = r.started_at || r.ended_at || new Date().toISOString();
-                const ended = r.ended_at || started;
-                const minutes = r.ended_at
-                  ? Math.max(1, Math.round((new Date(ended).getTime() - new Date(started).getTime()) / 60000))
-                  : Number(r.duration || 25);
-                return {
-                  id: r.id,
-                  type: 'together',
-                  duration: Number(r.duration) || 25,
-                  actualMinutes: minutes,
-                  startedAt: started,
-                  endedAt: ended,
-                  completed: !!r.ended_at && !r.active,
-                  music: r.music || 'Silence',
-                  breaks: !!r.breaks,
-                  friendId: friend.id,
-                  friendEmail: friend.email,
-                  friendName: friend.name || friend.email?.split('@')[0] || 'Ami',
-                };
-              });
-            } catch(e) { console.warn('[fs] friend sessions load failed', e); }
-          }
-          const merged = [...remoteTogether, ...localTogether]
-            .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i)
-            .sort((a,b) => new Date(b.endedAt || b.startedAt || 0) - new Date(a.endedAt || a.startedAt || 0))
-            .slice(0, 8);
-          setTogetherSessions(merged);
           setLoading(false);
         })();
       }, [friend.id]);
+
+      const formatLastConnection = value => {
+        if (!value) return 'indisponible';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return 'indisponible';
+        return d.toLocaleDateString('fr-FR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      };
+      const lastConnection = data?.updated_at || friend.updatedAt || friend.lastSeen || friend.addedAt;
 
       const widgets = data?.widgets || [];
       const friendTheme = React.useMemo(() => {
@@ -6841,6 +7124,9 @@
                   <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:T.muted, marginBottom:5 }}>Aperçu du tableau de bord · Lecture seule</div>
                   <div style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em' }}>{friend.name || friend.email.split('@')[0]}</div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>{friend.email}</div>
+                  <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>
+                    Dernière connexion le : <span style={{ color:T.text, fontWeight:700 }}>{formatLastConnection(lastConnection)}</span>
+                  </div>
                 </div>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -6851,24 +7137,6 @@
                 <button onClick={onClose} style={{ width:36, height:36, borderRadius:'50%', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', color:T.muted, fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.18s' }}
                   onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.1)';e.currentTarget.style.color=T.text;}}
                   onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}>×</button>
-              </div>
-            </div>
-
-            {/* Together sessions */}
-            <div style={{ padding:'16px 28px 0', flexShrink:0, position:'relative', zIndex:2 }}>
-              <div style={{ borderRadius:24, background:'rgba(255,255,255,0.032)', border:'1px solid rgba(255,255,255,0.065)', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)', overflow:'hidden' }}>
-                <div style={{ padding:'14px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.052)' }}>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:850, color:T.text }}>Sessions ensemble</div>
-                    <div style={{ fontSize:10, color:T.muted, marginTop:3 }}>{togetherSessions.length} historique{togetherSessions.length>1?'s':''} avec {friend.name || friend.email?.split('@')[0]}</div>
-                  </div>
-                  <span style={{ fontSize:9, fontWeight:850, letterSpacing:'0.12em', textTransform:'uppercase', color:fc }}>Collaboration</span>
-                </div>
-                <div style={{ padding:12, maxHeight:190, overflowY:'auto' }}>
-                  {window.SessionHistoryList
-                    ? React.createElement(window.SessionHistoryList, { sessions:togetherSessions, emptyText:'Aucune session ensemble pour le moment.', compact:true })
-                    : null}
-                </div>
               </div>
             </div>
 
@@ -6943,6 +7211,7 @@
 
     /* ── FriendsPanel ───────────────────────────────────────────────────── */
     function FriendsPanel({ open, onClose, user }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const uid = user?.id || 'guest';
       const storageKey = `fs_friends_${uid}`;
 
@@ -6965,7 +7234,7 @@
         const myId = user.id;
         const ownP = window._fsLoadRemote(myId);
         const revP = window._fsSb
-          ? window._fsSb.from('user_data').select('user_id, name, email')
+          ? window._fsSb.from('user_data').select('user_id, name, email, updated_at')
               .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
           : Promise.resolve({ data: [] });
         Promise.all([ownP, revP]).then(([remote, revResult]) => {
@@ -6981,7 +7250,8 @@
               name: r.name || r.email?.split('@')[0] || 'Unknown',
               email: r.email || '',
               initial: (r.name || r.email || '?')[0].toUpperCase(),
-              color: '#4ade80'
+              color: '#4ade80',
+              updatedAt: r.updated_at
             }));
           setReverseFriends(reverse);
           setLoaded(true);
@@ -7009,10 +7279,10 @@
         if (!trimmed || !trimmed.includes('@')) return;
         setStatus('loading');
         const found = await window._fsLookupUserByEmail(trimmed);
-        if (!found) { setStatus('error'); setMsg('No LumenOS account found'); setTimeout(()=>setStatus('idle'),2600); return; }
+        if (!found) { setStatus('error'); setMsg('No LumenOS account found'); addToast({ message: 'Aucun compte LumenOS trouvé', type: 'error', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
         const myId = user?.id || window._fsSbUser?.id;
-        if (found.id === myId) { setStatus('error'); setMsg("That's your own account!"); setTimeout(()=>setStatus('idle'),2600); return; }
-        if (friends.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); setTimeout(()=>setStatus('idle'),2600); return; }
+        if (found.id === myId) { setStatus('error'); setMsg("That's your own account!"); addToast({ message: 'Tu ne peux pas ajouter ton propre compte', type: 'warning', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
+        if (friends.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); addToast({ message: 'Cet ami est déjà dans ta liste', type: 'info', icon: 'i' }); setTimeout(()=>setStatus('idle'),2600); return; }
 
         /* Add found user to MY list */
         setFriends(prev => [...prev, { ...found, addedAt: Date.now() }]);
@@ -7035,12 +7305,15 @@
 
         setEmail('');
         setStatus('success'); setMsg(`${found.name} added! 🎉`);
+        addToast({ message: `${found.name} ajouté à tes amis`, type: 'success', icon: '✓' });
         setTimeout(()=>setStatus('idle'), 2200);
       };
 
       const removeFriend = async (id) => {
+        const removed = [...friends, ...reverseFriends].find(f => f.id === id);
         setFriends(prev => prev.filter(f => f.id !== id));
         setReverseFriends(prev => prev.filter(f => f.id !== id));
+        if (removed) addToast({ message: `${removed.name || removed.email} retiré de tes amis`, type: 'info', icon: '−' });
         /* Best-effort: remove self from their list (silent if RLS blocks) */
         const myId = user?.id || window._fsSbUser?.id;
         if (myId && window._fsSb) {
@@ -8082,8 +8355,8 @@
             <div className="fs-session-status" style={{position:'relative', display:'flex', alignItems:'center', gap:11, minWidth:0}}>
               <div style={{position:'relative', width:isTogether?54:36, height:36, flexShrink:0}}>
                 <div style={{position:'absolute', inset:-5, borderRadius:99, background:`radial-gradient(circle, ${over ? 'rgba(255,107,138,.18)' : c1(.18)}, transparent 66%)`}}/>
-                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(7,8,16,.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>F</div>
-                {isTogether && <div style={{position:'absolute', left:22, top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${partnerColor},${partnerColor}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(7,8,16,.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>{partnerInitial}</div>}
+                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>F</div>
+                {isTogether && <div style={{position:'absolute', left:22, top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${partnerColor},${partnerColor}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>{partnerInitial}</div>}
               </div>
               <div style={{minWidth:0}}>
                 <div style={{display:'flex', alignItems:'center', gap:7, color:over?T.rose:T.text, fontSize:12, fontWeight:850, letterSpacing:'-.01em', whiteSpace:'nowrap'}}>
@@ -9215,14 +9488,22 @@
   /* ─────────────────────────────────────────────────────────────
      ÉVOLUTION SCREEN — Régularité · Quêtes · Boutique · Progression
   ───────────────────────────────────────────────────────────── */
-  function EvolutionScreen({ user }) {
-    const [tab, setTab] = React.useState('streaks');
+  function EvolutionScreen({ user, initialTab = null }) {
+    const readInitialTab = () => {
+      if (initialTab) return initialTab;
+      try { return localStorage.getItem('fs_evolution_initial_tab') || 'overview'; } catch(e) { return 'overview'; }
+    };
+    const [tab, setTab] = React.useState(readInitialTab);
+    React.useEffect(() => setTab(readInitialTab()), [initialTab]);
     const [g] = useGamif(user?.id);
     const { fp=0, xp=0, streaks={}, quests={} } = g;
     const lvl = window._gLevel(xp);
     const pending = [...(quests.daily||[]),...(quests.weekly||[])].filter(q=>!q.completed).length;
+    const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
+    const totalMin = Object.values(g.heatmap||{}).reduce((a,b)=>a+b,0);
 
     const TABS = [
+      { id:'overview',    label:'Évolution', meta:`Niv. ${lvl}` },
       { id:'streaks',     label:'Régularité', meta:`${streaks.daily||0} jour${(streaks.daily||0)>1?'s':''}` },
       { id:'quests',      label:'Quêtes', meta:`${pending} en cours` },
       { id:'store',       label:'Boutique', meta:`${fp.toLocaleString('fr')} FP` },
@@ -9243,7 +9524,7 @@
               <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
             </div>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(5,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
             {TABS.map(t => {
               const active = tab === t.id;
               return (
@@ -9265,6 +9546,44 @@
         <div style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
           <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
             <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column',paddingTop:20}}>
+              {tab==='overview' && (
+                <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:12,marginBottom:18}}>
+                    {[
+                      { label:'Niveau', value:lvl, unit:`${xp.toLocaleString('fr')} XP` },
+                      { label:'Régularité', value:streaks.daily||0, unit:'jours' },
+                      { label:'Quêtes', value:pending, unit:'en cours' },
+                      { label:'Cristaux', value:crystals.length, unit:'forgés' },
+                    ].map((s,i)=>(
+                      <div key={i} style={{padding:'18px',borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                        <div style={{fontFamily:T.mono,fontSize:28,fontWeight:850,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
+                        <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
+                        <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) minmax(260px,0.65fr)',gap:14}}>
+                    <div style={{padding:'20px',borderRadius:24,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                        <div style={{fontSize:13,fontWeight:800,color:T.text}}>Activité récente</div>
+                        <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
+                      </div>
+                      <FocusHeatmap heatmap={g.heatmap||{}}/>
+                    </div>
+                    <div style={{padding:'20px',borderRadius:24,background:'rgba(255,210,125,0.055)',border:'1px solid rgba(255,210,125,0.16)',display:'flex',flexDirection:'column',justifyContent:'space-between',gap:18}}>
+                      <div>
+                        <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:'rgba(255,210,125,0.66)',marginBottom:10}}>Résumé</div>
+                        <div style={{fontFamily:T.display,fontWeight:850,fontSize:30,letterSpacing:'-0.045em',lineHeight:1,color:T.text}}>{Math.round(totalMin)} minutes de focus capturées.</div>
+                        <div style={{fontSize:12,color:T.muted,lineHeight:1.6,marginTop:12}}>Utilise les onglets pour passer de la régularité aux quêtes, à la boutique et aux détails de progression.</div>
+                      </div>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <span className="fp-badge">{fp.toLocaleString('fr')} FP</span>
+                        <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {tab==='streaks'     && window.StreaksPanel     && React.createElement(window.StreaksPanel,     { embed:true, user })}
               {tab==='quests'      && window.QuestsPanel      && React.createElement(window.QuestsPanel,      { embed:true, user })}
               {tab==='store'       && window.StorePanel       && React.createElement(window.StorePanel,       { embed:true, user })}
