@@ -4618,16 +4618,17 @@
                   </span>
                 </button>
 
-                {!isInstalled && !installDismissed && (
+                {!isInstalled && (
                   <div style={{
                     margin: '10px 2px 4px',
                     borderRadius: 16,
                     background: 'linear-gradient(145deg, rgba(var(--mineral-surface-2-rgb),0.95) 0%, rgba(var(--mineral-bg-2-rgb),0.9) 100%)',
                     border: '1px solid rgba(var(--theme-c1-rgb),0.13)',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.055)',
-                    padding: '13px 14px 14px',
+                    padding: 'clamp(8px, 1.1vh, 13px) clamp(8px, 1vw, 14px)',
                     position: 'relative',
                     overflow: 'hidden',
+                    flexShrink: 0,
                   }}>
                     {/* subtle glow top-left */}
                     <div style={{
