@@ -5,6 +5,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LumenOS</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#8fdcff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LumenOS" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -4315,6 +4326,34 @@
       const [focusMenuOpen, setFocusMenuOpen] = React.useState(false);
       const [evolutionMenuOpen, setEvolutionMenuOpen] = React.useState(false);
 
+      const [installPrompt, setInstallPrompt] = React.useState(null);
+      const [isInstalled, setIsInstalled] = React.useState(
+        window.matchMedia('(display-mode: standalone)').matches
+      );
+      const [installTooltip, setInstallTooltip] = React.useState(false);
+
+      React.useEffect(() => {
+        const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+        window.addEventListener('beforeinstallprompt', handler);
+        const mq = window.matchMedia('(display-mode: standalone)');
+        const mqHandler = (e) => setIsInstalled(e.matches);
+        mq.addEventListener('change', mqHandler);
+        return () => {
+          window.removeEventListener('beforeinstallprompt', handler);
+          mq.removeEventListener('change', mqHandler);
+        };
+      }, []);
+
+      const handleInstall = async () => {
+        if (installPrompt) {
+          installPrompt.prompt();
+          const { outcome } = await installPrompt.userChoice;
+          if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); }
+        } else {
+          setInstallTooltip(t => !t);
+        }
+      };
+
       const closeAllPanels = () => { setFriendsOpen(false); setCristauxOpen(false); setAccountOpen(false); };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
       const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
@@ -4575,6 +4614,39 @@
                     <span className="fs-meta">{friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}</span>
                   </span>
                 </button>
+
+                {!isInstalled && (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      className="fs-nav-item"
+                      onClick={handleInstall}
+                      style={{ marginTop: 8, width: '100%' }}
+                    >
+                      <span className="fs-icon-wrap">
+                        <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v13M7 11l5 5 5-5"/>
+                          <path d="M5 20h14"/>
+                        </svg>
+                      </span>
+                      <span className="fs-label-wrap">
+                        <span className="fs-label">Installer l'app</span>
+                        <span className="fs-meta">{installPrompt ? 'Cliquer pour installer' : 'Accès rapide bureau'}</span>
+                      </span>
+                    </button>
+                    {installTooltip && !installPrompt && (
+                      <div style={{
+                        position: 'absolute', bottom: 'calc(100% + 8px)', left: 8, right: 8,
+                        background: 'var(--mineral-surface-2)', border: '1px solid var(--mineral-line-strong)',
+                        borderRadius: 10, padding: '10px 12px', fontSize: 11, lineHeight: 1.5,
+                        color: 'var(--mineral-text)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 999,
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--mineral-cyan)' }}>Installer via Chrome/Edge</div>
+                        Dans la barre d'adresse, clique sur l'icône <strong>⊕</strong> ou le menu <strong>⋮ → Installer LumenOS</strong>
+                        <div style={{ marginTop: 6, opacity: 0.5, fontSize: 10 }}>Disponible uniquement en HTTPS en production</div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
               </nav>
             </div>
@@ -10041,6 +10113,14 @@
   }
   window.GamifMiniWidget = GamifMiniWidget;
 
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
   </script>
 </body>
 
