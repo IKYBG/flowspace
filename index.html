@@ -293,12 +293,12 @@
       .fs-widget-tall { height: 238px !important; min-height: 238px !important; }
 
       /* ─── Focus / Session ──────────────────────────── */
-      .fs-focus-screen-head { padding: 20px 16px 0 !important; }
-      .fs-focus-screen-head-inner { gap: 14px !important; margin-bottom: 18px !important; }
-      .fs-focus-screen-title { font-size: 28px !important; letter-spacing: -0.04em !important; }
-      .fs-focus-screen-desc { display: none !important; }
-      .fs-focus-screen-badges { gap: 6px !important; }
-      .fs-focus-screen-content { padding: 14px 16px 94px !important; }
+      .fs-focus-screen-head { padding: 24px 18px 12px !important; }
+      .fs-focus-screen-head-inner { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; margin-bottom: 16px !important; }
+      .fs-focus-screen-title { font-size: clamp(26px, 7vw, 32px) !important; letter-spacing: -0.04em !important; }
+      .fs-focus-screen-desc { display: block !important; font-size: 13px !important; margin-top: 4px !important; }
+      .fs-focus-screen-badges { gap: 6px !important; align-self: flex-start !important; }
+      .fs-focus-screen-content { padding: 12px 14px 94px !important; }
 
       /* ─── Note edit modal → bottom sheet ─────────── */
       .fs-note-edit-overlay { padding: 0 !important; align-items: flex-end !important; }
@@ -3772,6 +3772,7 @@
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
+      padding-bottom: 4px;
       scrollbar-width: none;
       padding: 2px 0 6px;
     }
@@ -4620,7 +4621,7 @@
 
                 {!isInstalled && (
                   <div style={{
-                    margin: '10px 2px 4px',
+                    margin: '24px 2px 4px',
                     borderRadius: 16,
                     background: 'linear-gradient(145deg, rgba(var(--mineral-surface-2-rgb),0.95) 0%, rgba(var(--mineral-bg-2-rgb),0.9) 100%)',
                     border: '1px solid rgba(var(--theme-c1-rgb),0.13)',
@@ -5439,8 +5440,10 @@
       const [zoom, setZoom] = React.useState(1);
       const [pan, setPan] = React.useState({ x: 0, y: 0 });
       const [drag, setDrag] = React.useState(null);
+      const pinchRef = React.useRef(null);
       const [editingId, setEditingId] = React.useState(null);
       const [previewModal, setPreviewModal] = React.useState(false);
+      const [mobileTab, setMobileTab] = React.useState('map');
       const [draft, setDraft] = React.useState({
         title: '',
         folder: FS_NOTE_DEFAULT_FOLDER,
@@ -5466,8 +5469,17 @@
         const up = () => setDrag(null);
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
-        const touchMove = e => { e.preventDefault(); const t = e.touches[0]; setPan({ x: t.clientX - drag.x, y: t.clientY - drag.y }); };
-        const touchEnd = () => setDrag(null);
+        const touchMove = e => {
+          e.preventDefault();
+          if (e.touches.length === 2) {
+            const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            if (pinchRef.current != null) { const delta = (d - pinchRef.current) * 0.008; setZoom(z => Math.max(0.38, Math.min(2.0, Number((z + delta).toFixed(2))))); }
+            pinchRef.current = d;
+          } else if (e.touches.length === 1) {
+            const t = e.touches[0]; setPan({ x: t.clientX - drag.x, y: t.clientY - drag.y });
+          }
+        };
+        const touchEnd = () => { setDrag(null); pinchRef.current = null; };
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
         window.addEventListener('touchmove', touchMove, { passive: false });
@@ -5597,18 +5609,31 @@
             .fs-map-control{height:36px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:${T.muted};font:850 12px var(--font-body);cursor:pointer;padding:0 12px;}
             @media(max-width:1020px){.fs-notes-mind{grid-template-columns:1fr}.fs-note-builder{display:none}.fs-map-search{min-width:0;flex:1}.fs-map-toolbar{padding:0 14px}}
             @media(max-width:768px){
-              .fs-map-toolbar{height:64px!important;padding:0 14px!important}
-              .fs-map-toolbar > div:first-child > div:first-child{font-size:22px!important}
+              .fs-notes-mind{display:flex!important;flex-direction:column!important;position:relative}
+              .fs-notes-mobile-tabs{display:flex!important}
+              .fs-note-builder{display:none!important;padding-top:52px!important}
+              .fs-note-builder.fs-mob-show{display:flex!important}
+              .fs-map-shell{display:none!important}
+              .fs-map-shell.fs-mob-show{display:flex!important}
+              .fs-map-toolbar{height:56px!important;padding:0 14px!important}
+              .fs-map-toolbar > div:first-child > div:first-child{font-size:20px!important}
               .fs-map-toolbar > div:first-child > div:nth-child(2){display:none!important}
-              .fs-map-search{min-width:0!important;flex:1!important;height:38px!important}
-              .fs-map-control{height:32px!important;padding:0 9px!important;font-size:11px!important}
+              .fs-map-search{min-width:0!important;flex:1!important;height:36px!important}
+              .fs-map-control{height:30px!important;padding:0 9px!important;font-size:11px!important}
               .fs-map-node{border-radius:14px!important;padding:10px 12px!important}
             }
             @keyframes noteOverlayIn{from{opacity:0}to{opacity:1}}
             @keyframes noteModalIn{from{opacity:0;transform:scale(0.95) translateY(18px)}to{opacity:1;transform:scale(1) translateY(0)}}
           `}</style>
 
-          <aside className="fs-note-builder">
+          <div className="fs-notes-mobile-tabs" style={{display:'none',position:'absolute',top:0,left:0,right:0,zIndex:20,height:52,background:'rgba(var(--mineral-bg-rgb),0.96)',borderBottom:'1px solid rgba(255,255,255,0.07)',backdropFilter:'blur(14px)',WebkitBackdropFilter:'blur(14px)',alignItems:'center',gap:4,padding:'0 14px'}}>
+            {[{id:'map',label:'Carte mentale'},{id:'builder',label:'Nouvelle note'}].map(tab=>(
+              <button key={tab.id} onClick={()=>setMobileTab(tab.id)} style={{flex:1,height:36,borderRadius:12,border:'1px solid',cursor:'pointer',fontFamily:T.font,fontSize:12,fontWeight:750,transition:'all 0.18s',background:mobileTab===tab.id?'rgba(var(--theme-c1-rgb),0.13)':'transparent',color:mobileTab===tab.id?T.c1:T.muted,borderColor:mobileTab===tab.id?'rgba(var(--theme-c1-rgb),0.28)':'transparent'}}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <aside className={"fs-note-builder" + (mobileTab==='builder' ? ' fs-mob-show' : '')}>
             <div style={{padding:'24px 22px 18px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Ajouter</div>
               <div style={{fontFamily:T.display,fontWeight:850,fontSize:29,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Nouvelle note</div>
@@ -5625,7 +5650,7 @@
             </div>
           </aside>
 
-          <main className="fs-map-shell">
+          <main className={"fs-map-shell" + (mobileTab==='map' ? ' fs-mob-show' : '')}>
             <div className="fs-map-toolbar">
               <div>
                 <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text}}>Carte mentale</div>
@@ -5642,7 +5667,7 @@
                 <button className="fs-map-control" onClick={resetView}>{Math.round(zoom*100)}%</button>
               </div>
             </div>
-            <div className={'fs-map-canvas'+(drag?' dragging':'')} onWheel={e=>{e.preventDefault(); zoomBy(e.deltaY > 0 ? -0.08 : 0.08);}} onMouseDown={e => { if (e.target === e.currentTarget || e.target.classList.contains('fs-map-world')) setDrag({ x:e.clientX-pan.x, y:e.clientY-pan.y }); }}>
+            <div className={'fs-map-canvas'+(drag?' dragging':'')} onWheel={e=>{e.preventDefault(); zoomBy(e.deltaY > 0 ? -0.08 : 0.08);}} onMouseDown={e => { if (e.target === e.currentTarget || e.target.classList.contains('fs-map-world')) setDrag({ x:e.clientX-pan.x, y:e.clientY-pan.y }); }} onTouchStart={e=>{ if(e.touches.length===2){pinchRef.current=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);setDrag({x:(e.touches[0].clientX+e.touches[1].clientX)/2-pan.x,y:(e.touches[0].clientY+e.touches[1].clientY)/2-pan.y});}else if(e.touches.length===1){setDrag({x:e.touches[0].clientX-pan.x,y:e.touches[0].clientY-pan.y});} }}>
               <div className="fs-map-world" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,width:MRW+200,height:_worldH}}>
                 <svg width={MRW+200} height={_worldH} style={{position:'absolute',inset:0,pointerEvents:'none'}}>
                   {links.map(([a,b],i) => {
