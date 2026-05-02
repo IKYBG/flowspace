@@ -4931,6 +4931,7 @@
       const gearRef = React.useRef(null);
       const accountRef = React.useRef(null);
       const fileRef = React.useRef(null);
+      const friendsOpenedAtRef = React.useRef(0);
       const [friends, setFriendsCount] = React.useState(0);
       const [crystalCount, setCrystalCount] = React.useState(0);
       const [activeTaskCount, setActiveTaskCount] = React.useState(0);
@@ -5063,7 +5064,12 @@
         setPopOpen(false);
         setFocusMenuOpen(false);
         setEvolutionMenuOpen(false);
+        if (shouldOpen) friendsOpenedAtRef.current = Date.now();
         setFriendsOpen(shouldOpen);
+      };
+      const closeFriendsPanel = () => {
+        if (Date.now() - friendsOpenedAtRef.current < 280) return;
+        setFriendsOpen(false);
       };
       const goEvolutionTab = tab => {
         try { localStorage.setItem('fs_evolution_initial_tab', tab); } catch(e) {}
@@ -5409,7 +5415,7 @@
               </div>
             </div>
           )}
-          {friendsOpen  && window.FriendsPanel    && React.createElement(window.FriendsPanel,    { open: friendsOpen,  onClose: () => setFriendsOpen(false),  user })}
+          {friendsOpen  && window.FriendsPanel    && React.createElement(window.FriendsPanel,    { open: friendsOpen,  onClose: closeFriendsPanel,  user })}
 
           {/* ── Bottom navigation (mobile only) ── */}
           <nav className="fs-mobile-nav">
@@ -9036,8 +9042,8 @@
       if (!open) return null;
       return (
         <>
-          <div className="fs-friends-backdrop" onClick={onClose}/>
-          <div className="fs-friends-panel">
+          <div className="fs-friends-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose(); }}/>
+          <div className="fs-friends-panel" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}>
             {/* Header */}
             <div style={{ padding:'26px 24px 20px', flexShrink:0 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:22 }}>
