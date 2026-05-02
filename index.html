@@ -104,6 +104,48 @@
       opacity: 0.36;
     }
 
+    @media (min-width: 769px) {
+      html,
+      body {
+        height: auto;
+        min-height: 100%;
+        overflow: auto;
+        overscroll-behavior: contain;
+      }
+
+      #root {
+        min-height: 100dvh;
+        height: auto;
+      }
+
+      .fs-app-shell {
+        min-height: max(100dvh, 760px);
+        height: max(100dvh, 760px) !important;
+        overflow: visible !important;
+      }
+
+      .fs-app-main {
+        min-height: 0;
+        overflow: hidden auto !important;
+      }
+
+      .fs-sidebar {
+        min-height: 0;
+        max-height: calc(max(100dvh, 760px) - 56px);
+      }
+    }
+
+    @media (min-width: 769px) and (max-height: 760px) {
+      .fs-app-shell {
+        padding-top: 18px !important;
+        padding-bottom: 18px !important;
+      }
+
+      .fs-sidebar {
+        height: 100% !important;
+      }
+    }
+
     @keyframes scaleIn {
       from {
         opacity: 0;
@@ -769,6 +811,8 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style'];
+    const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
+    const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
 
     /* Raw setItem/removeItem that bypass our sync patch */
     const _fsOrigSetItem = Storage.prototype.setItem;
@@ -779,11 +823,47 @@
     /* Flag to prevent push-back loops when seeding from remote */
     let _fsIgnorePush = false;
 
+    function _fsIsoMs(v) {
+      const ms = Date.parse(v || '');
+      return Number.isFinite(ms) ? ms : 0;
+    }
+
+    function _fsSameLocalUser(userId) {
+      try {
+        const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
+        return !!(userId && u && u.id === userId);
+      } catch (_) { return false; }
+    }
+
+    function _fsUserScopedSyncKey(key, userId = window._fsSbUser?.id) {
+      return !!(userId && (
+        key === `fs_gamif_${userId}` ||
+        key === `fs_friends_${userId}` ||
+        key === `fs_crystals_${userId}` ||
+        key === `fs_session_history_${userId}`
+      ));
+    }
+
+    function _fsShouldSyncKey(key) {
+      return SYNC_KEYS.includes(key) || key.startsWith('fs_img_') || _fsUserScopedSyncKey(key);
+    }
+
+    function _fsMarkLocalWrite() {
+      try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
+    }
+
+    function _fsLocalLooksNewer(userId, remote) {
+      if (!_fsSameLocalUser(userId)) return false;
+      const localMs = _fsIsoMs(localStorage.getItem(FS_SYNC_LOCAL_WRITE_KEY));
+      const remoteMs = _fsIsoMs(remote?.updated_at);
+      return localMs > 0 && (!remoteMs || localMs > remoteMs + 1500);
+    }
+
     async function _fsLoadRemote(userId) {
       try {
         const { data, error } = await _fsSb
           .from('user_data')
-          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, updated_at')
+          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, updated_at')
           .eq('user_id', userId)
           .maybeSingle();
         if (error) { console.warn('[fs] load remote failed', error); return null; }
@@ -793,7 +873,7 @@
     window._fsLoadRemote = _fsLoadRemote;
 
     /* Replace local cache with remote payload */
-    function _fsSeedLocalFromRemote(remote) {
+    function _fsSeedLocalFromRemote(remote, userId = remote?.user_id || window._fsSbUser?.id) {
       _fsIgnorePush = true;
 
       if (remote && remote.tasks != null) _fsRawSet('fs_tasks', JSON.stringify(remote.tasks));
@@ -814,19 +894,64 @@
       else _fsRawRemove('fs_widget_style');
 
       /* Images – clear old keys then restore from remote */
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
+      }
       if (remote && remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
-        }
         Object.entries(remote.images).forEach(([k, v]) => {
           if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
         });
       }
 
+      if (userId) {
+        if (remote && remote.gamification != null) {
+          _fsRawSet(`fs_gamif_${userId}`, JSON.stringify(remote.gamification));
+          window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: remote.gamification }));
+        } else {
+          _fsRawRemove(`fs_gamif_${userId}`);
+          window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: null }));
+        }
+        if (remote && Array.isArray(remote.friends)) {
+          _fsRawSet(`fs_friends_${userId}`, JSON.stringify(remote.friends));
+        }
+      }
+
+      if (remote?.updated_at) _fsRawSet(FS_SYNC_REMOTE_APPLIED_KEY, remote.updated_at);
+
       setTimeout(() => { _fsIgnorePush = false; }, 2000);
     }
     window._fsSeedLocalFromRemote = _fsSeedLocalFromRemote;
+
+    async function _fsReconcileRemote(userId, remote) {
+      if (!userId) return { source: 'none', remote };
+      if (!remote && _fsSameLocalUser(userId)) {
+        await _fsFlushPush();
+        return { source: 'local', remote };
+      }
+      if (_fsLocalLooksNewer(userId, remote)) {
+        await _fsFlushPush();
+        return { source: 'local', remote };
+      }
+      _fsSeedLocalFromRemote(remote, userId);
+      return { source: 'remote', remote };
+    }
+    window._fsReconcileRemote = _fsReconcileRemote;
+
+    function _fsSnapshotLocalData(userId = window._fsSbUser?.id) {
+      const r = {};
+      try { const v = localStorage.getItem('fs_tasks'); if (v != null) r.tasks = JSON.parse(v); } catch (_) { }
+      try { const v = localStorage.getItem('fs_notes'); if (v != null) r.notes = v; } catch (_) { }
+      try { const v = localStorage.getItem('fs_widgets'); if (v != null) r.widgets = JSON.parse(v); } catch (_) { }
+      r.onboarded = localStorage.getItem('fs_onboarded') === '1';
+      const bg = localStorage.getItem('fs_bgtheme');
+      if (bg != null) r.bg_theme = bg;
+      try { const v = localStorage.getItem('fs_custom_bg'); if (v != null) r.custom_bg = JSON.parse(v); } catch (_) { }
+      try { const v = localStorage.getItem('fs_widget_style'); if (v != null) r.widget_style = JSON.parse(v); } catch (_) { }
+      try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; if (v != null) r.gamification = JSON.parse(v); } catch (_) { }
+      return r;
+    }
+    window._fsSnapshotLocalData = _fsSnapshotLocalData;
 
     /* Debounced upsert of ALL localStorage values into user_data */
     let _fsPushTimer = null;
@@ -845,6 +970,7 @@
       if (bg != null) payload.bg_theme = bg;
       try { const v = localStorage.getItem('fs_custom_bg'); if (v != null) payload.custom_bg = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_widget_style'); if (v != null) payload.widget_style = JSON.parse(v); } catch (_) { }
+      try { const v = localStorage.getItem(`fs_gamif_${u.id}`); if (v != null) payload.gamification = JSON.parse(v); } catch (_) { }
 
       /* Images – aggregate all fs_img_* keys */
       const images = {};
@@ -860,13 +986,21 @@
     window._fsFlushPush = _fsFlushPush;
 
     /* Monkey-patch localStorage.setItem — catches all synced keys + image keys */
+    function _fsSchedulePushForKey(key) {
+      if (!window._fsSbUser || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
+      _fsMarkLocalWrite();
+      clearTimeout(_fsPushTimer);
+      _fsPushTimer = setTimeout(_fsFlushPush, 800);
+    }
+
     Storage.prototype.setItem = function (key, value) {
       _fsOrigSetItem.call(this, key, value);
-      if (this === localStorage && window._fsSbUser && !_fsIgnorePush
-          && (SYNC_KEYS.includes(key) || key.startsWith('fs_img_'))) {
-        clearTimeout(_fsPushTimer);
-        _fsPushTimer = setTimeout(_fsFlushPush, 800);
-      }
+      if (this === localStorage) _fsSchedulePushForKey(key);
+    };
+
+    Storage.prototype.removeItem = function (key) {
+      _fsOrigRemoveItem.call(this, key);
+      if (this === localStorage) _fsSchedulePushForKey(key);
     };
 
     /* Flush pending writes when the tab is closing */
@@ -879,11 +1013,11 @@
       _fsStopRealtime();
       const ch = _fsSb.channel('user-data-sync')
         .on('postgres_changes', {
-          event: 'UPDATE', schema: 'public', table: 'user_data',
+          event: '*', schema: 'public', table: 'user_data',
           filter: 'user_id=eq.' + userId
         }, payload => {
           if (_fsIgnorePush) return;
-          _fsSeedLocalFromRemote(payload.new);
+          _fsSeedLocalFromRemote(payload.new, userId);
           window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: payload.new }));
         })
         .subscribe();
@@ -4275,6 +4409,79 @@
     }
     .fs-footer-card:hover .fs-footer-chevron { color: rgba(248,246,252,0.5); }
     .fs-footer-card.fs-pop-open .fs-footer-chevron { color: rgba(var(--theme-c1-rgb),0.85); }
+    .fs-install-card {
+      flex-shrink: 0;
+      z-index: 3;
+    }
+    @media (min-width: 769px) {
+      .fs-nav-group {
+        padding-bottom: 18px;
+      }
+      .fs-install-card {
+        position: sticky !important;
+        bottom: 0;
+        z-index: 8;
+      }
+    }
+    @media (min-width: 769px) and (max-height: 760px) {
+      .fs-nav-group {
+        gap: 5px;
+        margin-top: 8px;
+        padding-bottom: 12px;
+      }
+      .fs-nav-item {
+        min-height: 42px;
+        padding: 6px 9px;
+        border-radius: 15px;
+      }
+      .fs-icon-wrap {
+        width: 30px;
+        height: 30px;
+      }
+      .fs-meta {
+        font-size: 10px;
+        margin-top: 1px;
+      }
+      .fs-install-card {
+        margin: 18px 2px 10px !important;
+        padding: 11px 12px 12px !important;
+        border-radius: 15px !important;
+      }
+      .fs-install-card > div:nth-child(2) {
+        margin-bottom: 6px !important;
+      }
+      .fs-install-card > div:nth-child(3) {
+        margin-bottom: 4px !important;
+      }
+      .fs-install-card > div:nth-child(4) {
+        font-size: 10.8px !important;
+        line-height: 1.42 !important;
+        margin-bottom: 0 !important;
+      }
+    }
+    @media (min-width: 769px) and (max-height: 620px) {
+      .fs-brand {
+        min-height: 42px;
+        padding: 4px 6px 8px;
+      }
+      .fs-brand-sub {
+        display: none;
+      }
+      .fs-nav-item {
+        min-height: 38px;
+        padding: 5px 8px;
+      }
+      .fs-meta {
+        display: none;
+      }
+      .fs-nav-subitem {
+        min-height: 28px;
+      }
+      .fs-install-card {
+        margin: 12px 2px 8px !important;
+        padding: 10px 11px !important;
+      }
+    }
     @media (min-width: 769px) and (max-width: 1180px) {
       .fs-sidebar {
         width: 244px;
@@ -4590,6 +4797,7 @@
       const fileRef = React.useRef(null);
       const [friends, setFriendsCount] = React.useState(0);
       const [crystalCount, setCrystalCount] = React.useState(0);
+      const [activeTaskCount, setActiveTaskCount] = React.useState(0);
       const displayName = user?.name || 'LumenOS';
       const displayEmail = user?.email || 'Crystal Productivity Focus';
       const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
@@ -4615,6 +4823,24 @@
         window.addEventListener('fs-crystal-update', sync);
         return () => window.removeEventListener('fs-crystal-update', sync);
       }, [user?.id]);
+
+      React.useEffect(() => {
+        const sync = () => {
+          try {
+            const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+            setActiveTaskCount(Array.isArray(tasks) ? tasks.filter(t => !t?.done).length : 0);
+          } catch(e) { setActiveTaskCount(0); }
+        };
+        sync();
+        window.addEventListener('storage', sync);
+        window.addEventListener('fs-remote-update', sync);
+        const id = setInterval(sync, 1200);
+        return () => {
+          window.removeEventListener('storage', sync);
+          window.removeEventListener('fs-remote-update', sync);
+          clearInterval(id);
+        };
+      }, []);
 
       React.useEffect(() => {
         if (!popOpen) return;
@@ -4710,7 +4936,7 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10.5V20h14v-9.5" /></svg>,
         },
         {
-          target: 'tasks', label: 'Tâches', meta: '9 en cours',
+          target: 'tasks', label: 'Tâches', meta: activeTaskCount > 0 ? `${activeTaskCount} en cours` : 'Aucune en cours',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3.5 6h.01" /><path d="M3.5 12h.01" /><path d="M3.5 18h.01" /></svg>,
         },
         {
@@ -4843,8 +5069,8 @@
                 </button>
 
                 {!isInstalled && !installDismissed && (
-                  <div style={{
-                    margin: '24px 2px 4px',
+                  <div className="fs-install-card" style={{
+                    margin: '72px 2px 14px',
                     borderRadius: 16,
                     background: 'linear-gradient(145deg, rgba(var(--mineral-surface-2-rgb),0.95) 0%, rgba(var(--mineral-bg-2-rgb),0.9) 100%)',
                     border: '1px solid rgba(var(--theme-c1-rgb),0.13)',
@@ -6096,13 +6322,14 @@
             return;
           }
 
+          window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
-          window._fsSeedLocalFromRemote(remote);
+          const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
+          const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
-          const finalName = (remote && remote.name) || sbUser.user_metadata?.name || displayName;
+          const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
           const u = { name: finalName, email: trimmedEmail, id: sbUser.id, ts: Date.now() };
           try { localStorage.setItem('fs_user', JSON.stringify(u)); } catch (e) { }
-          window._fsSbUser = sbUser;
 
           /* Always upsert name + email so friend lookup always works */
           try {
@@ -6113,8 +6340,8 @@
           } catch (e) { console.warn('[fs] save user info failed', e); }
 
           setStatus('success');
-          const isNewUser = mode === 'signup' || !remote || !remote.onboarded;
-          setTimeout(() => onAuth(u, isNewUser, remote), 680);
+          const isNewUser = mode === 'signup' || !effectiveRemote || !effectiveRemote.onboarded;
+          setTimeout(() => onAuth(u, isNewUser, effectiveRemote), 680);
         } catch (e) {
           console.warn('[fs] auth failed', e);
           setStatus('idle');
@@ -7272,6 +7499,7 @@
         } catch (e) { }
         return 'auth';
       });
+      const [syncEpoch, setSyncEpoch] = _uSC(0);
       const [user, setUser] = _uSC(() => {
         try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; }
       });
@@ -7390,6 +7618,7 @@
           if (r.widgets) setWidgets(r.widgets);
           if (r.bg_theme) setBgThemeId(r.bg_theme);
           if (r.widget_style) setWidgetStyle(r.widget_style);
+          setSyncEpoch(n => n + 1);
         };
         window.addEventListener('fs-remote-update', handler);
         return () => window.removeEventListener('fs-remote-update', handler);
@@ -7599,6 +7828,26 @@
               /* Start Realtime for returning users */
               window._fsStartRealtime(session.user.id);
               window._fsStartSessionRealtime(session.user.id);
+              const remote = await window._fsLoadRemote(session.user.id);
+              const syncResult = await window._fsReconcileRemote(session.user.id, remote);
+              const localUser = (() => {
+                try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (_) { return null; }
+              })();
+              const userEmail = session.user.email?.toLowerCase();
+              const userMeta = session.user.user_metadata;
+              const finalName = (remote && remote.name) || localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
+              const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, ts: Date.now() };
+              try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
+              setUser(authUser);
+              if (syncResult.source === 'remote') {
+                if (remote && remote.widgets) setWidgets(remote.widgets);
+                else setWidgets(DEFAULT_WIDGETS);
+                if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
+                if (remote && remote.widget_style) setWidgetStyle(remote.widget_style);
+                setSyncEpoch(n => n + 1);
+                window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote || {} }));
+              }
+              setScreen((remote && remote.onboarded) || localStorage.getItem('fs_onboarded') === '1' ? 'dashboard' : 'onboarding');
               /* ── Eagerly sync email into user_data so friend lookup works ── */
               try {
                 const userEmail = session.user.email?.toLowerCase();
@@ -7663,7 +7912,7 @@
             </div>
           )}
           {isApp && (
-            <div key={screen} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key={`${screen}-${syncEpoch}`} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} />}
