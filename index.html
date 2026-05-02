@@ -5750,6 +5750,7 @@
       const [preview, setPreview] = React.useState(false);
       const [view, setView] = React.useState('edit');
       const [mobilePane, setMobilePane] = React.useState('list');
+      const [mapStyle, setMapStyle] = React.useState(() => localStorage.getItem('fs_note_map_style') || 'constellation');
       const [mapPan, setMapPan] = React.useState({ x: 0, y: 0 });
       const [drag, setDrag] = React.useState(null);
 
@@ -5764,6 +5765,15 @@
         };
         window.addEventListener('fs-remote-update', handler);
         return () => window.removeEventListener('fs-remote-update', handler);
+      }, []);
+      React.useEffect(() => {
+        const sync = () => setMapStyle(localStorage.getItem('fs_note_map_style') || 'constellation');
+        window.addEventListener('fs-note-map-style', sync);
+        window.addEventListener('storage', sync);
+        return () => {
+          window.removeEventListener('fs-note-map-style', sync);
+          window.removeEventListener('storage', sync);
+        };
       }, []);
       React.useEffect(() => {
         if (!drag) return;
@@ -5840,6 +5850,11 @@
         const ring = 145 + (i % 3) * 54;
         return { x: 460 + Math.cos(angle) * ring + mapPan.x, y: 310 + Math.sin(angle) * ring + mapPan.y };
       };
+      const mapLinkStroke = mapStyle === 'editorial'
+        ? 'rgba(34,32,28,0.22)'
+        : mapStyle === 'neon'
+        ? 'rgba(74,222,128,0.58)'
+        : 'rgba(var(--theme-c1-rgb),0.26)';
 
       return (
         <div className={`fs-notes-screen fs-notes-mobile-${mobilePane}`}>
@@ -5855,9 +5870,17 @@
             .fs-notes-rail-btn{height:34px;border-radius:12px;border:1px solid rgba(255,255,255,0.065);background:rgba(255,255,255,0.03);color:${T.muted};font:800 11px var(--font-body);cursor:pointer;}
             .fs-notes-rail-btn.active{background:rgba(var(--theme-c1-rgb),0.12);border-color:rgba(var(--theme-c1-rgb),0.28);color:${T.c1};}
             .fs-map-canvas{position:relative;width:100%;height:100%;overflow:hidden;cursor:grab;background-image:radial-gradient(rgba(255,255,255,0.055) 1px,transparent 1px);background-size:28px 28px;}
+            .fs-map-constellation{background-color:rgba(7,7,13,0.98);background-image:radial-gradient(rgba(255,255,255,0.08) 1px,transparent 1px),radial-gradient(circle at 18% 18%,rgba(var(--theme-c1-rgb),0.16),transparent 30%),radial-gradient(circle at 82% 76%,rgba(var(--theme-c2-rgb),0.12),transparent 34%);background-size:28px 28px,auto,auto;}
+            .fs-map-editorial{background-color:#f3eee6;background-image:linear-gradient(rgba(34,32,28,0.035) 1px,transparent 1px),linear-gradient(90deg,rgba(34,32,28,0.035) 1px,transparent 1px);background-size:34px 34px;color:#25221d;}
+            .fs-map-neon{background-color:#05070b;background-image:linear-gradient(rgba(74,222,128,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(103,232,249,0.06) 1px,transparent 1px),radial-gradient(circle at 20% 18%,rgba(74,222,128,0.14),transparent 32%),radial-gradient(circle at 82% 70%,rgba(251,113,133,0.12),transparent 36%);background-size:32px 32px,32px 32px,auto,auto;}
             .fs-map-canvas.dragging{cursor:grabbing;}
             .fs-map-node{position:absolute;width:178px;min-height:82px;border-radius:20px;padding:14px 15px;text-align:left;border:1px solid rgba(255,255,255,0.08);background:rgba(var(--mineral-surface-rgb),0.78);color:${T.text};box-shadow:0 18px 42px rgba(0,0,0,0.28);transition:transform .18s,border-color .18s,background .18s;}
             .fs-map-node:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),0.30);background:rgba(var(--mineral-surface-rgb),0.94);}
+            .fs-map-editorial .fs-map-node{border-radius:14px;background:rgba(255,255,255,0.84);border-color:rgba(34,32,28,0.12);color:#25221d;box-shadow:0 18px 38px rgba(66,50,31,0.14);}
+            .fs-map-editorial .fs-map-node:hover{background:#fffaf2;border-color:rgba(34,32,28,0.22);}
+            .fs-map-editorial .fs-map-node div{color:inherit!important;}
+            .fs-map-neon .fs-map-node{border-radius:22px;background:linear-gradient(180deg,rgba(7,11,18,0.92),rgba(11,14,24,0.72));border-color:rgba(74,222,128,0.26);box-shadow:0 0 0 1px rgba(103,232,249,0.08),0 18px 52px rgba(0,0,0,0.44),0 0 28px rgba(74,222,128,0.10);}
+            .fs-map-neon .fs-map-node:hover{border-color:rgba(251,113,133,0.38);background:linear-gradient(180deg,rgba(20,16,28,0.94),rgba(8,12,20,0.78));}
             @media (max-width:1180px){.fs-notes-screen{grid-template-columns:280px minmax(0,1fr)}.fs-notes-inspector{display:none}}
             @media (max-width:768px){
               .fs-notes-screen{display:block!important;height:100%!important}
@@ -5947,11 +5970,11 @@
                     </div>
                     <button onClick={()=>setMapPan({x:0,y:0})} style={{height:36,borderRadius:12,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:T.muted,fontFamily:T.font,fontSize:11,fontWeight:850,cursor:'pointer',padding:'0 13px'}}>Recentrer</button>
                   </div>
-                  <div className={'fs-map-canvas'+(drag?' dragging':'')} onMouseDown={e => { if (e.target === e.currentTarget || e.target.tagName === 'svg') setDrag({ x:e.clientX-mapPan.x, y:e.clientY-mapPan.y }); }}>
+                  <div className={`fs-map-canvas fs-map-${mapStyle}${drag?' dragging':''}`} onMouseDown={e => { if (e.target === e.currentTarget || e.target.tagName === 'svg') setDrag({ x:e.clientX-mapPan.x, y:e.clientY-mapPan.y }); }}>
                     <svg width="100%" height="100%" style={{position:'absolute',inset:0,pointerEvents:'none'}}>
                       {graphLinks.map(([a,b],i) => {
                         const pa = graphPos(a), pb = graphPos(b);
-                        return <line key={i} x1={pa.x+89} y1={pa.y+41} x2={pb.x+89} y2={pb.y+41} stroke="rgba(var(--theme-c1-rgb),0.24)" strokeWidth="1.2" />;
+                        return <line key={i} x1={pa.x+89} y1={pa.y+41} x2={pb.x+89} y2={pb.y+41} stroke={mapLinkStroke} strokeWidth={mapStyle === 'neon' ? '1.8' : '1.2'} />;
                       })}
                     </svg>
                     {graphNotes.map(n => {
@@ -6768,12 +6791,26 @@
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
       const CARDS = [
-        { id: 'fond', target: 'fond', eyebrow: 'PERSONNALISés', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec nos thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc' },
-        { id: 'fonts', target: 'fonts', eyebrow: '5 polices', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4' },
-        { id: 'widgets', target: 'variants', eyebrow: '10 widgets', title: 'Widgets', desc: 'Choisissez et personnalisez vos widgets pour composer un tableau de bord qui vous ressemble.', c1: '#4ade80', c2: '#2dd4bf' },
+        { id: 'fond', target: 'fond', eyebrow: 'Ambiance', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec des thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc', bars: 8, icon: <path d="M4 14c4-7 12-7 16 0"/>, visual: 'palette' },
+        { id: 'fonts', target: 'fonts', eyebrow: 'Typographie', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4', bars: 6, icon: <path d="M5 18 10 5h4l5 13M7 14h10"/>, visual: 'type' },
+        { id: 'widgets', target: 'variants', eyebrow: 'Dashboard', title: 'Widgets', desc: 'Ajustez vos widgets, variantes et cartes pour composer un tableau de bord utile.', c1: '#4ade80', c2: '#2dd4bf', bars: 5, icon: <path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/>, visual: 'grid' },
+        { id: 'notes', target: 'notes-style', eyebrow: 'Carte mentale', title: 'Notes', desc: 'Changez le design de votre carte mentale avec trois styles bien distincts.', c1: '#67e8f9', c2: '#fb7185', bars: 4, icon: <path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/>, visual: 'nodes' },
       ];
+      const renderMini = card => (
+        <div style={{height:78,borderRadius:18,position:'relative',overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',marginTop:16}}>
+          <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 20% 20%,${card.c1}26,transparent 44%),radial-gradient(circle at 82% 72%,${card.c2}1f,transparent 46%)`}}/>
+          {card.visual === 'palette' && [0,1,2].map((i)=><div key={i} style={{position:'absolute',left:16+i*36,top:18,width:26,height:42,borderRadius:9,background:i===0?card.c1:i===1?card.c2:'rgba(255,255,255,0.13)',boxShadow:`0 12px 26px ${card.c1}20`}}/>)}
+          {card.visual === 'type' && <><div style={{position:'absolute',left:18,top:16,fontFamily:T.display,fontSize:34,fontWeight:850,color:card.c1,letterSpacing:'-0.04em'}}>Aa</div><div style={{position:'absolute',right:18,top:22,width:82,height:6,borderRadius:99,background:'rgba(255,255,255,0.18)'}}/><div style={{position:'absolute',right:36,top:38,width:64,height:5,borderRadius:99,background:'rgba(255,255,255,0.10)'}}/></>}
+          {card.visual === 'grid' && <div style={{position:'absolute',inset:14,display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:7}}>{[0,1,2].map(i=><div key={i} style={{borderRadius:10,background:i===0?`${card.c1}28`:'rgba(255,255,255,0.075)',border:`1px solid ${i===0?card.c1+'44':'rgba(255,255,255,0.08)'}`}}/>)}</div>}
+          {card.visual === 'nodes' && <svg viewBox="0 0 220 78" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}><path d="M52 38 C86 16 126 16 162 38M80 52 C106 72 136 70 160 50" stroke="rgba(255,255,255,0.18)" strokeWidth="1.4" fill="none"/>{[[48,38,card.c1],[112,24,card.c2],[166,46,card.c1]].map(([x,y,c],i)=><circle key={i} cx={x} cy={y} r={i===1?13:10} fill={c} opacity=".85"/>)}</svg>}
+        </div>
+      );
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <style>{`
+            .fs-perso-grid{flex:1;padding:clamp(14px,2vh,24px) clamp(20px,3vw,40px) clamp(16px,2.5vh,32px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:14px;min-height:0}
+            @media (max-width:768px){.fs-perso-grid{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto;padding:14px 16px 96px}.fs-perso-card{min-height:230px}}
+          `}</style>
           <div style={{ padding: 'clamp(20px,3vh,36px) clamp(20px,3vw,40px) 0', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}` }} />
@@ -6783,16 +6820,16 @@
               Faites-en<br />votre espace.
             </div>
             <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.65 }}>
-              Adaptez chaque détail de LumenOS à votre identité.
+              Adaptez chaque détail de LumenOS à votre identité, du dashboard jusqu'à vos notes.
             </div>
           </div>
-          <div style={{ flex: 1, padding: 'clamp(14px,2vh,24px) clamp(20px,3vw,40px) clamp(16px,2.5vh,32px)', display: 'grid', gridTemplateRows: 'repeat(3,minmax(0,1fr))', gap: 10, minHeight: 0 }}>
+          <div className="fs-perso-grid">
             {CARDS.map(card => {
               const h = hov === card.id;
               return (
-                <div key={card.id} onClick={() => onNavigate(card.target)}
+                <div key={card.id} className="fs-perso-card" onClick={() => onNavigate(card.target)}
                   onMouseEnter={() => setHov(card.id)} onMouseLeave={() => setHov(null)}
-                  style={{ borderRadius: 22, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.048)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)'}`, backdropFilter: 'blur(32px)', padding: 'clamp(14px,2.2vh,24px) clamp(16px,2vw,28px)', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.09), 0 0 60px ${card.c1}18` : '0 4px 24px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  style={{ borderRadius: 24, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.052)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.058)'}`, backdropFilter: 'blur(32px)', padding: 'clamp(16px,2.2vh,24px)', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.09), 0 0 60px ${card.c1}18` : '0 4px 24px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth:0 }}>
                   <div style={{ position: 'absolute', top: -70, right: -70, width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${card.c1}${h ? '2a' : '18'} 0%, ${card.c2}10 55%, transparent 72%)`, transition: 'all 0.45s', transform: h ? 'scale(1.12)' : 'scale(1)', pointerEvents: 'none' }} />
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -6800,10 +6837,11 @@
                       <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(16px,2.2vh,22px)', letterSpacing: '-0.03em', marginBottom: 6 }}>{card.title}</div>
                       <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.6 }}>{card.desc}</div>
                     </div>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', fontSize: 16, color: h ? '#07070d' : T.muted, boxShadow: h ? `0 6px 22px ${card.c1}44` : 'none', transform: h ? 'scale(1.1)' : 'scale(1)' }}>→</div>
+                    <div style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', color: h ? '#07070d' : T.muted, boxShadow: h ? `0 6px 22px ${card.c1}44` : 'none', transform: h ? 'scale(1.06)' : 'scale(1)' }}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg></div>
                   </div>
+                  {renderMini(card)}
                   <div style={{ display: 'flex', gap: 5, marginTop: 14, position: 'relative' }}>
-                    {[...Array(card.id === 'fond' ? 8 : card.id === 'fonts' ? 6 : 5)].map((_, i) => (
+                    {[...Array(card.bars)].map((_, i) => (
                       <div key={i} style={{ height: 3, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
                     ))}
                   </div>
@@ -6815,6 +6853,64 @@
       );
     }
     window.PersonnalisationScreen = PersonnalisationScreen;
+
+    function NotesDesignScreen({ onNavigate }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
+      const STYLES = [
+        { id:'constellation', name:'Constellation', desc:'Fond étoilé, liens lumineux et cartes cristallines.', c1:'#67e8f9', c2:'#a5b8ff' },
+        { id:'editorial', name:'Editorial', desc:'Carte claire, sobre, très lisible pour structurer vite.', c1:'#f0c38e', c2:'#f7a8c4' },
+        { id:'neon', name:'Neon Flow', desc:'Nœuds contrastés, tracés vibrants, énergie créative.', c1:'#4ade80', c2:'#fb7185' },
+      ];
+      const [selected, setSelected] = _uPX(() => localStorage.getItem('fs_note_map_style') || 'constellation');
+      const apply = id => {
+        setSelected(id);
+        try { localStorage.setItem('fs_note_map_style', id); } catch(e) {}
+        window.dispatchEvent(new CustomEvent('fs-note-map-style'));
+        addToast({ message:'Design de carte mentale appliqué', type:'success', icon:'✓' });
+      };
+      return (
+        <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <style>{`
+            .fs-note-design-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+            @media (max-width:980px){.fs-note-design-grid{grid-template-columns:1fr}.fs-note-design-card{min-height:320px!important}}
+            @media (max-width:768px){.fs-note-design-grid{padding-bottom:76px}.fs-note-design-head{padding:16px!important;align-items:flex-start!important}.fs-note-design-body{padding:16px!important}}
+          `}</style>
+          <div className="fs-note-design-head" style={{padding:'22px 36px',display:'flex',alignItems:'center',gap:16,borderBottom:'1px solid rgba(255,255,255,0.055)',flexShrink:0}}>
+            <button onClick={() => onNavigate('perso')} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'7px 15px',color:T.muted,fontSize:12,cursor:'pointer',fontFamily:T.font}}>← Retour</button>
+            <div>
+              <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:3}}>Personnalisation · Notes</div>
+              <div style={{fontFamily:T.display,fontWeight:850,fontSize:20,letterSpacing:'-0.035em'}}>Design de carte mentale</div>
+            </div>
+          </div>
+          <div className="fs-note-design-body" style={{flex:1,overflowY:'auto',padding:'28px 36px 36px'}}>
+            <div className="fs-note-design-grid">
+              {STYLES.map(style => {
+                const active = selected === style.id;
+                return (
+                  <button key={style.id} className="fs-note-design-card" onClick={() => apply(style.id)} style={{textAlign:'left',minHeight:360,borderRadius:26,padding:18,cursor:'pointer',fontFamily:T.font,color:T.text,background:active?'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.14),rgba(255,255,255,0.04))':'rgba(255,255,255,0.028)',border:`1px solid ${active?'rgba(var(--theme-c1-rgb),0.32)':'rgba(255,255,255,0.07)'}`,boxShadow:active?'0 24px 70px rgba(var(--theme-c1-rgb),0.16), inset 0 1px 0 rgba(255,255,255,0.08)':'0 14px 40px rgba(0,0,0,0.24)',transition:'all .24s cubic-bezier(.16,1,.3,1)'}}>
+                    <div style={{height:190,borderRadius:22,position:'relative',overflow:'hidden',background:style.id==='editorial'?'#f4efe8':'#07070d',border:'1px solid rgba(255,255,255,0.08)',marginBottom:16}}>
+                      <div style={{position:'absolute',inset:0,background:style.id==='constellation'?`radial-gradient(circle at 18% 22%,${style.c1}30,transparent 32%),radial-gradient(circle at 76% 70%,${style.c2}22,transparent 36%),radial-gradient(rgba(255,255,255,0.16) 1px,transparent 1px)`:style.id==='editorial'?'linear-gradient(180deg,rgba(255,255,255,0.55),rgba(0,0,0,0.02))':`radial-gradient(circle at 20% 20%,${style.c1}20,transparent 34%),linear-gradient(135deg,rgba(103,232,249,0.08),rgba(251,113,133,0.10))`,backgroundSize:style.id==='constellation'?'auto,auto,22px 22px':'auto'}}/>
+                      <svg viewBox="0 0 320 190" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}>
+                        <path d="M74 92 C118 40 196 42 244 92M94 118 C140 164 204 158 244 118" stroke={style.id==='editorial'?'rgba(34,32,28,0.22)':style.c1+'88'} strokeWidth={style.id==='neon'?2.4:1.5} fill="none"/>
+                        {[[72,92,'Brief'],[160,58,'Idea'],[246,104,'Draft']].map(([x,y,t],i)=><g key={t}><rect x={x-39} y={y-20} width="78" height="40" rx={style.id==='editorial'?10:16} fill={style.id==='editorial'?'rgba(255,255,255,0.82)':i===1?style.c2+'36':style.c1+'28'} stroke={active?style.c1+'cc':'rgba(255,255,255,0.18)'}/><text x={x} y={y+4} textAnchor="middle" fontSize="10" fontWeight="800" fill={style.id==='editorial'?'#25221d':'#f8f6fc'}>{t}</text></g>)}
+                      </svg>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                      <div>
+                        <div style={{fontFamily:T.display,fontWeight:850,fontSize:22,letterSpacing:'-0.035em'}}>{style.name}</div>
+                        <div style={{fontSize:12,color:T.muted,lineHeight:1.6,marginTop:7}}>{style.desc}</div>
+                      </div>
+                      <div style={{width:30,height:30,borderRadius:'50%',display:'grid',placeItems:'center',background:active?`linear-gradient(135deg,${style.c1},${style.c2})`:'rgba(255,255,255,0.06)',color:active?'#07070d':T.muted,flexShrink:0}}>{active?'✓':'→'}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.NotesDesignScreen = NotesDesignScreen;
 
     /* ── Custom theme helpers ─────────────────────────────────────────────────── */
     function hexToRgbStr(hex) {
@@ -8078,6 +8174,7 @@
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
+                {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
