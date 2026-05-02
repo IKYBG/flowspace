@@ -5415,7 +5415,10 @@
               </div>
             </div>
           )}
-          {friendsOpen  && window.FriendsPanel    && React.createElement(window.FriendsPanel,    { open: friendsOpen,  onClose: closeFriendsPanel,  user })}
+          {friendsOpen && window.FriendsPanel && ReactDOM.createPortal(
+            React.createElement(window.FriendsPanel, { open: friendsOpen, onClose: closeFriendsPanel, user }),
+            document.body
+          )}
 
           {/* ── Bottom navigation (mobile only) ── */}
           <nav className="fs-mobile-nav">
@@ -8515,7 +8518,7 @@
         position:fixed; top:28px; bottom:28px;
         left: max(136px, calc(50vw - 170px));
         width: min(340px, calc(100vw - 24px));
-        z-index:9991;
+        z-index:10041;
         background:rgba(8,7,18,0.98);
         border:1px solid rgba(255,255,255,0.09);
         border-radius:28px;
@@ -8537,7 +8540,7 @@
         pointer-events:none;
       }
       .fs-friends-backdrop {
-        position:fixed; inset:0; z-index:9990;
+        position:fixed; inset:0; z-index:10040;
         background:rgba(0,0,0,0.5);
         backdrop-filter:blur(6px);
         -webkit-backdrop-filter:blur(6px);
