@@ -5039,6 +5039,16 @@
         closeAllPanels();
         onNavigate('perso');
       };
+      const toggleFriendsPanel = e => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        const shouldOpen = !friendsOpen;
+        closeAllPanels();
+        setPopOpen(false);
+        setFocusMenuOpen(false);
+        setEvolutionMenuOpen(false);
+        setFriendsOpen(shouldOpen);
+      };
       const goEvolutionTab = tab => {
         try { localStorage.setItem('fs_evolution_initial_tab', tab); } catch(e) {}
         closeAllPanels();
@@ -5147,17 +5157,10 @@
                 <div className="fs-nav-section">
                 {/* ── Friends nav item ── */}
                 <button
+                  type="button"
                   className={'fs-nav-item' + (friendsOpen ? ' active' : '')}
-                  onClick={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAccountOpen(false);
-                    setCristauxOpen(false);
-                    setPopOpen(false);
-                    setFocusMenuOpen(false);
-                    setEvolutionMenuOpen(false);
-                    setFriendsOpen(open => !open);
-                  }}
+                  onPointerDownCapture={e => e.stopPropagation()}
+                  onClick={toggleFriendsPanel}
                   style={{ position: 'relative' }}>
                   <span className="fs-icon-wrap" style={{ position: 'relative' }}>
                     <svg className="fs-icon" viewBox="0 0 24 24">
