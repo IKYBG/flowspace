@@ -8513,7 +8513,7 @@
             </div>
           )}
           {isApp && (
-            <div key={`${screen}-${syncEpoch}`} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key={screen} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} />}
