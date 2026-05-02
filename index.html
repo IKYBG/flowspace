@@ -4924,7 +4924,13 @@
         });
       };
 
-      const closeAllPanels = () => { setFriendsOpen(false); setCristauxOpen(false); setAccountOpen(false); };
+      const closeAllPanels = () => {
+        setFriendsOpen(false);
+        setCristauxOpen(false);
+        setAccountOpen(false);
+        setFocusMenuOpen(false);
+        setEvolutionMenuOpen(false);
+      };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
       const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
       const cardRef = React.useRef(null);
@@ -4932,6 +4938,7 @@
       const accountRef = React.useRef(null);
       const fileRef = React.useRef(null);
       const friendsOpenedAtRef = React.useRef(0);
+      const sidebarActionRef = React.useRef({ key: '', at: 0 });
       const [friends, setFriendsCount] = React.useState(0);
       const [crystalCount, setCrystalCount] = React.useState(0);
       const [activeTaskCount, setActiveTaskCount] = React.useState(0);
@@ -5056,26 +5063,61 @@
         closeAllPanels();
         onNavigate('perso');
       };
-      const openFriendsPanel = e => {
+      const runSidebarAction = (key, e, fn) => {
         e?.preventDefault?.();
         e?.stopPropagation?.();
-        if (friendsOpen) return;
-        closeAllPanels();
-        setPopOpen(false);
-        setFocusMenuOpen(false);
-        setEvolutionMenuOpen(false);
-        friendsOpenedAtRef.current = Date.now();
-        setFriendsOpen(true);
+        const now = Date.now();
+        const prev = sidebarActionRef.current;
+        if (prev.key === key && now - prev.at < 420) return;
+        sidebarActionRef.current = { key, at: now };
+        fn();
+      };
+      const openFriendsPanel = e => {
+        runSidebarAction('friends', e, () => {
+          if (friendsOpen) return;
+          closeAllPanels();
+          setPopOpen(false);
+          friendsOpenedAtRef.current = Date.now();
+          setFriendsOpen(true);
+        });
       };
       const closeFriendsPanel = () => {
         if (Date.now() - friendsOpenedAtRef.current < 700) return;
         setFriendsOpen(false);
       };
+      const openAccountPanel = e => {
+        runSidebarAction('account', e, () => {
+          if (accountOpen) return;
+          closeAllPanels();
+          setPopOpen(false);
+          setAccountOpen(true);
+        });
+      };
+      const openFocusMenu = e => {
+        runSidebarAction('focus-menu', e, () => {
+          closeAllPanels();
+          setPopOpen(false);
+          setFocusMenuOpen(true);
+        });
+      };
+      const openEvolutionMenu = e => {
+        runSidebarAction('evolution-menu', e, () => {
+          closeAllPanels();
+          setPopOpen(false);
+          setEvolutionMenuOpen(true);
+        });
+      };
+      const openUserPopover = e => {
+        runSidebarAction('user-popover', e, () => {
+          if (popOpen) return;
+          closeAllPanels();
+          setPopOpen(true);
+        });
+      };
       const goEvolutionTab = tab => {
         try { localStorage.setItem('fs_evolution_initial_tab', tab); } catch(e) {}
         closeAllPanels();
         setPopOpen(false);
-        setEvolutionMenuOpen(true);
         onNavigate(tab === 'progression' ? 'progression' : 'evolution');
       };
       const currentEvolutionTab = (() => {
@@ -5130,7 +5172,7 @@
                   <div className="fs-brand-sub">Crystal Productivity </div>
                 </div>
                 <button ref={gearRef} type="button" className={'fs-gear-dot' + (accountOpen ? ' fs-account-open' : '')}
-                  onClick={e => { e.stopPropagation(); const o = !accountOpen; closeAllPanels(); setPopOpen(false); setAccountOpen(o); }}
+                  onClick={openAccountPanel}
                   aria-label="Ouvrir le compte">
                   <svg className="fs-gear-icon" viewBox="0 0 24 24">
                     <path d="M12 6.2a5.8 5.8 0 1 0 0 11.6a5.8 5.8 0 0 0 0-11.6Z" />
@@ -5150,9 +5192,9 @@
                   {renderNavButton(navByTarget('tasks'))}
                   {renderNavButton(navByTarget('notes'))}
 
-                <div className="fs-nav-cluster" onMouseLeave={() => setFocusMenuOpen(false)}>
+                <div className="fs-nav-cluster">
                   <button aria-expanded={focusMenuOpen} className={'fs-nav-item fs-nav-parent' + (['session','cristaux'].includes(screen) ? ' active' : '')}
-                    onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(o => !o); }}>
+                    onClick={openFocusMenu}>
                     <span className="fs-icon-wrap">
                       <svg className="fs-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg>
                     </span>
@@ -5165,9 +5207,9 @@
                   <div className={'fs-nav-submenu' + (focusMenuOpen ? ' open' : '')}>
                     <div className="fs-nav-submenu-inner">
                       <button className={'fs-nav-subitem' + (screen === 'session' ? ' active' : '')}
-                        onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(true); onNavigate('session'); }}>Sessions</button>
+                        onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('session'); }}>Sessions</button>
                       <button className={'fs-nav-subitem' + (screen === 'cristaux' ? ' active' : '')}
-                        onClick={() => { closeAllPanels(); setPopOpen(false); setFocusMenuOpen(true); onNavigate('cristaux'); }}>Mes cristaux</button>
+                        onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('cristaux'); }}>Mes cristaux</button>
                     </div>
                   </div>
                 </div>
@@ -5203,9 +5245,9 @@
                 </button>
 
 
-                <div className="fs-nav-cluster" onMouseLeave={() => setEvolutionMenuOpen(false)}>
+                <div className="fs-nav-cluster">
                   <button aria-expanded={evolutionMenuOpen} className={'fs-nav-item fs-nav-parent' + (['evolution','progression'].includes(screen) ? ' active' : '')}
-                    onClick={() => { closeAllPanels(); setPopOpen(false); setEvolutionMenuOpen(o => !o); }}>
+                    onClick={openEvolutionMenu}>
                     <span className="fs-icon-wrap">
                       <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/><path d="M17 6h2v2"/>
@@ -5313,7 +5355,7 @@
               </nav>
             </div>
             <div ref={cardRef} className={`fs-footer-card${popOpen ? ' fs-pop-open' : ''}`}
-              onClick={() => { setPopOpen(p => !p); closeAllPanels(); }}>
+              onClick={openUserPopover}>
               {popOpen && (
                 <div className="fs-popover" style={{ bottom: popPos.bottom, left: popPos.left, width: popPos.width }} onClick={e => e.stopPropagation()}>
                   <div className="fs-pop-user">
