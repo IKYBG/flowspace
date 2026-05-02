@@ -5056,19 +5056,19 @@
         closeAllPanels();
         onNavigate('perso');
       };
-      const toggleFriendsPanel = e => {
+      const openFriendsPanel = e => {
         e?.preventDefault?.();
         e?.stopPropagation?.();
-        const shouldOpen = !friendsOpen;
+        if (friendsOpen) return;
         closeAllPanels();
         setPopOpen(false);
         setFocusMenuOpen(false);
         setEvolutionMenuOpen(false);
-        if (shouldOpen) friendsOpenedAtRef.current = Date.now();
-        setFriendsOpen(shouldOpen);
+        friendsOpenedAtRef.current = Date.now();
+        setFriendsOpen(true);
       };
       const closeFriendsPanel = () => {
-        if (Date.now() - friendsOpenedAtRef.current < 280) return;
+        if (Date.now() - friendsOpenedAtRef.current < 700) return;
         setFriendsOpen(false);
       };
       const goEvolutionTab = tab => {
@@ -5182,7 +5182,7 @@
                   type="button"
                   className={'fs-nav-item' + (friendsOpen ? ' active' : '')}
                   onPointerDownCapture={e => e.stopPropagation()}
-                  onClick={toggleFriendsPanel}
+                  onClick={openFriendsPanel}
                   style={{ position: 'relative' }}>
                   <span className="fs-icon-wrap" style={{ position: 'relative' }}>
                     <svg className="fs-icon" viewBox="0 0 24 24">
@@ -9042,7 +9042,7 @@
       if (!open) return null;
       return (
         <>
-          <div className="fs-friends-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose(); }}/>
+          <div className="fs-friends-backdrop" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }} onClick={e=>e.stopPropagation()}/>
           <div className="fs-friends-panel" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}>
             {/* Header */}
             <div style={{ padding:'26px 24px 20px', flexShrink:0 }}>
