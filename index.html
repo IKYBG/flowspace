@@ -971,6 +971,7 @@
       try { const v = localStorage.getItem('fs_custom_bg'); if (v != null) payload.custom_bg = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_widget_style'); if (v != null) payload.widget_style = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); if (v != null) payload.gamification = JSON.parse(v); } catch (_) { }
+      try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
 
       /* Images – aggregate all fs_img_* keys */
       const images = {};
@@ -4134,6 +4135,37 @@
       padding: 2px 0 6px;
     }
     .fs-nav-group::-webkit-scrollbar { display: none; }
+    .fs-nav-section {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .fs-nav-divider {
+      position: relative;
+      height: 1px;
+      margin: 9px 11px;
+      flex-shrink: 0;
+      background: linear-gradient(90deg,
+        transparent,
+        rgba(255,255,255,0.045) 10%,
+        rgba(var(--theme-c1-rgb),0.24) 50%,
+        rgba(255,255,255,0.045) 90%,
+        transparent
+      );
+      box-shadow: 0 1px 0 rgba(255,255,255,0.025), 0 0 16px rgba(var(--theme-c1-rgb),0.10);
+    }
+    .fs-nav-divider::before {
+      content: "";
+      position: absolute;
+      left: 18%;
+      right: 18%;
+      top: -1px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+      opacity: 0.55;
+    }
     .fs-nav-cluster {
       position: relative;
       display: flex;
@@ -4413,6 +4445,28 @@
       flex-shrink: 0;
       z-index: 3;
     }
+    .fs-install-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 26px;
+      height: 26px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.045);
+      color: rgba(248,246,252,0.42);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      z-index: 2;
+      transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 180ms var(--fs-ease);
+    }
+    .fs-install-close:hover {
+      color: rgba(248,246,252,0.92);
+      background: rgba(255,255,255,0.09);
+      border-color: rgba(255,255,255,0.14);
+      transform: translateY(-1px);
+    }
     @media (min-width: 769px) {
       .fs-nav-group {
         padding-bottom: 18px;
@@ -4447,13 +4501,13 @@
         padding: 11px 12px 12px !important;
         border-radius: 15px !important;
       }
-      .fs-install-card > div:nth-child(2) {
+      .fs-install-badge {
         margin-bottom: 6px !important;
       }
-      .fs-install-card > div:nth-child(3) {
+      .fs-install-title {
         margin-bottom: 4px !important;
       }
-      .fs-install-card > div:nth-child(4) {
+      .fs-install-desc {
         font-size: 10.8px !important;
         line-height: 1.42 !important;
         margin-bottom: 0 !important;
@@ -4732,10 +4786,41 @@
       background: linear-gradient(135deg, rgb(var(--theme-c1-rgb)), rgb(var(--theme-c2-rgb)));
       box-shadow: 0 14px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34);
     }
+    .fs-account-install {
+      grid-column: 1 / 2;
+      height: 44px;
+      border-radius: 15px;
+      border: 1px solid rgba(var(--theme-c1-rgb),0.20);
+      background:
+        radial-gradient(ellipse 80% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.14), transparent 58%),
+        linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.03));
+      color: rgba(248,246,252,0.92);
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.075), 0 12px 26px rgba(var(--theme-c1-rgb),0.08);
+      transition: transform 180ms var(--fs-ease), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+    .fs-account-install:hover {
+      transform: translateY(-1px);
+      border-color: rgba(var(--theme-c1-rgb),0.36);
+      background:
+        radial-gradient(ellipse 80% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.22), transparent 58%),
+        linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.04));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 34px rgba(var(--theme-c1-rgb),0.13);
+    }
     .fs-account-primary:hover,
     .fs-account-secondary:hover { transform: translateY(-1px); }
     .fs-account-secondary {
       width: 46px;
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      height: auto;
       color: rgba(248,246,252,0.62);
       background: rgba(255,255,255,0.055);
       border: 1px solid rgba(255,255,255,0.08);
@@ -4745,11 +4830,28 @@
       background: rgba(251,113,133,0.12);
       box-shadow: 0 12px 24px rgba(251,113,133,0.12);
     }
+    @media (max-width: 768px) {
+      .fs-account-actions {
+        grid-template-columns: 1fr;
+        gap: 9px;
+      }
+      .fs-account-install,
+      .fs-account-secondary {
+        grid-column: 1;
+        grid-row: auto;
+        width: 100%;
+        height: 44px;
+      }
+      .fs-account-secondary {
+        color: rgba(248,246,252,0.76);
+      }
+    }
   `;
       document.head.appendChild(s);
     }
 
     function Sidebar({ screen, onNavigate, user, onLogout, onUserUpdate }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [popOpen, setPopOpen] = React.useState(false);
       const [accountOpen, setAccountOpen] = React.useState(false);
       const [friendsOpen, setFriendsOpen] = React.useState(false);
@@ -4785,7 +4887,25 @@
           if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); }
         } else {
           setInstallTooltip(t => !t);
+          addToast({
+            message: "Ouvre les paramètres de ton navigateur pour installer LumenOS.",
+            type: 'info',
+            icon: '+',
+            duration: 5200
+          });
         }
+      };
+
+      const dismissInstallCard = e => {
+        e?.stopPropagation?.();
+        try { localStorage.setItem('fs_install_dismissed', '1'); } catch(e) {}
+        setInstallDismissed(true);
+        addToast({
+          message: "Si vous changez d'avis, vous pourrez l'installer via les paramètres.",
+          type: 'info',
+          icon: 'i',
+          duration: 5600
+        });
       };
 
       const closeAllPanels = () => { setFriendsOpen(false); setCristauxOpen(false); setAccountOpen(false); };
@@ -4952,6 +5072,18 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M4 19.5V8" /><path d="M10 19.5V4" /><path d="M16 19.5v-8" /><path d="M22 19.5v-12" /></svg>,
         },
       ];
+      const navByTarget = target => NAV.find(item => item.target === target);
+      const renderNavButton = (item, key = item?.target) => item && (
+        <button key={key}
+          className={'fs-nav-item' + (screen === item.target ? ' active' : '')}
+          onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
+          <span className="fs-icon-wrap">{item.icon}</span>
+          <span className="fs-label-wrap">
+            <span className="fs-label">{item.label}</span>
+            <span className="fs-meta">{item.meta}</span>
+          </span>
+        </button>
+      );
 
       return (
         <>
@@ -4975,17 +5107,16 @@
                 </button>
               </div>
               <nav className="fs-nav-group">
-                {NAV.filter(item => !['session','perso'].includes(item.target)).map((item, i) => (
-                  <button key={i}
-                    className={'fs-nav-item' + (screen === item.target ? ' active' : '')}
-                    onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
-                    <span className="fs-icon-wrap">{item.icon}</span>
-                    <span className="fs-label-wrap">
-                      <span className="fs-label">{item.label}</span>
-                      <span className="fs-meta">{item.meta}</span>
-                    </span>
-                  </button>
-                ))}
+                <div className="fs-nav-section fs-nav-section-primary">
+                  {renderNavButton(navByTarget('dashboard'))}
+                  {renderNavButton(navByTarget('perso'))}
+                </div>
+
+                <div className="fs-nav-divider" aria-hidden="true" />
+
+                <div className="fs-nav-section">
+                  {renderNavButton(navByTarget('tasks'))}
+                  {renderNavButton(navByTarget('notes'))}
 
                 <div className="fs-nav-cluster" onMouseLeave={() => setFocusMenuOpen(false)}>
                   <button aria-expanded={focusMenuOpen} className={'fs-nav-item fs-nav-parent' + (['session','cristaux'].includes(screen) ? ' active' : '')}
@@ -5008,6 +5139,35 @@
                     </div>
                   </div>
                 </div>
+
+                </div>
+
+                <div className="fs-nav-divider" aria-hidden="true" />
+
+                <div className="fs-nav-section">
+                {/* ── Friends nav item ── */}
+                <button
+                  className={'fs-nav-item' + (friendsOpen ? ' active' : '')}
+                  onClick={() => { const o=!friendsOpen; closeAllPanels(); setFriendsOpen(o); setPopOpen(false); }}
+                  style={{ position: 'relative' }}>
+                  <span className="fs-icon-wrap" style={{ position: 'relative' }}>
+                    <svg className="fs-icon" viewBox="0 0 24 24">
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M2 20c0-4 3.1-7 7-7s7 3 7 7" />
+                      <path d="M19 8v6M16 11h6" />
+                    </svg>
+                    {friends > 0 && (
+                      <span style={{ position:'absolute', top:-3, right:-4, minWidth:16, height:16, borderRadius:99, background:'var(--theme-c1)', color:'#07070d', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', lineHeight:1, fontFamily:"'DM Sans',sans-serif", boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.55)' }}>
+                        {friends}
+                      </span>
+                    )}
+                  </span>
+                  <span className="fs-label-wrap">
+                    <span className="fs-label">Amis</span>
+                    <span className="fs-meta">{friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}</span>
+                  </span>
+                </button>
+
 
                 <div className="fs-nav-cluster" onMouseLeave={() => setEvolutionMenuOpen(false)}>
                   <button aria-expanded={evolutionMenuOpen} className={'fs-nav-item fs-nav-parent' + (['evolution','progression'].includes(screen) ? ' active' : '')}
@@ -5032,41 +5192,7 @@
                     </div>
                   </div>
                 </div>
-
-                {NAV.filter(item => item.target === 'perso').map((item, i) => (
-                  <button key={`tail-${i}`}
-                    className={'fs-nav-item' + (screen === item.target ? ' active' : '')}
-                    onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
-                    <span className="fs-icon-wrap">{item.icon}</span>
-                    <span className="fs-label-wrap">
-                      <span className="fs-label">{item.label}</span>
-                      <span className="fs-meta">{item.meta}</span>
-                    </span>
-                  </button>
-                ))}
-
-                {/* ── Friends nav item ── */}
-                <button
-                  className={'fs-nav-item' + (friendsOpen ? ' active' : '')}
-                  onClick={() => { const o=!friendsOpen; closeAllPanels(); setFriendsOpen(o); setPopOpen(false); }}
-                  style={{ position: 'relative' }}>
-                  <span className="fs-icon-wrap" style={{ position: 'relative' }}>
-                    <svg className="fs-icon" viewBox="0 0 24 24">
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M2 20c0-4 3.1-7 7-7s7 3 7 7" />
-                      <path d="M19 8v6M16 11h6" />
-                    </svg>
-                    {friends > 0 && (
-                      <span style={{ position:'absolute', top:-3, right:-4, minWidth:16, height:16, borderRadius:99, background:'var(--theme-c1)', color:'#07070d', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', lineHeight:1, fontFamily:"'DM Sans',sans-serif", boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.55)' }}>
-                        {friends}
-                      </span>
-                    )}
-                  </span>
-                  <span className="fs-label-wrap">
-                    <span className="fs-label">Amis</span>
-                    <span className="fs-meta">{friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}</span>
-                  </span>
-                </button>
+                </div>
 
                 {!isInstalled && !installDismissed && (
                   <div className="fs-install-card" style={{
@@ -5085,9 +5211,20 @@
                       background: 'radial-gradient(ellipse 80% 60% at 20% 0%, rgba(var(--theme-c1-rgb),0.09), transparent)',
                       pointerEvents: 'none',
                     }}/>
+                    <button
+                      type="button"
+                      className="fs-install-close"
+                      aria-label="Masquer la carte d'installation"
+                      title="Masquer"
+                      onClick={dismissInstallCard}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                      </svg>
+                    </button>
 
                         {/* badge */}
-                    <div style={{ marginBottom: 8 }}>
+                    <div className="fs-install-badge" style={{ marginBottom: 8 }}>
                       <span style={{
                         fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
                         color: 'var(--mineral-green)', background: 'rgba(122,246,164,0.1)',
@@ -5098,13 +5235,13 @@
                     </div>
 
                     {/* title */}
-                    <div style={{
+                    <div className="fs-install-title" style={{
                       fontSize: 13, fontWeight: 700, color: 'var(--mineral-text)',
                       fontFamily: 'var(--font-display)', marginBottom: 5, lineHeight: 1.3,
                     }}>Installer LumenOS</div>
 
                     {/* description */}
-                    <div style={{
+                    <div className="fs-install-desc" style={{
                       fontSize: 11.5, color: 'var(--mineral-muted)', lineHeight: 1.55,
                       fontFamily: 'var(--font-body)', marginBottom: 12,
                     }}>
@@ -5227,6 +5364,12 @@
                     <path d="M4 19.5V8" /><path d="M10 19.5V4" /><path d="M16 19.5v-8" /><path d="M22 19.5v-12" />
                   </svg>
                   Personnaliser
+                </button>
+                <button type="button" className="fs-account-install" onClick={handleInstall}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
+                  </svg>
+                  {isInstalled ? 'LumenOS installé' : 'Installer LumenOS'}
                 </button>
                 <button type="button" className="fs-account-secondary" onClick={() => { setAccountOpen(false); onLogout(); }} title="Se déconnecter">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -8239,6 +8382,46 @@
       const [preview, setPreview] = React.useState(null);
       const inputRef = React.useRef(null);
 
+      const normalizeFriend = f => {
+        if (!f?.id || !f?.email) return null;
+        const name = f.name || f.email.split('@')[0] || 'Unknown';
+        return {
+          id: f.id,
+          name,
+          email: String(f.email).toLowerCase(),
+          initial: f.initial || (name || f.email || '?')[0].toUpperCase(),
+          color: f.color || '#4ade80',
+          addedAt: f.addedAt || Date.now(),
+          updatedAt: f.updatedAt
+        };
+      };
+      const uniqueFriends = (list, excludedId = user?.id) => {
+        const map = new Map();
+        (Array.isArray(list) ? list : []).forEach(f => {
+          const n = normalizeFriend(f);
+          if (!n || (excludedId && n.id === excludedId)) return;
+          map.set(n.id, { ...(map.get(n.id) || {}), ...n });
+        });
+        return Array.from(map.values());
+      };
+      const persistOwnFriends = async next => {
+        const clean = uniqueFriends(next);
+        try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
+        if (!user?.id || !window._fsSb) return { clean, error: null };
+        const base = {
+          name: user.name || window._fsSbUser?.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
+          email: (user.email || window._fsSbUser?.email || '').toLowerCase(),
+          friends: clean,
+          updated_at: new Date().toISOString()
+        };
+        let { error } = await window._fsSb.from('user_data').update(base).eq('user_id', user.id);
+        if (error) {
+          const result = await window._fsSb.from('user_data').upsert({ user_id: user.id, ...base }, { onConflict: 'user_id' });
+          error = result.error;
+        }
+        return { clean, error };
+      };
+
       /* Load from Supabase (authoritative) when panel opens.
          Also reverse-lookup: find any user who has added ME, so friendship is always bidirectional. */
       React.useEffect(() => {
@@ -8252,7 +8435,9 @@
           : Promise.resolve({ data: [] });
         Promise.all([ownP, revP]).then(([remote, revResult]) => {
           const raw = Array.isArray(remote?.friends) ? remote.friends : [];
-          const clean = raw.filter(f => f?.id && f.id !== myId && f?.email);
+          let localCached = [];
+          try { localCached = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
+          const clean = uniqueFriends([...localCached, ...raw]);
           setFriends(clean);
           try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
           const revData = revResult?.data || [];
@@ -8274,14 +8459,32 @@
       /* Save — only after load, use UPDATE (not upsert) to guarantee only own row is touched */
       React.useEffect(() => {
         if (!loaded) return;
-        try { localStorage.setItem(storageKey, JSON.stringify(friends)); } catch(e) {}
+        const clean = uniqueFriends(friends);
+        try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
         if (!user?.id || !window._fsSb) return;
-        console.log('[fs-friends] saving for uid:', user.id, 'friends:', friends);
         window._fsSb.from('user_data')
-          .update({ friends, updated_at: new Date().toISOString() })
+          .update({
+            name: user.name || window._fsSbUser?.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
+            email: (user.email || window._fsSbUser?.email || '').toLowerCase(),
+            friends: clean,
+            updated_at: new Date().toISOString()
+          })
           .eq('user_id', user.id)
           .then(({ error }) => { if (error) console.warn('[fs] friends save failed', error); });
       }, [friends, loaded]);
+
+      React.useEffect(() => {
+        const h = e => {
+          if (!Array.isArray(e.detail?.friends)) return;
+          const clean = uniqueFriends(e.detail.friends);
+          setFriends(prev => {
+            const merged = uniqueFriends([...prev, ...clean]);
+            return JSON.stringify(uniqueFriends(prev)) === JSON.stringify(merged) ? prev : merged;
+          });
+        };
+        window.addEventListener('fs-remote-update', h);
+        return () => window.removeEventListener('fs-remote-update', h);
+      }, [user?.id]);
 
       React.useEffect(() => {
         if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 200);
@@ -8292,15 +8495,25 @@
         if (!trimmed || !trimmed.includes('@')) return;
         setStatus('loading');
         const found = await window._fsLookupUserByEmail(trimmed);
-        if (!found) { setStatus('error'); setMsg('No LumenOS account found'); addToast({ message: 'Aucun compte LumenOS trouvé', type: 'error', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
+        if (!found) { setStatus('error'); setMsg('No LumenOS account found'); addToast({ message: 'Aucun compte LumenOS trouve', type: 'error', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
         const myId = user?.id || window._fsSbUser?.id;
         if (found.id === myId) { setStatus('error'); setMsg("That's your own account!"); addToast({ message: 'Tu ne peux pas ajouter ton propre compte', type: 'warning', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
-        if (friends.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); addToast({ message: 'Cet ami est déjà dans ta liste', type: 'info', icon: 'i' }); setTimeout(()=>setStatus('idle'),2600); return; }
+        const existing = uniqueFriends([...friends, ...reverseFriends]);
+        if (existing.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); addToast({ message: 'Cet ami est deja dans ta liste', type: 'info', icon: 'i' }); setTimeout(()=>setStatus('idle'),2600); return; }
 
-        /* Add found user to MY list */
-        setFriends(prev => [...prev, { ...found, addedAt: Date.now() }]);
+        const friendEntry = normalizeFriend({ ...found, addedAt: Date.now() });
+        const nextFriends = uniqueFriends([...friends, friendEntry]);
+        setFriends(nextFriends);
+        const saved = await persistOwnFriends(nextFriends);
+        if (saved.error) {
+          setStatus('error');
+          setMsg('Synchronisation en attente');
+          addToast({ message: "Ami ajoute localement, synchronisation en attente", type: 'warning', icon: '!' });
+          if (window._fsFlushPush) window._fsFlushPush();
+          setTimeout(()=>setStatus('idle'),2600);
+          return;
+        }
 
-        /* Add ME to THEIR list (bidirectional) */
         if (myId && window._fsSb) {
           const myEmail = (user?.email || window._fsSbUser?.email || '').toLowerCase();
           const myName  = user?.name  || window._fsSbUser?.email?.split('@')[0] || 'Unknown';
@@ -8310,18 +8523,21 @@
           if (!theirFriends.some(f => f?.id === myId)) {
             const meEntry = { id: myId, name: myName, email: myEmail,
               initial: (myName[0] || '?').toUpperCase(), color: '#4ade80', addedAt: Date.now() };
-            await window._fsSb.from('user_data')
-              .update({ friends: [...theirFriends, meEntry], updated_at: new Date().toISOString() })
-              .eq('user_id', found.id);
+            await window._fsSb.from('user_data').upsert({
+              user_id: found.id,
+              name: found.name || found.email?.split('@')[0] || 'Unknown',
+              email: found.email,
+              friends: uniqueFriends([...theirFriends, meEntry], found.id),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
           }
         }
 
         setEmail('');
-        setStatus('success'); setMsg(`${found.name} added! 🎉`);
-        addToast({ message: `${found.name} ajouté à tes amis`, type: 'success', icon: '✓' });
+        setStatus('success'); setMsg(`${found.name} added!`);
+        addToast({ message: `${found.name} ajoute a tes amis`, type: 'success', icon: '?' });
         setTimeout(()=>setStatus('idle'), 2200);
       };
-
       const removeFriend = async (id) => {
         const removed = [...friends, ...reverseFriends].find(f => f.id === id);
         setFriends(prev => prev.filter(f => f.id !== id));
@@ -8335,9 +8551,11 @@
           const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
           const updated = theirFriends.filter(f => f?.id !== myId);
           if (updated.length !== theirFriends.length) {
-            await window._fsSb.from('user_data')
-              .update({ friends: updated, updated_at: new Date().toISOString() })
-              .eq('user_id', id);
+            await window._fsSb.from('user_data').upsert({
+              user_id: id,
+              friends: uniqueFriends(updated, id),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
           }
         }
       };
@@ -8345,7 +8563,7 @@
       /* Merge own-added friends + reverse-found friends (people who added me) */
       const selfId = user?.id;
       const selfEmail = (user?.email || '').toLowerCase();
-      const allFriends = [...friends, ...reverseFriends];
+      const allFriends = uniqueFriends([...friends, ...reverseFriends]);
       const displayFriends = allFriends.filter(f =>
         f?.id && f?.email &&
         f.id !== selfId &&
