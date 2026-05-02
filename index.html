@@ -6612,6 +6612,32 @@
     .fs-auth-spin  { animation:fsSpinAuth 0.8s linear infinite; }
     .fs-auth-check path { stroke-dasharray:22; stroke-dashoffset:22; animation:fsCheckDraw 0.4s 0.05s ease both; }
     .fs-auth-field { animation:fsFieldIn 0.28s ease both; }
+    .fs-auth-panel-grid {
+      display:grid; grid-template-columns:minmax(0,1.05fr) minmax(360px,0.95fr);
+      gap:0; min-height:640px;
+    }
+    .fs-auth-story {
+      padding:44px 42px; border-right:1px solid rgba(255,255,255,0.07);
+      background:linear-gradient(150deg,rgba(var(--theme-c1-rgb),0.075),rgba(255,255,255,0.018) 48%,rgba(var(--theme-c2-rgb),0.05));
+    }
+    .fs-auth-form-pane { padding:44px 42px; display:flex; flex-direction:column; justify-content:center; }
+    .fs-auth-alt-btn {
+      height:42px; border-radius:14px; border:1px solid rgba(255,255,255,0.09);
+      background:rgba(255,255,255,0.04); color:rgba(248,246,252,0.72);
+      font-size:12px; font-weight:750; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+      transition:transform .18s ease,border-color .18s ease,background .18s ease,color .18s ease;
+    }
+    .fs-auth-alt-btn:hover { transform:translateY(-1px); border-color:rgba(var(--theme-c1-rgb),0.28); background:rgba(var(--theme-c1-rgb),0.08); color:rgba(248,246,252,0.94); }
+    .fs-auth-alt-btn:disabled { opacity:.52; cursor:default; transform:none; }
+    @media(max-width:900px){
+      .fs-auth-panel-grid{grid-template-columns:1fr;min-height:0}
+      .fs-auth-story{border-right:none;border-bottom:1px solid rgba(255,255,255,0.07);padding:34px 28px 28px}
+      .fs-auth-form-pane{padding:28px}
+    }
+    @media(max-width:520px){
+      .fs-auth-story{padding:28px 20px 22px}
+      .fs-auth-form-pane{padding:22px 20px 24px}
+    }
     .fs-ai {
       width:100%; background:rgba(255,255,255,0.04);
       border:1px solid rgba(255,255,255,0.1); border-radius:14px;
@@ -6718,6 +6744,26 @@
         setErrMsg(''); setStatus('idle'); setUname(''); setEmail(''); setPass('');
       };
 
+      const signInWithProvider = async provider => {
+        if (busy) return;
+        setErrMsg('');
+        setStatus('loading');
+        try {
+          const { error } = await window._fsSb.auth.signInWithOAuth({
+            provider,
+            options: { redirectTo: window.location.origin + window.location.pathname }
+          });
+          if (error) throw error;
+        } catch (e) {
+          setStatus('idle');
+          setErrMsg(`${provider === 'google' ? 'Google' : 'OAuth'} indisponible pour le moment. Utilise l'email.`);
+        }
+      };
+
+      const showPasskeyHint = () => {
+        setErrMsg('Les passkeys arrivent bientôt. Connexion email ou Google disponible.');
+      };
+
       const busy = status === 'loading' || status === 'success';
       const isOk = status === 'success';
 
@@ -6738,12 +6784,12 @@
           <div style={{ position: 'absolute', width: 400, height: 400, top: '35%', right: '10%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(196,181,253,0.07), transparent 60%)', pointerEvents: 'none' }} />
 
           {/* Card */}
-          <div className={`fs-auth-card${shaking ? ' fs-auth-shake' : ''}`} style={{ width: '100%', maxWidth: 432, padding: '0 20px', position: 'relative', zIndex: 1 }}>
+          <div className={`fs-auth-card${shaking ? ' fs-auth-shake' : ''}`} style={{ width: '100%', maxWidth: 980, padding: '0 20px', position: 'relative', zIndex: 1 }}>
             <div style={{
               background: 'rgba(9,9,17,0.76)',
               backdropFilter: 'blur(48px) saturate(160%)', WebkitBackdropFilter: 'blur(48px) saturate(160%)',
               border: '1px solid rgba(255,255,255,0.1)', borderRadius: 34,
-              padding: '46px 46px 40px',
+              padding: 0,
               boxShadow: '0 0 0 1px rgba(255,255,255,0.04),0 44px 110px rgba(0,0,0,0.68),inset 0 1px 0 rgba(255,255,255,0.11)',
               position: 'relative', overflowX: 'hidden', overflowY: 'auto', maxHeight: 'calc(100dvh - 48px)',
             }}>
@@ -6752,6 +6798,8 @@
               {/* Inner glow */}
               <div style={{ position: 'absolute', inset: 0, borderRadius: 34, background: 'radial-gradient(ellipse at 50% -10%, rgba(165,184,255,0.07), transparent 52%)', pointerEvents: 'none' }} />
 
+              <div className="fs-auth-panel-grid" style={{position:'relative',zIndex:1}}>
+              <section className="fs-auth-story">
               {/* Brand */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 16, flexShrink: 0, position: 'relative', background: 'linear-gradient(145deg,rgba(165,184,255,0.95),rgba(74,222,128,0.72))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28),0 10px 26px rgba(80,100,255,0.32)', display: 'grid', placeItems: 'center' }}>
@@ -6806,7 +6854,21 @@
                   </div>
                 </div>
               </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8,marginTop:18}}>
+                {[
+                  ['Sync','PC + mobile'],
+                  ['Focus','sessions'],
+                  ['Social','amis']
+                ].map(([k,v])=>(
+                  <div key={k} style={{borderRadius:14,padding:'10px 11px',background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.06)'}}>
+                    <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.1em',textTransform:'uppercase',color:T.c1}}>{k}</div>
+                    <div style={{fontSize:10,color:T.muted,marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              </section>
 
+              <section className="fs-auth-form-pane">
               {/* Fields */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
                 {mode === 'signup' && (
@@ -6876,6 +6938,23 @@
                 {isOk && 'Bienvenue !'}
               </button>
 
+              <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 14px'}}>
+                <div style={{height:1,flex:1,background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.10))'}}/>
+                <span style={{fontSize:10,color:'rgba(248,246,252,0.28)',fontWeight:750,letterSpacing:'0.09em',textTransform:'uppercase'}}>Accès rapide</span>
+                <div style={{height:1,flex:1,background:'linear-gradient(90deg,rgba(255,255,255,0.10),transparent)'}}/>
+              </div>
+
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <button type="button" className="fs-auth-alt-btn" onClick={()=>signInWithProvider('google')} disabled={busy}>
+                  <span style={{fontSize:13,fontWeight:900}}>G</span>
+                  Google
+                </button>
+                <button type="button" className="fs-auth-alt-btn" onClick={showPasskeyHint} disabled={busy}>
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 18a6 6 0 1 0 9.33-5"/><path d="M14 10l7-7"/><path d="M18 6l3 3"/></svg>
+                  Passkey
+                </button>
+              </div>
+
               {/* Mode toggle */}
               <div style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: 'rgba(248,246,252,0.36)' }}>
                 {mode === 'login' ? 'Pas encore de compte ?' : 'Déjà un compte ?'}{' '}
@@ -6885,6 +6964,12 @@
                   onMouseLeave={e => e.currentTarget.style.opacity = '0.88'}>
                   {mode === 'login' ? "S'inscrire" : 'Se connecter'}
                 </button>
+              </div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,marginTop:16,color:'rgba(248,246,252,0.26)',fontSize:10,lineHeight:1.4}}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Connexion sécurisée, données synchronisées.
+              </div>
+              </section>
               </div>
             </div>
 
