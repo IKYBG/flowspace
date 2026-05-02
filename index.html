@@ -6318,11 +6318,11 @@
       const isOrganicMap = mapStyle === 'organic';
       const isBlueprintMap = mapStyle === 'blueprint';
       const isCosmosMap = mapStyle === 'cosmos';
-      const NW = isCosmosMap ? 128 : isOrganicMap ? 198 : 176;
-      const NH = isCosmosMap ? 128 : isOrganicMap ? 76 : 98;
-      const NGX = 14, NGY = 12;          // gap between nodes inside a cluster
-      const CPH = 28, CPT = 54, CPB = 22; // cluster padding: horizontal, top, bottom
-      const CGX = 46, CGY = 50;          // gap between clusters
+      const NW = isCosmosMap ? 172 : isOrganicMap ? 204 : 188;
+      const NH = isCosmosMap ? 92 : isOrganicMap ? 84 : 104;
+      const NGX = 18, NGY = 16;          // gap between nodes inside a cluster
+      const CPH = 30, CPT = 60, CPB = 26; // cluster padding: horizontal, top, bottom
+      const CGX = 56, CGY = 58;          // gap between clusters
       const SX = 56, SY = 56;            // canvas start offset
       const MRW = 1720;                  // max row width before wrapping
       // ── Flow layout: each cluster gets its real size, no overlaps ─────────
@@ -6374,31 +6374,31 @@
             .fs-map-shell{position:relative;min-width:0;overflow:hidden;display:flex;flex-direction:column;}
             .fs-map-toolbar{height:78px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 24px;background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01));}
             .fs-map-search{height:42px;min-width:320px;border-radius:15px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.045);display:flex;align-items:center;gap:10px;padding:0 13px;}
-            .fs-map-canvas{position:relative;flex:1;overflow:hidden;cursor:grab;background-image:radial-gradient(rgba(255,255,255,0.055) 1px,transparent 1px);background-size:28px 28px;}
-            .fs-map-canvas.fs-map-organic{background-color:var(--mineral-bg);background-image:radial-gradient(circle,rgba(var(--theme-c1-rgb),0.13) 1px,transparent 1px),radial-gradient(circle at 15% 80%,rgba(var(--theme-c1-rgb),0.18),transparent 38%),radial-gradient(circle at 85% 15%,rgba(var(--theme-c2-rgb),0.16),transparent 36%);background-size:24px 24px,auto,auto;}
-            .fs-map-canvas.fs-map-blueprint{background-color:var(--mineral-bg);background-image:linear-gradient(rgba(var(--theme-c1-rgb),0.09) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--theme-c1-rgb),0.09) 1px,transparent 1px),radial-gradient(circle at 50% 50%,rgba(var(--theme-c2-rgb),0.07),transparent 55%);background-size:32px 32px,32px 32px,auto;}
-            .fs-map-canvas.fs-map-cosmos{background-color:var(--mineral-bg);background-image:radial-gradient(circle at 50% 50%,rgba(var(--theme-c1-rgb),0.12),transparent 52%),radial-gradient(circle at 20% 25%,rgba(var(--theme-c2-rgb),0.08),transparent 35%),radial-gradient(circle at 80% 75%,rgba(var(--theme-c2-rgb),0.12),transparent 38%),radial-gradient(rgba(255,255,255,0.08) 1px,transparent 1px);background-size:auto,auto,auto,42px 42px;}
+            .fs-map-canvas{position:relative;flex:1;overflow:hidden;cursor:grab;background:var(--mineral-bg);}
+            .fs-map-canvas.fs-map-organic{background-color:var(--mineral-bg);background-image:radial-gradient(ellipse at 16% 18%,rgba(var(--theme-c1-rgb),0.12),transparent 42%),radial-gradient(ellipse at 86% 78%,rgba(var(--theme-c2-rgb),0.10),transparent 40%),linear-gradient(rgba(255,255,255,0.026) 1px,transparent 1px);background-size:auto,auto,34px 34px;}
+            .fs-map-canvas.fs-map-blueprint{background-color:var(--mineral-bg);background-image:linear-gradient(rgba(var(--theme-c1-rgb),0.055) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--theme-c1-rgb),0.055) 1px,transparent 1px),radial-gradient(circle at 50% 36%,rgba(var(--theme-c1-rgb),0.07),transparent 48%);background-size:36px 36px,36px 36px,auto;}
+            .fs-map-canvas.fs-map-cosmos{background-color:var(--mineral-bg);background-image:radial-gradient(ellipse at 50% 26%,rgba(var(--theme-c1-rgb),0.13),transparent 46%),radial-gradient(ellipse at 82% 78%,rgba(var(--theme-c2-rgb),0.09),transparent 44%),linear-gradient(135deg,rgba(255,255,255,0.028),transparent 34%,rgba(255,255,255,0.018));}
             .fs-map-canvas.dragging{cursor:grabbing;}
             .fs-map-world{position:absolute;left:0;top:0;transform-origin:0 0;}
-            .fs-tag-cluster{position:absolute;border-radius:24px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.012);box-shadow:inset 0 1px 0 rgba(255,255,255,0.025);}
-            .fs-map-node{position:absolute;border-radius:18px;padding:12px 14px;text-align:left;border:1px solid rgba(255,255,255,0.085);background:rgba(var(--mineral-surface-rgb),0.84);color:${T.text};box-shadow:0 8px 24px rgba(0,0,0,0.22),0 1px 0 rgba(255,255,255,0.03) inset;transition:transform .16s,border-color .16s,background .16s,opacity .16s,box-shadow .16s;overflow:hidden;cursor:pointer;}
-            .fs-map-node:hover{transform:translateY(-2px) scale(1.025);border-color:rgba(var(--theme-c1-rgb),0.32);background:rgba(var(--mineral-surface-rgb),0.97);box-shadow:0 16px 40px rgba(0,0,0,0.30);}
-            .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.52);background:linear-gradient(160deg,rgba(var(--theme-c1-rgb),0.14),rgba(var(--mineral-surface-rgb),0.92));box-shadow:0 14px 44px rgba(var(--theme-c1-rgb),0.13),0 8px 24px rgba(0,0,0,0.22);}
-            .fs-map-organic .fs-tag-cluster{border-radius:30px;border-color:rgba(var(--theme-c1-rgb),0.12);background:rgba(var(--mineral-surface-rgb),0.34);}
-            .fs-map-organic .fs-map-node{border-radius:999px;background:rgba(var(--mineral-surface-rgb),0.92);border-color:rgba(var(--theme-c1-rgb),0.22);color:${T.text};box-shadow:0 6px 28px rgba(var(--theme-c1-rgb),0.12),0 1px 4px rgba(0,0,0,0.12);}
-            .fs-map-organic .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.62);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--mineral-surface-rgb),0.95));box-shadow:0 10px 36px rgba(var(--theme-c1-rgb),0.22);}
+            .fs-tag-cluster{position:absolute;border-radius:24px;border:1px solid rgba(255,255,255,0.06);background:rgba(var(--mineral-surface-rgb),0.16);box-shadow:inset 0 1px 0 rgba(255,255,255,0.035);}
+            .fs-map-node{position:absolute;border-radius:18px;padding:13px 15px;text-align:left;border:1px solid rgba(255,255,255,0.09);background:rgba(var(--mineral-surface-rgb),0.90);color:${T.text};box-shadow:0 12px 30px rgba(0,0,0,0.26),0 1px 0 rgba(255,255,255,0.04) inset;transition:transform .16s,border-color .16s,background .16s,opacity .16s,box-shadow .16s;overflow:hidden;cursor:pointer;}
+            .fs-map-node:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),0.36);background:rgba(var(--mineral-surface-2-rgb),0.96);box-shadow:0 18px 42px rgba(0,0,0,0.34);}
+            .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.62);background:linear-gradient(160deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--mineral-surface-rgb),0.94));box-shadow:0 18px 48px rgba(var(--theme-c1-rgb),0.16),0 12px 30px rgba(0,0,0,0.28);}
+            .fs-map-organic .fs-tag-cluster{border-radius:26px;border-color:rgba(var(--theme-c1-rgb),0.14);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.34),rgba(var(--mineral-bg-rgb),0.20));}
+            .fs-map-organic .fs-map-node{border-radius:22px;background:rgba(var(--mineral-surface-rgb),0.94);border-color:rgba(var(--theme-c1-rgb),0.20);color:${T.text};box-shadow:0 10px 30px rgba(0,0,0,0.24),0 0 0 1px rgba(255,255,255,0.025) inset;}
+            .fs-map-organic .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.58);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--mineral-surface-rgb),0.96));box-shadow:0 18px 46px rgba(var(--theme-c1-rgb),0.18),0 12px 30px rgba(0,0,0,0.24);}
             .fs-map-organic .fs-map-node div{color:inherit!important;}
-            .fs-map-blueprint .fs-tag-cluster{border-radius:4px;border-color:rgba(var(--theme-c1-rgb),0.12);background:rgba(var(--mineral-surface-rgb),0.18);}
-            .fs-map-blueprint .fs-map-node{border-radius:2px;background:rgba(var(--mineral-surface-rgb),0.92);border-color:rgba(var(--theme-c1-rgb),0.34);color:${T.text};box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.10),0 14px 44px rgba(0,0,0,0.45);}
-            .fs-map-blueprint .fs-map-node::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:rgba(var(--theme-c1-rgb),0.70);}
-            .fs-map-blueprint .fs-map-node::after{content:"";position:absolute;right:7px;bottom:7px;width:14px;height:14px;border-right:1px solid rgba(var(--theme-c1-rgb),0.48);border-bottom:1px solid rgba(var(--theme-c1-rgb),0.48);}
-            .fs-map-blueprint .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.66);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.17),rgba(var(--mineral-surface-rgb),0.94));box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.22),0 0 30px rgba(var(--theme-c1-rgb),0.16);}
+            .fs-map-blueprint .fs-tag-cluster{border-radius:10px;border-color:rgba(var(--theme-c1-rgb),0.13);background:rgba(var(--mineral-surface-rgb),0.20);}
+            .fs-map-blueprint .fs-map-node{border-radius:8px;background:rgba(var(--mineral-surface-rgb),0.94);border-color:rgba(var(--theme-c1-rgb),0.26);color:${T.text};box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.07),0 14px 36px rgba(0,0,0,0.34);}
+            .fs-map-blueprint .fs-map-node::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),0.75),rgba(var(--theme-c2-rgb),0.38));}
+            .fs-map-blueprint .fs-map-node::after{content:"";position:absolute;right:8px;bottom:8px;width:13px;height:13px;border-right:1px solid rgba(var(--theme-c1-rgb),0.36);border-bottom:1px solid rgba(var(--theme-c1-rgb),0.36);}
+            .fs-map-blueprint .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.58);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.13),rgba(var(--mineral-surface-rgb),0.96));box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.18),0 18px 42px rgba(0,0,0,0.36);}
             .fs-map-blueprint .fs-map-node div{color:inherit!important;}
-            .fs-map-cosmos .fs-tag-cluster{border-radius:999px;border-color:rgba(var(--theme-c2-rgb),0.10);background:rgba(var(--theme-c2-rgb),0.025);}
-            .fs-map-cosmos .fs-map-node{border-radius:50%;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.09),transparent 28%),linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--mineral-bg-rgb),0.94));border-color:rgba(var(--theme-c1-rgb),0.36);box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.08),0 20px 56px rgba(0,0,0,0.52),0 0 36px rgba(var(--theme-c2-rgb),0.13);}
-            .fs-map-cosmos .fs-map-node::before{content:"";position:absolute;inset:10px;border-radius:50%;border:1px solid rgba(var(--theme-c2-rgb),0.16);pointer-events:none;}
-            .fs-map-cosmos .fs-map-node.active{border-color:rgba(var(--theme-c2-rgb),0.48);background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.11),transparent 28%),linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--mineral-bg-rgb),0.96));box-shadow:0 0 0 1px rgba(var(--theme-c2-rgb),0.13),0 0 48px rgba(var(--theme-c1-rgb),0.20);}
-            .fs-map-cosmos .fs-map-node div{max-width:92px;text-align:center;}
+            .fs-map-cosmos .fs-tag-cluster{border-radius:28px;border-color:rgba(var(--theme-c2-rgb),0.13);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.045),rgba(var(--theme-c2-rgb),0.035));}
+            .fs-map-cosmos .fs-map-node{border-radius:26px;text-align:left;display:flex;flex-direction:column;background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),0.14),rgba(var(--mineral-surface-rgb),0.94));border-color:rgba(var(--theme-c2-rgb),0.24);box-shadow:0 16px 44px rgba(0,0,0,0.38),0 0 0 1px rgba(var(--theme-c1-rgb),0.055) inset;}
+            .fs-map-cosmos .fs-map-node::before{content:"";position:absolute;left:12px;right:12px;top:10px;height:1px;border-radius:999px;background:linear-gradient(90deg,transparent,rgba(var(--theme-c2-rgb),0.36),transparent);pointer-events:none;}
+            .fs-map-cosmos .fs-map-node.active{border-color:rgba(var(--theme-c2-rgb),0.55);background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),0.20),rgba(var(--mineral-surface-rgb),0.97));box-shadow:0 22px 54px rgba(0,0,0,0.42),0 0 42px rgba(var(--theme-c1-rgb),0.18);}
+            .fs-map-cosmos .fs-map-node div{max-width:none;text-align:left;}
             .fs-map-control{height:36px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:${T.muted};font:850 12px var(--font-body);cursor:pointer;padding:0 12px;}
             @media(max-width:1020px){.fs-notes-mind{grid-template-columns:1fr}.fs-note-builder{display:none}.fs-map-search{min-width:0;flex:1}.fs-map-toolbar{padding:0 14px}}
             @media(max-width:768px){
@@ -6414,9 +6414,9 @@
               .fs-map-search{min-width:0!important;flex:1!important;height:36px!important}
               .fs-map-control{height:30px!important;padding:0 9px!important;font-size:11px!important}
               .fs-map-node{border-radius:14px!important;padding:10px 12px!important}
-              .fs-map-organic .fs-map-node{border-radius:999px!important}
-              .fs-map-blueprint .fs-map-node{border-radius:2px!important}
-              .fs-map-cosmos .fs-map-node{border-radius:50%!important;padding:12px!important}
+              .fs-map-organic .fs-map-node{border-radius:20px!important}
+              .fs-map-blueprint .fs-map-node{border-radius:8px!important}
+              .fs-map-cosmos .fs-map-node{border-radius:22px!important;padding:12px 13px!important}
             }
             @keyframes noteOverlayIn{from{opacity:0}to{opacity:1}}
             @keyframes noteModalIn{from{opacity:0;transform:scale(0.95) translateY(18px)}to{opacity:1;transform:scale(1) translateY(0)}}
@@ -6473,15 +6473,15 @@
                     const x1=pa.x+NW/2, y1=pa.y+NH/2, x2=pb.x+NW/2, y2=pb.y+NH/2;
                     if (isBlueprintMap) {
                       const mx = (x1 + x2) / 2;
-                      return <polyline key={i} points={`${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}`} stroke={c1(0.38)} strokeWidth="1.1" fill="none" strokeDasharray="5 4"/>;
+                      return <polyline key={i} points={`${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}`} stroke={c1(0.30)} strokeWidth="1" fill="none" strokeDasharray="5 4"/>;
                     }
                     if (isCosmosMap) {
                       const midY = Math.min(y1, y2) - 46;
-                      return <path key={i} d={`M${x1},${y1} Q${(x1+x2)/2},${midY} ${x2},${y2}`} stroke={c2(0.46)} strokeWidth="1.45" fill="none" strokeLinecap="round"/>;
+                      return <path key={i} d={`M${x1},${y1} Q${(x1+x2)/2},${midY} ${x2},${y2}`} stroke={c2(0.34)} strokeWidth="1.25" fill="none" strokeLinecap="round"/>;
                     }
                     const cx1 = x1 + (x2 - x1) * 0.38;
                     const cx2 = x2 - (x2 - x1) * 0.38;
-                    return <path key={i} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`} stroke={c1(0.46)} strokeWidth="1.8" fill="none" strokeLinecap="round"/>;
+                    return <path key={i} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`} stroke={c1(0.34)} strokeWidth="1.5" fill="none" strokeLinecap="round"/>;
                   })}
                 </svg>
                 {groups.map(g => (
@@ -6499,10 +6499,10 @@
                   const muted = normalizedQuery && !matchesQuery(n);
                   return (
                     <button key={n.id} className={'fs-map-node'+(active?' active':'')} onClick={()=>{ setSelectedId(n.id); setEditingId(n.id); setPreviewModal(false); }} style={{left:p.x,top:p.y,width:NW,height:NH,opacity:muted?0.22:1}}>
-                      <div style={{fontSize:isCosmosMap?11:12,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',letterSpacing:'-0.025em',lineHeight:1.2,marginBottom:isCosmosMap?4:5,position:'relative',zIndex:1}}>{n.title||'Sans titre'}</div>
-                      <div style={{fontSize:isCosmosMap?9:10,color:isOrganicMap?'rgba(248,246,252,0.58)':isBlueprintMap?c1(0.64):c2(0.62),lineHeight:1.42,display:'-webkit-box',WebkitLineClamp:isCosmosMap?1:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:isCosmosMap?'0 0 auto':1,position:'relative',zIndex:1}}>{previewText(n)}</div>
-                      <div style={{display:'flex',gap:5,alignItems:'center',justifyContent:isCosmosMap?'center':'flex-start',marginTop:isCosmosMap?7:8,overflow:'hidden',position:'relative',zIndex:1}}>
-                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:isCosmosMap?T.c2:T.c1,background:isCosmosMap?c2(0.13):c1(0.13),border:`1px solid ${isCosmosMap?c2(0.24):c1(0.24)}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:isCosmosMap?72:100,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
+                      <div style={{fontSize:12,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',letterSpacing:'-0.02em',lineHeight:1.22,marginBottom:5,position:'relative',zIndex:1}}>{n.title||'Sans titre'}</div>
+                      <div style={{fontSize:10,color:isBlueprintMap?c1(0.64):isCosmosMap?c2(0.66):T.muted,lineHeight:1.45,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:1,position:'relative',zIndex:1}}>{previewText(n)}</div>
+                      <div style={{display:'flex',gap:5,alignItems:'center',justifyContent:'flex-start',marginTop:8,overflow:'hidden',position:'relative',zIndex:1}}>
+                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:isCosmosMap?T.c2:T.c1,background:isCosmosMap?c2(0.13):c1(0.13),border:`1px solid ${isCosmosMap?c2(0.24):c1(0.24)}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:116,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
                         {n.tags?.length>1&&!isCosmosMap&&<span style={{fontSize:8,color:T.muted,opacity:.55}}>+{n.tags.length-1}</span>}
                       </div>
                     </button>
@@ -7040,9 +7040,9 @@
     function NotesDesignScreen({ onNavigate, bgThemeId }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const STYLES = [
-        { id:'organic', name:'Organique', desc:'Nœuds biomorphiques, courbes naturelles et teintes chaleureuses.', c1:'#a8c5a0', c2:'#e8a87c' },
-        { id:'blueprint', name:'Blueprint', desc:'Géométrie technique, connecteurs orthogonaux, précision absolue.', c1:'#60a5fa', c2:'#93c5fd' },
-        { id:'cosmos', name:'Cosmos', desc:'Nœuds orbitaux, arcs lumineux et profondeur cosmique infinie.', c1:'#a78bfa', c2:'#fbbf24' },
+        { id:'organic', name:'Organique', desc:'Cartes arrondies, clusters calmes et connexions souples pour lire vite.', c1:'#a8c5a0', c2:'#e8a87c' },
+        { id:'blueprint', name:'Blueprint', desc:'Cartes compactes, grille discrète et connecteurs précis pour organiser.', c1:'#60a5fa', c2:'#93c5fd' },
+        { id:'cosmos', name:'Cosmos', desc:'Cartes orbitales, halo subtil et hiérarchie nette sans perdre la lisibilité.', c1:'#a78bfa', c2:'#fbbf24' },
       ];
       const [selected, setSelected] = _uPX(() => window._fsCurrentMapStyle || localStorage.getItem('fs_note_map_style') || 'organic');
       const resolveAppliedTheme = () => {
@@ -7208,31 +7208,24 @@
                               <stop offset="100%" stopColor={ta1(0)}/>
                             </radialGradient>
                           </defs>
-                          <circle cx="160" cy="75" r="76" fill="url(#cosmos-hub-glow)"/>
-                          <circle cx="75" cy="145" r="36" fill={ta2(0.07)}/>
-                          <circle cx="245" cy="145" r="36" fill={ta2(0.07)}/>
+                          <circle cx="160" cy="82" r="84" fill="url(#cosmos-hub-glow)"/>
                           {[[25,18,1.2,0.45],[295,32,1,0.38],[45,168,1.4,0.36],[285,172,1,0.3],[8,98,0.9,0.4],[312,118,0.8,0.38],[200,14,1.1,0.36],[128,186,0.9,0.3]].map(([x,y,r,o],i)=>(
                             <circle key={i} cx={x} cy={y} r={r} fill={`rgba(255,255,255,${o})`}/>
                           ))}
-                          <ellipse cx="160" cy="75" rx="110" ry="54" fill="none" stroke={ta1(0.09)} strokeWidth="0.6"/>
-                          <ellipse cx="160" cy="75" rx="74" ry="36" fill="none" stroke={ta1(0.07)} strokeWidth="0.5"/>
-                          <path d="M140,75 C100,72 82,104 75,132" stroke={ta1(0.56)} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-                          <path d="M180,75 C220,72 238,104 245,132" stroke={ta1(0.56)} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-                          <path d="M90,152 C135,178 185,178 230,152" stroke={ta2(0.38)} strokeWidth="1.1" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
-                          <circle cx="160" cy="75" r="34" fill="none" stroke={ta1(0.2)} strokeWidth="0.8"/>
-                          <circle cx="160" cy="75" r="27" fill={ta1(0.11)} stroke={ta1(0.58)} strokeWidth="1.3"/>
-                          <circle cx="160" cy="75" r="20" fill={toneBg}/>
-                          <text x="160" y="79" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={cardText}>Noyau</text>
-                          <circle cx="75" cy="145" r="22" fill="none" stroke={ta1(0.18)} strokeWidth="0.8"/>
-                          <circle cx="75" cy="145" r="17" fill={ta1(0.09)} stroke={ta1(0.4)} strokeWidth="1"/>
-                          <circle cx="75" cy="145" r="12" fill={toneBg}/>
-                          <text x="75" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={themeC2}>Alpha</text>
-                          <circle cx="245" cy="145" r="22" fill="none" stroke={ta1(0.18)} strokeWidth="0.8"/>
-                          <circle cx="245" cy="145" r="17" fill={ta1(0.09)} stroke={ta1(0.4)} strokeWidth="1"/>
-                          <circle cx="245" cy="145" r="12" fill={toneBg}/>
-                          <text x="245" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={themeC2}>Bêta</text>
-                          <circle cx="128" cy="155" r="5.5" fill={ta2(0.18)} stroke={ta2(0.42)} strokeWidth="0.8"/>
-                          <circle cx="192" cy="155" r="5.5" fill={ta2(0.18)} stroke={ta2(0.42)} strokeWidth="0.8"/>
+                          <ellipse cx="160" cy="90" rx="116" ry="58" fill="none" stroke={ta2(0.10)} strokeWidth="0.7"/>
+                          <ellipse cx="160" cy="90" rx="72" ry="36" fill="none" stroke={ta1(0.08)} strokeWidth="0.6"/>
+                          <path d="M126,88 C96,92 86,116 76,132" stroke={ta2(0.34)} strokeWidth="1.25" fill="none" strokeLinecap="round"/>
+                          <path d="M194,88 C224,92 234,116 244,132" stroke={ta2(0.34)} strokeWidth="1.25" fill="none" strokeLinecap="round"/>
+                          <path d="M100,154 C136,174 184,174 220,154" stroke={ta2(0.24)} strokeWidth="1" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
+                          <rect x="108" y="62" width="104" height="48" rx="24" fill={toneSurface2} stroke={active?ta2(0.58):ta2(0.24)} strokeWidth={active?1.5:1}/>
+                          <line x1="123" y1="74" x2="197" y2="74" stroke={ta2(0.28)} strokeWidth="1" strokeLinecap="round"/>
+                          <text x="160" y="91" textAnchor="middle" fontSize="10" fontWeight="800" fill={cardText}>Noyau</text>
+                          <rect x="36" y="130" width="82" height="34" rx="17" fill={toneSurface} stroke={ta1(0.24)} strokeWidth="1"/>
+                          <text x="77" y="151" textAnchor="middle" fontSize="9" fontWeight="750" fill={themeC2}>Alpha</text>
+                          <rect x="202" y="130" width="82" height="34" rx="17" fill={toneSurface} stroke={ta1(0.24)} strokeWidth="1"/>
+                          <text x="243" y="151" textAnchor="middle" fontSize="9" fontWeight="750" fill={themeC2}>Beta</text>
+                          <circle cx="132" cy="154" r="4.5" fill={ta2(0.18)} stroke={ta2(0.38)} strokeWidth="0.8"/>
+                          <circle cx="188" cy="154" r="4.5" fill={ta2(0.18)} stroke={ta2(0.38)} strokeWidth="0.8"/>
                         </svg>
                       )}
                     </div>
