@@ -6438,7 +6438,7 @@
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
               <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre précis" style={{height:42,padding:'0 13px',fontSize:13,flexShrink:0}} />
               <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
-              <div style={{flex:1,minHeight:0}} />
+              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} placeholder={"Contenu de la note...\nEx: idées, liens, [[note liée]], #tag"} style={{flex:1,minHeight:140,resize:'none',padding:'13px',fontSize:13,lineHeight:1.7}} />
               <button onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
             </div>
           </aside>
@@ -6745,7 +6745,7 @@
               border: '1px solid rgba(255,255,255,0.1)', borderRadius: 34,
               padding: '46px 46px 40px',
               boxShadow: '0 0 0 1px rgba(255,255,255,0.04),0 44px 110px rgba(0,0,0,0.68),inset 0 1px 0 rgba(255,255,255,0.11)',
-              position: 'relative', overflow: 'hidden',
+              position: 'relative', overflowX: 'hidden', overflowY: 'auto', maxHeight: 'calc(100dvh - 48px)',
             }}>
               {/* Top shimmer */}
               <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '52%', height: 1, background: 'linear-gradient(90deg,transparent,rgba(165,184,255,0.65),transparent)', pointerEvents: 'none' }} />
@@ -6766,13 +6766,44 @@
 
               {/* Headline */}
               <div style={{ marginBottom: 32 }}>
-                <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 32, letterSpacing: '-0.048em', lineHeight: 1.1, marginBottom: 10 }}>
-                  {mode === 'login' ? 'Bon retour.' : 'Commencez ici.'}
+                <div style={{ display:'inline-flex',alignItems:'center',gap:7,padding:'5px 10px',borderRadius:999,background:c1(0.10),border:`1px solid ${c1(0.18)}`,color:T.c1,fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',marginBottom:14 }}>
+                  <span style={{width:6,height:6,borderRadius:'50%',background:T.c1,boxShadow:`0 0 10px ${T.c1}`}}/>
+                  Dashboard personnel de focus
                 </div>
-                <div style={{ fontSize: 13, color: 'rgba(248,246,252,0.4)', lineHeight: 1.6, maxWidth: '30ch' }}>
+                <div style={{ fontFamily: T.display, fontWeight: 850, fontSize: 34, letterSpacing: '-0.052em', lineHeight: 1.04, marginBottom: 12 }}>
+                  {mode === 'login' ? 'Retrouve ton système de travail.' : 'Crée ton cockpit de productivité.'}
+                </div>
+                <div style={{ fontSize: 13, color: 'rgba(248,246,252,0.54)', lineHeight: 1.65, maxWidth: '34ch' }}>
                   {mode === 'login'
-                    ? 'Connectez-vous à votre espace de travail.'
-                    : 'Créez votre compte et entrez en état de flow.'}
+                    ? 'Connecte-toi pour récupérer tes notes, tâches, sessions focus, badges et dashboard synchronisés.'
+                    : 'LumenOS rassemble ton dashboard, tes notes mentales, tes tâches, tes amis et ta progression dans un seul espace.'}
+                </div>
+              </div>
+
+              {/* Product promise */}
+              <div style={{marginBottom:24,borderRadius:22,border:'1px solid rgba(255,255,255,0.075)',background:'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.025))',padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1.15fr 0.85fr',gap:10,minHeight:118}}>
+                  <div style={{borderRadius:16,background:'rgba(var(--theme-c1-rgb),0.09)',border:`1px solid ${c1(0.16)}`,padding:13,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+                    <div>
+                      <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.c1,marginBottom:7}}>Aujourd'hui</div>
+                      <div style={{fontFamily:T.display,fontSize:24,fontWeight:850,letterSpacing:'-0.045em',lineHeight:1,color:T.text}}>Focus profond</div>
+                    </div>
+                    <div style={{display:'flex',gap:5}}>
+                      {[0,1,2,3].map(i=><div key={i} style={{height:5,flex:i===0?2:1,borderRadius:99,background:i<2?`linear-gradient(90deg,${T.c1},${T.c2})`:'rgba(255,255,255,0.12)'}} />)}
+                    </div>
+                  </div>
+                  <div style={{display:'grid',gap:8}}>
+                    {[
+                      ['Notes','Carte mentale'],
+                      ['Tâches','Priorités'],
+                      ['Amis','Dashboard live']
+                    ].map(([a,b])=>(
+                      <div key={a} style={{borderRadius:13,background:'rgba(255,255,255,0.045)',border:'1px solid rgba(255,255,255,0.07)',padding:'8px 10px'}}>
+                        <div style={{fontSize:11,fontWeight:850,color:T.text,lineHeight:1.1}}>{a}</div>
+                        <div style={{fontSize:9,color:T.muted,marginTop:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{b}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -6859,7 +6890,7 @@
 
             {/* Feature pills */}
             <div className="fs-auth-pill-row" style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 24, flexWrap: 'wrap' }}>
-              {['Pomodoro', 'Gestionnaire de tâches', 'Focus profond', 'Sessions live'].map(f => (
+              {['Notes mentales', 'Tâches synchronisées', 'Sessions focus', 'Progression & badges'].map(f => (
                 <div key={f} style={{ padding: '5px 13px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 11, color: 'rgba(248,246,252,0.28)', fontWeight: 500, fontFamily: T.font }}>{f}</div>
               ))}
             </div>
@@ -9077,6 +9108,7 @@
       if (!open) return null;
       return (
         <>
+          {!preview && <>
           <div className="fs-friends-backdrop" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }} onClick={e=>e.stopPropagation()}/>
           <div className="fs-friends-panel" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}>
             {/* Header */}
@@ -9158,6 +9190,7 @@
               )}
             </div>
           </div>
+          </>}
           {preview && <FriendDashboardPreview friend={preview} onClose={()=>setPreview(null)}/>}
         </>
       );
