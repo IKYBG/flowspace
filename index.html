@@ -6324,29 +6324,29 @@
             .fs-map-toolbar{height:78px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 24px;background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01));}
             .fs-map-search{height:42px;min-width:320px;border-radius:15px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.045);display:flex;align-items:center;gap:10px;padding:0 13px;}
             .fs-map-canvas{position:relative;flex:1;overflow:hidden;cursor:grab;background-image:radial-gradient(rgba(255,255,255,0.055) 1px,transparent 1px);background-size:28px 28px;}
-            .fs-map-canvas.fs-map-organic{background-color:#f4efe7;background-image:radial-gradient(circle,rgba(120,100,80,0.11) 1px,transparent 1px),radial-gradient(circle at 15% 80%,rgba(168,197,160,0.18),transparent 38%),radial-gradient(circle at 85% 15%,rgba(232,168,124,0.14),transparent 36%);background-size:24px 24px,auto,auto;}
-            .fs-map-canvas.fs-map-blueprint{background-color:#0b1725;background-image:linear-gradient(rgba(96,165,250,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,0.07) 1px,transparent 1px),radial-gradient(circle at 50% 50%,rgba(96,165,250,0.05),transparent 55%);background-size:32px 32px,32px 32px,auto;}
-            .fs-map-canvas.fs-map-cosmos{background-color:#040210;background-image:radial-gradient(circle at 50% 50%,rgba(167,139,250,0.09),transparent 52%),radial-gradient(circle at 20% 25%,rgba(251,191,36,0.06),transparent 35%),radial-gradient(circle at 80% 75%,rgba(167,139,250,0.1),transparent 38%),radial-gradient(rgba(255,255,255,0.09) 1px,transparent 1px);background-size:auto,auto,auto,42px 42px;}
+            .fs-map-canvas.fs-map-organic{background-color:var(--mineral-bg);background-image:radial-gradient(circle,rgba(var(--theme-c1-rgb),0.13) 1px,transparent 1px),radial-gradient(circle at 15% 80%,rgba(var(--theme-c1-rgb),0.18),transparent 38%),radial-gradient(circle at 85% 15%,rgba(var(--theme-c2-rgb),0.16),transparent 36%);background-size:24px 24px,auto,auto;}
+            .fs-map-canvas.fs-map-blueprint{background-color:var(--mineral-bg);background-image:linear-gradient(rgba(var(--theme-c1-rgb),0.09) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--theme-c1-rgb),0.09) 1px,transparent 1px),radial-gradient(circle at 50% 50%,rgba(var(--theme-c2-rgb),0.07),transparent 55%);background-size:32px 32px,32px 32px,auto;}
+            .fs-map-canvas.fs-map-cosmos{background-color:var(--mineral-bg);background-image:radial-gradient(circle at 50% 50%,rgba(var(--theme-c1-rgb),0.12),transparent 52%),radial-gradient(circle at 20% 25%,rgba(var(--theme-c2-rgb),0.08),transparent 35%),radial-gradient(circle at 80% 75%,rgba(var(--theme-c2-rgb),0.12),transparent 38%),radial-gradient(rgba(255,255,255,0.08) 1px,transparent 1px);background-size:auto,auto,auto,42px 42px;}
             .fs-map-canvas.dragging{cursor:grabbing;}
             .fs-map-world{position:absolute;left:0;top:0;transform-origin:0 0;}
             .fs-tag-cluster{position:absolute;border-radius:24px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.012);box-shadow:inset 0 1px 0 rgba(255,255,255,0.025);}
             .fs-map-node{position:absolute;border-radius:18px;padding:12px 14px;text-align:left;border:1px solid rgba(255,255,255,0.085);background:rgba(var(--mineral-surface-rgb),0.84);color:${T.text};box-shadow:0 8px 24px rgba(0,0,0,0.22),0 1px 0 rgba(255,255,255,0.03) inset;transition:transform .16s,border-color .16s,background .16s,opacity .16s,box-shadow .16s;overflow:hidden;cursor:pointer;}
             .fs-map-node:hover{transform:translateY(-2px) scale(1.025);border-color:rgba(var(--theme-c1-rgb),0.32);background:rgba(var(--mineral-surface-rgb),0.97);box-shadow:0 16px 40px rgba(0,0,0,0.30);}
             .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.52);background:linear-gradient(160deg,rgba(var(--theme-c1-rgb),0.14),rgba(var(--mineral-surface-rgb),0.92));box-shadow:0 14px 44px rgba(var(--theme-c1-rgb),0.13),0 8px 24px rgba(0,0,0,0.22);}
-            .fs-map-organic .fs-tag-cluster{border-radius:30px;border-color:rgba(120,100,80,0.08);background:rgba(255,255,255,0.22);}
-            .fs-map-organic .fs-map-node{border-radius:999px;background:rgba(255,255,255,0.91);border-color:rgba(120,100,80,0.16);color:#3d2e1e;box-shadow:0 6px 28px rgba(120,100,80,0.14),0 1px 4px rgba(120,100,80,0.1);}
-            .fs-map-organic .fs-map-node.active{border-color:rgba(168,197,160,0.58);background:linear-gradient(180deg,rgba(168,197,160,0.22),rgba(255,255,255,0.94));box-shadow:0 10px 36px rgba(168,197,160,0.23);}
+            .fs-map-organic .fs-tag-cluster{border-radius:30px;border-color:rgba(var(--theme-c1-rgb),0.12);background:rgba(var(--mineral-surface-rgb),0.34);}
+            .fs-map-organic .fs-map-node{border-radius:999px;background:rgba(var(--mineral-surface-rgb),0.92);border-color:rgba(var(--theme-c1-rgb),0.22);color:${T.text};box-shadow:0 6px 28px rgba(var(--theme-c1-rgb),0.12),0 1px 4px rgba(0,0,0,0.12);}
+            .fs-map-organic .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.62);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--mineral-surface-rgb),0.95));box-shadow:0 10px 36px rgba(var(--theme-c1-rgb),0.22);}
             .fs-map-organic .fs-map-node div{color:inherit!important;}
-            .fs-map-blueprint .fs-tag-cluster{border-radius:4px;border-color:rgba(96,165,250,0.09);background:rgba(7,20,44,0.20);}
-            .fs-map-blueprint .fs-map-node{border-radius:2px;background:rgba(9,22,46,0.92);border-color:rgba(96,165,250,0.32);color:#bfdbfe;box-shadow:0 0 0 1px rgba(96,165,250,0.08),0 14px 44px rgba(0,0,0,0.45);}
-            .fs-map-blueprint .fs-map-node::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:rgba(96,165,250,0.65);}
-            .fs-map-blueprint .fs-map-node::after{content:"";position:absolute;right:7px;bottom:7px;width:14px;height:14px;border-right:1px solid rgba(96,165,250,0.45);border-bottom:1px solid rgba(96,165,250,0.45);}
-            .fs-map-blueprint .fs-map-node.active{border-color:rgba(96,165,250,0.64);background:linear-gradient(180deg,rgba(96,165,250,0.16),rgba(13,27,46,0.94));box-shadow:0 0 0 1px rgba(96,165,250,0.20),0 0 30px rgba(96,165,250,0.14);}
+            .fs-map-blueprint .fs-tag-cluster{border-radius:4px;border-color:rgba(var(--theme-c1-rgb),0.12);background:rgba(var(--mineral-surface-rgb),0.18);}
+            .fs-map-blueprint .fs-map-node{border-radius:2px;background:rgba(var(--mineral-surface-rgb),0.92);border-color:rgba(var(--theme-c1-rgb),0.34);color:${T.text};box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.10),0 14px 44px rgba(0,0,0,0.45);}
+            .fs-map-blueprint .fs-map-node::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:rgba(var(--theme-c1-rgb),0.70);}
+            .fs-map-blueprint .fs-map-node::after{content:"";position:absolute;right:7px;bottom:7px;width:14px;height:14px;border-right:1px solid rgba(var(--theme-c1-rgb),0.48);border-bottom:1px solid rgba(var(--theme-c1-rgb),0.48);}
+            .fs-map-blueprint .fs-map-node.active{border-color:rgba(var(--theme-c1-rgb),0.66);background:linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.17),rgba(var(--mineral-surface-rgb),0.94));box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.22),0 0 30px rgba(var(--theme-c1-rgb),0.16);}
             .fs-map-blueprint .fs-map-node div{color:inherit!important;}
-            .fs-map-cosmos .fs-tag-cluster{border-radius:999px;border-color:rgba(167,139,250,0.07);background:rgba(167,139,250,0.025);}
-            .fs-map-cosmos .fs-map-node{border-radius:50%;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.09),transparent 28%),linear-gradient(135deg,rgba(167,139,250,0.13),rgba(4,2,16,0.94));border-color:rgba(167,139,250,0.32);box-shadow:0 0 0 1px rgba(167,139,250,0.07),0 20px 56px rgba(0,0,0,0.52),0 0 36px rgba(167,139,250,0.12);}
-            .fs-map-cosmos .fs-map-node::before{content:"";position:absolute;inset:10px;border-radius:50%;border:1px solid rgba(167,139,250,0.12);pointer-events:none;}
-            .fs-map-cosmos .fs-map-node.active{border-color:rgba(251,191,36,0.42);background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.11),transparent 28%),linear-gradient(135deg,rgba(167,139,250,0.20),rgba(8,4,22,0.96));box-shadow:0 0 0 1px rgba(251,191,36,0.10),0 0 48px rgba(167,139,250,0.18);}
+            .fs-map-cosmos .fs-tag-cluster{border-radius:999px;border-color:rgba(var(--theme-c2-rgb),0.10);background:rgba(var(--theme-c2-rgb),0.025);}
+            .fs-map-cosmos .fs-map-node{border-radius:50%;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.09),transparent 28%),linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--mineral-bg-rgb),0.94));border-color:rgba(var(--theme-c1-rgb),0.36);box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.08),0 20px 56px rgba(0,0,0,0.52),0 0 36px rgba(var(--theme-c2-rgb),0.13);}
+            .fs-map-cosmos .fs-map-node::before{content:"";position:absolute;inset:10px;border-radius:50%;border:1px solid rgba(var(--theme-c2-rgb),0.16);pointer-events:none;}
+            .fs-map-cosmos .fs-map-node.active{border-color:rgba(var(--theme-c2-rgb),0.48);background:radial-gradient(circle at 35% 25%,rgba(255,255,255,0.11),transparent 28%),linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--mineral-bg-rgb),0.96));box-shadow:0 0 0 1px rgba(var(--theme-c2-rgb),0.13),0 0 48px rgba(var(--theme-c1-rgb),0.20);}
             .fs-map-cosmos .fs-map-node div{max-width:92px;text-align:center;}
             .fs-map-control{height:36px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:${T.muted};font:850 12px var(--font-body);cursor:pointer;padding:0 12px;}
             @media(max-width:1020px){.fs-notes-mind{grid-template-columns:1fr}.fs-note-builder{display:none}.fs-map-search{min-width:0;flex:1}.fs-map-toolbar{padding:0 14px}}
@@ -6402,7 +6402,7 @@
                 <div style={{fontSize:11,color:T.muted,marginTop:4}}>{visibleNotes.length} carte{visibleNotes.length>1?'s':''} visibles · regroupées par tag principal</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                <button className="fs-map-control" onClick={()=>{window._fsMapReturn=true; window._fsCurrentMapStyle=mapStyle; onNavigate && onNavigate('notes-style');}} style={{color:isOrganicMap?'#7aaa72':isBlueprintMap?'#93c5fd':'#c4b5fd',borderColor:isOrganicMap?'rgba(168,197,160,0.32)':isBlueprintMap?'rgba(96,165,250,0.24)':'rgba(167,139,250,0.24)',background:isOrganicMap?'rgba(168,197,160,0.10)':isBlueprintMap?'rgba(96,165,250,0.09)':'rgba(167,139,250,0.09)'}}>Design</button>
+                <button className="fs-map-control" onClick={()=>{window._fsMapReturn=true; window._fsCurrentMapStyle=mapStyle; onNavigate && onNavigate('notes-style');}} style={{color:T.c1,borderColor:c1(0.28),background:c1(0.10)}}>Design</button>
                 <div className="fs-map-search">
                   <svg width={15} height={15} viewBox="0 0 16 16" fill="none" style={{opacity:.38,flexShrink:0}}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
                   <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')selectPrecise();}} placeholder="Chercher précisément une note..." style={{flex:1,minWidth:0,background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.font,fontSize:12}} />
@@ -6422,15 +6422,15 @@
                     const x1=pa.x+NW/2, y1=pa.y+NH/2, x2=pb.x+NW/2, y2=pb.y+NH/2;
                     if (isBlueprintMap) {
                       const mx = (x1 + x2) / 2;
-                      return <polyline key={i} points={`${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}`} stroke="rgba(96,165,250,0.36)" strokeWidth="1.1" fill="none" strokeDasharray="5 4"/>;
+                      return <polyline key={i} points={`${x1},${y1} ${mx},${y1} ${mx},${y2} ${x2},${y2}`} stroke={c1(0.38)} strokeWidth="1.1" fill="none" strokeDasharray="5 4"/>;
                     }
                     if (isCosmosMap) {
                       const midY = Math.min(y1, y2) - 46;
-                      return <path key={i} d={`M${x1},${y1} Q${(x1+x2)/2},${midY} ${x2},${y2}`} stroke="rgba(167,139,250,0.46)" strokeWidth="1.45" fill="none" strokeLinecap="round"/>;
+                      return <path key={i} d={`M${x1},${y1} Q${(x1+x2)/2},${midY} ${x2},${y2}`} stroke={c2(0.46)} strokeWidth="1.45" fill="none" strokeLinecap="round"/>;
                     }
                     const cx1 = x1 + (x2 - x1) * 0.38;
                     const cx2 = x2 - (x2 - x1) * 0.38;
-                    return <path key={i} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`} stroke="rgba(168,197,160,0.46)" strokeWidth="1.8" fill="none" strokeLinecap="round"/>;
+                    return <path key={i} d={`M${x1},${y1} C${cx1},${y1} ${cx2},${y2} ${x2},${y2}`} stroke={c1(0.46)} strokeWidth="1.8" fill="none" strokeLinecap="round"/>;
                   })}
                 </svg>
                 {groups.map(g => (
@@ -6449,9 +6449,9 @@
                   return (
                     <button key={n.id} className={'fs-map-node'+(active?' active':'')} onClick={()=>{ setSelectedId(n.id); setEditingId(n.id); setPreviewModal(false); }} style={{left:p.x,top:p.y,width:NW,height:NH,opacity:muted?0.22:1}}>
                       <div style={{fontSize:isCosmosMap?11:12,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',letterSpacing:'-0.025em',lineHeight:1.2,marginBottom:isCosmosMap?4:5,position:'relative',zIndex:1}}>{n.title||'Sans titre'}</div>
-                      <div style={{fontSize:isCosmosMap?9:10,color:isOrganicMap?'rgba(90,70,50,0.52)':isBlueprintMap?'rgba(140,180,240,0.58)':'rgba(200,180,250,0.52)',lineHeight:1.42,display:'-webkit-box',WebkitLineClamp:isCosmosMap?1:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:isCosmosMap?'0 0 auto':1,position:'relative',zIndex:1}}>{previewText(n)}</div>
+                      <div style={{fontSize:isCosmosMap?9:10,color:isOrganicMap?'rgba(248,246,252,0.58)':isBlueprintMap?c1(0.64):c2(0.62),lineHeight:1.42,display:'-webkit-box',WebkitLineClamp:isCosmosMap?1:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:isCosmosMap?'0 0 auto':1,position:'relative',zIndex:1}}>{previewText(n)}</div>
                       <div style={{display:'flex',gap:5,alignItems:'center',justifyContent:isCosmosMap?'center':'flex-start',marginTop:isCosmosMap?7:8,overflow:'hidden',position:'relative',zIndex:1}}>
-                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:isOrganicMap?'#7aaa72':isBlueprintMap?'#93c5fd':'#c4b5fd',background:isOrganicMap?'rgba(168,197,160,0.16)':isBlueprintMap?'rgba(96,165,250,0.12)':'rgba(167,139,250,0.12)',border:`1px solid ${isOrganicMap?'rgba(168,197,160,0.24)':isBlueprintMap?'rgba(96,165,250,0.22)':'rgba(167,139,250,0.22)'}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:isCosmosMap?72:100,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
+                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:isCosmosMap?T.c2:T.c1,background:isCosmosMap?c2(0.13):c1(0.13),border:`1px solid ${isCosmosMap?c2(0.24):c1(0.24)}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:isCosmosMap?72:100,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
                         {n.tags?.length>1&&!isCosmosMap&&<span style={{fontSize:8,color:T.muted,opacity:.55}}>+{n.tags.length-1}</span>}
                       </div>
                     </button>
@@ -6986,7 +6986,7 @@
 
     window._fsCurrentMapStyle = window._fsCurrentMapStyle || (()=>{ try { return localStorage.getItem('fs_note_map_style') || JSON.parse(localStorage.getItem('fs_widget_style') || '{}')?.noteMapStyle || 'organic'; } catch(e){ return 'organic'; } })();
 
-    function NotesDesignScreen({ onNavigate }) {
+    function NotesDesignScreen({ onNavigate, bgThemeId }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const STYLES = [
         { id:'organic', name:'Organique', desc:'Nœuds biomorphiques, courbes naturelles et teintes chaleureuses.', c1:'#a8c5a0', c2:'#e8a87c' },
@@ -6994,6 +6994,29 @@
         { id:'cosmos', name:'Cosmos', desc:'Nœuds orbitaux, arcs lumineux et profondeur cosmique infinie.', c1:'#a78bfa', c2:'#fbbf24' },
       ];
       const [selected, setSelected] = _uPX(() => window._fsCurrentMapStyle || localStorage.getItem('fs_note_map_style') || 'organic');
+      const resolveAppliedTheme = () => {
+        try {
+          const id = bgThemeId || localStorage.getItem('fs_bgtheme') || 'cosmos';
+          if (id === 'custom' && window.buildCustomTheme) {
+            const custom = JSON.parse(localStorage.getItem('fs_custom_bg') || '{}') || {};
+            return window.buildCustomTheme(custom.c1 || '#a5b8ff', custom.c2 || '#c084fc');
+          }
+          return (window.BG_THEMES || []).find(t => t.id === id) || (window.BG_THEMES || []).find(t => t.id === 'cosmos') || { name:'Theme actif', g1:{ rgb:'143,220,255' }, g2:{ rgb:'196,132,252' } };
+        } catch(e) {
+          return (window.BG_THEMES || []).find(t => t.id === 'cosmos') || { name:'Theme actif', g1:{ rgb:'143,220,255' }, g2:{ rgb:'196,132,252' } };
+        }
+      };
+      const appliedTheme = resolveAppliedTheme();
+      const palette = window.buildThemePalette ? window.buildThemePalette(appliedTheme) : null;
+      const themeRgb1 = appliedTheme?.g1?.rgb || '143,220,255';
+      const themeRgb2 = appliedTheme?.g2?.rgb || '196,132,252';
+      const themeC1 = `rgb(${themeRgb1})`;
+      const themeC2 = `rgb(${themeRgb2})`;
+      const ta1 = a => `rgba(${themeRgb1},${a})`;
+      const ta2 = a => `rgba(${themeRgb2},${a})`;
+      const toneBg = palette?.bgHex || '#070912';
+      const toneSurface = palette?.surfaceHex || '#111827';
+      const toneSurface2 = palette?.surface2Hex || '#172033';
       const apply = id => {
         setSelected(id);
         window._fsCurrentMapStyle = id;
@@ -7027,10 +7050,13 @@
                 <div style={{fontFamily:T.display,fontWeight:850,fontSize:19,letterSpacing:'-0.03em'}}>Sélectionne un design</div>
               </div>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:8,flexWrap:'wrap'}}>
               <div style={{fontSize:10,color:T.muted,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.065)',borderRadius:8,padding:'5px 11px',letterSpacing:'0.01em'}}>
-                <span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:selected==='blueprint'?'#60a5fa':selected==='cosmos'?'#a78bfa':'#a8c5a0',marginRight:6,verticalAlign:'middle'}}/>
+                <span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:themeC1,boxShadow:`0 0 12px ${ta1(0.45)}`,marginRight:6,verticalAlign:'middle'}}/>
                 {selected==='organic'?'Organique':selected==='blueprint'?'Blueprint':selected==='cosmos'?'Cosmos':'—'}
+              </div>
+              <div style={{fontSize:10,color:T.c1,background:ta1(0.08),border:`1px solid ${ta1(0.18)}`,borderRadius:8,padding:'5px 11px',letterSpacing:'0.01em'}}>
+                {appliedTheme?.name || 'Theme actif'} applique
               </div>
               <div style={{fontSize:10,color:'rgba(255,255,255,0.28)',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.055)',borderRadius:8,padding:'5px 11px'}}>Clic → applique</div>
             </div>
@@ -7042,6 +7068,13 @@
                 const isOrganic = style.id === 'organic';
                 const isBlue = style.id === 'blueprint';
                 const isCosmos = style.id === 'cosmos';
+                const cardText = isOrganic ? T.text : '#f8f6fc';
+                const cardMuted = isOrganic ? 'rgba(248,246,252,0.58)' : 'rgba(248,246,252,0.62)';
+                const cardBg = isOrganic
+                  ? `linear-gradient(160deg,${toneSurface},${toneBg})`
+                  : isBlue
+                  ? `linear-gradient(160deg,${toneSurface2},${toneBg})`
+                  : `radial-gradient(circle at 50% 20%,${ta1(0.14)},transparent 46%),linear-gradient(160deg,${toneSurface},${toneBg})`;
                 return (
                   <button key={style.id} className="fs-note-design-card" onClick={() => apply(style.id)} style={{
                     textAlign:'left',
@@ -7050,44 +7083,40 @@
                     padding:18,
                     cursor:'pointer',
                     fontFamily:T.font,
-                    color: isOrganic ? '#3d2e1e' : isBlue ? '#bfdbfe' : '#ede9fe',
-                    background: isOrganic
-                      ? (active ? 'linear-gradient(160deg,#f7f3eb,#ede5d3)' : '#f5f1e9')
-                      : isBlue
-                      ? (active ? 'linear-gradient(160deg,#0e2040,#07132c)' : '#0b1828')
-                      : (active ? 'linear-gradient(160deg,#12082e,#060214)' : '#090416'),
-                    border:`1px solid ${isOrganic?(active?'rgba(168,197,160,0.55)':'rgba(120,100,80,0.14)'):isBlue?(active?'rgba(96,165,250,0.52)':'rgba(96,165,250,0.13)'):(active?'rgba(167,139,250,0.45)':'rgba(167,139,250,0.1)')}`,
+                    color: cardText,
+                    background: active ? cardBg : `linear-gradient(160deg,${toneSurface},${toneBg})`,
+                    border:`1px solid ${active ? (isCosmos ? ta2(0.48) : ta1(0.52)) : (isCosmos ? ta2(0.13) : ta1(0.14))}`,
                     boxShadow: isOrganic
-                      ? (active?'0 24px 64px rgba(168,197,160,0.24)':'0 4px 22px rgba(120,100,80,0.1)')
+                      ? (active?`0 24px 64px ${ta1(0.22)}`:'0 4px 22px rgba(0,0,0,0.22)')
                       : isBlue
-                      ? (active?'0 24px 64px rgba(96,165,250,0.18),inset 0 1px 0 rgba(96,165,250,0.12)':'0 4px 22px rgba(0,0,0,0.32)')
-                      : (active?'0 24px 64px rgba(167,139,250,0.2),inset 0 1px 0 rgba(167,139,250,0.1)':'0 4px 22px rgba(0,0,0,0.5)'),
+                      ? (active?`0 24px 64px ${ta1(0.18)},inset 0 1px 0 ${ta1(0.12)}`:'0 4px 22px rgba(0,0,0,0.32)')
+                      : (active?`0 24px 64px ${ta2(0.20)},inset 0 1px 0 ${ta2(0.10)}`:'0 4px 22px rgba(0,0,0,0.5)'),
                   }}>
 
                     {/* ── Preview zone ── */}
                     <div style={{height:195,borderRadius:isBlue?4:18,position:'relative',overflow:'hidden',marginBottom:16,
-                      background:isOrganic?'#f3ede4':isBlue?'#0d1b2e':'#040112',
-                      border:`1px solid ${isOrganic?'rgba(120,100,80,0.1)':isBlue?'rgba(96,165,250,0.09)':'rgba(167,139,250,0.07)'}`}}>
+                      background:isCosmos ? `radial-gradient(circle at 50% 38%,${ta1(0.10)},transparent 54%),${toneBg}` : toneBg,
+                      border:`1px solid ${isCosmos?ta2(0.10):ta1(0.12)}`}}>
 
                       {isOrganic && (
                         <svg viewBox="0 0 320 195" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}>
-                          <circle cx="160" cy="85" r="92" fill="rgba(168,197,160,0.07)"/>
-                          <circle cx="78" cy="148" r="46" fill="rgba(232,168,124,0.07)"/>
-                          <circle cx="242" cy="148" r="46" fill="rgba(168,197,160,0.07)"/>
-                          <path d="M160,96 C160,116 78,114 78,130" stroke="rgba(168,197,160,0.62)" strokeWidth="1.9" fill="none" strokeLinecap="round"/>
-                          <path d="M160,96 C160,116 242,114 242,130" stroke="rgba(168,197,160,0.62)" strokeWidth="1.9" fill="none" strokeLinecap="round"/>
-                          <path d="M116,148 C148,168 212,168 204,148" stroke="rgba(232,168,124,0.45)" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
-                          <rect x="121" y="60" width="78" height="36" rx="18" fill="rgba(255,255,255,0.95)" stroke={active?'rgba(168,197,160,0.68)':'rgba(120,100,80,0.22)'} strokeWidth={active?1.6:1}/>
-                          <text x="160" y="82" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#3d2e1e">Idée centrale</text>
-                          <rect x="40" y="130" width="76" height="34" rx="17" fill="rgba(255,255,255,0.88)" stroke="rgba(120,100,80,0.16)"/>
-                          <text x="78" y="150" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#3d2e1e">Concept</text>
-                          <rect x="204" y="130" width="76" height="34" rx="17" fill="rgba(255,255,255,0.88)" stroke="rgba(232,168,124,0.32)"/>
-                          <text x="242" y="150" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#3d2e1e">Détail</text>
-                          <circle cx="160" cy="178" r="2.5" fill="rgba(168,197,160,0.38)"/>
-                          <circle cx="34" cy="62" r="2" fill="rgba(232,168,124,0.3)"/>
-                          <circle cx="286" cy="52" r="1.8" fill="rgba(168,197,160,0.3)"/>
-                          <circle cx="30" cy="172" r="1.5" fill="rgba(120,100,80,0.2)"/>
-                          <circle cx="292" cy="178" r="1.8" fill="rgba(232,168,124,0.22)"/>
+                          <circle cx="160" cy="85" r="92" fill={ta1(0.07)}/>
+                          <circle cx="78" cy="148" r="46" fill={ta2(0.07)}/>
+                          <circle cx="242" cy="148" r="46" fill={ta1(0.07)}/>
+                          <path d="M160,96 C160,116 78,114 78,130" stroke={ta1(0.62)} strokeWidth="1.9" fill="none" strokeLinecap="round"/>
+                          <path d="M160,96 C160,116 242,114 242,130" stroke={ta1(0.62)} strokeWidth="1.9" fill="none" strokeLinecap="round"/>
+                          <path d="M116,148 C148,168 212,168 204,148" stroke={ta2(0.45)} strokeWidth="1.3" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
+                          <rect x="121" y="60" width="78" height="36" rx="18" fill={toneSurface2} stroke={active?ta1(0.68):ta1(0.22)} strokeWidth={active?1.6:1}/>
+                          <text x="160" y="82" textAnchor="middle" fontSize="10.5" fontWeight="700" fill={cardText}>Idée centrale</text>
+                          <rect x="40" y="130" width="76" height="34" rx="17" fill={toneSurface} stroke={ta1(0.16)}/>
+                          <text x="78" y="150" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={cardText}>Concept</text>
+                          <rect x="204" y="130" width="76" height="34" rx="17" fill={toneSurface} stroke={ta2(0.32)}/>
+                          <text x="242" y="150" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={cardText}>Détail</text>
+                          <circle cx="160" cy="178" r="2.5" fill={ta1(0.38)}/>
+                          <circle cx="34" cy="62" r="2" fill={ta2(0.3)}/>
+                          <circle cx="286" cy="52" r="1.8" fill={ta1(0.3)}/>
+                          <circle cx="30" cy="172" r="1.5" fill={ta1(0.2)}/>
+                          <circle cx="292" cy="178" r="1.8" fill={ta2(0.22)}/>
                         </svg>
                       )}
 
@@ -7095,28 +7124,28 @@
                         <svg viewBox="0 0 320 195" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}>
                           <defs>
                             <pattern id="bp-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                              <path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(96,165,250,0.08)" strokeWidth="0.5"/>
+                              <path d="M 32 0 L 0 0 0 32" fill="none" stroke={ta1(0.08)} strokeWidth="0.5"/>
                             </pattern>
                           </defs>
                           <rect width="320" height="195" fill="url(#bp-grid)"/>
-                          <line x1="160" y1="0" x2="160" y2="195" stroke="rgba(96,165,250,0.04)" strokeWidth="0.8"/>
-                          <line x1="0" y1="97" x2="320" y2="97" stroke="rgba(96,165,250,0.04)" strokeWidth="0.8"/>
-                          <polyline points="138,84 90,84 90,52" stroke="rgba(96,165,250,0.52)" strokeWidth="1.1" fill="none"/>
-                          <polyline points="182,84 230,84 230,52" stroke="rgba(96,165,250,0.52)" strokeWidth="1.1" fill="none"/>
-                          <line x1="160" y1="112" x2="160" y2="141" stroke="rgba(96,165,250,0.28)" strokeWidth="1" strokeDasharray="4 3"/>
-                          <circle cx="90" cy="84" r="2.5" fill="rgba(96,165,250,0.82)"/>
-                          <circle cx="230" cy="84" r="2.5" fill="rgba(96,165,250,0.82)"/>
-                          <rect x="123" y="70" width="74" height="28" rx="2" fill="rgba(7,20,44,0.96)" stroke="rgba(96,165,250,0.62)" strokeWidth="1.2"/>
-                          <line x1="123" y1="70" x2="197" y2="70" stroke="rgba(96,165,250,0.82)" strokeWidth="1.5"/>
-                          <text x="160" y="88" textAnchor="middle" fontSize="8.5" fontWeight="800" fill="#93c5fd" fontFamily="monospace">ROOT NODE</text>
-                          <path d="M123,74 L123,70 L129,70" stroke="rgba(96,165,250,0.9)" strokeWidth="1.1" fill="none"/>
-                          <path d="M197,74 L197,70 L191,70" stroke="rgba(96,165,250,0.9)" strokeWidth="1.1" fill="none"/>
-                          <rect x="46" y="36" width="88" height="26" rx="2" fill="rgba(7,20,44,0.9)" stroke="rgba(96,165,250,0.28)" strokeWidth="0.8"/>
-                          <text x="90" y="53" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#bfdbfe" fontFamily="monospace">MODULE_A</text>
-                          <rect x="186" y="36" width="88" height="26" rx="2" fill="rgba(7,20,44,0.9)" stroke="rgba(96,165,250,0.28)" strokeWidth="0.8"/>
-                          <text x="230" y="53" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#bfdbfe" fontFamily="monospace">MODULE_B</text>
-                          <rect x="123" y="141" width="74" height="24" rx="2" fill="rgba(7,20,44,0.75)" stroke="rgba(96,165,250,0.18)" strokeWidth="0.8" strokeDasharray="4 3"/>
-                          <text x="160" y="157" textAnchor="middle" fontSize="8" fontWeight="600" fill="rgba(96,165,250,0.52)" fontFamily="monospace">PENDING</text>
+                          <line x1="160" y1="0" x2="160" y2="195" stroke={ta1(0.04)} strokeWidth="0.8"/>
+                          <line x1="0" y1="97" x2="320" y2="97" stroke={ta1(0.04)} strokeWidth="0.8"/>
+                          <polyline points="138,84 90,84 90,52" stroke={ta1(0.52)} strokeWidth="1.1" fill="none"/>
+                          <polyline points="182,84 230,84 230,52" stroke={ta1(0.52)} strokeWidth="1.1" fill="none"/>
+                          <line x1="160" y1="112" x2="160" y2="141" stroke={ta1(0.28)} strokeWidth="1" strokeDasharray="4 3"/>
+                          <circle cx="90" cy="84" r="2.5" fill={ta1(0.82)}/>
+                          <circle cx="230" cy="84" r="2.5" fill={ta1(0.82)}/>
+                          <rect x="123" y="70" width="74" height="28" rx="2" fill={toneSurface} stroke={ta1(0.62)} strokeWidth="1.2"/>
+                          <line x1="123" y1="70" x2="197" y2="70" stroke={ta1(0.82)} strokeWidth="1.5"/>
+                          <text x="160" y="88" textAnchor="middle" fontSize="8.5" fontWeight="800" fill={themeC1} fontFamily="monospace">ROOT NODE</text>
+                          <path d="M123,74 L123,70 L129,70" stroke={ta1(0.9)} strokeWidth="1.1" fill="none"/>
+                          <path d="M197,74 L197,70 L191,70" stroke={ta1(0.9)} strokeWidth="1.1" fill="none"/>
+                          <rect x="46" y="36" width="88" height="26" rx="2" fill={toneSurface} stroke={ta1(0.28)} strokeWidth="0.8"/>
+                          <text x="90" y="53" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={cardText} fontFamily="monospace">MODULE_A</text>
+                          <rect x="186" y="36" width="88" height="26" rx="2" fill={toneSurface} stroke={ta1(0.28)} strokeWidth="0.8"/>
+                          <text x="230" y="53" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={cardText} fontFamily="monospace">MODULE_B</text>
+                          <rect x="123" y="141" width="74" height="24" rx="2" fill={toneSurface} stroke={ta1(0.18)} strokeWidth="0.8" strokeDasharray="4 3"/>
+                          <text x="160" y="157" textAnchor="middle" fontSize="8" fontWeight="600" fill={ta1(0.52)} fontFamily="monospace">PENDING</text>
                         </svg>
                       )}
 
@@ -7124,35 +7153,35 @@
                         <svg viewBox="0 0 320 195" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}>
                           <defs>
                             <radialGradient id="cosmos-hub-glow" cx="50%" cy="38%">
-                              <stop offset="0%" stopColor="rgba(167,139,250,0.24)"/>
-                              <stop offset="100%" stopColor="rgba(167,139,250,0)"/>
+                              <stop offset="0%" stopColor={ta1(0.24)}/>
+                              <stop offset="100%" stopColor={ta1(0)}/>
                             </radialGradient>
                           </defs>
                           <circle cx="160" cy="75" r="76" fill="url(#cosmos-hub-glow)"/>
-                          <circle cx="75" cy="145" r="36" fill="rgba(251,191,36,0.07)"/>
-                          <circle cx="245" cy="145" r="36" fill="rgba(251,191,36,0.07)"/>
+                          <circle cx="75" cy="145" r="36" fill={ta2(0.07)}/>
+                          <circle cx="245" cy="145" r="36" fill={ta2(0.07)}/>
                           {[[25,18,1.2,0.45],[295,32,1,0.38],[45,168,1.4,0.36],[285,172,1,0.3],[8,98,0.9,0.4],[312,118,0.8,0.38],[200,14,1.1,0.36],[128,186,0.9,0.3]].map(([x,y,r,o],i)=>(
                             <circle key={i} cx={x} cy={y} r={r} fill={`rgba(255,255,255,${o})`}/>
                           ))}
-                          <ellipse cx="160" cy="75" rx="110" ry="54" fill="none" stroke="rgba(167,139,250,0.09)" strokeWidth="0.6"/>
-                          <ellipse cx="160" cy="75" rx="74" ry="36" fill="none" stroke="rgba(167,139,250,0.07)" strokeWidth="0.5"/>
-                          <path d="M140,75 C100,72 82,104 75,132" stroke="rgba(167,139,250,0.56)" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-                          <path d="M180,75 C220,72 238,104 245,132" stroke="rgba(167,139,250,0.56)" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-                          <path d="M90,152 C135,178 185,178 230,152" stroke="rgba(251,191,36,0.38)" strokeWidth="1.1" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
-                          <circle cx="160" cy="75" r="34" fill="none" stroke="rgba(167,139,250,0.2)" strokeWidth="0.8"/>
-                          <circle cx="160" cy="75" r="27" fill="rgba(167,139,250,0.11)" stroke="rgba(167,139,250,0.58)" strokeWidth="1.3"/>
-                          <circle cx="160" cy="75" r="20" fill="rgba(4,1,14,0.96)"/>
-                          <text x="160" y="79" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#ede9fe">Noyau</text>
-                          <circle cx="75" cy="145" r="22" fill="none" stroke="rgba(167,139,250,0.18)" strokeWidth="0.8"/>
-                          <circle cx="75" cy="145" r="17" fill="rgba(167,139,250,0.09)" stroke="rgba(167,139,250,0.4)" strokeWidth="1"/>
-                          <circle cx="75" cy="145" r="12" fill="rgba(4,1,14,0.95)"/>
-                          <text x="75" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#c4b5fd">Alpha</text>
-                          <circle cx="245" cy="145" r="22" fill="none" stroke="rgba(167,139,250,0.18)" strokeWidth="0.8"/>
-                          <circle cx="245" cy="145" r="17" fill="rgba(167,139,250,0.09)" stroke="rgba(167,139,250,0.4)" strokeWidth="1"/>
-                          <circle cx="245" cy="145" r="12" fill="rgba(4,1,14,0.95)"/>
-                          <text x="245" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#c4b5fd">Bêta</text>
-                          <circle cx="128" cy="155" r="5.5" fill="rgba(251,191,36,0.18)" stroke="rgba(251,191,36,0.42)" strokeWidth="0.8"/>
-                          <circle cx="192" cy="155" r="5.5" fill="rgba(251,191,36,0.18)" stroke="rgba(251,191,36,0.42)" strokeWidth="0.8"/>
+                          <ellipse cx="160" cy="75" rx="110" ry="54" fill="none" stroke={ta1(0.09)} strokeWidth="0.6"/>
+                          <ellipse cx="160" cy="75" rx="74" ry="36" fill="none" stroke={ta1(0.07)} strokeWidth="0.5"/>
+                          <path d="M140,75 C100,72 82,104 75,132" stroke={ta1(0.56)} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+                          <path d="M180,75 C220,72 238,104 245,132" stroke={ta1(0.56)} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+                          <path d="M90,152 C135,178 185,178 230,152" stroke={ta2(0.38)} strokeWidth="1.1" fill="none" strokeLinecap="round" strokeDasharray="5 4"/>
+                          <circle cx="160" cy="75" r="34" fill="none" stroke={ta1(0.2)} strokeWidth="0.8"/>
+                          <circle cx="160" cy="75" r="27" fill={ta1(0.11)} stroke={ta1(0.58)} strokeWidth="1.3"/>
+                          <circle cx="160" cy="75" r="20" fill={toneBg}/>
+                          <text x="160" y="79" textAnchor="middle" fontSize="9.5" fontWeight="700" fill={cardText}>Noyau</text>
+                          <circle cx="75" cy="145" r="22" fill="none" stroke={ta1(0.18)} strokeWidth="0.8"/>
+                          <circle cx="75" cy="145" r="17" fill={ta1(0.09)} stroke={ta1(0.4)} strokeWidth="1"/>
+                          <circle cx="75" cy="145" r="12" fill={toneBg}/>
+                          <text x="75" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={themeC2}>Alpha</text>
+                          <circle cx="245" cy="145" r="22" fill="none" stroke={ta1(0.18)} strokeWidth="0.8"/>
+                          <circle cx="245" cy="145" r="17" fill={ta1(0.09)} stroke={ta1(0.4)} strokeWidth="1"/>
+                          <circle cx="245" cy="145" r="12" fill={toneBg}/>
+                          <text x="245" y="149" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={themeC2}>Bêta</text>
+                          <circle cx="128" cy="155" r="5.5" fill={ta2(0.18)} stroke={ta2(0.42)} strokeWidth="0.8"/>
+                          <circle cx="192" cy="155" r="5.5" fill={ta2(0.18)} stroke={ta2(0.42)} strokeWidth="0.8"/>
                         </svg>
                       )}
                     </div>
@@ -7161,14 +7190,14 @@
                     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontFamily:T.display,fontWeight:850,fontSize:21,letterSpacing:'-0.035em',
-                          color:isOrganic?'#3d2e1e':isBlue?'#bfdbfe':'#ede9fe'}}>{style.name}</div>
+                          color:cardText}}>{style.name}</div>
                         <div style={{fontSize:12,lineHeight:1.6,marginTop:6,
-                          color:isOrganic?'rgba(80,60,40,0.55)':isBlue?'rgba(140,180,240,0.55)':'rgba(200,180,250,0.5)'}}>{style.desc}</div>
+                          color:cardMuted}}>{style.desc}</div>
                       </div>
                       <div style={{width:32,height:32,borderRadius:'50%',display:'grid',placeItems:'center',flexShrink:0,fontSize:13,fontWeight:700,
-                        background:active?`linear-gradient(135deg,${style.c1},${style.c2})`:(isOrganic?'rgba(120,100,80,0.1)':'rgba(255,255,255,0.06)'),
-                        color:active?(isOrganic?'#3d2e1e':'#07070d'):(isOrganic?'rgba(80,60,40,0.4)':T.muted),
-                        boxShadow:active?`0 4px 16px ${isBlue?'rgba(96,165,250,0.35)':isCosmos?'rgba(167,139,250,0.35)':'rgba(168,197,160,0.35)'}`:undefined}}>
+                        background:active?`linear-gradient(135deg,${themeC1},${themeC2})`:'rgba(255,255,255,0.06)',
+                        color:active?'#07070d':T.muted,
+                        boxShadow:active?`0 4px 16px ${isCosmos?ta2(0.35):ta1(0.35)}`:undefined}}>
                         {active ? '✓' : '→'}
                       </div>
                     </div>
@@ -8444,7 +8473,7 @@
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
-                {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go })}
+                {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
