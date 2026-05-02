@@ -6437,11 +6437,8 @@
             </div>
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
               <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre précis" style={{height:42,padding:'0 13px',fontSize:13,flexShrink:0}} />
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,flexShrink:0}}>
-                <input className="fs-note-field" value={draft.folder} onChange={e=>setDraft(d=>({...d,folder:e.target.value}))} placeholder="Dossier" style={{height:40,padding:'0 12px',fontSize:12}} />
-                <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12}} />
-              </div>
-              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} placeholder={"Contenu...\nMentionne [[une note]] ou #tag"} style={{flex:1,minHeight:120,resize:'none',padding:'13px',fontSize:13,lineHeight:1.7}} />
+              <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
+              <div style={{flex:1,minHeight:0}} />
               <button onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
             </div>
           </aside>
