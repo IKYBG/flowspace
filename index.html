@@ -970,6 +970,25 @@
         (Array.isArray(remote.friends) && remote.friends.length > 0);
     }
 
+    async function _fsSaveUserProfile(userId, name, email, knownRemote = null) {
+      if (!userId) return;
+      const profile = { name, email: (email || '').toLowerCase(), updated_at: new Date().toISOString() };
+      try {
+        if (knownRemote) {
+          const { error } = await _fsSb.from('user_data').update(profile).eq('user_id', userId);
+          if (error) console.warn('[fs] profile update failed', error);
+          return;
+        }
+        const snapshot = _fsSnapshotLocalData(userId);
+        const { error } = await _fsSb.from('user_data').upsert(
+          { user_id: userId, ...snapshot, ...profile },
+          { onConflict: 'user_id' }
+        );
+        if (error) console.warn('[fs] profile upsert failed', error);
+      } catch (e) { console.warn('[fs] save user profile failed', e); }
+    }
+    window._fsSaveUserProfile = _fsSaveUserProfile;
+
     function _fsShouldSyncKey(key) {
       return SYNC_KEYS.includes(key) || key.startsWith('fs_img_') || _fsUserScopedSyncKey(key);
     }
@@ -1076,6 +1095,9 @@
         await _fsFlushPush();
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
+      if (remote && !_fsRemoteHasSavedData(remote)) {
+        return { source: 'empty-remote', remote };
+      }
       _fsSeedLocalFromRemote(remote, userId);
       return { source: 'remote', remote };
     }
@@ -1156,7 +1178,8 @@
         }
         const v = localStorage.getItem('fs_bgtheme'); if (v) p.bg_theme = v;
         try { const w = localStorage.getItem('fs_widgets'); if (w) p.widgets = JSON.parse(w); } catch(_) {}
-        await _fsSb.from('user_data').upsert(p, { onConflict: 'user_id' });
+        const { error } = await _fsSb.from('user_data').update(p).eq('user_id', u.id);
+        if (error) console.warn('[fs] style-only update failed', error);
       } catch (e) { console.warn('[fs] style-only push failed', e); }
     }
     window._fsPushStyleOnly = _fsPushStyleOnly;
@@ -6897,13 +6920,8 @@
           const u = { name: finalName, email: trimmedEmail, id: sbUser.id, ts: Date.now() };
           try { localStorage.setItem('fs_user', JSON.stringify(u)); } catch (e) { }
 
-          /* Always upsert name + email so friend lookup always works */
-          try {
-            await sb.from('user_data').upsert(
-              { user_id: sbUser.id, name: finalName, email: trimmedEmail.toLowerCase(), updated_at: new Date().toISOString() },
-              { onConflict: 'user_id' }
-            );
-          } catch (e) { console.warn('[fs] save user info failed', e); }
+          /* Keep friend lookup fresh without clobbering synced app data. */
+          await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote);
 
           setStatus('success');
           const isNewUser = mode === 'signup';
@@ -8769,10 +8787,7 @@
                 const userMeta = session.user.user_metadata;
                 const userName = userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
                 if (userEmail) {
-                  window._fsSb.from('user_data').upsert(
-                    { user_id: session.user.id, email: userEmail, name: userName, updated_at: new Date().toISOString() },
-                    { onConflict: 'user_id' }
-                  ).then(({ error }) => { if (error) console.warn('[fs] email sync failed', error); else console.log('[fs] email synced:', userEmail); });
+                  window._fsSaveUserProfile?.(session.user.id, userName, userEmail, remote);
                 }
               } catch(_) {}
             } else {
@@ -9248,7 +9263,10 @@
         };
         let { error } = await window._fsSb.from('user_data').update(base).eq('user_id', user.id);
         if (error) {
-          const result = await window._fsSb.from('user_data').upsert({ user_id: user.id, ...base }, { onConflict: 'user_id' });
+          const result = await window._fsSb.from('user_data').upsert(
+            { user_id: user.id, ...window._fsSnapshotLocalData?.(user.id), ...base },
+            { onConflict: 'user_id' }
+          );
           error = result.error;
         }
         return { clean, error };
@@ -9355,13 +9373,14 @@
           if (!theirFriends.some(f => f?.id === myId)) {
             const meEntry = { id: myId, name: myName, email: myEmail,
               initial: (myName[0] || '?').toUpperCase(), color: '#4ade80', addedAt: Date.now() };
-            await window._fsSb.from('user_data').upsert({
-              user_id: found.id,
-              name: found.name || found.email?.split('@')[0] || 'Unknown',
-              email: found.email,
-              friends: uniqueFriends([...theirFriends, meEntry], found.id),
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+            await window._fsSb.from('user_data')
+              .update({
+                name: found.name || found.email?.split('@')[0] || 'Unknown',
+                email: found.email,
+                friends: uniqueFriends([...theirFriends, meEntry], found.id),
+                updated_at: new Date().toISOString()
+              })
+              .eq('user_id', found.id);
           }
         }
 
@@ -9383,11 +9402,12 @@
           const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
           const updated = theirFriends.filter(f => f?.id !== myId);
           if (updated.length !== theirFriends.length) {
-            await window._fsSb.from('user_data').upsert({
-              user_id: id,
-              friends: uniqueFriends(updated, id),
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+            await window._fsSb.from('user_data')
+              .update({
+                friends: uniqueFriends(updated, id),
+                updated_at: new Date().toISOString()
+              })
+              .eq('user_id', id);
           }
         }
       };
