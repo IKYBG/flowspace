@@ -8445,13 +8445,7 @@
 
     function App() {
       const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
-      const [screen, setScreen] = _uSC(() => {
-        try {
-          const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
-          if (u || localStorage.getItem('fs_sb_session')) return 'boot';
-        } catch (e) { }
-        return 'auth';
-      });
+      const [screen, setScreen] = _uSC('boot');
       const [syncEpoch, setSyncEpoch] = _uSC(0);
       const [user, setUser] = _uSC(() => {
         try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; }
@@ -8890,7 +8884,7 @@
             </div>
           )}
           {screen === 'boot' && (
-            <div key="boot" className="fs-auth-wrap" style={{ width: '100%', height: '100%', display:'grid', placeItems:'center', animation: 'scaleIn 0.25s cubic-bezier(0.4,0,0.2,1) both' }}>
+            <div key="boot" className="fs-boot-wrap" style={{ width: '100%', height: '100%', minHeight:'100dvh', display:'grid', placeItems:'center', boxSizing:'border-box', animation: 'scaleIn 0.25s cubic-bezier(0.4,0,0.2,1) both' }}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, fontFamily:T.font, color:T.text }}>
                 <img src="logo.png" alt="LumenOS" style={{ width:54, height:54, objectFit:'contain', filter:'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.28))' }} />
                 <div style={{ fontFamily:T.display, fontWeight:850, fontSize:24, letterSpacing:'-0.035em' }}>LumenOS</div>
