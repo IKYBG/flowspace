@@ -902,6 +902,74 @@
       ));
     }
 
+    const FS_USER_BACKUP_PREFIX = 'fs_user_backup_';
+    const FS_GENERAL_DATA_KEYS = [
+      'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
+      'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
+      'fs_font_preset', 'fs_streak'
+    ];
+
+    function _fsBackupKey(userId) {
+      return userId ? `${FS_USER_BACKUP_PREFIX}${userId}` : null;
+    }
+
+    function _fsBackupLocalUserData(userId = window._fsSbUser?.id) {
+      const key = _fsBackupKey(userId);
+      if (!key) return;
+      try {
+        const data = { general: {}, scoped: {}, images: {}, saved_at: new Date().toISOString() };
+        FS_GENERAL_DATA_KEYS.forEach(k => {
+          const v = localStorage.getItem(k);
+          if (v != null) data.general[k] = v;
+        });
+        [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => {
+          const v = localStorage.getItem(k);
+          if (v != null) data.scoped[k] = v;
+        });
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('fs_img_')) data.images[k] = localStorage.getItem(k);
+        }
+        _fsRawSet(key, JSON.stringify(data));
+      } catch (e) { console.warn('[fs] local backup failed', e); }
+    }
+    window._fsBackupLocalUserData = _fsBackupLocalUserData;
+
+    function _fsRestoreLocalUserData(userId = window._fsSbUser?.id) {
+      const key = _fsBackupKey(userId);
+      if (!key) return false;
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        _fsIgnorePush = true;
+        Object.entries(data.general || {}).forEach(([k, v]) => { if (v != null) _fsRawSet(k, String(v)); });
+        Object.entries(data.scoped || {}).forEach(([k, v]) => { if (v != null) _fsRawSet(k, String(v)); });
+        Object.entries(data.images || {}).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+        });
+        setTimeout(() => { _fsIgnorePush = false; }, 500);
+        return true;
+      } catch (e) {
+        console.warn('[fs] local restore failed', e);
+        return false;
+      }
+    }
+    window._fsRestoreLocalUserData = _fsRestoreLocalUserData;
+
+    function _fsRemoteHasSavedData(remote) {
+      if (!remote) return false;
+      return remote.tasks != null ||
+        remote.notes != null ||
+        remote.widgets != null ||
+        remote.bg_theme != null ||
+        remote.custom_bg != null ||
+        remote.widget_style != null ||
+        (remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) ||
+        remote.gamification != null ||
+        (Array.isArray(remote.friends) && remote.friends.length > 0);
+    }
+
     function _fsShouldSyncKey(key) {
       return SYNC_KEYS.includes(key) || key.startsWith('fs_img_') || _fsUserScopedSyncKey(key);
     }
@@ -1003,6 +1071,10 @@
       if (_fsLocalLooksNewer(userId, remote)) {
         await _fsFlushPush();
         return { source: 'local', remote };
+      }
+      if (!_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
+        await _fsFlushPush();
+        return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       _fsSeedLocalFromRemote(remote, userId);
       return { source: 'remote', remote };
@@ -8600,32 +8672,21 @@
         const styleToSave = normalizeWidgetStyle(widgetStyle);
         try { window._fsRememberWidgetStyle?.(user?.id || window._fsSbUser?.id, styleToSave); } catch (e) { }
         try { localStorage.setItem('fs_widget_style', JSON.stringify(styleToSave)); } catch (e) { }
+        try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
         try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 1200); } catch (e) { }
         try { await withLogoutTimeout(window._fsFlushPush?.(), 1200); } catch (e) { }
+        try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
         try { await withLogoutTimeout(window._fsSb.auth.signOut(), 1500); } catch (e) { }
         window._fsSbUser = null;
         try {
           localStorage.removeItem('fs_user');
-          localStorage.removeItem('fs_onboarded');
-          localStorage.removeItem('fs_tasks');
-          localStorage.removeItem('fs_notes');
-          localStorage.removeItem('fs_widgets');
-          localStorage.removeItem('fs_bgtheme');
-          localStorage.removeItem('fs_custom_bg');
-          localStorage.removeItem('fs_font_preset');
-          localStorage.removeItem('fs_widget_style');
           localStorage.removeItem('fs_intro_pending');
-          localStorage.removeItem('fs_friends');
-          /* fs_img_* keys are intentionally kept so images survive logout/login
-             and are not lost when they are too large to sync to remote */
+          /* App data is intentionally kept and backed up per user so a logout/login
+             cannot reset dashboard, notes, tasks, or visual preferences. */
         } catch (e) { }
         setUser(null);
         setActiveSession(null);
         setShowSession(false);
-        setWidgets(DEFAULT_WIDGETS);
-        setBgThemeId('cosmos');
-        setFontPresetId('signature');
-        setWidgetStyle(DEFAULT_WIDGET_STYLE);
         setScreen('auth');
       };
 
@@ -8682,12 +8743,13 @@
               const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
               setUser(authUser);
-              if (syncResult.source === 'remote') {
-                if (remote && remote.widgets) setWidgets(remote.widgets);
+              if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local') {
+                const synced = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(session.user.id);
+                if (synced && synced.widgets) setWidgets(synced.widgets);
                 else setWidgets(DEFAULT_WIDGETS);
-                if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
+                if (synced && synced.bg_theme) setBgThemeId(synced.bg_theme);
                 setSyncEpoch(n => n + 1);
-                window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote || {} }));
+                window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: synced || {} }));
               }
               /* Always apply visual style from remote regardless of sync source —
                  ensures cross-device consistency (PC settings reach mobile and vice-versa).
@@ -8715,21 +8777,12 @@
               } catch(_) {}
             } else {
               try {
+                const staleUser = JSON.parse(localStorage.getItem('fs_user') || 'null');
+                if (staleUser?.id) window._fsBackupLocalUserData?.(staleUser.id);
                 localStorage.removeItem('fs_user');
-                localStorage.removeItem('fs_onboarded');
-                localStorage.removeItem('fs_tasks');
-                localStorage.removeItem('fs_notes');
-                localStorage.removeItem('fs_widgets');
-                localStorage.removeItem('fs_bgtheme');
-                localStorage.removeItem('fs_custom_bg');
-                localStorage.removeItem('fs_font_preset');
-                localStorage.removeItem('fs_widget_style');
                 localStorage.removeItem('fs_intro_pending');
-                localStorage.removeItem('fs_friends');
               } catch (_) { }
               setUser(null);
-              setWidgets(DEFAULT_WIDGETS);
-              setFontPresetId('signature');
               setScreen('auth');
             }
           } catch (e) {
