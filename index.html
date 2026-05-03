@@ -8325,7 +8325,10 @@
       const [widgets, setWidgets] = _uSC(() => {
         try { return JSON.parse(localStorage.getItem('fs_widgets') || 'null') || DEFAULT_WIDGETS; } catch (e) { return DEFAULT_WIDGETS; }
       });
-      _uEC(() => { try { localStorage.setItem('fs_widgets', JSON.stringify(widgets)); } catch (e) { } }, [widgets]);
+      _uEC(() => {
+        if (!user?.id || screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
+        try { localStorage.setItem('fs_widgets', JSON.stringify(widgets)); } catch (e) { }
+      }, [widgets, user?.id, screen]);
       const [activeSession, setActiveSession] = _uSC(null);
       const readSessionHistory = uid => {
         try { return JSON.parse(localStorage.getItem(`fs_session_history_${uid || 'guest'}`) || '[]'); } catch (e) { return []; }
