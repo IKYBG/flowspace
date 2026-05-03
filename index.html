@@ -807,6 +807,8 @@
     window._fsSbUser = null;
     window._fsRealtimeChannel = null;
     window._fsSessionChannel = null;
+    window._fsSyncReady = false;
+    window._fsHydrationLock = true;
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -970,6 +972,22 @@
         (Array.isArray(remote.friends) && remote.friends.length > 0);
     }
 
+    function _fsLocalHasSavedData(userId = window._fsSbUser?.id) {
+      return _fsRemoteHasSavedData(_fsSnapshotLocalData(userId));
+    }
+
+    function _fsSetSyncReady(ready) {
+      window._fsSyncReady = !!ready;
+      if (ready) window._fsHydrationLock = false;
+    }
+    window._fsSetSyncReady = _fsSetSyncReady;
+
+    function _fsReleaseHydrationLock(delay = 1500) {
+      clearTimeout(window._fsHydrationUnlockTimer);
+      window._fsHydrationUnlockTimer = setTimeout(() => _fsSetSyncReady(true), delay);
+    }
+    window._fsReleaseHydrationLock = _fsReleaseHydrationLock;
+
     async function _fsSaveUserProfile(userId, name, email, knownRemote = null) {
       if (!userId) return;
       const profile = { name, email: (email || '').toLowerCase(), updated_at: new Date().toISOString() };
@@ -1084,15 +1102,15 @@
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
       if (!remote && _fsSameLocalUser(userId)) {
-        await _fsFlushPush();
+        await _fsFlushPush(true);
         return { source: 'local', remote };
       }
       if (_fsLocalLooksNewer(userId, remote)) {
-        await _fsFlushPush();
+        await _fsFlushPush(true);
         return { source: 'local', remote };
       }
       if (!_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
-        await _fsFlushPush();
+        await _fsFlushPush(true);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       if (remote && !_fsRemoteHasSavedData(remote)) {
@@ -1124,9 +1142,9 @@
 
     /* Debounced upsert of ALL localStorage values into user_data */
     let _fsPushTimer = null;
-    async function _fsFlushPush() {
+    async function _fsFlushPush(force = false) {
       const u = window._fsSbUser;
-      if (!u) return;
+      if (!u || (!window._fsSyncReady && !force)) return;
       const payload = { user_id: u.id, updated_at: new Date().toISOString() };
 
       try { const v = localStorage.getItem('fs_tasks');   if (v != null) payload.tasks = JSON.parse(v); } catch (_) { }
@@ -1186,7 +1204,7 @@
 
     /* Monkey-patch localStorage.setItem — catches all synced keys + image keys */
     function _fsSchedulePushForKey(key) {
-      if (!window._fsSbUser || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
+      if (!window._fsSbUser || !window._fsSyncReady || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
       _fsMarkLocalWrite();
       clearTimeout(_fsPushTimer);
       _fsPushTimer = setTimeout(_fsFlushPush, 800);
@@ -1204,7 +1222,7 @@
 
     /* Flush pending writes when the tab is closing */
     window.addEventListener('beforeunload', () => {
-      if (_fsPushTimer) { clearTimeout(_fsPushTimer); _fsFlushPush(); }
+      if (window._fsSyncReady && _fsPushTimer) { clearTimeout(_fsPushTimer); _fsFlushPush(); }
     });
 
     /* ── Realtime: cross-device live sync for user_data ─────────────────── */
@@ -1216,6 +1234,7 @@
           filter: 'user_id=eq.' + userId
         }, payload => {
           if (_fsIgnorePush) return;
+          if (!_fsRemoteHasSavedData(payload.new) && _fsLocalHasSavedData(userId)) return;
           _fsSeedLocalFromRemote(payload.new, userId);
           window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: payload.new }));
         })
@@ -6897,6 +6916,8 @@
         const displayName = uname.trim() || trimmedEmail.split('@')[0];
 
         try {
+          window._fsSetSyncReady?.(false);
+          window._fsHydrationLock = true;
           const authResult = mode === 'signup'
             ? await sb.auth.signUp({ email: trimmedEmail, password: pass, options: { data: { name: displayName } } })
             : await sb.auth.signInWithPassword({ email: trimmedEmail, password: pass });
@@ -6914,6 +6935,8 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
+          if (syncResult.source === 'empty-remote') window._fsReleaseHydrationLock?.(2200);
+          else window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
@@ -8683,6 +8706,7 @@
       ]);
 
       const handleLogout = async () => {
+        try { window._fsSetSyncReady?.(true); } catch (e) { }
         try { window._fsStopRealtime?.(); } catch (e) { }
         try { window._fsStopSessionRealtime?.(); } catch (e) { }
         /* Save style settings directly from React state (bypasses localStorage timing issues)
@@ -8747,11 +8771,16 @@
             const session = data?.session;
             if (session?.user) {
               window._fsSbUser = session.user;
+              window._fsSetSyncReady?.(false);
+              window._fsHydrationLock = true;
               /* Start Realtime for returning users */
-              window._fsStartRealtime(session.user.id);
-              window._fsStartSessionRealtime(session.user.id);
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
+              if (syncResult.source === 'empty-remote') window._fsReleaseHydrationLock?.(2200);
+              else window._fsSetSyncReady?.(true);
+              /* Start Realtime only after initial data hydration. */
+              window._fsStartRealtime(session.user.id);
+              window._fsStartSessionRealtime(session.user.id);
               const localUser = (() => {
                 try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (_) { return null; }
               })();
@@ -8791,6 +8820,7 @@
                 }
               } catch(_) {}
             } else {
+              window._fsSetSyncReady?.(false);
               try {
                 const staleUser = JSON.parse(localStorage.getItem('fs_user') || 'null');
                 if (staleUser?.id) window._fsBackupLocalUserData?.(staleUser.id);
