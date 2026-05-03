@@ -809,6 +809,7 @@
     window._fsSessionChannel = null;
     window._fsSyncReady = false;
     window._fsHydrationLock = true;
+    window._fsHydratedSavedData = false;
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -988,18 +989,27 @@
     }
     window._fsReleaseHydrationLock = _fsReleaseHydrationLock;
 
+    function _fsMarkHydratedFromRemote(remote) {
+      if (_fsRemoteHasSavedData(remote)) {
+        window._fsHydratedSavedData = true;
+        _fsSetSyncReady(true);
+      }
+    }
+    window._fsMarkHydratedFromRemote = _fsMarkHydratedFromRemote;
+
     async function _fsSaveUserProfile(userId, name, email, knownRemote = null) {
       if (!userId) return;
-      const profile = { name, email: (email || '').toLowerCase(), updated_at: new Date().toISOString() };
+      const profile = { name, email: (email || '').toLowerCase() };
       try {
         if (knownRemote) {
           const { error } = await _fsSb.from('user_data').update(profile).eq('user_id', userId);
           if (error) console.warn('[fs] profile update failed', error);
           return;
         }
+        if (!window._fsSyncReady && !window._fsHydratedSavedData) return;
         const snapshot = _fsSnapshotLocalData(userId);
         const { error } = await _fsSb.from('user_data').upsert(
-          { user_id: userId, ...snapshot, ...profile },
+          { user_id: userId, ...snapshot, ...profile, updated_at: new Date().toISOString() },
           { onConflict: 'user_id' }
         );
         if (error) console.warn('[fs] profile upsert failed', error);
@@ -1113,10 +1123,14 @@
         await _fsFlushPush(true);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
+      if (!remote) {
+        return { source: 'empty-remote', remote };
+      }
       if (remote && !_fsRemoteHasSavedData(remote)) {
         return { source: 'empty-remote', remote };
       }
       _fsSeedLocalFromRemote(remote, userId);
+      window._fsMarkHydratedFromRemote(remote);
       return { source: 'remote', remote };
     }
     window._fsReconcileRemote = _fsReconcileRemote;
@@ -1234,8 +1248,14 @@
           filter: 'user_id=eq.' + userId
         }, payload => {
           if (_fsIgnorePush) return;
-          if (!_fsRemoteHasSavedData(payload.new) && _fsLocalHasSavedData(userId)) return;
+          const hasSavedData = _fsRemoteHasSavedData(payload.new);
+          if (!hasSavedData && _fsLocalHasSavedData(userId)) return;
+          if (_fsLocalLooksNewer(userId, payload.new)) {
+            _fsFlushPush(true);
+            return;
+          }
           _fsSeedLocalFromRemote(payload.new, userId);
+          if (hasSavedData) window._fsMarkHydratedFromRemote(payload.new);
           window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: payload.new }));
         })
         .subscribe();
@@ -6935,8 +6955,7 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
-          if (syncResult.source === 'empty-remote') window._fsReleaseHydrationLock?.(2200);
-          else window._fsSetSyncReady?.(true);
+          if (syncResult.source !== 'empty-remote') window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
@@ -8776,8 +8795,7 @@
               /* Start Realtime for returning users */
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
-              if (syncResult.source === 'empty-remote') window._fsReleaseHydrationLock?.(2200);
-              else window._fsSetSyncReady?.(true);
+              if (syncResult.source !== 'empty-remote') window._fsSetSyncReady?.(true);
               /* Start Realtime only after initial data hydration. */
               window._fsStartRealtime(session.user.id);
               window._fsStartSessionRealtime(session.user.id);
