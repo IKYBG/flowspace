@@ -8585,17 +8585,22 @@
         try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (e) { }
       };
 
+      const withLogoutTimeout = (promise, ms = 1200) => Promise.race([
+        Promise.resolve(promise),
+        new Promise(resolve => setTimeout(resolve, ms))
+      ]);
+
       const handleLogout = async () => {
-        window._fsStopRealtime();
-        window._fsStopSessionRealtime();
+        try { window._fsStopRealtime?.(); } catch (e) { }
+        try { window._fsStopSessionRealtime?.(); } catch (e) { }
         /* Save style settings directly from React state (bypasses localStorage timing issues)
-           then do a full flush as belt-and-suspenders */
+           without letting a slow network request block logout. */
         const styleToSave = normalizeWidgetStyle(widgetStyle);
         try { window._fsRememberWidgetStyle?.(user?.id || window._fsSbUser?.id, styleToSave); } catch (e) { }
         try { localStorage.setItem('fs_widget_style', JSON.stringify(styleToSave)); } catch (e) { }
-        try { await window._fsPushStyleOnly(styleToSave); } catch (e) { }
-        try { await window._fsFlushPush(); } catch (e) { }
-        try { await window._fsSb.auth.signOut(); } catch (e) { }
+        try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 1200); } catch (e) { }
+        try { await withLogoutTimeout(window._fsFlushPush?.(), 1200); } catch (e) { }
+        try { await withLogoutTimeout(window._fsSb.auth.signOut(), 1500); } catch (e) { }
         window._fsSbUser = null;
         try {
           localStorage.removeItem('fs_user');
