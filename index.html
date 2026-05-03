@@ -6834,7 +6834,7 @@
           } catch (e) { console.warn('[fs] save user info failed', e); }
 
           setStatus('success');
-          const isNewUser = mode === 'signup' || !effectiveRemote || !effectiveRemote.onboarded;
+          const isNewUser = mode === 'signup';
           setTimeout(() => onAuth(u, isNewUser, effectiveRemote), 680);
         } catch (e) {
           console.warn('[fs] auth failed', e);
@@ -8313,8 +8313,7 @@
       const [screen, setScreen] = _uSC(() => {
         try {
           const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
-          if (u && localStorage.getItem('fs_onboarded')) return 'dashboard';
-          if (u) return 'onboarding';
+          if (u || localStorage.getItem('fs_sb_session')) return 'boot';
         } catch (e) { }
         return 'auth';
       });
@@ -8612,6 +8611,7 @@
           localStorage.removeItem('fs_custom_bg');
           localStorage.removeItem('fs_font_preset');
           localStorage.removeItem('fs_widget_style');
+          localStorage.removeItem('fs_intro_pending');
           localStorage.removeItem('fs_friends');
           /* fs_img_* keys are intentionally kept so images survive logout/login
              and are not lost when they are too large to sync to remote */
@@ -8638,6 +8638,10 @@
            so this setWidgetStyle won't trigger a redundant push */
         if (remote && remote.widget_style != null) setWidgetStyle(normalizeWidgetStyle(remote.widget_style));
         else setWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
+        try {
+          if (isNew) localStorage.setItem('fs_intro_pending', '1');
+          else localStorage.removeItem('fs_intro_pending');
+        } catch (e) { }
         setUser(authUser);
         /* Start Realtime subscriptions */
         if (authUser?.id) {
@@ -8692,7 +8696,8 @@
               } else {
                 setWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
               }
-              setScreen((remote && remote.onboarded) || localStorage.getItem('fs_onboarded') === '1' ? 'dashboard' : 'onboarding');
+              const introPending = localStorage.getItem('fs_intro_pending') === '1' && !(remote && remote.onboarded);
+              setScreen(introPending ? 'onboarding' : 'dashboard');
               /* ── Eagerly sync email into user_data so friend lookup works ── */
               try {
                 const userEmail = session.user.email?.toLowerCase();
@@ -8705,7 +8710,7 @@
                   ).then(({ error }) => { if (error) console.warn('[fs] email sync failed', error); else console.log('[fs] email synced:', userEmail); });
                 }
               } catch(_) {}
-            } else if (localStorage.getItem('fs_user')) {
+            } else {
               try {
                 localStorage.removeItem('fs_user');
                 localStorage.removeItem('fs_onboarded');
@@ -8716,6 +8721,7 @@
                 localStorage.removeItem('fs_custom_bg');
                 localStorage.removeItem('fs_font_preset');
                 localStorage.removeItem('fs_widget_style');
+                localStorage.removeItem('fs_intro_pending');
                 localStorage.removeItem('fs_friends');
               } catch (_) { }
               setUser(null);
@@ -8723,7 +8729,10 @@
               setFontPresetId('signature');
               setScreen('auth');
             }
-          } catch (e) { console.warn('[fs] session check failed', e); }
+          } catch (e) {
+            console.warn('[fs] session check failed', e);
+            if (mounted) setScreen('auth');
+          }
         })();
         const { data: sub } = window._fsSb.auth.onAuthStateChange((event, session) => {
           if (event === 'SIGNED_OUT') {
@@ -8739,10 +8748,12 @@
 
       const handleOnboardDone = () => {
         try { localStorage.setItem('fs_onboarded', '1'); } catch (e) { }
+        try { localStorage.removeItem('fs_intro_pending'); } catch (e) { }
+        try { window._fsFlushPush?.(); } catch (e) { }
         setScreen('dashboard');
       };
 
-      const isApp = screen !== 'auth' && screen !== 'onboarding';
+      const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
 
       return (
         <>
@@ -8754,6 +8765,15 @@
           {screen === 'onboarding' && (
             <div key="onboarding" className="fs-auth-wrap" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <OnboardingScreen onDone={handleOnboardDone} />
+            </div>
+          )}
+          {screen === 'boot' && (
+            <div key="boot" className="fs-auth-wrap" style={{ width: '100%', height: '100%', display:'grid', placeItems:'center', animation: 'scaleIn 0.25s cubic-bezier(0.4,0,0.2,1) both' }}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, fontFamily:T.font, color:T.text }}>
+                <img src="logo.png" alt="LumenOS" style={{ width:54, height:54, objectFit:'contain', filter:'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.28))' }} />
+                <div style={{ fontFamily:T.display, fontWeight:850, fontSize:24, letterSpacing:'-0.035em' }}>LumenOS</div>
+                <div style={{ fontSize:12, color:T.muted }}>Chargement de ton espace...</div>
+              </div>
             </div>
           )}
           {isApp && (
