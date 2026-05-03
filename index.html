@@ -6939,14 +6939,21 @@
     .fs-auth-check path { stroke-dasharray:22; stroke-dashoffset:22; animation:fsCheckDraw 0.4s 0.05s ease both; }
     .fs-auth-field { animation:fsFieldIn 0.28s ease both; }
     .fs-auth-panel-grid {
-      display:grid; grid-template-columns:minmax(0,1.05fr) minmax(360px,0.95fr);
-      gap:0; min-height:640px;
+      display:grid; grid-template-columns:minmax(0,0.92fr) minmax(360px,0.78fr);
+      gap:0; min-height:610px;
     }
     .fs-auth-story {
-      padding:44px 42px; border-right:1px solid rgba(255,255,255,0.07);
-      background:linear-gradient(150deg,rgba(var(--theme-c1-rgb),0.075),rgba(255,255,255,0.018) 48%,rgba(var(--theme-c2-rgb),0.05));
+      padding:56px 52px; border-right:1px solid rgba(255,255,255,0.08);
+      background:linear-gradient(120deg,rgba(7,8,14,0.50),rgba(20,8,10,0.16));
+      display:flex; flex-direction:column; justify-content:center;
     }
-    .fs-auth-form-pane { padding:44px 42px; display:flex; flex-direction:column; justify-content:center; }
+    .fs-auth-form-pane {
+      padding:44px 42px; display:flex; flex-direction:column; justify-content:center;
+      background:linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.055));
+      border-left:1px solid rgba(255,255,255,0.16);
+      box-shadow:inset 1px 0 0 rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.14);
+      backdrop-filter:blur(34px) saturate(180%); -webkit-backdrop-filter:blur(34px) saturate(180%);
+    }
     .fs-auth-alt-btn {
       height:42px; border-radius:14px; border:1px solid rgba(255,255,255,0.09);
       background:rgba(255,255,255,0.04); color:rgba(248,246,252,0.72);
@@ -7102,19 +7109,21 @@
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
 
+          <img src="assets/dashboard_rouge-Photoroom.png" alt="" aria-hidden="true" style={{ position:'absolute', inset:'auto -7% 4% auto', width:'min(1040px,78vw)', maxWidth:'none', objectFit:'contain', opacity:0.72, filter:'drop-shadow(0 42px 90px rgba(0,0,0,0.74))', pointerEvents:'none', transform:'rotate(-1deg)' }} />
+          <div style={{ position:'absolute', inset:0, background:'radial-gradient(circle at 72% 52%, rgba(218,28,28,0.20), transparent 34%), linear-gradient(90deg, rgba(4,4,8,0.94) 0%, rgba(8,5,8,0.72) 44%, rgba(5,2,3,0.50) 100%)', pointerEvents:'none' }} />
+
           {/* Ambient orbs */}
-          <div className="fs-auth-orb1" style={{ position: 'absolute', width: 720, height: 720, top: '-20%', left: '-14%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,140,255,0.16), transparent 62%)', pointerEvents: 'none' }} />
-          <div className="fs-auth-orb2" style={{ position: 'absolute', width: 580, height: 580, bottom: '-16%', right: '-10%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(107,226,179,0.12), transparent 62%)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', width: 400, height: 400, top: '35%', right: '10%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(196,181,253,0.07), transparent 60%)', pointerEvents: 'none' }} />
+          <div className="fs-auth-orb1" style={{ position: 'absolute', width: 720, height: 720, top: '-20%', left: '-14%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(220,38,38,0.18), transparent 62%)', pointerEvents: 'none' }} />
+          <div className="fs-auth-orb2" style={{ position: 'absolute', width: 580, height: 580, bottom: '-16%', right: '-10%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(248,113,113,0.10), transparent 62%)', pointerEvents: 'none' }} />
 
           {/* Card */}
-          <div className={`fs-auth-card${shaking ? ' fs-auth-shake' : ''}`} style={{ width: '100%', maxWidth: 980, padding: '0 20px', position: 'relative', zIndex: 1 }}>
+          <div className={`fs-auth-card${shaking ? ' fs-auth-shake' : ''}`} style={{ width: '100%', maxWidth: 1040, padding: '0 20px', position: 'relative', zIndex: 1 }}>
             <div style={{
-              background: 'rgba(9,9,17,0.76)',
-              backdropFilter: 'blur(48px) saturate(160%)', WebkitBackdropFilter: 'blur(48px) saturate(160%)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 34,
+              background: 'rgba(8,7,12,0.42)',
+              backdropFilter: 'blur(24px) saturate(155%)', WebkitBackdropFilter: 'blur(24px) saturate(155%)',
+              border: '1px solid rgba(255,255,255,0.14)', borderRadius: 34,
               padding: 0,
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.04),0 44px 110px rgba(0,0,0,0.68),inset 0 1px 0 rgba(255,255,255,0.11)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.05),0 44px 120px rgba(0,0,0,0.72),inset 0 1px 0 rgba(255,255,255,0.16)',
               position: 'relative', overflowX: 'hidden', overflowY: 'auto', maxHeight: 'calc(100dvh - 48px)',
             }}>
               {/* Top shimmer */}
@@ -7153,7 +7162,7 @@
               </div>
 
               {/* Product promise */}
-              <div style={{marginBottom:24,borderRadius:22,border:'1px solid rgba(255,255,255,0.075)',background:'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.025))',padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)'}}>
+              <div style={{display:'none',marginBottom:24,borderRadius:22,border:'1px solid rgba(255,255,255,0.075)',background:'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.025))',padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1.15fr 0.85fr',gap:10,minHeight:118}}>
                   <div style={{borderRadius:16,background:'rgba(var(--theme-c1-rgb),0.09)',border:`1px solid ${c1(0.16)}`,padding:13,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
                     <div>
@@ -7178,7 +7187,7 @@
                   </div>
                 </div>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8,marginTop:18}}>
+              <div style={{display:'none',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8,marginTop:18}}>
                 {[
                   ['Sync','PC + mobile'],
                   ['Focus','sessions'],
@@ -7261,23 +7270,6 @@
                 {!busy && (mode === 'login' ? 'Se connecter' : 'Créer mon compte')}
                 {isOk && 'Bienvenue !'}
               </button>
-
-              <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 14px'}}>
-                <div style={{height:1,flex:1,background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.10))'}}/>
-                <span style={{fontSize:10,color:'rgba(248,246,252,0.28)',fontWeight:750,letterSpacing:'0.09em',textTransform:'uppercase'}}>Accès rapide</span>
-                <div style={{height:1,flex:1,background:'linear-gradient(90deg,rgba(255,255,255,0.10),transparent)'}}/>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <button type="button" className="fs-auth-alt-btn" onClick={()=>signInWithProvider('google')} disabled={busy}>
-                  <span style={{fontSize:13,fontWeight:900}}>G</span>
-                  Google
-                </button>
-                <button type="button" className="fs-auth-alt-btn" onClick={showPasskeyHint} disabled={busy}>
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 18a6 6 0 1 0 9.33-5"/><path d="M14 10l7-7"/><path d="M18 6l3 3"/></svg>
-                  Passkey
-                </button>
-              </div>
 
               {/* Mode toggle */}
               <div style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: 'rgba(248,246,252,0.36)' }}>
