@@ -822,6 +822,7 @@
 
     /* Flag to prevent push-back loops when seeding from remote */
     let _fsIgnorePush = false;
+    window._fsSetIgnorePush = v => { _fsIgnorePush = !!v; };
 
     function _fsIsoMs(v) {
       const ms = Date.parse(v || '');
@@ -1007,6 +1008,22 @@
       }
     }
     window._fsFlushPush = _fsFlushPush;
+
+    /* Lightweight targeted push — only widget_style, bg_theme, widgets.
+       Used in logout path to guarantee style settings reach remote even
+       when the full push fails due to large image data. */
+    async function _fsPushStyleOnly(widgetStyleObj) {
+      const u = window._fsSbUser;
+      if (!u) return;
+      try {
+        const p = { user_id: u.id, updated_at: new Date().toISOString() };
+        if (widgetStyleObj != null) p.widget_style = widgetStyleObj;
+        const v = localStorage.getItem('fs_bgtheme'); if (v) p.bg_theme = v;
+        try { const w = localStorage.getItem('fs_widgets'); if (w) p.widgets = JSON.parse(w); } catch(_) {}
+        await _fsSb.from('user_data').upsert(p, { onConflict: 'user_id' });
+      } catch (e) { console.warn('[fs] style-only push failed', e); }
+    }
+    window._fsPushStyleOnly = _fsPushStyleOnly;
 
     /* Monkey-patch localStorage.setItem — catches all synced keys + image keys */
     function _fsSchedulePushForKey(key) {
@@ -8503,6 +8520,9 @@
       const handleLogout = async () => {
         window._fsStopRealtime();
         window._fsStopSessionRealtime();
+        /* Save style settings directly from React state (bypasses localStorage timing issues)
+           then do a full flush as belt-and-suspenders */
+        try { await window._fsPushStyleOnly(widgetStyle); } catch (e) { }
         try { await window._fsFlushPush(); } catch (e) { }
         try { await window._fsSb.auth.signOut(); } catch (e) { }
         window._fsSbUser = null;
@@ -8538,13 +8558,16 @@
         if (remote && remote.widgets) setWidgets(remote.widgets);
         else setWidgets(DEFAULT_WIDGETS);
         if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
-        if (remote && remote.widget_style) setWidgetStyle(remote.widget_style);
+        /* widget_style: _fsSeedLocalFromRemote already set _fsIgnorePush=true for 2s,
+           so this setWidgetStyle won't trigger a redundant push */
+        if (remote && remote.widget_style != null) setWidgetStyle(remote.widget_style);
         setUser(authUser);
         /* Start Realtime subscriptions */
         if (authUser?.id) {
           window._fsStartRealtime(authUser.id);
           window._fsStartSessionRealtime(authUser.id);
         }
+        if (remote) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote }));
         setScreen(isNew ? 'onboarding' : 'dashboard');
       };
 
@@ -8579,9 +8602,16 @@
                 if (remote && remote.widgets) setWidgets(remote.widgets);
                 else setWidgets(DEFAULT_WIDGETS);
                 if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
-                if (remote && remote.widget_style) setWidgetStyle(remote.widget_style);
                 setSyncEpoch(n => n + 1);
                 window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote || {} }));
+              }
+              /* Always apply visual style from remote regardless of sync source —
+                 ensures cross-device consistency (PC settings reach mobile and vice-versa).
+                 Suppress the resulting localStorage write from scheduling a redundant push. */
+              if (remote && remote.widget_style != null) {
+                try { window._fsSetIgnorePush(true); } catch(_) {}
+                setWidgetStyle(remote.widget_style);
+                setTimeout(() => { try { window._fsSetIgnorePush(false); } catch(_) {} }, 2200);
               }
               setScreen((remote && remote.onboarded) || localStorage.getItem('fs_onboarded') === '1' ? 'dashboard' : 'onboarding');
               /* ── Eagerly sync email into user_data so friend lookup works ── */
