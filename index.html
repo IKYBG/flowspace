@@ -810,6 +810,8 @@
     window._fsSyncReady = false;
     window._fsHydrationLock = true;
     window._fsHydratedSavedData = false;
+    window._fsDirtyThisSession = false;
+    window._fsDirtyKeys = new Set();
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -979,6 +981,10 @@
 
     function _fsSetSyncReady(ready) {
       window._fsSyncReady = !!ready;
+      if (!ready) {
+        window._fsDirtyThisSession = false;
+        window._fsDirtyKeys.clear();
+      }
       if (ready) window._fsHydrationLock = false;
     }
     window._fsSetSyncReady = _fsSetSyncReady;
@@ -1022,11 +1028,26 @@
     }
 
     function _fsMarkLocalWrite() {
+      window._fsDirtyThisSession = true;
       try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
+    }
+
+    function _fsDirtyPayloadFromSnapshot(snapshot, dirtyKeys) {
+      const p = {};
+      if (dirtyKeys.has('fs_tasks') && Object.prototype.hasOwnProperty.call(snapshot, 'tasks')) p.tasks = snapshot.tasks;
+      if (dirtyKeys.has('fs_notes') && Object.prototype.hasOwnProperty.call(snapshot, 'notes')) p.notes = snapshot.notes;
+      if (dirtyKeys.has('fs_widgets') && Object.prototype.hasOwnProperty.call(snapshot, 'widgets')) p.widgets = snapshot.widgets;
+      if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
+      if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
+      if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ([...dirtyKeys].some(k => /^fs_gamif_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
+      return p;
     }
 
     function _fsLocalLooksNewer(userId, remote) {
       if (!_fsSameLocalUser(userId)) return false;
+      if (!window._fsDirtyThisSession) return false;
       const localMs = _fsIsoMs(localStorage.getItem(FS_SYNC_LOCAL_WRITE_KEY));
       const remoteMs = _fsIsoMs(remote?.updated_at);
       return localMs > 0 && (!remoteMs || localMs > remoteMs + 1500);
@@ -1159,6 +1180,7 @@
     async function _fsFlushPush(force = false) {
       const u = window._fsSbUser;
       if (!u || (!window._fsSyncReady && !force)) return;
+      const dirtyKeys = new Set(window._fsDirtyKeys || []);
       const payload = { user_id: u.id, updated_at: new Date().toISOString() };
 
       try { const v = localStorage.getItem('fs_tasks');   if (v != null) payload.tasks = JSON.parse(v); } catch (_) { }
@@ -1186,12 +1208,36 @@
       }
       if (Object.keys(images).length > 0) payload.images = images;
 
+      if (!force && dirtyKeys.size > 0) {
+        const snapshot = _fsSnapshotLocalData(u.id);
+        const partial = _fsDirtyPayloadFromSnapshot(snapshot, dirtyKeys);
+        if (dirtyKeys.has(`fs_friends_${u.id}`) && Object.prototype.hasOwnProperty.call(payload, 'friends')) partial.friends = payload.friends;
+        if ([...dirtyKeys].some(k => k && k.startsWith('fs_img_')) && Object.keys(images).length > 0) partial.images = images;
+        if (Object.keys(partial).length === 0) return;
+        partial.updated_at = payload.updated_at;
+        const { error } = await _fsSb.from('user_data').update(partial).eq('user_id', u.id);
+        if (error) {
+          console.warn('[fs] partial push failed:', error);
+        } else {
+          dirtyKeys.forEach(k => window._fsDirtyKeys.delete(k));
+          if (window._fsDirtyKeys.size === 0) window._fsDirtyThisSession = false;
+        }
+        return;
+      }
+
       const { error } = await _fsSb.from('user_data').upsert(payload, { onConflict: 'user_id' });
       if (error) {
         console.warn('[fs] push failed (with images), retrying without images:', error);
         const { images: _imgs, ...payloadNoImages } = payload;
         const { error: e2 } = await _fsSb.from('user_data').upsert(payloadNoImages, { onConflict: 'user_id' });
         if (e2) console.warn('[fs] push failed (no images):', e2);
+        else {
+          window._fsDirtyThisSession = false;
+          window._fsDirtyKeys.clear();
+        }
+      } else {
+        window._fsDirtyThisSession = false;
+        window._fsDirtyKeys.clear();
       }
     }
     window._fsFlushPush = _fsFlushPush;
@@ -1220,6 +1266,7 @@
     function _fsSchedulePushForKey(key) {
       if (!window._fsSbUser || !window._fsSyncReady || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
       _fsMarkLocalWrite();
+      window._fsDirtyKeys.add(key);
       clearTimeout(_fsPushTimer);
       _fsPushTimer = setTimeout(_fsFlushPush, 800);
     }
@@ -1879,6 +1926,17 @@
       });
       const [draft, setDraft] = _uS6('');
       _uEff6(() => { try { localStorage.setItem('fs_tasks', JSON.stringify(tasks)); } catch (e) { } }, [tasks]);
+      _uEff6(() => {
+        const sync = e => {
+          if (e.detail?.tasks == null) return;
+          try {
+            const next = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+            if (Array.isArray(next)) setTasks(next);
+          } catch (_) { }
+        };
+        window.addEventListener('fs-remote-update', sync);
+        return () => window.removeEventListener('fs-remote-update', sync);
+      }, []);
       const tog = id => setTasks(ts => ts.map(t => t.id === id ? { ...t, done: !t.done } : t));
       const add = () => { if (!draft.trim()) return; setTasks(ts => [...ts, { id: Date.now(), text: draft.trim(), done: false, priority: 'medium', tag: 'Task' }]); setDraft(''); };
       const done = tasks.filter(t => t.done).length;
@@ -2756,6 +2814,14 @@
         const first = notes[0] || fsNormalizeNote({ id:`note-${Date.now()}`, folder:FS_NOTE_DEFAULT_FOLDER, createdAt:now });
         fsWriteNotes([{ ...first, title:first.title || fsNoteTitleFromContent(text), content:text, updatedAt:now }, ...notes.slice(1)]);
       }, [text]);
+      _uEN(() => {
+        const sync = e => {
+          if (e.detail?.notes == null) return;
+          setText(fsReadNotes()[0]?.content || '');
+        };
+        window.addEventListener('fs-remote-update', sync);
+        return () => window.removeEventListener('fs-remote-update', sync);
+      }, []);
 
       if (variant === 2) return (
         <Shell dark style={style}>
@@ -5764,6 +5830,17 @@
         try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || INIT_TASKS; } catch (e) { return INIT_TASKS; }
       });
       _uEffT(() => { try { localStorage.setItem('fs_tasks', JSON.stringify(tasks)); } catch (e) { } }, [tasks]);
+      _uEffT(() => {
+        const sync = e => {
+          if (e.detail?.tasks == null) return;
+          try {
+            const next = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+            if (Array.isArray(next)) setTasks(next);
+          } catch (_) { }
+        };
+        window.addEventListener('fs-remote-update', sync);
+        return () => window.removeEventListener('fs-remote-update', sync);
+      }, []);
       const [filter, setFilter] = _uST('all');
       const [inputVal, setInputVal] = _uST('');
       const [newPri, setNewPri] = _uST('medium');
@@ -6958,7 +7035,7 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
-          if (syncResult.source !== 'empty-remote') window._fsSetSyncReady?.(true);
+          if (syncResult.source !== 'empty-remote' || mode === 'signup') window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
