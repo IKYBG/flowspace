@@ -6915,7 +6915,7 @@
     @keyframes fsOrb2 { 0%,100%{transform:translate3d(0,0,0) scale(1)} 35%{transform:translate3d(-34px,24px,0) scale(1.1)} 65%{transform:translate3d(20px,-14px,0) scale(.9)} }
     @keyframes fsAuroraDrift { 0%,100%{transform:translateX(-4%) rotate(-8deg)} 50%{transform:translateX(4%) rotate(-4deg)} }
     @keyframes fsHeroFloat { 0%,100%{transform:translateY(0) rotateX(50deg) rotateZ(-18deg) scale(1.04)} 50%{transform:translateY(-14px) rotateX(52deg) rotateZ(-16deg) scale(1.055)} }
-    @keyframes fsRaySweep { 0%{transform:translateX(-120%) rotate(12deg);opacity:0} 18%{opacity:.58} 56%,100%{transform:translateX(160%) rotate(12deg);opacity:0} }
+    @keyframes fsRaySweep { 0%{transform:translateX(-120%) rotate(12deg);opacity:0} 24%{opacity:.54} 70%,100%{transform:translateX(160%) rotate(12deg);opacity:0} }
     @keyframes fsPulseDot { 0%,100%{box-shadow:0 0 0 0 rgba(143,220,255,.38)} 50%{box-shadow:0 0 0 8px rgba(143,220,255,0)} }
     @keyframes fsSpinAuth { to { transform:rotate(360deg); } }
     @keyframes fsCheckDraw { from{stroke-dashoffset:22} to{stroke-dashoffset:0} }
@@ -7006,10 +7006,15 @@
       box-shadow:0 78px 130px rgba(0,0,0,.54),0 0 135px rgba(var(--auth-magenta),.28),inset 0 1px 0 rgba(255,255,255,.18);
       overflow:hidden;
     }
-    .fs-auth-product-card::before {
+    .fs-auth-product-card::before,
+    .fs-auth-product-card::after {
       content:""; position:absolute; inset:0;
       background:linear-gradient(115deg,transparent 12%,rgba(255,255,255,.20) 34%,transparent 48%);
-      animation:fsRaySweep 3.2s ease-in-out infinite;
+      animation:fsRaySweep 6.2s ease-in-out infinite;
+    }
+    .fs-auth-product-card::after {
+      animation-delay:-3.1s;
+      opacity:.72;
     }
     .fs-auth-product-shot {
       position:absolute; left:4.5%; right:4.5%; top:7%; bottom:7%; border-radius:24px; overflow:hidden;
@@ -7090,7 +7095,7 @@
       .fs-auth-metric-focus{display:none}
     }
     @media(prefers-reduced-motion:reduce){
-      .fs-auth-card,.fs-auth-orb1,.fs-auth-orb2,.fs-auth-shell::before,.fs-auth-product-card,.fs-auth-product-card::before,.fs-auth-dot{animation:none!important}
+      .fs-auth-card,.fs-auth-orb1,.fs-auth-orb2,.fs-auth-shell::before,.fs-auth-product-card,.fs-auth-product-card::before,.fs-auth-product-card::after,.fs-auth-dot{animation:none!important}
     }
     .fs-auth-err { animation:fsFadeErr 0.2s ease both; }
     .fs-auth-pill-row { animation:fsSlideUp 0.7s 0.15s cubic-bezier(0.16,1,0.3,1) both; }
