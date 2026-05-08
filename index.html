@@ -8672,6 +8672,83 @@
       { id: 'clock', label: 'Clock', col: '5/9', row: '2/4', variant: 1 },
     ];
 
+    const FOCUS_NUDGE_MESSAGES = [
+      'Reste concentre, tu y es presque.',
+      'Reviens au signal : une seule action maintenant.',
+      'Ton flow est deja lance, garde le cap.',
+      'Encore quelques minutes, tu construis ton elan.',
+      'Respire, recentre-toi, reprends exactement ici.',
+      'Une distraction de moins, une victoire de plus.',
+      'Ton futur toi te remercie pour ce retour.',
+      'Le cristal tient bon. Toi aussi.',
+      'Petit detour repere, grande concentration reprise.',
+      'Reviens doucement : la session continue.'
+    ];
+
+    const pickFocusNudgeMessage = () => FOCUS_NUDGE_MESSAGES[Math.floor(Math.random() * FOCUS_NUDGE_MESSAGES.length)];
+
+    function FocusNudgePopup({ nudge }) {
+      if (!nudge) return null;
+      return (
+        <div role="status" aria-live="polite" style={{
+          position: 'fixed',
+          top: 'max(18px, env(safe-area-inset-top))',
+          right: 'max(18px, env(safe-area-inset-right))',
+          width: 'min(360px, calc(100vw - 28px))',
+          zIndex: 5000,
+          pointerEvents: 'none',
+          animation: 'scaleIn 0.24s cubic-bezier(0.16,1,0.3,1) both',
+        }}>
+          <div style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 14px',
+            borderRadius: 18,
+            color: 'var(--mineral-text)',
+            background: 'linear-gradient(135deg, rgba(var(--mineral-bg-rgb),0.92), rgba(var(--theme-c1-rgb),0.13))',
+            border: '1px solid rgba(var(--theme-c1-rgb),0.24)',
+            boxShadow: '0 18px 52px rgba(0,0,0,0.34), 0 0 34px rgba(var(--theme-c1-rgb),0.16)',
+            backdropFilter: 'blur(28px) saturate(1.18)',
+            WebkitBackdropFilter: 'blur(28px) saturate(1.18)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              flexShrink: 0,
+              display: 'grid',
+              placeItems: 'center',
+              background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.95), rgba(var(--theme-c2-rgb),0.72))',
+              boxShadow: '0 0 22px rgba(var(--theme-c1-rgb),0.34)',
+            }}>
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <path d="M7.5 1.5v12M1.5 7.5h12" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                <path d="M3.25 3.25l8.5 8.5M11.75 3.25l-8.5 8.5" stroke="white" strokeWidth="1.15" strokeLinecap="round" opacity=".58"/>
+              </svg>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(var(--theme-c1-rgb),0.92)', marginBottom: 4 }}>
+                Focus en cours
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 720, lineHeight: 1.28, letterSpacing: '-0.01em' }}>
+                {nudge.message}
+              </div>
+            </div>
+            <div style={{
+              position: 'absolute',
+              inset: 'auto 0 0 0',
+              height: 2,
+              background: 'linear-gradient(90deg, rgba(var(--theme-c1-rgb),0.95), rgba(var(--theme-c2-rgb),0.72))',
+              opacity: 0.82,
+            }} />
+          </div>
+        </div>
+      );
+    }
+
     function App() {
       const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
       const [screen, setScreen] = _uSC('boot');
@@ -8698,6 +8775,42 @@
         } catch (e) { return []; }
       });
       _uEC(() => { setSessionHistory(readSessionHistory(user?.id || 'guest')); }, [user?.id]);
+      const [focusNudge, setFocusNudge] = _uSC(null);
+      const focusNudgePendingRef = _uRC(null);
+      const focusNudgeLastAtRef = _uRC(0);
+      _uEC(() => {
+        if (!activeSession) {
+          focusNudgePendingRef.current = null;
+          setFocusNudge(null);
+          return;
+        }
+        const queueNudge = () => {
+          const now = Date.now();
+          if (now - focusNudgeLastAtRef.current < 12000) return;
+          focusNudgeLastAtRef.current = now;
+          focusNudgePendingRef.current = pickFocusNudgeMessage();
+        };
+        const showPendingNudge = () => {
+          if (!focusNudgePendingRef.current) return;
+          setFocusNudge({ id: Date.now(), message: focusNudgePendingRef.current });
+          focusNudgePendingRef.current = null;
+        };
+        const onVisibilityChange = () => {
+          if (document.hidden) queueNudge();
+          else showPendingNudge();
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('focus', showPendingNudge);
+        return () => {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+          window.removeEventListener('focus', showPendingNudge);
+        };
+      }, [activeSession?.startTime]);
+      _uEC(() => {
+        if (!focusNudge) return;
+        const id = setTimeout(() => setFocusNudge(null), 5200);
+        return () => clearTimeout(id);
+      }, [focusNudge?.id]);
       const getHistoryOwnerId = () => {
         try {
           const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
@@ -9143,6 +9256,7 @@
           )}
           {showSession && <SessionModal onClose={() => setShowSession(false)} onLaunch={handleLaunch} />}
           {isApp && showReveal && <CrystalReveal onComplete={() => { setShowReveal(false); setDashboardReady(true); }} />}
+          {isApp && focusNudge && <FocusNudgePopup nudge={focusNudge} />}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
         </>
       );
@@ -10204,7 +10318,7 @@
     function FocusCrystalOverlay({ session, user, onEnd }) {
       const [elapsed, setElapsed] = React.useState(0);
       const [phase, setPhase]     = React.useState('growing');
-      const [shattered, setShattered] = React.useState(false);
+      const shattered = false;
       const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
       const totalMs = (session?.duration || 25) * 60 * 1000;
 
@@ -10221,20 +10335,6 @@
         const id = setInterval(tick, 250); // 4 fps → smooth sine-wave vertex oscillation
         return () => clearInterval(id);
       }, [session, phase, totalMs]);
-
-      /* Page Visibility → shatter */
-      React.useEffect(() => {
-        if (!session || phase !== 'growing') return;
-        const handler = () => {
-          if (!document.hidden) return;
-          setPhase('shattered');
-          setShattered(true);
-          addToast({ message: '💎 Ton cristal a été brisé !', type: 'error', duration: 4500 });
-          setTimeout(() => onEnd && onEnd(null), 1500);
-        };
-        document.addEventListener('visibilitychange', handler);
-        return () => document.removeEventListener('visibilitychange', handler);
-      }, [session, phase]);
 
       /* Auto-save on complete */
       React.useEffect(() => {
