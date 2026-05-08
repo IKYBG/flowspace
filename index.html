@@ -1067,7 +1067,7 @@
       try {
         const { data, error } = await _fsSb
           .from('user_data')
-          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, photo, updated_at')
+          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, updated_at')
           .eq('user_id', userId)
           .maybeSingle();
         if (error) { console.warn('[fs] load remote failed', error); return null; }
@@ -5399,14 +5399,12 @@
 
       const updateProfilePhoto = dataUrl => {
         const nextUser = { ...(user || {}), name: displayName, email: displayEmail, photo: dataUrl };
-        try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (e) { }
+        try {
+          localStorage.setItem('fs_user', JSON.stringify(nextUser));
+          localStorage.setItem('fs_img_profile', dataUrl);
+        } catch (e) { }
         onUserUpdate && onUserUpdate(nextUser);
-        if (user?.id && window._fsSb) {
-          window._fsSb.from('user_data')
-            .update({ photo: dataUrl, updated_at: new Date().toISOString() })
-            .eq('user_id', user.id)
-            .then(({ error }) => { if (error) console.warn('[fs] photo sync failed', error); });
-        }
+        try { window._fsFlushPush?.(true); } catch(e) {}
       };
 
       const handlePhotoFile = e => {
@@ -7233,7 +7231,7 @@
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
-          const u = { name: finalName, email: trimmedEmail, id: sbUser.id, photo: remote?.photo || null, ts: Date.now() };
+          const u = { name: finalName, email: trimmedEmail, id: sbUser.id, photo: remote?.images?.['fs_img_profile'] || null, ts: Date.now() };
           try { localStorage.setItem('fs_user', JSON.stringify(u)); } catch (e) { }
 
           /* Keep friend lookup fresh without clobbering synced app data. */
@@ -9188,7 +9186,7 @@
               const userEmail = session.user.email?.toLowerCase();
               const userMeta = session.user.user_metadata;
               const finalName = (remote && remote.name) || localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
-              const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.photo || localUser?.photo || null, ts: Date.now() };
+              const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || null, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
               setUser(authUser);
               if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local') {
@@ -9713,7 +9711,7 @@
         const myId = user.id;
         const ownP = window._fsLoadRemote(myId);
         const revP = window._fsSb
-          ? window._fsSb.from('user_data').select('user_id, name, email, photo, updated_at')
+          ? window._fsSb.from('user_data').select('user_id, name, email, updated_at')
               .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
           : Promise.resolve({ data: [] });
         Promise.all([ownP, revP]).then(async ([remote, revResult]) => {
@@ -9721,21 +9719,8 @@
           let localCached = [];
           try { localCached = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
           let clean = uniqueFriends([...localCached, ...raw]);
-          if (window._fsSb && clean.length > 0) {
-            try {
-              const { data: photoRows } = await window._fsSb
-                .from('user_data').select('user_id, photo')
-                .in('user_id', clean.map(f => f.id));
-              if (photoRows) {
-                const photoMap = Object.fromEntries(photoRows.map(r => [r.user_id, r.photo]));
-                clean = clean.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null }));
-              }
-            } catch(e) {}
-          }
-          setFriends(clean);
-          try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
           const revData = revResult?.data || [];
-          const reverse = revData
+          let reverse = revData
             .filter(r => r.user_id !== myId && !clean.some(f => f.id === r.user_id))
             .map(r => ({
               id: r.user_id,
@@ -9743,9 +9728,27 @@
               email: r.email || '',
               initial: (r.name || r.email || '?')[0].toUpperCase(),
               color: '#4ade80',
-              photo: r.photo || null,
+              photo: null,
               updatedAt: r.updated_at
             }));
+          // Batch-fetch latest profile photos (via images column) for ALL friends
+          const allIds = [...clean.map(f => f.id), ...reverse.map(f => f.id)];
+          if (window._fsSb && allIds.length > 0) {
+            try {
+              const { data: imgRows } = await window._fsSb
+                .from('user_data').select('user_id, images')
+                .in('user_id', allIds);
+              if (imgRows) {
+                const photoMap = Object.fromEntries(
+                  imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null])
+                );
+                clean = clean.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null }));
+                reverse = reverse.map(f => ({ ...f, photo: photoMap[f.id] || null }));
+              }
+            } catch(e) {}
+          }
+          setFriends(clean);
+          try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
           setReverseFriends(reverse);
           setLoaded(true);
         });
