@@ -135,6 +135,13 @@
       }
     }
 
+    .fs-auth-wrap {
+      min-height: 100dvh;
+      height: 100dvh;
+      overflow: hidden;
+      background: #05020b;
+    }
+
     @media (min-width: 769px) and (max-height: 760px) {
       .fs-app-shell {
         padding-top: 18px !important;
@@ -6936,7 +6943,7 @@
       --auth-magenta:217, 43, 214;
       --auth-lilac:214, 162, 255;
       --auth-ink:#07030d;
-      min-height:100%; width:100%; position:relative; overflow:hidden;
+      min-height:100dvh; height:100%; width:100%; position:relative; overflow:hidden;
       display:flex; align-items:center; justify-content:center; padding:34px 22px;
       background:
         radial-gradient(circle at 78% 38%, rgba(var(--auth-magenta),.30), transparent 30%),
