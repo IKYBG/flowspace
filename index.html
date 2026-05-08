@@ -8879,16 +8879,22 @@
         if (!user?.id || screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
         try { localStorage.setItem('fs_widgets', JSON.stringify(widgets)); } catch (e) { }
       }, [widgets, user?.id, screen]);
-      const [activeSession, setActiveSession] = _uSC(() => {
+      const _restoreSession = (uid) => {
         try {
           const s = JSON.parse(localStorage.getItem('fs_active_session') || 'null');
           if (!s?.startTime || !s?.duration) return null;
-          // Discard if session already exceeded its duration
+          if (s.userId && uid && s.userId !== uid) return null;
           if (Date.now() - s.startTime > s.duration * 60 * 1000 + 60000) {
             localStorage.removeItem('fs_active_session');
             return null;
           }
           return s;
+        } catch(e) { return null; }
+      };
+      const [activeSession, setActiveSession] = _uSC(() => {
+        try {
+          const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
+          return _restoreSession(u?.id);
         } catch(e) { return null; }
       });
       const readSessionHistory = uid => {
@@ -9038,7 +9044,7 @@
       }, []);
 
       const handleLaunch = async (session) => {
-        const enriched = { ...session, broadcastId: `${Date.now()}`, hostEmail: user?.email || '', startTime: Date.now() };
+        const enriched = { ...session, broadcastId: `${Date.now()}`, hostEmail: user?.email || '', userId: user?.id || null, startTime: Date.now() };
         setActiveSession(enriched);
         try { localStorage.setItem('fs_active_session', JSON.stringify(enriched)); } catch(e) {}
         try {
@@ -9211,7 +9217,6 @@
           localStorage.removeItem('fs_user');
           localStorage.removeItem('fs_intro_pending');
           localStorage.removeItem('fs_session_focus_tasks');
-          localStorage.removeItem('fs_active_session');
           /* App data is intentionally kept and backed up per user so a logout/login
              cannot reset dashboard, notes, tasks, or visual preferences. */
         } catch (e) { }
@@ -9238,6 +9243,8 @@
           else localStorage.removeItem('fs_intro_pending');
         } catch (e) { }
         setUser(authUser);
+        const restoredSession = _restoreSession(authUser?.id);
+        if (restoredSession) setActiveSession(restoredSession);
         /* Start Realtime subscriptions */
         if (authUser?.id) {
           window._fsStartRealtime(authUser.id);
