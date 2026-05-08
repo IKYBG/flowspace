@@ -1825,7 +1825,7 @@
       const artist = track?.artists?.map(a => a.name).join(', ') || '';
       const prog = durationMs ? progressMs / durationMs : 0;
 
-      const SpotifyDisconnectButton = ({ compact = false }) => (
+      const SpotifyDisconnectButton = () => (
         <button
           onClick={handleDisconnect}
           title="DÃ©connecter Spotify"
@@ -1834,21 +1834,16 @@
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: compact ? 0 : 6,
-            height: compact ? 28 : 30,
-            minWidth: compact ? 28 : 0,
-            borderRadius: compact ? 10 : 999,
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
             border: '1px solid rgba(255,255,255,0.11)',
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.105), rgba(255,255,255,0.045))',
-            color: 'rgba(248,250,255,0.74)',
-            padding: compact ? 0 : '0 11px',
-            fontSize: 10,
-            fontWeight: 850,
-            letterSpacing: compact ? 0 : '0.02em',
-            fontFamily: T.font,
+            background: 'rgba(255,255,255,0.055)',
+            color: 'rgba(248,250,255,0.58)',
+            padding: 0,
             cursor: 'pointer',
             flexShrink: 0,
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.20)',
             backdropFilter: 'blur(18px)',
             WebkitBackdropFilter: 'blur(18px)',
             transition: 'transform 0.18s var(--mineral-ease), border-color 0.18s, background 0.18s, color 0.18s, box-shadow 0.18s'
@@ -1856,23 +1851,22 @@
           onMouseEnter={e => {
             e.currentTarget.style.transform = 'translateY(-1px)';
             e.currentTarget.style.borderColor = 'rgba(251,113,133,0.36)';
-            e.currentTarget.style.background = 'linear-gradient(180deg, rgba(251,113,133,0.18), rgba(251,113,133,0.075))';
+            e.currentTarget.style.background = 'rgba(251,113,133,0.14)';
             e.currentTarget.style.color = '#fff';
-            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.12), 0 12px 30px rgba(251,113,133,0.16)';
+            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 24px rgba(251,113,133,0.15)';
           }}
           onMouseLeave={e => {
             e.currentTarget.style.transform = 'translateY(0)';
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.11)';
-            e.currentTarget.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.105), rgba(255,255,255,0.045))';
-            e.currentTarget.style.color = 'rgba(248,250,255,0.74)';
-            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)';
+            e.currentTarget.style.background = 'rgba(255,255,255,0.055)';
+            e.currentTarget.style.color = 'rgba(248,250,255,0.58)';
+            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.20)';
           }}>
-          <svg width={compact ? 13 : 12} height={compact ? 13 : 12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M10 17l5-5-5-5" />
             <path d="M15 12H3" />
             <path d="M21 19V5" />
           </svg>
-          {!compact && <span>DÃ©connecter</span>}
         </button>
       );
 
@@ -1948,7 +1942,7 @@
                 {artist && <Sub ch={artist} style={{ marginTop: 2 }} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <SpotifyDisconnectButton compact />
+                <SpotifyDisconnectButton />
                 <button onClick={togglePlay} disabled={busy} style={{ background: SP, border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{playing ? '⏸' : '▶'}</button>
               </div>
             </div>
@@ -1969,6 +1963,7 @@
               {artist && <Sub ch={artist} style={{ marginTop: 3, fontSize: 11 }} />}
             </div>
             <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexShrink: 0 }}>
+              <SpotifyDisconnectButton />
               <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 12, cursor: 'pointer', padding: 2 }}>⏮</button>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: SP, boxShadow: `0 0 8px ${SP}`, animation: playing ? 'fwPulse 1.5s infinite' : '' }} />
               <button onClick={togglePlay} disabled={busy} style={{ background: 'none', border: 'none', color: T.text, fontSize: 20, cursor: 'pointer', padding: 2 }}>{playing ? '⏸' : '▶'}</button>
