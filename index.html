@@ -8879,7 +8879,18 @@
         if (!user?.id || screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
         try { localStorage.setItem('fs_widgets', JSON.stringify(widgets)); } catch (e) { }
       }, [widgets, user?.id, screen]);
-      const [activeSession, setActiveSession] = _uSC(null);
+      const [activeSession, setActiveSession] = _uSC(() => {
+        try {
+          const s = JSON.parse(localStorage.getItem('fs_active_session') || 'null');
+          if (!s?.startTime || !s?.duration) return null;
+          // Discard if session already exceeded its duration
+          if (Date.now() - s.startTime > s.duration * 60 * 1000 + 60000) {
+            localStorage.removeItem('fs_active_session');
+            return null;
+          }
+          return s;
+        } catch(e) { return null; }
+      });
       const readSessionHistory = uid => {
         try { return JSON.parse(localStorage.getItem(`fs_session_history_${uid || 'guest'}`) || '[]'); } catch (e) { return []; }
       };
@@ -9029,6 +9040,7 @@
       const handleLaunch = async (session) => {
         const enriched = { ...session, broadcastId: `${Date.now()}`, hostEmail: user?.email || '', startTime: Date.now() };
         setActiveSession(enriched);
+        try { localStorage.setItem('fs_active_session', JSON.stringify(enriched)); } catch(e) {}
         try {
           if (session.focusTaskIds?.length > 0) localStorage.setItem('fs_session_focus_tasks', JSON.stringify(session.focusTaskIds));
           else localStorage.removeItem('fs_session_focus_tasks');
@@ -9079,6 +9091,7 @@
         }
         saveSessionRecord(buildSessionRecord(activeSession, hasCrystalData, new Date().toISOString()));
         try { localStorage.removeItem('fs_session_focus_tasks'); window.dispatchEvent(new CustomEvent('fs-focus-tasks-update')); } catch(e) {}
+        try { localStorage.removeItem('fs_active_session'); } catch(e) {}
         setActiveSession(null);
       };
       const [bgThemeId, setBgThemeId] = _uSC(() => {
@@ -9198,6 +9211,7 @@
           localStorage.removeItem('fs_user');
           localStorage.removeItem('fs_intro_pending');
           localStorage.removeItem('fs_session_focus_tasks');
+          localStorage.removeItem('fs_active_session');
           /* App data is intentionally kept and backed up per user so a logout/login
              cannot reset dashboard, notes, tasks, or visual preferences. */
         } catch (e) { }
