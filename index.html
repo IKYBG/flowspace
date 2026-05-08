@@ -10796,8 +10796,8 @@
       const circ = 2 * Math.PI * R;
       const label = isTogether ? 'Focus partagé' : 'Session active';
       const detail = isTogether ? partnerName : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
-      const barShift = focusNudgeOpen ? 'translateX(clamp(-420px, -37vw, -200px)) scale(.88)' : (hovered ? 'translateY(-2px)' : 'translateY(0)');
-      const haloShift = focusNudgeOpen ? 'translateX(clamp(-420px, -37vw, -200px)) scaleX(.46)' : 'translateX(0) scaleX(1)';
+      const barShift = focusNudgeOpen ? 'translateX(clamp(-460px, -42vw, -220px)) scale(.72)' : (hovered ? 'translateY(-2px)' : 'translateY(0)');
+      const haloShift = focusNudgeOpen ? 'translateX(clamp(-460px, -42vw, -220px)) scaleX(.38)' : 'translateX(0) scaleX(1)';
       const compacting = !!focusNudgeOpen;
 
       return (
