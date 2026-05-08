@@ -2148,7 +2148,9 @@
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
     function _prevDay(str) {
-      const d = new Date(str); d.setDate(d.getDate()-1);
+      const [y, m, day] = str.split('-').map(Number);
+      const d = new Date(y, m - 1, day);
+      d.setDate(d.getDate() - 1);
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
     function _weekDates() {
