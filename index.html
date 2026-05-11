@@ -319,6 +319,154 @@
       background: linear-gradient(180deg, rgba(143,220,255,0.035), rgba(184,145,255,0.026)) !important;
     }
 
+    /* Premium SaaS polish: typography, rhythm, depth, feedback */
+    #root {
+      letter-spacing: 0.006em;
+      font-feature-settings: "kern" 1, "liga" 1, "ss01" 1;
+      text-rendering: geometricPrecision;
+    }
+    #root [style*="letter-spacing: -0.01em"],
+    #root [style*="letter-spacing: -0.015em"],
+    #root [style*="letter-spacing: -0.02em"],
+    #root [style*="letter-spacing: -0.025em"],
+    #root [style*="letter-spacing: -0.03em"] {
+      letter-spacing: 0.002em !important;
+    }
+    #root [style*="font-size: 9px"],
+    #root [style*="font-size: 10px"],
+    #root [style*="font-size: 11px"] {
+      letter-spacing: 0.055em !important;
+    }
+    #root [style*="font-family: Sora"][style*="font-size: 9px"],
+    #root [style*="font-family: Sora"][style*="font-size: 10px"],
+    #root [style*="font-family: Sora"][style*="font-size: 11px"],
+    #root [style*="font-family: Sora"][style*="font-size: 12px"],
+    #root [style*="font-family: Sora"][style*="font-size: 13px"],
+    #root [style*="font-family: Sora"][style*="font-size: 14px"],
+    #root [style*="font-family: Sora"][style*="font-size: 15px"],
+    #root [style*="font-family: Sora"][style*="font-size: 16px"],
+    #root [style*="font-family: Sora"][style*="font-size: 17px"],
+    #root [style*="font-family: Sora"][style*="font-size: 18px"],
+    #root [style*="font-family: Sora"][style*="font-size: 19px"],
+    #root [style*="font-family: Sora"][style*="font-size: 20px"],
+    #root [style*="font-family: Sora"][style*="font-size: 21px"],
+    #root [style*="font-family: Sora"][style*="font-size: 22px"],
+    #root [style*="font-family: Sora"][style*="font-size: 23px"] {
+      font-family: var(--font-body) !important;
+      font-weight: 780 !important;
+      letter-spacing: 0.004em !important;
+    }
+    .fs-dashboard-header,
+    .fs-focus-screen-head,
+    .fs-evo-head,
+    .fs-notes-head,
+    .fs-tasks-head,
+    .fs-cave-header {
+      padding-left: clamp(22px, 3vw, 40px) !important;
+      padding-right: clamp(22px, 3vw, 40px) !important;
+    }
+    .fs-focus-screen-content,
+    .fs-evo-content,
+    .fs-prog-body,
+    .fs-notes-body {
+      padding-left: clamp(18px, 2.6vw, 36px) !important;
+      padding-right: clamp(18px, 2.6vw, 36px) !important;
+    }
+    [data-cr-widget] > div,
+    .fs-note-card,
+    .fs-task-row,
+    .fs-fht-stat-card,
+    .fs-fht-history,
+    .fs-focus-tab-btn,
+    .fs-evo-tab-btn,
+    .fs-cave-stat,
+    .crystal-mini-card {
+      box-shadow:
+        0 1px 1px rgba(var(--mineral-bg-rgb),0.34),
+        0 14px 36px rgba(var(--mineral-bg-rgb),0.28),
+        inset 0 1px 0 rgba(255,255,255,0.055) !important;
+      transition:
+        transform 180ms var(--mineral-ease),
+        box-shadow 220ms var(--mineral-ease),
+        background 220ms var(--mineral-ease),
+        border-color 220ms var(--mineral-ease),
+        color 180ms var(--mineral-ease) !important;
+    }
+    [data-cr-widget] > div:hover,
+    .fs-note-card:hover,
+    .fs-task-row:hover,
+    .fs-fht-stat-card:hover,
+    .crystal-mini-card:hover {
+      transform: translateY(-1px) scale(1.002) !important;
+      box-shadow:
+        0 1px 1px rgba(var(--mineral-bg-rgb),0.32),
+        0 18px 46px rgba(var(--mineral-bg-rgb),0.34),
+        0 0 0 1px rgba(var(--theme-c1-rgb),0.05),
+        inset 0 1px 0 rgba(255,255,255,0.07) !important;
+    }
+    button {
+      transition:
+        transform 170ms var(--mineral-ease),
+        box-shadow 220ms var(--mineral-ease),
+        background 220ms var(--mineral-ease),
+        border-color 220ms var(--mineral-ease),
+        color 170ms var(--mineral-ease),
+        opacity 170ms var(--mineral-ease) !important;
+    }
+    button:active {
+      transform: translateY(1px) scale(0.972) !important;
+    }
+    .fs-nav-item.active,
+    .fs-mobile-nav-btn.active,
+    .fs-focus-tab-btn.active,
+    .fs-evo-tab-btn.active {
+      box-shadow:
+        0 1px 1px rgba(var(--mineral-bg-rgb),0.32),
+        0 12px 30px rgba(var(--theme-c1-rgb),0.10),
+        inset 0 1px 0 rgba(255,255,255,0.08) !important;
+    }
+    .fs-note-card,
+    .fs-task-row,
+    .fs-map-node,
+    .fs-friends-panel,
+    .fs-account-panel {
+      border-left-width: 1px !important;
+      border-left-color: var(--mineral-line) !important;
+    }
+    .fs-skeleton {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.052), rgba(255,255,255,0.024));
+      border: 1px solid rgba(255,255,255,0.055);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+    }
+    .fs-skeleton::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-110%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.075), transparent);
+      animation: fsSkeletonSweep 1.35s var(--mineral-ease) infinite;
+    }
+    .fs-skeleton-line {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.07);
+    }
+    @keyframes fsSkeletonSweep {
+      to { transform: translateX(110%); }
+    }
+    @media (max-width: 768px) {
+      #root { letter-spacing: 0.002em; }
+      [data-cr-widget] > div:hover,
+      .fs-note-card:hover,
+      .fs-task-row:hover {
+        transform: none !important;
+      }
+    }
+
     /* ══════════════ MOBILE RESPONSIVE ══════════════ */
     @media (max-width: 768px) {
       /* ─── Shell ───────────────────────────────────── */
@@ -3884,7 +4032,8 @@
         } else {
           const friendUserForLaunch = emailUser || (mode === 'together' && emailValid ? { email: email.trim(), name: email.trim().split('@')[0], initial: email.trim()[0].toUpperCase(), color: '#a5b8ff' } : null);
           const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
-          onLaunch({ type: mode, friendEmail: mode === 'together' ? email.trim() : null, friendUser: mode === 'together' ? friendUserForLaunch : null, friendId: emailUser?.id || null, duration: cfg.duration, music: cfg.music, breaks: cfg.breaks, crystalShape, crystalGradient: autoGrad, focusTaskIds: focusTaskIds.length > 0 ? focusTaskIds : null, startTime: Date.now() });
+          const isGoldCrystal = Math.random() < 0.05;
+          onLaunch({ type: mode, friendEmail: mode === 'together' ? email.trim() : null, friendUser: mode === 'together' ? friendUserForLaunch : null, friendId: emailUser?.id || null, duration: cfg.duration, music: cfg.music, breaks: cfg.breaks, crystalShape, crystalGradient: isGoldCrystal ? 'gold' : autoGrad, crystalRarity: isGoldCrystal ? 'gold' : 'standard', focusTaskIds: focusTaskIds.length > 0 ? focusTaskIds : null, startTime: Date.now() });
         }
       };
 
@@ -7767,67 +7916,414 @@
     window.applyFontPreset = applyFontPreset;
     applyFontPreset((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })());
 
-    /* ── Personnalisation Hub ─────────────────────────────────────────────────── */
+    function BlenderCrystalScene() {
+      const canvasRef = React.useRef(null);
+      React.useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: true });
+        if (!gl) return;
+        const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.0);vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uMvp*vec4(aPosition,1.0);}`;
+        const fs = `precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;uniform vec3 uLight;uniform vec3 uEye;uniform vec3 uAccent1;uniform vec3 uAccent2;uniform float uAlpha;void main(){vec3 n=normalize(vNormal);vec3 l=normalize(uLight-vWorld);vec3 e=normalize(uEye-vWorld);float d=max(dot(n,l),0.0);float rim=pow(1.0-max(dot(n,e),0.0),2.25);float sp=pow(max(dot(reflect(-l,n),e),0.0),34.0);float side=clamp(n.x*.5+n.z*.22+.5,0.0,1.0);vec3 theme=mix(uAccent1,uAccent2,side);vec3 glass=mix(theme,vec3(1.0),.18);vec3 color=mix(vColor,theme,.82)*(0.34+d*0.82)+theme*rim*.78+glass*sp*.34;gl_FragColor=vec4(color,uAlpha);}`;
+        const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+        const program = gl.createProgram();
+        gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        const loc = { pos: gl.getAttribLocation(program,'aPosition'), normal: gl.getAttribLocation(program,'aNormal'), color: gl.getAttribLocation(program,'aColor'), mvp: gl.getUniformLocation(program,'uMvp'), model: gl.getUniformLocation(program,'uModel'), light: gl.getUniformLocation(program,'uLight'), eye: gl.getUniformLocation(program,'uEye'), accent1: gl.getUniformLocation(program,'uAccent1'), accent2: gl.getUniformLocation(program,'uAccent2'), alpha: gl.getUniformLocation(program,'uAlpha') };
+        const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+        const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+        const norm = v => { const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
+        const buildCrystal = () => {
+          const data = [], top=[0,1.52,0], bottom=[0,-1.52,0], upper=[], lower=[];
+          for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI*2/6; upper.push([Math.cos(a)*.58,.72,Math.sin(a)*.58]); lower.push([Math.cos(a)*.50,-.78,Math.sin(a)*.50]); }
+          const colors=[[.92,.92,.94],[.82,.84,.9],[.74,.78,.86],[.88,.82,.92],[.64,.66,.78],[.9,.9,.94]];
+          const tri=(a,b,c,col)=>{ const n=norm(cross(sub(b,a),sub(c,a))); [a,b,c].forEach(p=>data.push(...p,...n,...col)); };
+          for(let i=0;i<6;i++){ const j=(i+1)%6,col=colors[i]; tri(top,upper[i],upper[j],col); tri(upper[i],lower[i],lower[j],col.map(v=>v*.82)); tri(upper[i],lower[j],upper[j],col.map(v=>Math.min(1,v*.96))); tri(bottom,lower[j],lower[i],col.map(v=>v*.68)); }
+          return new Float32Array(data);
+        };
+        const mesh=buildCrystal(), buffer=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+        const stride=36;
+        gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos,3,gl.FLOAT,false,stride,0);
+        gl.enableVertexAttribArray(loc.normal); gl.vertexAttribPointer(loc.normal,3,gl.FLOAT,false,stride,12);
+        gl.enableVertexAttribArray(loc.color); gl.vertexAttribPointer(loc.color,3,gl.FLOAT,false,stride,24);
+        const count=mesh.length/9;
+        const ident=()=>[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+        const mul=(a,b)=>{ const o=[]; for(let r=0;r<4;r++) for(let c=0;c<4;c++) o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3]; return o; };
+        const translate=(x,y,z)=>{ const m=ident(); m[12]=x;m[13]=y;m[14]=z;return m; };
+        const scale=(x,y,z)=>{ const m=ident(); m[0]=x;m[5]=y;m[10]=z;return m; };
+        const rotX=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m; };
+        const rotY=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m; };
+        const rotZ=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[1]=s;m[4]=-s;m[5]=c;return m; };
+        const perspective=(fov,aspect,near,far)=>{ const f=1/Math.tan(fov/2),nf=1/(near-far); return [f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,(2*far*near)*nf,0]; };
+        const lookAt=(eye,target,up)=>{ const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x); return [x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-x[0]*eye[0]-x[1]*eye[1]-x[2]*eye[2],-y[0]*eye[0]-y[1]*eye[1]-y[2]*eye[2],-z[0]*eye[0]-z[1]*eye[1]-z[2]*eye[2],1]; };
+        const resize=()=>{ const dpr=Math.min(window.devicePixelRatio||1,1.35),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight); if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);} gl.viewport(0,0,canvas.width,canvas.height); };
+        const readTheme = () => {
+          const css = getComputedStyle(document.documentElement);
+          const parse = (name, fallback) => {
+            const raw = (css.getPropertyValue(name) || fallback).trim().split(',').map(v => Math.max(0, Math.min(255, parseFloat(v) || 0)) / 255);
+            return raw.length >= 3 ? raw.slice(0,3) : fallback.split(',').map(v=>parseFloat(v)/255);
+          };
+          return [parse('--theme-c1-rgb','143,220,255'), parse('--theme-c2-rgb','184,145,255')];
+        };
+        let theme = readTheme(), nextThemeRead = 0;
+        const draw=(model,vp,alpha)=>{ gl.uniformMatrix4fv(loc.model,false,new Float32Array(model)); gl.uniformMatrix4fv(loc.mvp,false,new Float32Array(mul(vp,model))); gl.uniform1f(loc.alpha,alpha); gl.drawArrays(gl.TRIANGLES,0,count); };
+        let raf=0, lastFrame=0;
+        const render=t=>{ if(document.hidden){ raf=requestAnimationFrame(render); return; } if(t-lastFrame<28){ raf=requestAnimationFrame(render); return; } lastFrame=t; if(t>nextThemeRead){ theme=readTheme(); nextThemeRead=t+600; } resize(); const time=t*.001; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform3f(loc.light,-2.6,3.6,3.8); gl.uniform3f(loc.eye,0,.1,5.4); gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]); gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]); const vp=mul(perspective(Math.PI/4,canvas.width/canvas.height,.1,100),lookAt([0,.12,5.25],[0,0,0],[0,1,0])); const bob=Math.sin(time*1.35)*.08; draw(mul(translate(0,bob,0),mul(rotY(time*.62),mul(rotX(-.13+Math.sin(time*.8)*.045),scale(.95,1,.95)))),vp,.86); for(let i=0;i<5;i++){ const a=time*(.36+i*.025)+i*Math.PI*2/5,r=1.34+(i%3)*.1,s=.115+(i%3)*.02; draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.7+i)*.32+bob*.45,Math.sin(a)*.66),mul(rotY(-time*.95+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72); } raf=requestAnimationFrame(render); };
+        raf=requestAnimationFrame(render);
+        return () => cancelAnimationFrame(raf);
+      }, []);
+      return <canvas ref={canvasRef} className="fsBlenderCrystalCanvas" aria-hidden="true" />;
+    }
+
+    /* ── Personnalisation Hub — premium floating 3D crystal + hairline flux ─── */
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
       const CARDS = [
-        { id: 'fond', target: 'fond', eyebrow: 'Ambiance', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec des thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc', bars: 8, icon: <path d="M4 14c4-7 12-7 16 0"/>, visual: 'palette' },
-        { id: 'fonts', target: 'fonts', eyebrow: 'Typographie', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4', bars: 6, icon: <path d="M5 18 10 5h4l5 13M7 14h10"/>, visual: 'type' },
-        { id: 'widgets', target: 'variants', eyebrow: 'Dashboard', title: 'Widgets', desc: 'Ajustez vos widgets, variantes et cartes pour composer un tableau de bord utile.', c1: '#4ade80', c2: '#2dd4bf', bars: 5, icon: <path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/>, visual: 'grid' },
-        { id: 'notes', target: 'notes-style', eyebrow: 'Carte mentale', title: 'Notes', desc: 'Changez le design de votre carte mentale avec trois styles bien distincts.', c1: '#67e8f9', c2: '#fb7185', bars: 4, icon: <path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/>, visual: 'nodes' },
+        { id:'fond',    target:'fond',         eyebrow:'Ambiance',      title:'Thèmes',  c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
+        { id:'fonts',   target:'fonts',        eyebrow:'Typographie',   title:'Polices', c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
+        { id:'widgets', target:'variants',     eyebrow:'Dashboard',     title:'Widgets', c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
+        { id:'notes',   target:'notes-style',  eyebrow:'Carte mentale', title:'Notes',   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
       ];
-      const renderMini = card => (
-        <div style={{height:78,borderRadius:18,position:'relative',overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',marginTop:16}}>
-          <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 20% 20%,${card.c1}26,transparent 44%),radial-gradient(circle at 82% 72%,${card.c2}1f,transparent 46%)`}}/>
-          {card.visual === 'palette' && [0,1,2].map((i)=><div key={i} style={{position:'absolute',left:16+i*36,top:18,width:26,height:42,borderRadius:9,background:i===0?card.c1:i===1?card.c2:'rgba(255,255,255,0.13)',boxShadow:`0 12px 26px ${card.c1}20`}}/>)}
-          {card.visual === 'type' && <><div style={{position:'absolute',left:18,top:16,fontFamily:T.display,fontSize:34,fontWeight:850,color:card.c1,letterSpacing:'-0.04em'}}>Aa</div><div style={{position:'absolute',right:18,top:22,width:82,height:6,borderRadius:99,background:'rgba(255,255,255,0.18)'}}/><div style={{position:'absolute',right:36,top:38,width:64,height:5,borderRadius:99,background:'rgba(255,255,255,0.10)'}}/></>}
-          {card.visual === 'grid' && <div style={{position:'absolute',inset:14,display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:7}}>{[0,1,2].map(i=><div key={i} style={{borderRadius:10,background:i===0?`${card.c1}28`:'rgba(255,255,255,0.075)',border:`1px solid ${i===0?card.c1+'44':'rgba(255,255,255,0.08)'}`}}/>)}</div>}
-          {card.visual === 'nodes' && <svg viewBox="0 0 220 78" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}><path d="M52 38 C86 16 126 16 162 38M80 52 C106 72 136 70 160 50" stroke="rgba(255,255,255,0.18)" strokeWidth="1.4" fill="none"/>{[[48,38,card.c1],[112,24,card.c2],[166,46,card.c1]].map(([x,y,c],i)=><circle key={i} cx={x} cy={y} r={i===1?13:10} fill={c} opacity=".85"/>)}</svg>}
-        </div>
-      );
+      const POS = [[1,1],[3,1],[1,3],[3,3]];
+      const FLUX = [
+        { key:'TL', d:'M 22 22 C 30 35 39 43 48 48 C 58 40 67 48 63 57 C 59 66 44 61 47 50', c:'#a5b8ff', cx:22, cy:22 },
+        { key:'TR', d:'M 78 22 C 70 35 61 43 52 48 C 42 40 33 48 37 57 C 41 66 56 61 53 50', c:'#f0c38e', cx:78, cy:22 },
+        { key:'BL', d:'M 22 78 C 31 66 40 58 48 52 C 58 60 67 52 63 43 C 59 34 44 39 47 50', c:'#4ade80', cx:22, cy:78 },
+        { key:'BR', d:'M 78 78 C 69 66 60 58 52 52 C 42 60 33 52 37 43 C 41 34 56 39 53 50', c:'#67e8f9', cx:78, cy:78 },
+      ];
+      const FRAGMENTS = [
+        { size: 10, x: 50, y: -4, dur: 15, delay: -1.4, color: '#e8edff', z: 18 },
+        { size: 7, x: 88, y: 24, dur: 18, delay: -7.2, color: '#a5b8ff', z: 26 },
+        { size: 13, x: 92, y: 66, dur: 21, delay: -10.4, color: '#67e8f9', z: 14 },
+        { size: 6, x: 62, y: 102, dur: 16, delay: -5.5, color: '#f0c38e', z: 20 },
+        { size: 9, x: 18, y: 76, dur: 19, delay: -12.2, color: '#c084fc', z: 16 },
+        { size: 5, x: 10, y: 32, dur: 14, delay: -8.6, color: '#ffffff', z: 28 },
+        { size: 12, x: 34, y: 6, dur: 23, delay: -16.5, color: '#b8f4ff', z: 10 },
+      ];
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <style>{`
-            .fs-perso-grid{flex:1;padding:clamp(14px,2vh,24px) clamp(20px,3vw,40px) clamp(16px,2.5vh,32px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:14px;min-height:0}
-            @media (max-width:768px){.fs-perso-grid{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto;padding:14px 16px 96px}.fs-perso-card{min-height:230px}}
+            @keyframes fsOrbFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}
+            @keyframes fsOrbHalo{0%,100%{opacity:.18;transform:scale(.98)}50%{opacity:.32;transform:scale(1.03)}}
+            @keyframes fsFluxBreathe{0%,100%{opacity:.45}50%{opacity:.82}}
+            @keyframes fsRingOuter{from{transform:rotateX(72deg) rotateY(8deg) rotateZ(0deg)}to{transform:rotateX(72deg) rotateY(8deg) rotateZ(360deg)}}
+            @keyframes fsRingMid{from{transform:rotateY(74deg) rotateX(12deg) rotateZ(360deg)}to{transform:rotateY(74deg) rotateX(12deg) rotateZ(0deg)}}
+            @keyframes fsRingInner{from{transform:rotateX(38deg) rotateY(42deg) rotateZ(0deg)}to{transform:rotateX(38deg) rotateY(42deg) rotateZ(360deg)}}
+            @keyframes fsRingPulse{0%,100%{opacity:.7}50%{opacity:1}}
+            @keyframes fsCrystalSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+            @keyframes fsCrystalTilt{0%,100%{transform:rotateX(0deg) rotateZ(0deg)}50%{transform:rotateX(8deg) rotateZ(-2deg)}}
+            @keyframes fsCrystalGleam{0%,100%{opacity:.35;transform:scale(.95) rotate(0deg)}50%{opacity:.7;transform:scale(1.08) rotate(180deg)}}
+            @keyframes fsCrystalFloor{0%,100%{opacity:.38;transform:scaleX(.92)}50%{opacity:.68;transform:scaleX(1.08)}}
+            @keyframes fsCoreCrystalFloat{0%,100%{transform:translate3d(0,4px,0) rotateX(-8deg) rotateZ(-1.2deg)}50%{transform:translate3d(0,-10px,0) rotateX(7deg) rotateZ(1.4deg)}}
+            @keyframes fsCoreCrystalTurn{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+            @keyframes fsFragmentOrbit{from{transform:rotateZ(0deg) rotateX(64deg) rotateY(-16deg)}to{transform:rotateZ(360deg) rotateX(64deg) rotateY(-16deg)}}
+            @keyframes fsFragmentCounter{from{transform:rotateZ(0deg) rotateY(0deg)}to{transform:rotateZ(-360deg) rotateY(360deg)}}
+            @keyframes fsCrystalRay{0%,100%{opacity:.24}50%{opacity:.55}}
+            @keyframes fsFluxOrbitLine{from{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(0deg)}to{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(360deg)}}
+            .fsPCard{border-radius:18px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:14px;display:flex;flex-direction:column;gap:10px;transition:all .42s cubic-bezier(.22,1,.36,1);align-self:center;justify-self:center;width:100%;max-width:184px}
+            .fsPLayout{flex:1;display:grid;grid-template-columns:1fr 1.55fr 1fr;grid-template-rows:1fr 1.5fr 1fr;position:relative;padding:clamp(10px,1.8vh,18px) clamp(14px,2.5vw,30px) clamp(14px,2vh,24px);min-height:0;align-items:center;justify-items:center}
+            .fsPCenter{grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;width:100%;height:100%;z-index:5}
+            .fsPHalo{display:none!important}
+            .fsRing,.fsRingNode{display:none!important}
+            .fsPFloat{display:none!important}
+            .fsCrystalStageFrame{background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible;isolation:isolate}
+            .fsCrystalScene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1120px;transform-style:preserve-3d}
+            .fsBlenderCrystalCanvas{position:absolute;inset:-12%;width:124%;height:124%;display:block;z-index:8;pointer-events:none;filter:drop-shadow(0 24px 42px rgba(var(--theme-c1-rgb),.24)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.18))}
+            .fsCrystalRays{display:none!important}
+            .fsOrbitShell{display:none!important}
+            .fsCrystalShard{position:absolute;transform-style:preserve-3d;animation:fsFragmentCounter 18s linear infinite}
+            .fsCrystalShard svg{display:none}
+            .fsShard3d{position:absolute;inset:0;transform-style:preserve-3d;filter:drop-shadow(0 8px 14px rgba(103,232,249,.22))}
+            .fsShardFace{position:absolute;left:50%;top:50%;width:100%;height:145%;margin-left:-50%;margin-top:-72.5%;clip-path:polygon(50% 0%,95% 34%,66% 100%,34% 100%,5% 34%);background:linear-gradient(150deg,rgba(255,255,255,.86),var(--shard-color),rgba(42,36,92,.42));border:1px solid rgba(255,255,255,.42);backface-visibility:visible}
+            .fsShardFace:nth-child(1){transform:rotateY(0deg) translateZ(calc(var(--shard-depth) * 1px))}
+            .fsShardFace:nth-child(2){transform:rotateY(90deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.84}
+            .fsShardFace:nth-child(3){transform:rotateY(180deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.72}
+            .fsShardFace:nth-child(4){transform:rotateY(270deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.8}
+            .fsMainCrystalFloat{display:none!important}
+            .fsMainCrystalTurn{position:absolute;inset:0;transform-style:preserve-3d;animation:fsCoreCrystalTurn 10.5s linear infinite;filter:drop-shadow(0 24px 46px rgba(103,232,249,.22))}
+            .fsMainCrystalSvg{display:none}
+            .fsVolCrystal{position:absolute;left:50%;top:50%;width:132px;height:190px;margin-left:-66px;margin-top:-95px;transform-style:preserve-3d}
+            .fsVolFacet{position:absolute;left:50%;top:50%;width:44px;height:116px;margin-left:-22px;margin-top:-42px;clip-path:polygon(50% 0%,100% 16%,84% 100%,16% 100%,0% 16%);background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(184,244,255,.5) 28%,rgba(165,184,255,.34) 62%,rgba(20,18,56,.68));border:1px solid rgba(255,255,255,.44);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -22px 34px rgba(13,12,42,.34);backface-visibility:visible;transform-origin:50% 50%}
+            .fsVolFacet::after{content:"";position:absolute;left:49%;top:2%;bottom:3%;width:1px;background:linear-gradient(to bottom,rgba(255,255,255,.72),rgba(255,255,255,.12),transparent)}
+            .fsVolFacet:nth-child(1){transform:rotateY(0deg) translateZ(38px)}
+            .fsVolFacet:nth-child(2){transform:rotateY(60deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(3){transform:rotateY(120deg) translateZ(38px);opacity:.78}
+            .fsVolFacet:nth-child(4){transform:rotateY(180deg) translateZ(38px);opacity:.68}
+            .fsVolFacet:nth-child(5){transform:rotateY(240deg) translateZ(38px);opacity:.78}
+            .fsVolFacet:nth-child(6){transform:rotateY(300deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(7){width:108px;height:64px;margin-left:-54px;margin-top:-100px;clip-path:polygon(50% 0%,100% 72%,50% 100%,0% 72%);background:linear-gradient(150deg,rgba(255,255,255,.96),rgba(184,244,255,.55),rgba(126,103,255,.24));transform:rotateX(64deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(8){width:104px;height:78px;margin-left:-52px;margin-top:44px;clip-path:polygon(0% 0%,100% 0%,50% 100%);background:linear-gradient(180deg,rgba(119,145,255,.36),rgba(19,16,54,.76));transform:rotateX(-64deg) translateZ(38px);opacity:.82}
+            .fsCrystalFloor{display:none!important}
+            @media(max-width:640px){
+              .fsPLayout{display:grid!important;grid-template-columns:1fr 1fr!important;grid-template-rows:auto auto auto!important;gap:12px!important;padding:14px 14px 110px!important;overflow-y:auto!important;align-items:stretch!important;justify-items:stretch!important}
+              .fsPSvgOvl{display:none!important}
+              .fsPCenter{grid-column:1 / -1!important;grid-row:1!important;height:232px!important;width:100%!important;justify-self:center!important}
+              .fsCrystalStageFrame{width:min(254px,84vw)!important;height:218px!important;aspect-ratio:auto!important}
+              .fsBlenderCrystalCanvas{inset:-8%!important;width:116%!important;height:116%!important}
+              .fsPCrystalCore{inset:16% 22% 18%!important;transform:scale(.9)}
+              .fsMainCrystalFloat{width:112px!important;height:160px!important;margin-left:-56px!important;margin-top:-80px!important}
+              .fsVolCrystal{width:108px!important;height:158px!important;margin-left:-54px!important;margin-top:-79px!important}
+              .fsVolFacet{width:36px!important;height:96px!important;margin-left:-18px!important;margin-top:-34px!important}
+              .fsVolFacet:nth-child(7){width:88px!important;height:52px!important;margin-left:-44px!important;margin-top:-82px!important}
+              .fsVolFacet:nth-child(8){width:84px!important;height:62px!important;margin-left:-42px!important;margin-top:36px!important}
+              .fsOrbitShell{width:82%!important;height:82%!important;margin:-41% 0 0 -41%!important}
+              .fsCrystalRays{width:52%!important}
+              .fsPCard{max-width:none!important;width:100%!important;padding:13px!important}
+              .fsPCard:nth-of-type(1){grid-column:1!important;grid-row:2!important}
+              .fsPCard:nth-of-type(2){grid-column:2!important;grid-row:2!important}
+              .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
+              .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
+            }
+            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays{animation:none!important}}
           `}</style>
-          <div style={{ padding: 'clamp(20px,3vh,36px) clamp(20px,3vw,40px) 0', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}` }} />
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Personnalisation</span>
+
+          {/* ── Header — refined typographic rhythm ── */}
+          <div style={{padding:'clamp(18px,2.8vh,30px) clamp(20px,3vw,40px) 0',flexShrink:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+              <div style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,.55)'}}/>
+              <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.18em',textTransform:'uppercase',color:'rgba(255,255,255,.55)'}}>Personnalisation</span>
             </div>
-            <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(22px,3.2vh,36px)', letterSpacing: '-0.04em', lineHeight: 1.08, marginBottom: 10 }}>
-              Faites-en<br />votre espace.
-            </div>
-            <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.65 }}>
-              Adaptez chaque détail de LumenOS à votre identité, du dashboard jusqu'à vos notes.
-            </div>
+            <div style={{fontFamily:T.display,fontWeight:700,fontSize:'clamp(22px,2.8vh,32px)',letterSpacing:'-0.035em',lineHeight:1.05,marginBottom:10,color:'rgba(255,255,255,.96)'}}>Faites-en votre espace.</div>
+            <div style={{fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.55,fontWeight:400,maxWidth:'42ch'}}>Quatre dimensions, un seul prisme. Ajustez ce que vous voyez, lisez et habitez.</div>
           </div>
-          <div className="fs-perso-grid">
-            {CARDS.map(card => {
+
+          {/* ── Radial grid layout ── */}
+          <div className="fsPLayout">
+
+            {/* SVG flux overlay — hairline gradient strokes, no particles */}
+            <svg className="fsPSvgOvl" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:4,overflow:'visible'}} viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                {FLUX.map(f => (
+                  <linearGradient key={f.key} id={`fsG${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%"   stopColor={f.c} stopOpacity=".42"/>
+                    <stop offset="55%"  stopColor={f.c} stopOpacity=".14"/>
+                    <stop offset="100%" stopColor={f.c} stopOpacity="0"/>
+                  </linearGradient>
+                ))}
+              </defs>
+              {FLUX.map((f, i) => (
+                <g key={f.key} className="fsPFluxLine" style={{animation:`fsFluxBreathe 5s ease-in-out infinite`,animationDelay:`${-i*0.7}s`}}>
+                  {/* Single hairline stroke */}
+                  <path d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth=".4" fill="none" strokeLinecap="round"/>
+                  {/* Tiny static endpoint dot at card corner */}
+                  <circle cx={f.cx} cy={f.cy} r=".75" fill={f.c} opacity=".55"/>
+                </g>
+              ))}
+            </svg>
+
+            {/* ── 4 Compact corner cards — refined typography ── */}
+            {CARDS.map((card, i) => {
+              const [gc, gr] = POS[i];
               const h = hov === card.id;
               return (
-                <div key={card.id} className="fs-perso-card" onClick={() => onNavigate(card.target)}
+                <div key={card.id} className="fsPCard"
+                  onClick={() => onNavigate(card.target)}
                   onMouseEnter={() => setHov(card.id)} onMouseLeave={() => setHov(null)}
-                  style={{ borderRadius: 24, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.052)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.058)'}`, backdropFilter: 'blur(32px)', padding: 'clamp(16px,2.2vh,24px)', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.09), 0 0 60px ${card.c1}18` : '0 4px 24px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth:0 }}>
-                  <div style={{ position: 'absolute', top: -70, right: -70, width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${card.c1}${h ? '2a' : '18'} 0%, ${card.c2}10 55%, transparent 72%)`, transition: 'all 0.45s', transform: h ? 'scale(1.12)' : 'scale(1)', pointerEvents: 'none' }} />
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', background: `linear-gradient(135deg,${card.c1}20,${card.c2}14)`, border: `1px solid ${card.c1}30`, borderRadius: 99, padding: '3px 10px', marginBottom: 10, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: card.c1 }}>{card.eyebrow}</div>
-                      <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(16px,2.2vh,22px)', letterSpacing: '-0.03em', marginBottom: 6 }}>{card.title}</div>
-                      <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.6 }}>{card.desc}</div>
+                  style={{
+                    gridColumn:gc, gridRow:gr,
+                    background: h ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)',
+                    border:`1px solid ${h ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)'}`,
+                    boxShadow: h ? `0 12px 32px rgba(0,0,0,.36),0 0 0 .5px rgba(255,255,255,.06)` : '0 1px 8px rgba(0,0,0,.12)',
+                    transform: h ? 'translateY(-2px)' : 'translateY(0)',
+                    zIndex: h ? 10 : 2,
+                  }}
+                >
+                  {/* Whisper-thin corner glow on hover only */}
+                  <div style={{position:'absolute',inset:0,borderRadius:'inherit',background:`radial-gradient(circle at 90% 10%,${card.c1}${h?'1c':'00'},transparent 60%)`,transition:'all .5s',pointerEvents:'none'}}/>
+
+                  {/* Top row: icon (left) + arrow indicator (right) */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',position:'relative'}}>
+                    <div style={{width:28,height:28,borderRadius:9,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',justifyContent:'center',color: h ? card.c1 : 'rgba(255,255,255,.65)',transition:'color .35s'}}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg>
                     </div>
-                    <div style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', color: h ? '#07070d' : T.muted, boxShadow: h ? `0 6px 22px ${card.c1}44` : 'none', transform: h ? 'scale(1.06)' : 'scale(1)' }}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg></div>
+                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color:h?'rgba(255,255,255,.7)':'rgba(255,255,255,.25)',transform:h?'translateX(2px)':'translateX(0)',transition:'all .35s cubic-bezier(.22,1,.36,1)'}}><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                   </div>
-                  {renderMini(card)}
-                  <div style={{ display: 'flex', gap: 5, marginTop: 14, position: 'relative' }}>
-                    {[...Array(card.bars)].map((_, i) => (
-                      <div key={i} style={{ height: 3, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
-                    ))}
-                  </div>
+
+                  {/* Eyebrow */}
+                  <div style={{fontSize:9,fontWeight:600,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginTop:'auto'}}>{card.eyebrow}</div>
+
+                  {/* Title — typographic hero */}
+                  <div style={{fontFamily:T.display,fontWeight:600,fontSize:'clamp(15px,1.9vh,18px)',letterSpacing:'-0.02em',color:'rgba(255,255,255,.96)',position:'relative'}}>{card.title}</div>
                 </div>
               );
             })}
+
+            {/* ── Center: Orbital Personalization System — infinite rings + 3D crystal ── */}
+            <div className="fsPCenter">
+              <div className="fsCrystalStageFrame" style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
+                <div className="fsCrystalScene">
+                  <BlenderCrystalScene />
+                  <div className="fsPHalo" style={{position:'absolute',inset:'-12%',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                  <div className="fsOrbitShell">
+                    {FRAGMENTS.map((frag, i) => (
+                      <div key={i} className="fsCrystalShard" style={{
+                        left:`${frag.x}%`,
+                        top:`${frag.y}%`,
+                        width:frag.size,
+                        height:frag.size * 1.45,
+                        marginLeft:frag.size / -2,
+                        marginTop:(frag.size * 1.45) / -2,
+                        animationDuration:`${frag.dur}s`,
+                        animationDelay:`${frag.delay}s`,
+                        transform:`translateZ(${frag.z}px)`,
+                      }}>
+                        <div className="fsShard3d" style={{'--shard-color':frag.color,'--shard-depth':Math.max(2, frag.size * .42)}}>
+                          {[0,1,2,3].map(face => <span key={face} className="fsShardFace"/>)}
+                        </div>
+                        <svg viewBox="0 0 20 30" width={frag.size} height={frag.size * 1.45} aria-hidden="true">
+                          <polygon points="10,1 18,9 13,29 7,29 2,9" fill={frag.color} opacity=".76"/>
+                          <path d="M10 1v28M2 9h16M7 29 10 9l3 20" stroke="rgba(255,255,255,.54)" strokeWidth="1" fill="none" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="fsMainCrystalFloat">
+                    <div className="fsMainCrystalTurn">
+                      <div className="fsVolCrystal" aria-hidden="true">
+                        {[0,1,2,3,4,5,6,7].map(face => <span key={face} className="fsVolFacet"/>)}
+                      </div>
+                      <svg className="fsMainCrystalSvg" viewBox="0 0 124 178" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="fsMainCrystalLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(245,248,255,.92)"/>
+                            <stop offset="38%" stopColor="rgba(165,184,255,.58)"/>
+                            <stop offset="100%" stopColor="rgba(74,65,145,.42)"/>
+                          </linearGradient>
+                          <linearGradient id="fsMainCrystalRight" x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(184,244,255,.84)"/>
+                            <stop offset="46%" stopColor="rgba(192,132,252,.5)"/>
+                            <stop offset="100%" stopColor="rgba(34,27,84,.62)"/>
+                          </linearGradient>
+                          <linearGradient id="fsMainCrystalCore" x1="50%" y1="0%" x2="50%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(255,255,255,.95)"/>
+                            <stop offset="30%" stopColor="rgba(226,232,255,.74)"/>
+                            <stop offset="66%" stopColor="rgba(111,151,255,.38)"/>
+                            <stop offset="100%" stopColor="rgba(18,16,52,.72)"/>
+                          </linearGradient>
+                          <filter id="fsMainCrystalGlow" x="-45%" y="-35%" width="190%" height="180%">
+                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                            <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.72 0 0 0 0 1 0 0 0 .55 0"/>
+                            <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+                          </filter>
+                        </defs>
+                        <path d="M62 4 112 42 94 134 62 174 30 134 12 42Z" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.52)" strokeWidth="1.2" filter="url(#fsMainCrystalGlow)"/>
+                        <polygon points="62,4 112,42 62,54 12,42" fill="rgba(255,255,255,.74)" opacity=".82"/>
+                        <polygon points="12,42 62,54 30,134" fill="url(#fsMainCrystalLeft)"/>
+                        <polygon points="112,42 62,54 94,134" fill="url(#fsMainCrystalRight)"/>
+                        <polygon points="62,54 94,134 62,174 30,134" fill="url(#fsMainCrystalCore)"/>
+                        <polygon points="62,4 62,54 12,42" fill="rgba(167,180,255,.38)"/>
+                        <polygon points="62,4 112,42 62,54" fill="rgba(103,232,249,.34)"/>
+                        <path d="M62 5v168M12 42l50 12 50-12M30 134l32-80 32 80M30 134h64" stroke="rgba(255,255,255,.42)" strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M44 48 62 14 82 47M42 80 61 58M83 80 64 58" stroke="rgba(255,255,255,.24)" strokeWidth=".8" fill="none" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="fsCrystalFloor" style={{position:'absolute',left:'23%',right:'23%',bottom:'15%',height:'8%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.36),rgba(103,232,249,.16) 42%,transparent 72%)',filter:'blur(9px)',pointerEvents:'none',zIndex:2}}/>
+                </div>
+
+                {/* Soft ambient halo */}
+                <div className="fsPHalo" style={{position:'absolute',inset:'-18%',borderRadius:'50%',background:'radial-gradient(circle,rgba(167,180,255,.16),rgba(192,132,252,.06) 50%,transparent 72%)',filter:'blur(28px)',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                {/* Float wrapper — gentle vertical breath */}
+                <div className="fsPFloat" style={{animation:'fsOrbFloat 6s ease-in-out infinite',width:'100%',height:'100%',position:'relative'}}>
+
+                  {/* 3D scene with perspective */}
+                  <div style={{perspective:'780px',perspectiveOrigin:'50% 50%',width:'100%',height:'100%',position:'relative',transformStyle:'preserve-3d'}}>
+
+                    {/* Drop shadow under entire system */}
+                    <div style={{position:'absolute',left:'18%',right:'18%',bottom:'-4%',height:'10%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(0,0,0,.5),transparent 65%)',filter:'blur(8px)',pointerEvents:'none'}}/>
+
+                    {/* ── Ring 1 — Outer horizontal orbit (18s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'-3%',borderRadius:'50%',border:'1.5px solid rgba(255,255,255,.18)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.06), 0 0 28px rgba(167,180,250,.05)',animation:'fsRingOuter 22s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      {/* Satellite node */}
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-3,width:6,height:6,marginLeft:-3,borderRadius:'50%',background:'rgba(255,255,255,.96)',boxShadow:'0 0 10px rgba(167,180,250,.85),0 0 3px #fff',animation:'fsRingPulse 3s ease-in-out infinite'}}/>
+                      {/* Counter-satellite (opposite side) */}
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',bottom:-2,width:3,height:3,marginLeft:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.6)',boxShadow:'0 0 5px rgba(167,180,250,.5)'}}/>
+                    </div>
+
+                    {/* ── Ring 2 — Vertical orbit, reverse direction (28s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'7%',borderRadius:'50%',border:'1.2px solid rgba(255,255,255,.14)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.05), 0 0 22px rgba(240,195,142,.04)',animation:'fsRingMid 32s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2.5,width:5,height:5,marginLeft:-2.5,borderRadius:'50%',background:'rgba(255,255,255,.93)',boxShadow:'0 0 8px rgba(240,195,142,.75)',animation:'fsRingPulse 3.5s ease-in-out infinite',animationDelay:'-1.2s'}}/>
+                    </div>
+
+                    {/* ── Ring 3 — Diagonal orbit (24s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'18%',borderRadius:'50%',border:'1px solid rgba(255,255,255,.12)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.04), 0 0 16px rgba(74,222,128,.03)',animation:'fsRingInner 26s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2,width:4,height:4,marginLeft:-2,borderRadius:'50%',background:'rgba(255,255,255,.9)',boxShadow:'0 0 6px rgba(103,232,249,.7)',animation:'fsRingPulse 4s ease-in-out infinite',animationDelay:'-2s'}}/>
+                      <div className="fsRingNode" style={{position:'absolute',right:-1.5,top:'50%',width:3,height:3,marginTop:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.55)',boxShadow:'0 0 5px rgba(74,222,128,.5)'}}/>
+                    </div>
+
+                    {/* ── Central 3D Crystal — floating octahedron ── */}
+                    <div className="fsPCrystalCore" style={{position:'absolute',inset:'14% 18% 18%',display:'flex',alignItems:'center',justifyContent:'center',zIndex:3,transformStyle:'preserve-3d'}}>
+
+                      {/* Inner gleam halo behind crystal */}
+                      <div className="fsCrystalGleam" style={{position:'absolute',inset:'-34%',borderRadius:28,clipPath:'polygon(50% 0%,92% 28%,76% 100%,24% 100%,8% 28%)',background:'conic-gradient(from 90deg,rgba(255,255,255,.22),rgba(167,180,255,.18) 25%,transparent 50%,rgba(192,132,252,.16) 75%,rgba(255,255,255,.22))',filter:'blur(14px)',animation:'fsCrystalGleam 9s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                      {/* Subtle tilt wrapper for organic motion */}
+                      <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalTilt 11s ease-in-out infinite'}}>
+                        {/* Y-axis spin */}
+                        <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalSpin 14s linear infinite'}}>
+
+                          {/* 8 octahedron facets — 4 top + 4 bottom, each at correct 3D position */}
+                          {[
+                            {a:45,  t:true},  {a:135, t:true},  {a:225, t:true},  {a:315, t:true},
+                            {a:45,  t:false}, {a:135, t:false}, {a:225, t:false}, {a:315, t:false},
+                          ].map((f, i) => (
+                            <svg key={i} viewBox="0 0 80 100" style={{
+                              position:'absolute',
+                              top:'50%', left:'50%',
+                              width:84, height:112,
+                              marginLeft:-42, marginTop:-56,
+                              /* Order matters: translateZ AFTER rotations so it moves along the rotated normal */
+                              transform:`translateZ(34px) rotateY(${f.a}deg) rotateX(${f.t?58:-58}deg)`,
+                              transformOrigin:'50% 50%',
+                              overflow:'visible',
+                              backfaceVisibility:'visible',
+                            }}>
+                              <defs>
+                                <linearGradient id={`fsCG${i}`} x1="50%" y1={f.t?"0%":"100%"} x2="50%" y2={f.t?"100%":"0%"}>
+                                  <stop offset="0%" stopColor="rgba(255,255,255,.55)"/>
+                                  <stop offset="22%" stopColor="rgba(220,225,255,.32)"/>
+                                  <stop offset="55%" stopColor="rgba(167,180,255,.18)"/>
+                                  <stop offset="85%" stopColor="rgba(120,100,170,.12)"/>
+                                  <stop offset="100%" stopColor="rgba(16,11,32,.6)"/>
+                                </linearGradient>
+                                <linearGradient id={`fsCE${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="rgba(255,255,255,.62)"/>
+                                  <stop offset="100%" stopColor="rgba(255,255,255,.22)"/>
+                                </linearGradient>
+                              </defs>
+                              {/* Main facet — triangle */}
+                              <polygon
+                                points={f.t ? "40,4 76,92 4,92" : "4,8 76,8 40,96"}
+                                fill={`url(#fsCG${i})`}
+                                stroke={`url(#fsCE${i})`}
+                                strokeWidth="0.9"
+                                strokeLinejoin="round"
+                              />
+                              {/* Inner spine — adds 3D facet definition */}
+                              <line
+                                x1="40" y1={f.t?"4":"96"} x2="40" y2={f.t?"92":"8"}
+                                stroke="rgba(255,255,255,.18)"
+                                strokeWidth="0.45"
+                              />
+                            </svg>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Caustic glow underneath — subtle ground hint */}
+                      <div className="fsCrystalFloor" style={{position:'absolute',left:'8%',right:'8%',bottom:'-12%',height:'13%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.34),rgba(103,232,249,.14) 42%,transparent 70%)',filter:'blur(8px)',pointerEvents:'none'}}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -9803,12 +10299,15 @@
             <div style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
               <div style={{ position:'absolute', inset:0, background: friendBg, opacity:0.72, pointerEvents:'none' }}/>
               {loading ? (
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:16 }}>
-                  <svg width={36} height={36} viewBox="0 0 24 24" fill="none" style={{animation:'fwSpin 1s linear infinite'}}>
-                    <circle cx={12} cy={12} r={10} stroke="rgba(165,184,255,0.14)" strokeWidth={2}/>
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke={T.c1} strokeWidth={2} strokeLinecap="round"/>
-                  </svg>
-                  <div style={{ fontSize:13, color:T.muted, letterSpacing:'-0.01em' }}>Chargement de l'espace de {friend.name}…</div>
+                <div style={{ position:'relative', zIndex:1, height:'100%', display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12 }}>
+                  {[{c:'1/6',r:'1/3'},{c:'6/10',r:'1/2'},{c:'10/13',r:'1/2'},{c:'6/13',r:'2/4'},{c:'1/5',r:'3/5'},{c:'5/9',r:'4/5'},{c:'9/13',r:'4/5'}].map((s,i)=>(
+                    <div key={i} className="fs-skeleton" style={{gridColumn:s.c,gridRow:s.r,padding:16,display:'flex',flexDirection:'column',gap:10,animationDelay:`${i*0.05}s`}}>
+                      <span className="fs-skeleton-line" style={{width:i%2?'42%':'58%'}} />
+                      <span className="fs-skeleton-line" style={{width:i%3?'70%':'48%',opacity:.55}} />
+                      {i < 3 && <span className="fs-skeleton-line" style={{width:'34%',opacity:.34,marginTop:'auto'}} />}
+                    </div>
+                  ))}
+                  <div style={{position:'absolute',left:18,bottom:14,fontSize:11,color:T.muted,letterSpacing:'0.04em',fontWeight:750}}>Chargement de l'espace de {friend.name}…</div>
                 </div>
               ) : loadError ? (
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:12, textAlign:'center', padding:24 }}>
@@ -10254,6 +10753,15 @@
           0%,100%{filter:drop-shadow(0 0 4px currentColor)}
           50%{filter:drop-shadow(0 0 12px currentColor)}
         }
+        @keyframes crystalGoldAura {
+          0%,100%{opacity:0.72;transform:translate(-50%,-50%) scale(0.92) rotate(0deg)}
+          50%{opacity:1;transform:translate(-50%,-50%) scale(1.12) rotate(12deg)}
+        }
+        @keyframes crystalGoldRise {
+          0%{opacity:0;transform:translate(-50%,-100%) scale(0.72)}
+          45%{opacity:1;transform:translate(-50%,-108%) scale(1.12)}
+          100%{opacity:0.86;transform:translate(-50%,-100%) scale(1)}
+        }
         @keyframes pulse-glow {
           0%,100%{opacity:0.86;transform:translateX(-50%) scale(1)}
           50%{opacity:1;transform:translateX(-50%) scale(1.045)}
@@ -10380,6 +10888,30 @@
           transform:translate(-50%,-100%) scale(calc(var(--depth) * 1.08));z-index:20;
           filter:drop-shadow(0 0 22px var(--crystal-glow)) drop-shadow(0 0 48px var(--crystal-glow));
         }
+        .fs-cave-crystal.is-gold {
+          filter:drop-shadow(0 0 16px rgba(255,215,112,0.72)) drop-shadow(0 0 44px rgba(255,183,55,0.46));
+        }
+        .fs-cave-crystal.is-gold:hover,.fs-cave-crystal.is-gold.is-selected {
+          filter:drop-shadow(0 0 30px rgba(255,232,150,0.96)) drop-shadow(0 0 72px rgba(255,183,55,0.78));
+        }
+        .fs-cave-gold-aura {
+          position:absolute;left:50%;top:42%;width:132%;height:132%;border-radius:50%;z-index:1;pointer-events:none;
+          transform:translate(-50%,-50%);
+          background:
+            conic-gradient(from 20deg,transparent 0 10%,rgba(255,239,160,0.44) 12%,transparent 18% 34%,rgba(255,198,72,0.38) 38%,transparent 44% 66%,rgba(255,245,190,0.34) 70%,transparent 78% 100%),
+            radial-gradient(circle,rgba(255,227,125,0.38),rgba(255,174,38,0.16) 42%,transparent 72%);
+          filter:blur(1px);
+          animation:crystalGoldAura 3.6s ease-in-out infinite;
+        }
+        .fs-cave-crystal.is-new-gold .fs-cave-gold-aura {
+          width:178%;height:178%;animation:crystalGoldRise 1.5s cubic-bezier(.16,1,.3,1) both, crystalGoldAura 3.4s ease-in-out 1.5s infinite;
+        }
+        .fs-cave-gold-badge {
+          position:absolute;top:-8%;right:-16%;z-index:4;padding:4px 8px;border-radius:999px;
+          font-size:7.5px;font-weight:950;letter-spacing:0.1em;text-transform:uppercase;color:#1b1202;
+          background:linear-gradient(135deg,#fff8c7,#ffd36a 48%,#f59e0b);
+          box-shadow:0 0 22px rgba(255,211,106,0.72),0 8px 18px rgba(0,0,0,0.34);
+        }
         .fs-cave-crystal-inner {
           animation:pulse-glow 3s infinite;transform-origin:center bottom;
           position:absolute;left:50%;bottom:-15%;transform:translateX(-50%);
@@ -10482,6 +11014,7 @@
       { id:'amethyst', name:'Améthyste',   a:'#a735c0', b:'#ecc8f4', c:'#620e80', glow:'rgba(186,104,200,0.62)' },
       { id:'sapphire', name:'Saphir',      a:'#1565c0', b:'#93c5fd', c:'#07235c', glow:'rgba(66,165,245,0.65)'  },
       { id:'diamond',  name:'Diamant',     a:'#67e8f9', b:'#ffffff', c:'#007a8a', glow:'rgba(103,232,249,0.78)' },
+      { id:'gold',     name:'Cristal doré', a:'#f59e0b', b:'#fff7b8', c:'#8a4a04', glow:'rgba(255,202,75,0.9)' },
     ];
     window.CRYSTAL_PALETTES = CRYSTAL_PALETTES;
 
@@ -10633,7 +11166,7 @@
       React.useEffect(() => {
         if (phase !== 'complete') return;
         const crystal = _buildCrystal(1, session);
-        addToast({ message: '✦ Diamant forgé ! Magnifique concentration.', type: 'success', duration: 5000 });
+        addToast({ message: crystal?.rarity === 'gold' ? 'Cristal doré forgé ! Ultra rare.' : '✦ Diamant forgé ! Magnifique concentration.', type: 'success', duration: 5000 });
         const t = setTimeout(() => onEnd && onEnd(crystal), 2800);
         return () => clearTimeout(t);
       }, [phase]);
@@ -10644,13 +11177,16 @@
 
       const progress  = Math.min(elapsed / totalMs, 1);
       const si        = phase === 'complete' ? 3 : _cStateIdx(progress);
+      const isGold = session?.crystalRarity === 'gold' || session?.crystalGradient === 'gold';
       /* Use session gradient if available, otherwise fall back to CRYSTAL_PALETTES */
       const sessionGrad = session?.crystalGradient && window.CRYSTAL_GRADIENTS
         ? window.CRYSTAL_GRADIENTS.find(g => g.id === session.crystalGradient)
         : null;
       /* colorProgress for the compact disc ring/border (matches crystal reveal) */
       const cpDisc = phase === 'complete' ? 1 : Math.pow(Math.min(progress * 1.4, 1), 0.65);
-      const pal = sessionGrad
+      const pal = isGold
+        ? { name:'Cristal doré', a:'#f59e0b', b:'#fff7b8', c:'#8a4a04', glow:'rgba(255,202,75,0.92)' }
+        : sessionGrad
         ? {
             name: sessionGrad.name,
             a: cpDisc < 0.15 ? '#8fa8b4' : sessionGrad.stops[0],
@@ -10668,7 +11204,7 @@
 
       const handleEnd = () => {
         const crystal = progress >= 0.5 ? _buildCrystal(progress, session) : null;
-        if (crystal) addToast({ message: `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(), type: 'success', duration: 3000 });
+        if (crystal) addToast({ message: crystal.rarity === 'gold' ? 'Cristal doré sauvegardé ! 1 chance sur 20.' : `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(), type: 'success', duration: 3000 });
         onEnd && onEnd(crystal);
       };
 
@@ -10732,12 +11268,13 @@
             background: 'rgba(7,6,17,0.88)',
             backdropFilter: 'blur(32px)',
             border: `1.5px solid ${pal.a}55`,
-            boxShadow: `0 8px 32px rgba(0,0,0,0.55), 0 0 28px ${pal.glow}`,
+            boxShadow: isGold ? `0 10px 38px rgba(0,0,0,0.58), 0 0 34px rgba(255,202,75,0.76), 0 0 88px rgba(245,158,11,0.42)` : `0 8px 32px rgba(0,0,0,0.55), 0 0 28px ${pal.glow}`,
             transition: 'border-color 1.8s ease, box-shadow 1.8s ease, transform 0.22s cubic-bezier(0.34,1.56,0.64,1)',
             transform: hovered ? 'scale(1.08)' : 'scale(1)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {/* Progress ring */}
+            {isGold && <span style={{position:'absolute',inset:-18,borderRadius:'50%',background:'conic-gradient(from 20deg,transparent,rgba(255,245,190,0.34),transparent 35%,rgba(245,158,11,0.28),transparent 70%)',filter:'blur(1px)',animation:'crystalGoldAura 3.4s ease-in-out infinite',pointerEvents:'none'}} />}
             <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', transform:'rotate(-90deg)' }} viewBox="0 0 80 80">
               <circle cx={40} cy={40} r={Rc} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={4}/>
               <circle cx={40} cy={40} r={Rc} fill="none" stroke={pal.a} strokeWidth={4}
@@ -10752,7 +11289,7 @@
               {session?.crystalShape && window.ShapedCrystalGem
                 ? React.createElement(window.ShapedCrystalGem, {
                     shape: session.crystalShape,
-                    gradientId: session.crystalGradient,
+                    gradientId: isGold ? 'gold' : session.crystalGradient,
                     progress: phase==='complete' ? 1 : progress,
                     colorProgress: phase==='complete' ? 1 : Math.pow(progress, 0.62),
                     timeOffset: elapsed,
@@ -10769,15 +11306,17 @@
 
     function _buildCrystal(progress, session) {
       const si = _cStateIdx(Math.min(progress, 1));
+      const isGold = session?.crystalRarity === 'gold' || session?.crystalGradient === 'gold';
       return {
         id: Date.now(),
-        stateIdx: si,
-        palette: CRYSTAL_PALETTES[si].id,
-        name: CRYSTAL_PALETTES[si].name,
+        stateIdx: isGold ? 4 : si,
+        palette: isGold ? 'gold' : CRYSTAL_PALETTES[si].id,
+        name: isGold ? 'Cristal doré' : CRYSTAL_PALETTES[si].name,
+        rarity: isGold ? 'gold' : 'standard',
         duration: session?.duration || 25,
         type: session?.type || 'solo',
         crystalShape: session?.crystalShape || 'diamond',
-        crystalGradient: session?.crystalGradient || null,
+        crystalGradient: isGold ? 'gold' : (session?.crystalGradient || null),
         seed: session?.startTime || Date.now(),
         completedAt: new Date().toISOString(),
       };
@@ -10937,10 +11476,11 @@
               ) : (
                 <div className="fs-cave-crystals">
                   {crystals.map((c, i) => {
-                    const si  = Math.min(c.stateIdx ?? 3, 3);
-                    const pal = CRYSTAL_PALETTES[si];
+                    const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+                    const si  = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
+                    const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
                     const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
-                    const glow = grad?.glow || pal.glow;
+                    const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
                     const isSel = sel === c.id;
                     const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
                     const slot = caveSlots[i % caveSlots.length];
@@ -10953,7 +11493,7 @@
                     const delay = `${(i % 7) * 0.22}s`;
                     return (
                       <button key={c.id}
-                        className={'fs-cave-crystal' + (isSel ? ' is-selected' : '')}
+                        className={'fs-cave-crystal' + (isSel ? ' is-selected' : '') + (isGold ? ' is-gold' : '') + (isGold && isNew ? ' is-new-gold' : '')}
                         style={{
                           '--x':`${x}%`,
                           '--y':`${y}%`,
@@ -10963,23 +11503,26 @@
                           animationDelay:delay
                         }}
                         onClick={()=>setSel(isSel?null:c.id)}>
+                        {isGold && <span className="fs-cave-gold-aura" />}
                         <span className="fs-cave-crystal-base"/>
                         <span className="fs-cave-crystal-socket"/>
+                        {isGold && <span className="fs-cave-gold-badge">{isNew ? 'Doré' : 'Rare'}</span>}
                         {isNew && (
                           <span style={{ position:'absolute', top:'2%', right:'-8%', zIndex:3, fontSize:7.5, fontWeight:900, letterSpacing:'0.1em',
-                            background:pal.a, color:'#07070d', borderRadius:99, padding:'3px 7px', textTransform:'uppercase', boxShadow:`0 0 18px ${glow}` }}>
+                            background:isGold?'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)':pal.a, color:'#07070d', borderRadius:99, padding:'3px 7px', textTransform:'uppercase', boxShadow:`0 0 18px ${glow}` }}>
                             Nouveau
                           </span>
                         )}
                         <span className="fs-cave-crystal-inner" style={{display:'block',zIndex:2}}>
                           {c.crystalShape && window.ShapedCrystalGem
-                            ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:c.crystalGradient, progress:0.88, size:size, seed:c.seed||c.id })
+                            ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold?'gold':c.crystalGradient, progress:0.88, size:size, seed:c.seed||c.id })
                             : <CrystalGem progress={_cStateProgress(si)} size={size}/>
                           }
                         </span>
                         <span className="fs-cave-crystal-tooltip">
                           <span style={{display:'block',fontSize:11,fontWeight:900,color:pal.b,marginBottom:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{pal.name}</span>
                           <span style={{display:'block',fontSize:10,color:'rgba(226,238,255,0.76)'}}>{c.duration || 0} min de focus</span>
+                          {isGold && <span style={{display:'block',fontSize:9,color:'#ffd36a',fontWeight:900,marginTop:4}}>Rare · 1 chance sur 20</span>}
                           <span style={{display:'block',fontSize:9,color:'rgba(226,238,255,0.5)',marginTop:4}}>{fmtDate(c.completedAt)}</span>
                         </span>
                       </button>
@@ -11172,8 +11715,12 @@
     { id:'rose2',    name:'Rose quartz',  stops:['#fb7185','#f472b6'], glow:'rgba(251,113,133,0.72)' },
     { id:'foret2',   name:'Forêt',        stops:['#10b981','#34d399'], glow:'rgba(16,185,129,0.72)'  },
     { id:'cosmos2',  name:'Cosmos',       stops:['#818cf8','#c084fc'], glow:'rgba(129,140,248,0.75)' },
+    { id:'gold',     name:'Cristal doré', stops:['#fff7b8','#ffd36a','#f59e0b'], glow:'rgba(255,202,75,0.92)', rare:true },
   ];
-  window._randomGradient = () => window.CRYSTAL_GRADIENTS[Math.floor(Math.random() * window.CRYSTAL_GRADIENTS.length)].id;
+  window._randomGradient = () => {
+    const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare);
+    return pool[Math.floor(Math.random() * pool.length)].id;
+  };
 
   /* ── Shape definitions ── */
   window.CRYSTAL_SHAPE_DEFS = {
@@ -12228,19 +12775,21 @@
               <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:16}}>Coffre de cristaux</div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(72px,1fr))',gap:10}}>
                 {crystals.slice(0,24).map((c,i)=>{
-                  const si=Math.min(c.stateIdx??3,3);
-                  const pal=CRYSTAL_PALETTES[si];
+                  const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+                  const si=isGold ? 4 : Math.min(c.stateIdx??3,3);
+                  const pal=CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
                   const sz=36+Math.min((c.duration||25)/90,1)*24;
                   return (
                     <div key={c.id} title={`${pal.name} · ${c.duration}min · ${new Date(c.completedAt).toLocaleDateString('fr-FR')}`}
-                      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'10px 6px',borderRadius:16,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',transition:'all 0.22s',cursor:'pointer',animationDelay:`${i*0.04}s`,animation:'crystalCardIn 0.3s both'}}
-                      onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.07)';e.currentTarget.style.transform='translateY(-3px)';}}
-                      onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateY(0)';}}>
+                      style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'10px 6px',borderRadius:16,background:isGold?'linear-gradient(180deg,rgba(255,211,106,0.11),rgba(255,255,255,0.025))':'rgba(255,255,255,0.03)',border:`1px solid ${isGold?'rgba(255,211,106,0.28)':'rgba(255,255,255,0.06)'}`,transition:'all 0.22s',cursor:'pointer',animationDelay:`${i*0.04}s`,animation:'crystalCardIn 0.3s both',boxShadow:isGold?'0 0 32px rgba(255,202,75,0.14), inset 0 1px 0 rgba(255,255,255,0.08)':'none'}}
+                      onMouseEnter={e=>{e.currentTarget.style.background=isGold?'linear-gradient(180deg,rgba(255,211,106,0.18),rgba(255,255,255,0.055))':'rgba(255,255,255,0.07)';e.currentTarget.style.transform='translateY(-3px)';}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=isGold?'linear-gradient(180deg,rgba(255,211,106,0.11),rgba(255,255,255,0.025))':'rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateY(0)';}}>
+                      {isGold && <span style={{position:'absolute',inset:5,borderRadius:14,background:'radial-gradient(circle at 50% 36%,rgba(255,240,173,0.18),transparent 62%)',pointerEvents:'none'}} />}
                       {c.crystalShape && window.ShapedCrystalGem
-                        ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:c.crystalGradient, progress:0.88, size:sz, seed:c.seed||c.id })
+                        ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold?'gold':c.crystalGradient, progress:0.88, size:sz, seed:c.seed||c.id })
                         : React.createElement(window.CrystalGem, { progress:window._cStateProgress(si), size:sz, skin:c.skin })
                       }
-                      <div style={{fontSize:8,color:T.muted,fontWeight:600}}>{c.duration}m</div>
+                      <div style={{fontSize:8,color:isGold?'#ffd36a':T.muted,fontWeight:800}}>{isGold?'Doré · ':''}{c.duration}m</div>
                     </div>
                   );
                 })}
