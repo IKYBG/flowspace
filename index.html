@@ -398,7 +398,15 @@
       .fs-note-edit-body { padding: 14px 20px 20px !important; }
 
       /* ─── Mind map: FAB nouvelle note ─────────────── */
-      .fs-map-mobile-fab { display: flex !important; }
+      .fs-map-mobile-fab {
+        display: flex !important;
+        position: fixed !important;
+        left: 50% !important;
+        right: auto !important;
+        bottom: 92px !important;
+        transform: translateX(-50%) !important;
+        z-index: 1200 !important;
+      }
     }
 
     @media (max-width: 480px) {
@@ -425,7 +433,7 @@
           padding-bottom: env(safe-area-inset-bottom) !important;
         }
         .fs-map-mobile-fab {
-          bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+          bottom: calc(92px + env(safe-area-inset-bottom)) !important;
         }
       }
     }
@@ -436,7 +444,7 @@
       position: absolute;
       bottom: 90px; left: 50%;
       transform: translateX(-50%);
-      z-index: 50;
+      z-index: 1200;
       height: 50px; padding: 0 22px;
       border-radius: 25px; border: none;
       background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
@@ -447,6 +455,7 @@
       box-shadow: 0 14px 38px rgba(var(--theme-c1-rgb), 0.34), 0 4px 10px rgba(0,0,0,0.28);
       -webkit-tap-highlight-color: transparent;
       touch-action: manipulation;
+      pointer-events: auto;
     }
 
     /* Mobile bottom navigation bar */
@@ -2177,20 +2186,77 @@
       while (set.has(cur)) { n++; cur = _prevDay(cur); }
       return n;
     }
+    function _streakGamifValue(streaks) {
+      const last = streaks?.lastDate;
+      if (!last) return 0;
+      const today = _todayStr();
+      if (last !== today && last !== _prevDay(today)) return 0;
+      return Number(streaks.daily || 0);
+    }
+    function _streakUserId(user) {
+      return user?.id || window._fsSbUser?.id || 'g';
+    }
+    function _syncGamifCheckIn(user) {
+      if (!window._gLoad || !window._gSave) return;
+      const uid = _streakUserId(user);
+      const g = window._gLoad(uid);
+      const today = _todayStr();
+      const yest = _prevDay(today);
+      const mon = window._gMon ? window._gMon() : null;
+      if (!g.streaks) g.streaks = { daily:0, weekly:0, lastDate:null, weekStart:null, jokers:1, jokersUsed:0 };
+      if (g.streaks.lastDate !== today) {
+        g.streaks.daily = g.streaks.lastDate === yest ? Number(g.streaks.daily || 0) + 1 : 1;
+        g.streaks.lastDate = today;
+      }
+      if (mon && g.streaks.weekStart !== mon) {
+        g.streaks.weekStart = mon;
+        g.streaks.jokers = 1;
+        g.streaks.jokersUsed = 0;
+      }
+      g.streaks.weekly = Math.floor(Number(g.streaks.daily || 0) / 7);
+      window._gSave(uid, g);
+    }
 
-    function StreakWidget({ variant = 1, style }) {
+    function StreakWidget({ variant = 1, style, user }) {
       const [dates, setDates] = _uSST(() => {
         try { return JSON.parse(localStorage.getItem('fs_streak') || '[]'); } catch(e) { return []; }
       });
+      const [, setGamifPulse] = _uSST(0);
       _uEST(() => {
         try { localStorage.setItem('fs_streak', JSON.stringify(dates)); } catch(e) {}
       }, [dates]);
+      _uEST(() => {
+        const sync = () => {
+          try { setDates(JSON.parse(localStorage.getItem('fs_streak') || '[]')); } catch(e) {}
+          setGamifPulse(v => v + 1);
+        };
+        window.addEventListener('fs-gamif-update', sync);
+        window.addEventListener('fs-streak-update', sync);
+        window.addEventListener('storage', sync);
+        return () => {
+          window.removeEventListener('fs-gamif-update', sync);
+          window.removeEventListener('fs-streak-update', sync);
+          window.removeEventListener('storage', sync);
+        };
+      }, []);
 
       const today = _todayStr();
-      const checkedToday = dates.includes(today);
-      const streak = _calcStreak(dates);
-      const week = _weekDates().map(d => dates.includes(d));
-      const checkIn = () => { if (!checkedToday) setDates(prev => [...prev, today]); };
+      const uid = _streakUserId(user);
+      const gamif = window._gLoad ? window._gLoad(uid) : null;
+      const gamifStreak = _streakGamifValue(gamif?.streaks);
+      const checkedToday = dates.includes(today) || gamif?.streaks?.lastDate === today;
+      const streak = Math.max(_calcStreak(dates), gamifStreak);
+      const week = _weekDates().map(d => dates.includes(d) || !!gamif?.heatmap?.[d] || gamif?.streaks?.lastDate === d);
+      const checkIn = () => {
+        if (checkedToday) return;
+        setDates(prev => {
+          const next = prev.includes(today) ? prev : [...prev, today];
+          try { localStorage.setItem('fs_streak', JSON.stringify(next)); } catch(e) {}
+          return next;
+        });
+        try { window.dispatchEvent(new CustomEvent('fs-streak-update')); } catch(e) {}
+        _syncGamifCheckIn(user);
+      };
 
       if (variant === 1) return (
         <Shell glow={T.warm} style={style}>
@@ -2936,7 +3002,7 @@
       tasks: (v) => React.createElement(TasksWidget, { variant: v }),
       spotify: (v) => React.createElement(SpotifyWidget, { variant: v }),
       goal: (v) => React.createElement(GoalWidget, { variant: v }),
-      streak: (v) => React.createElement(StreakWidget, { variant: v }),
+      streak: (v, id, ctx) => React.createElement(StreakWidget, { variant: v, user: ctx?.user }),
       countdown: (v) => React.createElement(CountdownWidget, { variant: v }),
       links: (v, id) => React.createElement(LinksWidget, { variant: v, widgetId: id }),
       image: (v, id) => React.createElement(ImageWidget, { variant: v, widgetId: id }),
@@ -3237,7 +3303,7 @@
       const greeting = hour < 5 ? 'Encore debout ?' : hour < 12 ? 'Bonjour' : hour < 17 ? 'Bon après-midi' : 'Bonsoir';
       return (
         <div className="fs-dashboard-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {session && <SessionBarPremium session={session} onEnd={onEndSession} focusNudgeOpen={focusNudgeOpen} />}
+          {session && <SessionBarPremium session={session} user={user} onEnd={onEndSession} focusNudgeOpen={focusNudgeOpen} />}
           <div className="fs-dashboard-header" style={{ padding: '24px 32px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <div className="fs-dashboard-header-left" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -3271,7 +3337,7 @@
               const rowSpan = w.row ? parseInt(w.row.split('/')[1]) - parseInt(w.row.split('/')[0]) : 1;
               return (
                 <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms` }}>
-                  {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id) : null}
+                  {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id, { user }) : null}
                 </div>
               );
             })}
@@ -3306,16 +3372,16 @@
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
       const CATALOG = [
-        { id: 'clock', label: 'Clock', name: 'Horloge', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
-        { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
-        { id: 'tasks', label: 'Tasks', name: 'Tâches', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
-        { id: 'spotify', label: 'Spotify', name: 'Musique', category: 'Ambiance', desc: 'Ajouter une zone musicale visuelle pour accompagner le focus.', best: 'Mood de travail', icon: '♪', color: T.green, C: window.SpotifyWidget, variants: [1, 5, 10] },
-        { id: 'goal', label: 'Goal', name: 'Objectif', category: 'Progression', desc: 'Suivre un objectif mesurable avec une barre ou une jauge claire.', best: 'Objectif hebdo', icon: '◎', color: T.c1, C: window.GoalWidget, variants: [1, 2, 10] },
-        { id: 'streak', label: 'Streak', name: 'Régularité', category: 'Habitude', desc: 'Visualiser la série de jours actifs et garder le rythme.', best: 'Habitude focus', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
-        { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
-        { id: 'links', label: 'Links', name: 'Liens rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: '⊞', color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
-        { id: 'image', label: 'Image', name: 'Image', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: '◈', color: T.rose, C: window.ImageWidget, variants: [1] },
-        { id: 'notes', label: 'Notes', name: 'Note rapide', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: '✎', color: T.warm, C: window.NotesWidget, variants: [1, 2] },
+        { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
+        { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
+        { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
+        { id: 'spotify', label: 'Spotify', name: 'Musique', short: 'Ambiance musicale premium', category: 'Ambiance', desc: 'Ajouter une zone musicale visuelle pour accompagner le focus.', best: 'Mood de travail', icon: '♪', color: T.green, C: window.SpotifyWidget, variants: [1, 5, 10] },
+        { id: 'goal', label: 'Goal', name: 'Objectif', short: 'Objectifs mesurables clairs', category: 'Progression', desc: 'Suivre un objectif mesurable avec une barre ou une jauge claire.', best: 'Objectif hebdo', icon: '◎', color: T.c1, C: window.GoalWidget, variants: [1, 2, 10] },
+        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Habitudes en chaine', category: 'Habitude', desc: 'Visualiser la série de jours actifs et garder le rythme.', best: 'Habitude focus', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
+        { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous controle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
+        { id: 'links', label: 'Links', name: 'Liens rapides', short: 'Raccourcis essentiels rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: '⊞', color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
+        { id: 'image', label: 'Image', name: 'Image', short: 'Inspiration visuelle personnelle', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: '◈', color: T.rose, C: window.ImageWidget, variants: [1] },
+        { id: 'notes', label: 'Notes', name: 'Note rapide', short: 'Idees capturees vite', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: '✎', color: T.warm, C: window.NotesWidget, variants: [1, 2] },
       ];
       const TRAY = CATALOG.map(c => c.label);
 
@@ -3522,27 +3588,24 @@
               <button onClick={() => setShowPicker(p => !p)}
                 style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter un widget</button>
               {showPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 7, width: 'min(380px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 9, width: 'min(430px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
                   <div style={{ gridColumn: '1/-1', padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
                     <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.c1 }}>Bibliothèque de widgets</span>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Choisis ce que tu veux voir sur ton dashboard. Tu pourras sélectionner un style avant de l'ajouter.</div>
                   </div>
                   {TRAY.map(name => {
-                    const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.rose }, Tasks: { icon: '✓', c: T.green }, Spotify: { icon: '♪', c: T.green }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.warm }, Countdown: { icon: '⏱', c: T.teal }, Links: { icon: '⊞', c: T.muted }, Image: { icon: '◈', c: T.rose }, Notes: { icon: '✎', c: T.warm } };
-                    const m = META[name] || { icon: '◇', c: T.muted };
+                    const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Spotify: { icon: '♪', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
+                    const m = META[name] || { icon: '◇', c: T.c1 };
                     const cat = CATALOG.find(c => c.label === name);
-                    const friendly = cat || { name, desc: '', best: '', category: '', color: T.muted };
+                    const friendly = cat || { name, short: name, desc: '', best: '', category: '', color: T.c1 };
                     return (
                       <button key={name} onClick={() => { setPickerWidget(name); setShowPicker(false); }}
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.055)', borderRadius: 14, padding: '12px 13px', cursor: 'pointer', display: 'grid', gridTemplateColumns: '34px 1fr auto', alignItems: 'center', gap: 12, transition: 'all 0.15s', textAlign: 'left', fontFamily: T.font }}
-                        onMouseEnter={e => { e.currentTarget.style.background = `${c1(0.078)}`; e.currentTarget.style.borderColor = `${c1(0.2)}`; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
-                        <span style={{ width: 34, height: 34, borderRadius: 12, background: `${friendly.color || m.c || T.muted}16`, border: `1px solid ${friendly.color || m.c || T.muted}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, lineHeight: 1, color: friendly.color || m.c || T.muted, flexShrink: 0 }}>{friendly.icon || m.icon}</span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: T.text, lineHeight: 1 }}>{friendly.name || name}</span>
-                          <span style={{ fontSize: 11, color: T.muted, lineHeight: 1.35 }}>{friendly.desc}</span>
-                          <span style={{ fontSize: 10, color: T.muted, lineHeight: 1 }}>{cat ? cat.variants.length : 1} styles →</span>
-                        </div>
+                        style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))', border: '1px solid rgba(255,255,255,0.065)', borderRadius: 16, padding: '14px 10px 12px', minHeight: 112, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s cubic-bezier(.16,1,.3,1)', textAlign: 'center', fontFamily: T.font, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055)' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(180deg,${c1(0.13)},rgba(255,255,255,0.035))`; e.currentTarget.style.borderColor = `${c1(0.28)}`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.065)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                        <span style={{ width: 44, height: 44, borderRadius: 16, background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', border: '1px solid rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, lineHeight: 1, color: '#070810', flexShrink: 0, boxShadow: `0 12px 30px ${c1(0.22)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{friendly.icon || m.icon}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 900, color: T.text, lineHeight: 1, letterSpacing: '-0.015em', maxWidth: 124 }}>{friendly.name || name}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: T.muted, lineHeight: 1.18, maxWidth: 124 }}>{friendly.short || name}</span>
                       </button>
                     );
                   })}
@@ -3659,19 +3722,25 @@
               })}
             </div>
           </div>
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', padding: '14px 32px', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, overflowX: 'auto' }}>
-            <Lbl ch="ajouter un widget" style={{ whiteSpace: 'nowrap', marginRight: 8 }} />
+          {false && <div style={{ borderTop: '1px solid rgba(255,255,255,0.055)', padding: '16px 32px', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0, overflowX: 'auto', background:'linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.18),rgba(var(--mineral-bg-rgb),0.34))', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)' }}>
+            <div style={{ flexShrink:0, marginRight:6, minWidth:92 }}>
+              <div style={{ fontSize:9, fontWeight:850, letterSpacing:'0.13em', textTransform:'uppercase', color:T.muted }}>Ajouter</div>
+              <div style={{ marginTop:3, fontSize:12, fontWeight:850, color:T.text, letterSpacing:'-0.015em' }}>Widgets</div>
+            </div>
             {TRAY.map(name => {
               const cat = CATALOG.find(c => c.label === name);
               return (
-                <button key={name} onClick={() => setPickerWidget(name)} title={cat?.desc || name} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '8px 13px', cursor: 'pointer', color: T.muted, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: T.font, transition: 'all 0.2s', flexShrink: 0, display:'flex', alignItems:'center', gap:8 }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.text; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = T.muted; }}>
+                <button key={name} onClick={() => setPickerWidget(name)} title={cat?.short || name} style={{ width:190, minHeight:66, background:'linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.028))', border:'1px solid rgba(255,255,255,0.075)', borderRadius:18, padding:'10px 12px', cursor:'pointer', color:T.text, fontSize:0, fontFamily:T.font, transition:'transform .2s cubic-bezier(.16,1,.3,1), border-color .2s var(--mineral-ease), background .2s var(--mineral-ease), box-shadow .2s var(--mineral-ease)', flexShrink:0, display:'grid', gridTemplateColumns:'38px 1fr', alignItems:'center', gap:11, textAlign:'left', boxShadow:'0 12px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(145deg,${c1(0.16)},rgba(255,255,255,0.04))`; e.currentTarget.style.borderColor = `${c1(0.34)}`; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 18px 42px rgba(0,0,0,0.28), 0 0 24px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.09)`; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.028))'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.075)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 12px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)'; }}>
+                  <span style={{width:32,height:32,borderRadius:13,display:'grid',placeItems:'center',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:15,boxShadow:`0 10px 24px ${c1(0.16)}, inset 0 1px 0 rgba(255,255,255,0.34)`}}>{cat?.icon || '◇'}</span>
+                  <span style={{gridColumn:2,fontSize:12.5,fontWeight:900,lineHeight:1,maxWidth:118,color:'rgba(244,246,251,0.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cat?.name || name}</span>
+                  <span style={{gridColumn:2,fontSize:10.6,fontWeight:650,lineHeight:1.12,maxWidth:118,color:T.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cat?.short || name}</span>
                   <span style={{ color:cat?.color || T.c1 }}>{cat?.icon || '◇'}</span>{cat?.name || name}
                 </button>
               );
             })}
-          </div>
+          </div>}
           {/* ── Variant-picker overlay ─────────────────────────────────────── */}
           {pickerWidget && (() => {
             const cat = CATALOG.find(c => c.label === pickerWidget);
@@ -3691,15 +3760,17 @@
                       <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 22, letterSpacing: '-0.035em' }}>{cat.name || cat.label}</span>
                       <span style={{ fontSize: 10, color: cat.color || T.c1, background: `${cat.color || T.c1}12`, border: `1px solid ${cat.color || T.c1}22`, borderRadius: 99, padding: '3px 8px', fontWeight: 800 }}>{cat.category}</span>
                     </div>
-                    <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.45 }}>{cat.desc}</span>
+                    <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.45 }}>{cat.short}</span>
                   </div>
                 </div>
                 {/* Category tab strip */}
-                <div style={{ padding: '12px 32px 0', display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0 }}>
+                <div style={{ padding: '12px 32px 0', display: 'flex', gap: 9, overflowX: 'auto', flexShrink: 0 }}>
                   {CATALOG.map(c => (
                     <button key={c.id} onClick={() => setPickerWidget(c.label)}
-                      style={{ background: cat.id === c.id ? `${c1(0.094)}` : 'transparent', border: `1px solid ${cat.id === c.id ? c1(0.267) : 'rgba(255,255,255,0.07)'}`, borderRadius: 99, padding: '5px 14px', cursor: 'pointer', color: cat.id === c.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.15s', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      {c.name || c.label}
+                      style={{ width:118, minHeight:84, background: cat.id === c.id ? `linear-gradient(180deg,${c1(0.14)},rgba(255,255,255,0.035))` : 'rgba(255,255,255,0.028)', border: `1px solid ${cat.id === c.id ? c1(0.34) : 'rgba(255,255,255,0.07)'}`, borderRadius:18, padding:'9px 8px', cursor:'pointer', color: cat.id === c.id ? T.text : T.muted, fontSize:11, fontWeight:760, fontFamily:T.font, transition:'all .2s cubic-bezier(.16,1,.3,1)', flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6, textAlign:'center' }}>
+                      <span style={{width:30,height:30,borderRadius:12,display:'grid',placeItems:'center',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:14,boxShadow:`0 10px 24px ${c1(cat.id === c.id ? 0.24 : 0.12)}, inset 0 1px 0 rgba(255,255,255,0.34)`}}>{c.icon}</span>
+                      <span style={{fontSize:11.5,fontWeight:900,lineHeight:1,color:cat.id === c.id ? T.text : 'rgba(244,246,251,0.78)'}}>{c.name || c.label}</span>
+                      <span style={{fontSize:9.8,fontWeight:650,lineHeight:1.12,color:T.muted,maxWidth:98}}>{c.short}</span>
                     </button>
                   ))}
                 </div>
@@ -4201,43 +4272,101 @@
     function FocusHomeTab({ user, sessions = [], onStart }) {
       const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
       const last = [...sessions].sort((a,b) => new Date(b.endedAt || b.startedAt || 0) - new Date(a.endedAt || a.startedAt || 0))[0];
+      const completed = sessions.filter(s => s.completed).length;
       const stats = [
         { label:'Sessions', value:sessions.length, unit:'total' },
         { label:'Temps focus', value:Math.round(total), unit:'min' },
-        { label:'Dernière', value:last ? (last.completed ? 'Faite' : 'En cours') : '—', unit:last ? (last.type === 'together' ? 'ensemble' : 'solo') : 'aucune' },
+        { label:'Réussites', value:completed, unit:'terminées' },
       ];
+      const readyMeta = last
+        ? `${last.completed ? 'Dernière session terminée' : 'Session active'} · ${last.type === 'together' ? 'ensemble' : 'solo'}`
+        : 'Aucune session encore lancée';
       return (
-        <div className="fs-fht-root" style={{height:'100%',overflowY:'auto',padding:'20px 36px 36px',fontFamily:T.font}}>
-          <div className="fs-fht-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1.15fr) minmax(280px,0.85fr)',gap:18,alignItems:'stretch'}}>
+        <div className="fs-fht-root" style={{height:'100%',overflowY:'auto',padding:'22px 36px 36px',fontFamily:T.font}}>
+          <style>{`
+            @keyframes fsFocusFloat3D { 0%,100%{ transform:translate3d(0,-5px,42px) rotateX(58deg) rotateZ(-16deg); } 50%{ transform:translate3d(0,8px,54px) rotateX(64deg) rotateZ(18deg); } }
+            @keyframes fsFocusOrbit3D { to { transform:rotateX(68deg) rotateZ(360deg); } }
+            @keyframes fsFocusCounterOrbit3D { to { transform:rotateY(68deg) rotateX(360deg); } }
+            @keyframes fsFocusGlow3D { 0%,100%{ opacity:.42; transform:scale(.86); } 50%{ opacity:.78; transform:scale(1.08); } }
+            @keyframes fsFocusParticle3D { 0%,100%{ transform:translate3d(var(--x),var(--y),18px) scale(.82); opacity:.34; } 50%{ transform:translate3d(calc(var(--x) * .7),calc(var(--y) * .68),72px) scale(1.16); opacity:.82; } }
+            .fs-fht-root::-webkit-scrollbar{width:0;height:0}
+            .fs-focus-hero{position:relative;overflow:hidden}
+            .fs-focus-hero:before{content:"";position:absolute;inset:-30% -18% auto;height:70%;background:radial-gradient(circle at 50% 50%,rgba(var(--theme-c1-rgb),.18),transparent 64%);pointer-events:none}
+            .fs-focus-3d-scene{position:relative;width:300px;height:300px;perspective:840px;transform-style:preserve-3d;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+            .fs-focus-3d-ring{position:absolute;width:238px;height:118px;border:1px solid rgba(var(--theme-c1-rgb),.42);border-radius:999px;box-shadow:0 0 42px rgba(var(--theme-c1-rgb),.18),inset 0 0 28px rgba(255,255,255,.04);transform-style:preserve-3d}
+            .fs-focus-3d-ring.one{animation:fsFocusOrbit3D 12s linear infinite}
+            .fs-focus-3d-ring.two{width:198px;height:198px;border-color:rgba(var(--theme-c2-rgb),.32);animation:fsFocusCounterOrbit3D 15s linear infinite}
+            .fs-focus-3d-ring.three{width:280px;height:76px;border-color:rgba(255,255,255,.14);animation:fsFocusOrbit3D 18s linear infinite reverse}
+            .fs-focus-3d-crystal{position:absolute;width:100px;height:136px;background:linear-gradient(145deg,rgba(255,255,255,.92),var(--theme-c1) 42%,var(--theme-c2));clip-path:polygon(50% 0,88% 28%,73% 100%,27% 100%,12% 28%);box-shadow:0 34px 80px rgba(var(--theme-c1-rgb),.32),inset -18px -18px 28px rgba(0,0,0,.20),inset 16px 12px 22px rgba(255,255,255,.38);animation:fsFocusFloat3D 5.8s ease-in-out infinite;transform-style:preserve-3d}
+            .fs-focus-3d-glow{position:absolute;width:154px;height:154px;border-radius:50%;background:radial-gradient(circle,rgba(var(--theme-c1-rgb),.45),transparent 68%);filter:blur(10px);animation:fsFocusGlow3D 3.8s ease-in-out infinite}
+            .fs-focus-3d-particle{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.86);box-shadow:0 0 16px rgba(var(--theme-c1-rgb),.72);animation:fsFocusParticle3D 4.6s ease-in-out infinite;animation-delay:var(--d)}
+            .fs-focus-3d-base{position:absolute;bottom:34px;width:174px;height:34px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--theme-c1-rgb),.28),transparent 68%);filter:blur(7px);transform:rotateX(72deg)}
+            @media (max-width: 768px){
+              .fs-fht-root{padding:14px 14px 94px!important}
+              .fs-focus-hero{padding:22px 16px 20px!important;border-radius:24px!important}
+              .fs-focus-hero-inner{grid-template-columns:1fr!important;gap:12px!important;text-align:center!important}
+              .fs-focus-3d-scene{width:min(260px,100%)!important;height:220px!important;order:-1;margin:0 auto!important}
+              .fs-fht-cta-title{font-size:30px!important}
+              .fs-fht-cta-desc{display:block!important;font-size:12px!important;max-width:100%!important}
+              .fs-fht-start-btn{width:100%!important;justify-content:center!important;align-self:stretch!important}
+              .fs-focus-proof-row{justify-content:center!important}
+              .fs-fht-stats{grid-template-columns:repeat(3,1fr)!important;gap:8px!important}
+            }
+            @media (max-width: 480px){
+              .fs-fht-stats{grid-template-columns:1fr!important}
+              .fs-focus-3d-scene{height:196px!important;transform:scale(.88)}
+            }
+          `}</style>
 
-            <div className="fs-fht-cta" style={{borderRadius:30,background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(255,255,255,0.035))',border:'1px solid rgba(var(--theme-c1-rgb),0.20)',padding:'30px 32px',minHeight:260,display:'flex',flexDirection:'column',justifyContent:'space-between',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)'}}>
-              <div>
-                <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:12}}>LumenOS · Focus</div>
-                <div className="fs-fht-cta-title" style={{fontFamily:T.display,fontWeight:850,fontSize:42,letterSpacing:'-0.05em',lineHeight:1.05,color:T.text}}>Démarrer une session de concentration.</div>
-                <div className="fs-fht-cta-desc" style={{fontSize:13,color:T.muted,lineHeight:1.65,marginTop:14,maxWidth:520}}>Lance un focus solo ou ensemble, puis retrouve tes sessions et tes cristaux dans les onglets.</div>
-              </div>
-              <button className="fs-fht-start-btn" onClick={onStart} style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:10,border:'none',borderRadius:16,padding:'13px 20px',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:13,fontWeight:900,fontFamily:T.font,cursor:'pointer',boxShadow:'0 18px 40px rgba(var(--theme-c1-rgb),0.20), inset 0 1px 0 rgba(255,255,255,0.36)',marginTop:24}}>
-                <svg width={15} height={15} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
-                Démarrer un focus
-              </button>
-            </div>
-
-            <div className="fs-fht-stats" style={{display:'grid',gap:12}}>
-              {stats.map((s,i)=>(
-                <div key={i} className="fs-fht-stat-card" style={{borderRadius:22,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',padding:'18px 20px'}}>
-                  <div style={{fontFamily:T.mono,fontSize:24,fontWeight:850,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
-                  <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
-                  <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
+          <div className="fs-focus-hero" style={{borderRadius:34,background:'linear-gradient(145deg,rgba(var(--theme-c1-rgb),0.17),rgba(var(--theme-c2-rgb),0.08) 42%,rgba(255,255,255,0.032))',border:'1px solid rgba(var(--theme-c1-rgb),0.22)',boxShadow:'0 24px 70px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.09)',padding:'30px 34px 32px'}}>
+            <div className="fs-focus-hero-inner" style={{position:'relative',display:'grid',gridTemplateColumns:'minmax(0,1fr) 320px',gap:28,alignItems:'center'}}>
+              <div style={{minWidth:0,display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center'}}>
+                <div style={{display:'inline-flex',alignItems:'center',gap:8,borderRadius:999,padding:'7px 11px',background:'rgba(255,255,255,0.065)',border:'1px solid rgba(255,255,255,0.09)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)',fontSize:9,fontWeight:900,letterSpacing:'0.13em',textTransform:'uppercase',color:T.text}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'var(--theme-c1)',boxShadow:'0 0 16px rgba(var(--theme-c1-rgb),0.75)'}} />
+                  Session prête
                 </div>
-              ))}
+                <div className="fs-fht-cta-title" style={{fontFamily:T.display,fontWeight:900,fontSize:46,letterSpacing:'-0.052em',lineHeight:1.02,color:T.text,marginTop:18,maxWidth:660}}>Lance ton focus en un clic.</div>
+                <div className="fs-fht-cta-desc" style={{fontSize:14,color:T.muted,lineHeight:1.7,marginTop:14,maxWidth:560}}>Choisis une session solo ou ensemble, garde le timer actif, puis transforme chaque effort en progression claire.</div>
+                <button className="fs-fht-start-btn" onClick={onStart} style={{marginTop:24,alignSelf:'center',display:'flex',alignItems:'center',justifyContent:'center',gap:12,border:'none',borderRadius:20,padding:'16px 28px',minWidth:240,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:14,fontWeight:950,fontFamily:T.font,cursor:'pointer',boxShadow:'0 20px 52px rgba(var(--theme-c1-rgb),0.30), inset 0 1px 0 rgba(255,255,255,0.42)',transition:'transform .22s cubic-bezier(.16,1,.3,1), box-shadow .22s ease'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px) scale(1.015)';e.currentTarget.style.boxShadow='0 26px 62px rgba(var(--theme-c1-rgb),0.38), inset 0 1px 0 rgba(255,255,255,0.48)';}} onMouseLeave={e=>{e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='0 20px 52px rgba(var(--theme-c1-rgb),0.30), inset 0 1px 0 rgba(255,255,255,0.42)';}}>
+                  <svg width={17} height={17} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
+                  Démarrer une session
+                </button>
+                <div className="fs-focus-proof-row" style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:18,justifyContent:'center'}}>
+                  {['Timer guidé','Mode solo','Cristaux sauvés'].map(label => (
+                    <span key={label} style={{borderRadius:999,padding:'7px 10px',background:'rgba(255,255,255,0.045)',border:'1px solid rgba(255,255,255,0.065)',fontSize:11,fontWeight:800,color:T.muted}}>{label}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="fs-focus-3d-scene" aria-hidden="true">
+                <div className="fs-focus-3d-glow" />
+                <div className="fs-focus-3d-ring one" />
+                <div className="fs-focus-3d-ring two" />
+                <div className="fs-focus-3d-ring three" />
+                <div className="fs-focus-3d-crystal" />
+                <div className="fs-focus-3d-base" />
+                {[
+                  ['-108px','-58px','0s'],['112px','-38px','.6s'],['-72px','92px','1.2s'],['88px','84px','1.8s'],['0px','-126px','2.3s'],['16px','118px','2.8s']
+                ].map(([x,y,d],i)=><span key={i} className="fs-focus-3d-particle" style={{'--x':x,'--y':y,'--d':d}} />)}
+              </div>
             </div>
+          </div>
+
+          <div className="fs-fht-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:12,marginTop:14}}>
+            {stats.map((s,i)=>(
+              <div key={i} className="fs-fht-stat-card" style={{borderRadius:22,background:'rgba(255,255,255,0.034)',border:'1px solid rgba(255,255,255,0.07)',padding:'17px 18px',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
+                <div style={{fontFamily:T.mono,fontSize:24,fontWeight:900,color:T.text,letterSpacing:'-0.035em',lineHeight:1}}>{s.value}</div>
+                <div style={{fontSize:9,color:T.muted,marginTop:7,letterSpacing:'0.08em',textTransform:'uppercase'}}>{s.unit}</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:4}}>{s.label}</div>
+              </div>
+            ))}
           </div>
 
           <div className="fs-fht-history" style={{marginTop:18,borderRadius:24,background:'rgba(255,255,255,0.032)',border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden'}}>
             <div style={{padding:'18px 20px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,borderBottom:'1px solid rgba(255,255,255,0.055)'}}>
               <div>
                 <div style={{fontSize:15,fontWeight:850,color:T.text}}>Historique</div>
-                <div style={{fontSize:11,color:T.muted,marginTop:4}}>Tes dernières sessions solo ou ensemble.</div>
+                <div style={{fontSize:11,color:T.muted,marginTop:4}}>{readyMeta}</div>
               </div>
               <span style={{fontSize:10,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.c1,flexShrink:0}}>{sessions.length} total</span>
             </div>
@@ -5905,7 +6034,7 @@
   </script>
 
   <script type="text/babel">
-    const { useState: _uST, useEffect: _uEffT } = React;
+    const { useState: _uST, useEffect: _uEffT, useRef: _uRT } = React;
 
     const INIT_TASKS = [
       { id: 1, text: 'Concevoir la nouvelle mise en page du dashboard', priority: 'high', done: false, tag: 'Design' },
@@ -5950,6 +6079,8 @@
       const [hoverId, setHoverId] = _uST(null);
       const [animId, setAnimId] = _uST(null);
       const [hovClear, setHovClear] = _uST(false);
+      const taskInputRef = _uRT(null);
+      const [composerPulse, setComposerPulse] = _uST(false);
 
       const totalDone = tasks.filter(t => t.done).length;
       const totalActive = tasks.filter(t => !t.done).length;
@@ -5982,9 +6113,15 @@
         }
       };
       const addTask = () => {
-        if (!inputVal.trim()) return;
+        if (!inputVal.trim()) {
+          taskInputRef.current?.focus();
+          setComposerPulse(true);
+          setTimeout(() => setComposerPulse(false), 520);
+          return;
+        }
         setTasks(ts => [{ id: Date.now(), text: inputVal.trim(), priority: newPri, done: false, tag: 'Task' }, ...ts]);
         setInputVal('');
+        requestAnimationFrame(() => taskInputRef.current?.focus());
       };
       const clearDone = () => {
         const cleared = tasks.filter(t => t.done);
@@ -6100,6 +6237,11 @@
               .fs-task-done-head button { height: 34px !important; padding: 0 12px !important; transform: none !important; font-size: 11px !important; }
               .fs-task-empty { height: 260px !important; padding-bottom: 82px !important; }
             }
+            @keyframes fsTaskComposerPulse {
+              0% { box-shadow: 0 0 0 0 rgba(var(--theme-c1-rgb),0.0), inset 0 1px 0 rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+              42% { box-shadow: 0 0 0 4px rgba(var(--theme-c1-rgb),0.12), 0 18px 38px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.09); border-color: rgba(var(--theme-c1-rgb),0.46); }
+              100% { box-shadow: 0 0 0 0 rgba(var(--theme-c1-rgb),0.0), inset 0 1px 0 rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+            }
           `}</style>
 
           {/* ── Header ── */}
@@ -6137,11 +6279,12 @@
 
             {/* ── Add task ── */}
             <div className="fs-task-composer" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
-              <div className="fs-task-input-wrap" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '0 14px', height: 44 }}>
+              <div className="fs-task-input-wrap" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: composerPulse ? 'rgba(var(--theme-c1-rgb),0.075)' : 'rgba(255,255,255,0.04)', border: `1px solid ${composerPulse ? 'rgba(var(--theme-c1-rgb),0.46)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 14, padding: '0 14px', height: 44, animation: composerPulse ? 'fsTaskComposerPulse .52s cubic-bezier(.16,1,.3,1)' : 'none', transition: 'background .22s var(--mineral-ease), border-color .22s var(--mineral-ease)' }}>
                 <svg width={14} height={14} viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, opacity: 0.3 }}>
                   <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
                 </svg>
                 <input
+                  ref={taskInputRef}
                   value={inputVal}
                   onChange={e => setInputVal(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTask()}
@@ -6862,6 +7005,8 @@
               .fs-notes-mobile-tabs{display:flex!important}
               .fs-note-builder{display:none!important}
               .fs-note-builder.fs-mob-show{display:flex!important;flex:1!important;padding-top:52px!important;min-height:0!important}
+              .fs-note-builder.fs-mob-show > div:last-child{padding-bottom:calc(104px + env(safe-area-inset-bottom, 0px))!important}
+              .fs-note-builder-submit{height:48px!important;border-radius:17px!important;box-shadow:0 18px 42px rgba(var(--theme-c1-rgb),0.24), inset 0 1px 0 rgba(255,255,255,0.34)!important}
               .fs-map-shell{display:none!important}
               .fs-map-shell.fs-mob-show{display:flex!important;flex:1!important;min-height:0!important}
               .fs-map-toolbar{height:56px!important;padding:0 14px!important}
@@ -6895,7 +7040,7 @@
               <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre précis" style={{height:42,padding:'0 13px',fontSize:13,flexShrink:0}} />
               <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
               <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} placeholder={"Contenu de la note...\nEx: idées, liens, [[note liée]], #tag"} style={{flex:1,minHeight:140,resize:'none',padding:'13px',fontSize:13,lineHeight:1.7}} />
-              <button onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
+              <button className="fs-note-builder-submit" onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
             </div>
           </aside>
 
@@ -6964,16 +7109,6 @@
               </div>
             </div>
           </main>
-
-          {mobileTab === 'map' && (
-            <button className="fs-map-mobile-fab" onClick={() => setMobileTab('builder')} aria-label="Ajouter une nouvelle note">
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-              Nouvelle note
-            </button>
-          )}
 
           {editingNote && (
             <div className="fs-note-edit-overlay" onClick={e=>{if(e.target===e.currentTarget)setEditingId(null);}} style={{position:'fixed',inset:0,zIndex:9999,background:'rgba(7,8,16,0.82)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'28px 20px',animation:'noteOverlayIn .22s ease both'}}>
@@ -8514,16 +8649,16 @@
       const [active, setActive] = _uSC('clock');
 
       const CATALOG = [
-        { id: 'clock', label: 'Clock', Component: ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
-        { id: 'pomodoro', label: 'Pomodoro', Component: PomodoroWidget, variants: [1, 2, 9] },
-        { id: 'spotify', label: 'Spotify', Component: SpotifyWidget, variants: [1, 5, 10] },
-        { id: 'tasks', label: 'Tasks', Component: TasksWidget, variants: [1, 2, 3] },
-        { id: 'goal', label: 'Goal', Component: GoalWidget, variants: [1, 2, 10] },
-        { id: 'streak', label: 'Streak', Component: StreakWidget, variants: [1, 2, 10] },
-        { id: 'countdown', label: 'Countdown', Component: CountdownWidget, variants: [1, 10] },
-        { id: 'links', label: 'Links', Component: LinksWidget, variants: [1, 2, 8] },
-        { id: 'image', label: 'Image', Component: ImageWidget, variants: [1] },
-        { id: 'notes', label: 'Notes', Component: NotesWidget, variants: [1, 2] },
+        { id: 'clock', label: 'Clock', short: 'Temps en direct', icon: '◷', Component: ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
+        { id: 'pomodoro', label: 'Pomodoro', short: 'Cycles de focus', icon: '◑', Component: PomodoroWidget, variants: [1, 2, 9] },
+        { id: 'spotify', label: 'Spotify', short: 'Ambiance musicale premium', icon: '♪', Component: SpotifyWidget, variants: [1, 5, 10] },
+        { id: 'tasks', label: 'Tasks', short: 'Actions du jour', icon: '✓', Component: TasksWidget, variants: [1, 2, 3] },
+        { id: 'goal', label: 'Goal', short: 'Objectifs mesurables clairs', icon: '◎', Component: GoalWidget, variants: [1, 2, 10] },
+        { id: 'streak', label: 'Streak', short: 'Habitudes en chaine', icon: '▲', Component: StreakWidget, variants: [1, 2, 10] },
+        { id: 'countdown', label: 'Countdown', short: 'Deadline sous controle', icon: '⏱', Component: CountdownWidget, variants: [1, 10] },
+        { id: 'links', label: 'Links', short: 'Raccourcis essentiels rapides', icon: '⊞', Component: LinksWidget, variants: [1, 2, 8] },
+        { id: 'image', label: 'Image', short: 'Inspiration visuelle personnelle', icon: '◈', Component: ImageWidget, variants: [1] },
+        { id: 'notes', label: 'Notes', short: 'Idees capturees vite', icon: '✎', Component: NotesWidget, variants: [1, 2] },
       ];
       const GLOW_PRESETS = [
         { color: '#a5b8ff', name: 'Aurora' }, { color: '#4ade80', name: 'Emerald' },
@@ -8575,11 +8710,13 @@
                   </svg>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.muted }}>Style</span>
                 </div>
-                <div style={{ display: 'flex', gap: 5, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'none' }}>
+                <div style={{ display: 'flex', gap: 9, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'none' }}>
                   {CATALOG.map(c => (
                     <button key={c.id} onClick={() => setActive(c.id)}
-                      style={{ background: active === c.id ? c1(0.10) : 'transparent', border: `1px solid ${active === c.id ? c1(0.28) : 'rgba(255,255,255,0.07)'}`, borderRadius: 99, padding: '5px 14px', cursor: 'pointer', color: active === c.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.17s cubic-bezier(0.4,0,0.2,1)', flexShrink: 0, boxShadow: active === c.id ? `0 0 14px ${c1(0.14)}, 0 2px 6px rgba(0,0,0,0.2)` : 'none' }}>
-                      {c.label}
+                      style={{ width: 124, minHeight: 92, background: active === c.id ? `linear-gradient(180deg,${c1(0.14)},rgba(255,255,255,0.035))` : 'rgba(255,255,255,0.028)', border: `1px solid ${active === c.id ? c1(0.34) : 'rgba(255,255,255,0.07)'}`, borderRadius: 18, padding: '10px 8px', cursor: 'pointer', color: active === c.id ? T.text : T.muted, fontSize: 11, fontWeight: 760, fontFamily: T.font, transition: 'all 0.2s cubic-bezier(.16,1,.3,1)', flexShrink: 0, boxShadow: active === c.id ? `0 14px 34px ${c1(0.13)}, inset 0 1px 0 rgba(255,255,255,0.08)` : 'inset 0 1px 0 rgba(255,255,255,0.035)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center' }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 13, display: 'grid', placeItems: 'center', background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color: '#070810', fontSize: 15, boxShadow: `0 10px 24px ${c1(active === c.id ? 0.26 : 0.14)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{c.icon}</span>
+                      <span style={{ fontSize: 12, fontWeight: 900, lineHeight: 1, maxWidth: 104, color: active === c.id ? T.text : 'rgba(244,246,251,0.78)' }}>{c.label}</span>
+                      <span style={{ fontSize: 10.2, fontWeight: 650, lineHeight: 1.14, maxWidth: 104, color: T.muted }}>{c.short}</span>
                     </button>
                   ))}
                 </div>
@@ -10856,7 +10993,7 @@
       );
     }
 
-    function SessionBarPremium({ session, onEnd, focusNudgeOpen = false }) {
+    function SessionBarPremium({ session, user, onEnd, focusNudgeOpen = false }) {
       const [secs, setSecs] = _uS8(0);
       const [hovered, setHovered] = _uS8(false);
       const barRef = _uR8(null);
@@ -10912,13 +11049,15 @@
         : (session.friendUser?.name || session.friendEmail?.split('@')[0] || '?');
       const partnerInitial = partnerName ? partnerName[0].toUpperCase() : '?';
       const partnerColor = session.friendUser?.color || '#7af6a4';
+      const userPhoto = user?.photo || user?.avatar || null;
+      const userInitial = (user?.name || user?.email || 'F').trim()[0]?.toUpperCase() || 'F';
       const col = session.type === 'solo' ? T.c1 : T.green;
       const R = 13;
       const circ = 2 * Math.PI * R;
       const label = isTogether ? 'Focus partagé' : 'Session active';
       const detail = isTogether ? partnerName : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
-      const barShift = focusNudgeOpen ? 'translateX(clamp(-460px, -42vw, -220px)) scale(.88)' : (hovered ? 'translateY(-2px)' : 'translateY(0)');
-      const haloShift = focusNudgeOpen ? 'translateX(clamp(-460px, -42vw, -220px)) scaleX(.38)' : 'translateX(0) scaleX(1)';
+      const barShift = focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scale(.86)' : (hovered ? 'translateY(-2px)' : 'translateY(0)');
+      const haloShift = focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scaleX(.30)' : 'translateX(0) scaleX(1)';
       const compacting = !!focusNudgeOpen;
 
       return (
@@ -10932,8 +11071,8 @@
             @keyframes fsSessionBreath{0%,100%{transform:scale(1);text-shadow:0 0 14px rgba(var(--theme-c1-rgb),.20)}50%{transform:scale(1.018);text-shadow:0 0 26px rgba(var(--theme-c1-rgb),.36)}}
             @media (max-width:768px){
               .fs-session-wrap{padding:10px 10px 6px!important;}
-              .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:170px!important;}
-              .fs-session-wrap.fs-session-nudge-open .fs-session-bar{max-width:250px!important;grid-template-columns:1fr auto!important;padding:0 8px 0 12px!important;gap:8px!important;}
+              .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:230px!important;}
+              .fs-session-wrap.fs-session-nudge-open .fs-session-bar{max-width:220px!important;grid-template-columns:1fr auto!important;padding:0 8px 0 12px!important;gap:8px!important;}
               .fs-session-bar{height:64px!important;max-width:none!important;padding:0 8px!important;grid-template-columns:auto 1fr auto!important;border-radius:24px!important;}
               .fs-session-status{display:none!important;}
               .fs-session-detail{display:none!important;}
@@ -10977,7 +11116,9 @@
             <div className="fs-session-status" style={{position:'relative', display:'flex', alignItems:'center', gap:11, minWidth:0, maxWidth: compacting ? 0 : 230, opacity: compacting ? 0 : 1, transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden'}}>
               <div style={{position:'relative', width:isTogether?54:36, height:36, flexShrink:0}}>
                 <div style={{position:'absolute', inset:-5, borderRadius:99, background:`radial-gradient(circle, ${over ? 'rgba(255,107,138,.18)' : c1(.18)}, transparent 66%)`}}/>
-                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>F</div>
+                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', overflow:'hidden'}}>
+                  {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
+                </div>
                 {isTogether && <div style={{position:'absolute', left:22, top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${partnerColor},${partnerColor}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>{partnerInitial}</div>}
               </div>
               <div style={{minWidth:0}}>
@@ -11596,6 +11737,11 @@
     if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?g.streaks.daily+1:1; g.streaks.lastDate=today; }
     if(g.streaks.weekStart!==mon){ g.streaks.weekStart=mon; g.streaks.jokers=1; g.streaks.jokersUsed=0; }
     g.streaks.weekly=Math.floor(g.streaks.daily/7);
+    try {
+      const legacy = JSON.parse(localStorage.getItem('fs_streak') || '[]');
+      if (!legacy.includes(today)) localStorage.setItem('fs_streak', JSON.stringify([...legacy, today]));
+      window.dispatchEvent(new CustomEvent('fs-streak-update'));
+    } catch(e) {}
     /* fp */
     const mul=window._gMul(g.streaks.daily,g.streaks.weekly), earned=Math.round(dur*mul);
     g.fp=(g.fp||0)+earned; g.xp=(g.xp||0)+dur*2;
