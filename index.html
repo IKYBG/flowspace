@@ -8023,6 +8023,7 @@
             @keyframes fsFragmentCounter{from{transform:rotateZ(0deg) rotateY(0deg)}to{transform:rotateZ(-360deg) rotateY(360deg)}}
             @keyframes fsCrystalRay{0%,100%{opacity:.24}50%{opacity:.55}}
             @keyframes fsFluxOrbitLine{from{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(0deg)}to{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(360deg)}}
+            @keyframes fsThemeCrystalAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.94) rotate(0deg)}50%{opacity:.58;transform:translate3d(-50%,-50%,0) scale(1.04) rotate(8deg)}}
             .fsPCard{border-radius:18px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:14px;display:flex;flex-direction:column;gap:10px;transition:all .42s cubic-bezier(.22,1,.36,1);align-self:center;justify-self:center;width:100%;max-width:184px}
             .fsPLayout{flex:1;display:grid;grid-template-columns:1fr 1.55fr 1fr;grid-template-rows:1fr 1.5fr 1fr;position:relative;padding:clamp(10px,1.8vh,18px) clamp(14px,2.5vw,30px) clamp(14px,2vh,24px);min-height:0;align-items:center;justify-items:center}
             .fsPCenter{grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;width:100%;height:100%;z-index:5}
@@ -8031,6 +8032,8 @@
             .fsPFloat{display:none!important}
             .fsCrystalStageFrame{background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible;isolation:isolate}
             .fsCrystalScene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1120px;transform-style:preserve-3d}
+            .fsThemeCrystalAura{position:absolute;left:50%;top:50%;width:clamp(150px,18vw,220px);height:clamp(170px,21vw,250px);border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.18) 42%,rgba(var(--theme-c1-rgb),.055) 67%,transparent 74%);filter:blur(20px) saturate(1.05);mix-blend-mode:screen;pointer-events:none;z-index:6;animation:fsThemeCrystalAura 7.6s cubic-bezier(.4,0,.2,1) infinite}
+            .fsThemeCrystalAura:after{content:"";position:absolute;inset:18%;border-radius:inherit;background:conic-gradient(from 130deg,rgba(var(--theme-c1-rgb),.18),transparent 26%,rgba(var(--theme-c2-rgb),.16),transparent 62%,rgba(var(--theme-c1-rgb),.12));filter:blur(10px);opacity:.72}
             .fsBlenderCrystalCanvas{position:absolute;inset:-12%;width:124%;height:124%;display:block;z-index:8;pointer-events:none;filter:drop-shadow(0 24px 42px rgba(var(--theme-c1-rgb),.24)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.18))}
             .fsCrystalRays{display:none!important}
             .fsOrbitShell{display:none!important}
@@ -8062,6 +8065,7 @@
               .fsPSvgOvl{display:none!important}
               .fsPCenter{grid-column:1 / -1!important;grid-row:1!important;height:232px!important;width:100%!important;justify-self:center!important}
               .fsCrystalStageFrame{width:min(254px,84vw)!important;height:218px!important;aspect-ratio:auto!important}
+              .fsThemeCrystalAura{width:172px!important;height:198px!important;filter:blur(18px) saturate(1.05)}
               .fsBlenderCrystalCanvas{inset:-8%!important;width:116%!important;height:116%!important}
               .fsPCrystalCore{inset:16% 22% 18%!important;transform:scale(.9)}
               .fsMainCrystalFloat{width:112px!important;height:160px!important;margin-left:-56px!important;margin-top:-80px!important}
@@ -8077,7 +8081,7 @@
               .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
               .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
             }
-            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays{animation:none!important}}
+            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
           `}</style>
 
           {/* ── Header — refined typographic rhythm ── */}
@@ -8155,6 +8159,7 @@
             <div className="fsPCenter">
               <div className="fsCrystalStageFrame" style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
                 <div className="fsCrystalScene">
+                  <div className="fsThemeCrystalAura" aria-hidden="true" />
                   <BlenderCrystalScene />
                   <div className="fsPHalo" style={{position:'absolute',inset:'-12%',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
 
@@ -10343,7 +10348,7 @@
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
       return (
-        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${index * 0.05}s` }}
+        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${Math.min(index, 6) * 0.032}s` }}
           onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
           onKeyDown={e=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPreview(); } }}
           onClick={onPreview}>
@@ -10379,8 +10384,13 @@
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const uid = user?.id || 'guest';
       const storageKey = `fs_friends_${uid}`;
+      const displayStorageKey = `${storageKey}_display`;
 
       const [friends, setFriends] = React.useState(() => {
+        try {
+          const display = JSON.parse(localStorage.getItem(displayStorageKey) || '[]');
+          if (Array.isArray(display) && display.length) return display;
+        } catch(e) {}
         try { return JSON.parse(localStorage.getItem(storageKey)||'[]'); } catch(e) { return []; }
       });
       const [reverseFriends, setReverseFriends] = React.useState([]);
@@ -10441,49 +10451,86 @@
         if (!open || !user?.id) return;
         setLoaded(false);
         const myId = user.id;
-        const ownP = window._fsLoadRemote(myId);
-        const revP = window._fsSb
-          ? window._fsSb.from('user_data').select('user_id, name, email, updated_at')
-              .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
-          : Promise.resolve({ data: [] });
-        Promise.all([ownP, revP]).then(async ([remote, revResult]) => {
-          const raw = Array.isArray(remote?.friends) ? remote.friends : [];
-          let localCached = [];
-          try { localCached = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
-          let clean = uniqueFriends([...localCached, ...raw]);
-          const revData = revResult?.data || [];
-          let reverse = revData
-            .filter(r => r.user_id !== myId && !clean.some(f => f.id === r.user_id))
-            .map(r => ({
-              id: r.user_id,
-              name: r.name || r.email?.split('@')[0] || 'Unknown',
-              email: r.email || '',
-              initial: (r.name || r.email || '?')[0].toUpperCase(),
-              color: '#4ade80',
-              photo: null,
-              updatedAt: r.updated_at
-            }));
-          // Batch-fetch latest profile photos (via images column) for ALL friends
-          const allIds = [...clean.map(f => f.id), ...reverse.map(f => f.id)];
-          if (window._fsSb && allIds.length > 0) {
-            try {
-              const { data: imgRows } = await window._fsSb
-                .from('user_data').select('user_id, images')
-                .in('user_id', allIds);
-              if (imgRows) {
-                const photoMap = Object.fromEntries(
-                  imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null])
-                );
-                clean = clean.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null }));
-                reverse = reverse.map(f => ({ ...f, photo: photoMap[f.id] || null }));
-              }
-            } catch(e) {}
+        let cancelled = false;
+        let clean = uniqueFriends(friends);
+        try {
+          const localCached = JSON.parse(localStorage.getItem(storageKey) || '[]');
+          const displayCached = JSON.parse(localStorage.getItem(displayStorageKey) || '[]');
+          const localClean = uniqueFriends([...clean, ...localCached, ...displayCached]);
+          if (localClean.length) {
+            clean = localClean;
+            setFriends(localClean);
           }
+        } catch(e) {}
+        const applyPhotos = async (ownList, reverseList = []) => {
+          if (!window._fsSb) return { ownList, reverseList };
+          const allIds = [...ownList.map(f => f.id), ...reverseList.map(f => f.id)];
+          if (!allIds.length) return { ownList, reverseList };
+          try {
+            const { data: imgRows } = await window._fsSb
+              .from('user_data').select('user_id, images')
+              .in('user_id', allIds);
+            if (!imgRows) return { ownList, reverseList };
+            const photoMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null]));
+            return {
+              ownList: ownList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
+              reverseList: reverseList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
+            };
+          } catch(e) {
+            return { ownList, reverseList };
+          }
+        };
+        (async () => {
+          let remote = null;
+          try {
+            if (window._fsSb) {
+              const { data } = await window._fsSb
+                .from('user_data').select('friends')
+                .eq('user_id', myId)
+                .maybeSingle();
+              remote = data;
+            } else if (window._fsLoadRemote) {
+              remote = await window._fsLoadRemote(myId);
+            }
+          } catch(e) {
+            try { remote = await window._fsLoadRemote?.(myId); } catch(_) {}
+          }
+          if (cancelled) return;
+          const raw = Array.isArray(remote?.friends) ? remote.friends : [];
+          clean = uniqueFriends([...clean, ...raw]);
           setFriends(clean);
           try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
-          setReverseFriends(reverse);
+          try { localStorage.setItem(displayStorageKey, JSON.stringify(clean)); } catch(e) {}
           setLoaded(true);
-        });
+
+          let reverse = [];
+          try {
+            const revResult = window._fsSb
+              ? await window._fsSb.from('user_data').select('user_id, name, email, updated_at')
+                  .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
+              : { data: [] };
+            const revData = revResult?.data || [];
+            reverse = revData
+              .filter(r => r.user_id !== myId && !clean.some(f => f.id === r.user_id))
+              .map(r => ({
+                id: r.user_id,
+                name: r.name || r.email?.split('@')[0] || 'Unknown',
+                email: r.email || '',
+                initial: (r.name || r.email || '?')[0].toUpperCase(),
+                color: '#4ade80',
+                photo: null,
+                updatedAt: r.updated_at
+              }));
+          } catch(e) {}
+          const withPhotos = await applyPhotos(clean, reverse);
+          if (cancelled) return;
+          const fullDisplay = uniqueFriends([...withPhotos.ownList, ...withPhotos.reverseList]);
+          setFriends(fullDisplay);
+          setReverseFriends([]);
+          try { localStorage.setItem(storageKey, JSON.stringify(withPhotos.ownList)); } catch(e) {}
+          try { localStorage.setItem(displayStorageKey, JSON.stringify(fullDisplay)); } catch(e) {}
+        })();
+        return () => { cancelled = true; };
       }, [open, user?.id]);
 
       /* Save — only after load, use UPDATE (not upsert) to guarantee only own row is touched */
