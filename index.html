@@ -12310,7 +12310,60 @@
       fp:0, xp:0, heatmap:{}, fpmap:{}, unlocks:['default'], activeSkin:'default',
       quests:{daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}} };
   }
-  window._gLoad = uid => { try{ return JSON.parse(localStorage.getItem(`fs_gamif_${uid||'g'}`)||'null')||_gDefault(); }catch(e){ return _gDefault(); } };
+  function _gPrevDateKey(key) {
+    const [y,m,d] = String(key || '').split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  function _gDateKeyFrom(value) {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function _gActivityDates(uid, g) {
+    const dates = new Set();
+    try { (JSON.parse(localStorage.getItem('fs_streak') || '[]') || []).forEach(d => dates.add(d)); } catch(e) {}
+    try { Object.keys(g?.heatmap || {}).forEach(d => { if ((g.heatmap[d] || 0) > 0) dates.add(d); }); } catch(e) {}
+    try {
+      const history = JSON.parse(localStorage.getItem(`fs_session_history_${uid || 'guest'}`) || '[]') || [];
+      history.forEach(s => {
+        if (s?.completed || s?.completedAt) {
+          const key = _gDateKeyFrom(s.completedAt || s.endedAt || s.startedAt || s.startTime);
+          if (key) dates.add(key);
+        }
+      });
+    } catch(e) {}
+    return dates;
+  }
+  function _gHydrateStreakFromActivity(uid, g) {
+    if (!g || typeof g !== 'object') g = _gDefault();
+    if (!g.streaks) g.streaks = _gDefault().streaks;
+    const dates = _gActivityDates(uid, g);
+    const today = window._gToday();
+    const yest = _gPrevDateKey(today);
+    let cur = dates.has(today) ? today : yest;
+    if (!cur || !dates.has(cur)) return g;
+    let daily = 0;
+    while (cur && dates.has(cur)) {
+      daily++;
+      cur = _gPrevDateKey(cur);
+    }
+    const lastDate = dates.has(today) ? today : yest;
+    const current = Number(g.streaks.daily || 0);
+    const stale = g.streaks.lastDate !== today && g.streaks.lastDate !== yest;
+    if (daily > current || stale) {
+      g.streaks = { ..._gDefault().streaks, ...g.streaks, daily, lastDate, weekly: Math.floor(daily / 7) };
+    }
+    return g;
+  }
+  window._gLoad = uid => {
+    let g;
+    try{ g = JSON.parse(localStorage.getItem(`fs_gamif_${uid||'g'}`)||'null')||_gDefault(); }catch(e){ g = _gDefault(); }
+    return _gHydrateStreakFromActivity(uid, g);
+  };
   window._gSave = (uid,data) => {
     try{ localStorage.setItem(`fs_gamif_${uid||'g'}`,JSON.stringify(data)); }catch(e){}
     window.dispatchEvent(new CustomEvent('fs-gamif-update',{detail:data}));
