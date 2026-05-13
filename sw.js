@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumenos-v3';
+const CACHE_NAME = 'lumenos-v5';
 
 // Static assets to cache on install
 const PRECACHE = [
@@ -23,9 +23,17 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (request.method !== 'GET') return;
 
   // Never intercept Supabase or external API calls — always go to network
   if (
