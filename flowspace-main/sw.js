@@ -1,9 +1,7 @@
-const CACHE_NAME = 'lumenos-v2';
+const CACHE_NAME = 'lumenos-v5';
 
 // Static assets to cache on install
 const PRECACHE = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -25,9 +23,17 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (request.method !== 'GET') return;
 
   // Never intercept Supabase or external API calls — always go to network
   if (
@@ -42,13 +48,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for navigation requests (always fresh HTML)
+  // Network-first for navigation requests (always fresh HTML on Vercel)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((res) => {
           const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
           return res;
         })
         .catch(() => caches.match('/index.html'))

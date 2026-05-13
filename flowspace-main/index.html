@@ -281,6 +281,36 @@
     .fs-tasks-head {
       background: linear-gradient(180deg, rgba(var(--mineral-bg-rgb),0.42), rgba(var(--mineral-bg-rgb),0)) !important;
     }
+    .fs-dashboard-screen {
+      position: relative;
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse 58% 42% at 12% -8%, rgba(var(--theme-c1-rgb),0.105), transparent 68%),
+        radial-gradient(ellipse 48% 38% at 96% 102%, rgba(var(--theme-c2-rgb),0.090), transparent 66%),
+        linear-gradient(180deg, rgba(255,255,255,0.018), transparent 38%) !important;
+    }
+    .fs-dashboard-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      background:
+        linear-gradient(112deg, transparent 0 18%, rgba(255,255,255,0.052) 24%, transparent 34% 100%),
+        radial-gradient(ellipse 34% 22% at 50% 0%, rgba(255,255,255,0.050), transparent 72%);
+      opacity: 0.9;
+    }
+    .fs-dashboard-header {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.064), rgba(255,255,255,0.014)) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.045);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.055);
+    }
+    .fs-dashboard-grid {
+      position: relative;
+      z-index: 1;
+    }
     .fs-note-card,
     .fs-task-row,
     .fs-cave-stat {
@@ -392,17 +422,17 @@
         border-color 220ms var(--mineral-ease),
         color 180ms var(--mineral-ease) !important;
     }
-    [data-cr-widget] > div:hover,
     .fs-note-card:hover,
     .fs-task-row:hover,
     .fs-fht-stat-card:hover,
     .crystal-mini-card:hover {
       transform: translateY(-1px) scale(1.002) !important;
       box-shadow:
-        0 1px 1px rgba(var(--mineral-bg-rgb),0.32),
-        0 18px 46px rgba(var(--mineral-bg-rgb),0.34),
-        0 0 0 1px rgba(var(--theme-c1-rgb),0.05),
-        inset 0 1px 0 rgba(255,255,255,0.07) !important;
+        0 1px 1px rgba(255,255,255,0.045) inset,
+        0 22px 62px rgba(0,0,0,0.36),
+        0 0 34px rgba(var(--theme-c1-rgb),0.080),
+        0 0 0 1px rgba(var(--theme-c1-rgb),0.10),
+        inset 0 1px 0 rgba(255,255,255,0.13) !important;
     }
     button {
       transition:
@@ -1979,7 +2009,7 @@
       };
 
       const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url;
-      const title = track?.name || (connected ? 'Aucune lecture active' : '—');
+      const title = track?.name || (connected ? 'Lance une musique' : '—');
       const artist = track?.artists?.map(a => a.name).join(', ') || '';
       const prog = durationMs ? progressMs / durationMs : 0;
 
@@ -3451,9 +3481,12 @@
       const greeting = hour < 5 ? 'Encore debout ?' : hour < 12 ? 'Bonjour' : hour < 17 ? 'Bon après-midi' : 'Bonsoir';
       return (
         <div className="fs-dashboard-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {session && <SessionBarPremium session={session} user={user} onEnd={onEndSession} focusNudgeOpen={focusNudgeOpen} />}
           <div className="fs-dashboard-header" style={{ padding: '24px 32px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-            <div className="fs-dashboard-header-left" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <div className="fs-dashboard-header-left" style={{ display: 'flex', alignItems: 'center', justifyContent: session ? 'center' : 'flex-start', gap: 20, minWidth: 0, flex: session ? 1 : 'initial' }}>
+              {session ? (
+                <SessionBarPremium session={session} user={user} onEnd={onEndSession} focusNudgeOpen={focusNudgeOpen} embedded />
+              ) : (
+                <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 9, background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.38), 0 10px 28px rgba(var(--theme-c1-rgb),0.18)' }}>
                   <div style={{ width: 9, height: 13, clipPath:'polygon(50% 0, 90% 28%, 72% 100%, 28% 100%, 10% 28%)', background: '#070810' }} />
@@ -3462,8 +3495,10 @@
               </div>
               <div className="fs-dh-sep" style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.08)' }} />
               <span className="fs-dh-greeting" style={{ fontSize: 13, color: T.muted }}>{greeting}{user?.name ? `, ${user.name}` : ''} · ton espace de focus cristallin</span>
+                </>
+              )}
             </div>
-            <div className="fs-dashboard-header-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="fs-dashboard-header-right" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, minWidth: session ? 132 : undefined, justifyContent: 'flex-end' }}>
               {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenQuests:()=>{}, onOpenStreaks:()=>{} })}
               {!session && (
                 <button onClick={() => onNavigate('session')}
@@ -5254,52 +5289,65 @@
     /* Premium popover — position:fixed so overflow:hidden on sidebar never clips it */
     .fs-popover {
       position: fixed;
-      background: rgba(9,8,19,0.98); border: 1px solid rgba(255,255,255,0.09);
-      border-radius: 20px; overflow: hidden;
-      backdrop-filter: blur(60px) saturate(160%);
-      box-shadow: 0 -4px 6px rgba(0,0,0,0.15), 0 -20px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04), 0 0 80px rgba(var(--theme-c1-rgb),0.08);
-      z-index: 9999; animation: fsPopIn 0.24s cubic-bezier(0.34,1.56,0.64,1) both;
+      background: transparent;
+      border: none;
+      border-radius: 0; overflow: visible;
+      backdrop-filter: none;
+      box-shadow: none;
+      z-index: 9999; animation: fsPopIn 0.28s cubic-bezier(.2,1,.22,1) both;
+      padding: 0;
     }
     @keyframes fsPopIn {
-      from { opacity: 0; transform: scale(0.92) translateY(8px); }
-      to   { opacity: 1; transform: scale(1)    translateY(0);    }
+      0% { opacity: 0; transform: translateY(12px) scale(0.94); filter: blur(8px); }
+      72% { opacity: 1; transform: translateY(-1px) scale(1.012); filter: blur(0); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
     }
-    /* Popover user section */
-    .fs-pop-user {
-      padding: 18px 18px 14px; display: flex; align-items: flex-start; gap: 13px;
-      border-bottom: 1px solid rgba(255,255,255,0.055);
-    }
-    .fs-pop-avatar {
-      width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
-      overflow: hidden;
-      background: linear-gradient(135deg, rgba(var(--theme-c1-rgb),1), rgba(var(--theme-c2-rgb),0.88));
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-display); font-weight: 800; font-size: 16px; color: #07070d;
-      box-shadow: 0 4px 20px rgba(var(--theme-c1-rgb),0.38), 0 0 0 2px rgba(var(--theme-c1-rgb),0.18);
-    }
-    .fs-pop-info { flex: 1; min-width: 0; }
-    .fs-pop-name { font-size: 14px; font-weight: 700; color: rgba(248,246,252,0.95); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .fs-pop-email { font-size: 11px; color: rgba(248,246,252,0.35); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .fs-pop-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 3px 9px; border-radius: 99px; background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.22); }
-    .fs-pop-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80bb; animation: livePulse 2s ease-in-out infinite; }
-    .fs-pop-online { font-size: 10px; font-weight: 700; color: #4ade80; letter-spacing: 0.05em; }
     /* Popover actions */
-    .fs-pop-actions { padding: 7px; }
+    .fs-pop-actions { padding: 0; }
     .fs-pop-action {
-      display: flex; align-items: center; gap: 11px;
-      width: 100%; padding: 11px 13px; border-radius: 13px;
-      border: none; cursor: pointer; background: transparent;
-      color: rgba(248,246,252,0.5); font-family: var(--font-body);
-      font-size: 13px; font-weight: 500; text-align: left;
-      transition: background 0.18s, color 0.18s, transform 0.18s cubic-bezier(0.34,1.56,0.64,1);
+      min-height: 44px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      width: 100%; padding: 0 12px; border-radius: 14px;
+      border: 1px solid rgba(var(--theme-c1-rgb),0.22); cursor: pointer;
+      background:
+        radial-gradient(ellipse 72% 130% at 0% 0%, rgba(var(--theme-c1-rgb),0.15), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.038));
+      color: rgba(248,246,252,0.84); font-family: var(--font-body);
+      font-size: 12.5px; font-weight: 780; text-align: left;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.085), 0 10px 24px rgba(0,0,0,0.16);
+      transform-origin: center;
+      transition: transform 260ms cubic-bezier(.16,1,.3,1), border-radius 260ms cubic-bezier(.16,1,.3,1), border-color 180ms ease, background 220ms ease, color 180ms ease, box-shadow 220ms ease;
     }
-    .fs-pop-action:hover { background: rgba(251,113,133,0.12); color: #fb7185; transform: translateX(2px); }
+    .fs-pop-action:hover {
+      transform: translateY(-1px) scale(1.012);
+      border-radius: 18px;
+      color: rgba(248,246,252,0.94);
+      border-color: rgba(var(--theme-c1-rgb),0.38);
+      background:
+        radial-gradient(ellipse 70% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.16), transparent 58%),
+        radial-gradient(ellipse 80% 120% at 100% 100%, rgba(var(--theme-c2-rgb),0.10), transparent 62%),
+        linear-gradient(180deg, rgba(255,255,255,0.066), rgba(255,255,255,0.033));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 34px rgba(0,0,0,0.30), 0 0 34px rgba(var(--theme-c1-rgb),0.14);
+    }
+    .fs-pop-action:focus-visible {
+      outline: none;
+      border-color: rgba(var(--theme-c1-rgb),0.62);
+      box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.075);
+    }
+    .fs-pop-action:active {
+      transform: translateY(0) scale(0.982);
+      border-radius: 12px;
+    }
     .fs-pop-action-icon {
-      width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
-      background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center;
-      transition: background 0.18s;
+      width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+      background: rgba(var(--theme-c1-rgb),0.10); display: flex; align-items: center; justify-content: center;
+      color: rgba(var(--theme-c1-rgb),0.92);
+      transition: background 0.18s, color 0.18s;
     }
-    .fs-pop-action:hover .fs-pop-action-icon { background: rgba(251,113,133,0.18); }
+    .fs-pop-action-copy { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .fs-pop-action-arrow { color: rgba(248,246,252,0.28); transition: color 180ms ease, transform 180ms var(--fs-ease); }
+    .fs-pop-action:hover .fs-pop-action-icon { background: rgba(var(--theme-c1-rgb),0.16); color: rgba(var(--theme-c1-rgb),1); }
+    .fs-pop-action:hover .fs-pop-action-arrow { color: rgba(var(--theme-c2-rgb),0.86); transform: translateX(1px); }
     .fs-account-panel {
       position: fixed;
       width: 372px;
@@ -5510,7 +5558,7 @@
     .fs-account-secondary {
       width: 46px;
       grid-column: 2;
-      grid-row: 1 / span 2;
+      grid-row: 1 / span 3;
       height: auto;
       color: rgba(248,246,252,0.62);
       background: rgba(255,255,255,0.055);
@@ -5541,6 +5589,28 @@
       document.head.appendChild(s);
     }
 
+    function fsIsStandaloneDisplay() {
+      try { return !!window.matchMedia?.('(display-mode: standalone)')?.matches; }
+      catch (_) { return false; }
+    }
+
+    function fsWatchMediaQuery(query, onChange) {
+      let mq = null;
+      try { mq = window.matchMedia?.(query); } catch (_) {}
+      if (!mq) return () => {};
+      const handler = (e) => onChange(!!e.matches);
+      try {
+        if (mq.addEventListener) mq.addEventListener('change', handler);
+        else if (mq.addListener) mq.addListener(handler);
+      } catch (_) {}
+      return () => {
+        try {
+          if (mq.removeEventListener) mq.removeEventListener('change', handler);
+          else if (mq.removeListener) mq.removeListener(handler);
+        } catch (_) {}
+      };
+    }
+
     function Sidebar({ screen, onNavigate, user, onLogout, onUserUpdate }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [popOpen, setPopOpen] = React.useState(false);
@@ -5551,9 +5621,7 @@
       const [evolutionMenuOpen, setEvolutionMenuOpen] = React.useState(false);
 
       const [installPrompt, setInstallPrompt] = React.useState(null);
-      const [isInstalled, setIsInstalled] = React.useState(
-        window.matchMedia('(display-mode: standalone)').matches
-      );
+      const [isInstalled, setIsInstalled] = React.useState(fsIsStandaloneDisplay);
       const [installTooltip, setInstallTooltip] = React.useState(false);
       const [installDismissed, setInstallDismissed] = React.useState(
         () => localStorage.getItem('fs_install_dismissed') === '1'
@@ -5562,12 +5630,10 @@
       React.useEffect(() => {
         const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
         window.addEventListener('beforeinstallprompt', handler);
-        const mq = window.matchMedia('(display-mode: standalone)');
-        const mqHandler = (e) => setIsInstalled(e.matches);
-        mq.addEventListener('change', mqHandler);
+        const unwatchStandalone = fsWatchMediaQuery('(display-mode: standalone)', setIsInstalled);
         return () => {
           window.removeEventListener('beforeinstallprompt', handler);
-          mq.removeEventListener('change', mqHandler);
+          unwatchStandalone();
         };
       }, []);
 
@@ -5609,6 +5675,7 @@
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
       const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
       const cardRef = React.useRef(null);
+      const popoverRef = React.useRef(null);
       const gearRef = React.useRef(null);
       const accountRef = React.useRef(null);
       const fileRef = React.useRef(null);
@@ -5666,13 +5733,28 @@
 
       React.useEffect(() => {
         if (!popOpen) return;
-        if (cardRef.current) {
+        const place = () => {
+          if (!cardRef.current) return;
           const r = cardRef.current.getBoundingClientRect();
-          setPopPos({ bottom: window.innerHeight - r.top + 10, left: r.left, width: r.width });
-        }
-        const close = e => { if (cardRef.current && !cardRef.current.contains(e.target)) setPopOpen(false); };
+          const sidebar = cardRef.current.closest('.fs-sidebar');
+          const sr = sidebar ? sidebar.getBoundingClientRect() : r;
+          const width = Math.min(280, Math.max(208, sr.width - 36));
+          const centeredLeft = sr.left + (sr.width - width) / 2;
+          const left = Math.max(12, Math.min(centeredLeft, window.innerWidth - width - 12));
+          setPopPos({ bottom: window.innerHeight - r.top + 10, left, width });
+        };
+        place();
+        const close = e => {
+          const inCard = cardRef.current && cardRef.current.contains(e.target);
+          const inPopover = popoverRef.current && popoverRef.current.contains(e.target);
+          if (!inCard && !inPopover) setPopOpen(false);
+        };
+        window.addEventListener('resize', place);
         document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
+        return () => {
+          window.removeEventListener('resize', place);
+          document.removeEventListener('mousedown', close);
+        };
       }, [popOpen]);
 
       React.useEffect(() => {
@@ -5867,9 +5949,10 @@
                   <div className="fs-brand-title">LumenOS</div>
                   <div className="fs-brand-sub">Crystal Productivity </div>
                 </div>
-                <button ref={gearRef} type="button" className={'fs-gear-dot' + (accountOpen ? ' fs-account-open' : '')}
-                  onClick={openAccountPanel}
-                  aria-label="Ouvrir le compte">
+                <button ref={gearRef} type="button" className={'fs-gear-dot' + (screen === 'settings' ? ' fs-account-open' : '')}
+                  onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(screen === 'settings' ? 'dashboard' : 'settings'); }}
+                  aria-label={screen === 'settings' ? 'Fermer les settings' : 'Ouvrir les settings'}
+                  aria-pressed={screen === 'settings'}>
                   <svg className="fs-gear-icon" viewBox="0 0 24 24">
                     <path d="M12 6.2a5.8 5.8 0 1 0 0 11.6a5.8 5.8 0 0 0 0-11.6Z" />
                     <path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.5 4.5l1.7 1.7M17.8 17.8l1.7 1.7M4.5 19.5l1.7-1.7M17.8 6.2l1.7-1.7" />
@@ -6052,33 +6135,27 @@
             </div>
             <div ref={cardRef} className={`fs-footer-card${popOpen ? ' fs-pop-open' : ''}`}
               onClick={openUserPopover}>
-              {popOpen && (
-                <div className="fs-popover" style={{ bottom: popPos.bottom, left: popPos.left, width: popPos.width }} onClick={e => e.stopPropagation()}>
-                  <div className="fs-pop-user">
-                    {renderAvatar('fs-pop-avatar')}
-                    <div className="fs-pop-info">
-                      <div className="fs-pop-name">{displayName}</div>
-                      <div className="fs-pop-email">{displayEmail}</div>
-                      <div className="fs-pop-badge">
-                        <div className="fs-pop-dot" />
-                        <span className="fs-pop-online">En ligne</span>
-                      </div>
-                    </div>
-                  </div>
+              {popOpen && ReactDOM.createPortal((
+                <div ref={popoverRef} className="fs-popover" style={{ bottom: popPos.bottom, left: popPos.left, width: popPos.width }} onClick={e => e.stopPropagation()}>
                   <div className="fs-pop-actions">
-                    <button className="fs-pop-action" onClick={() => { setPopOpen(false); onLogout(); }}>
-                      <div className="fs-pop-action-icon">
+                    <button type="button" className="fs-pop-action" onClick={() => { setPopOpen(false); onLogout(); }} aria-label="Se deconnecter de LumenOS">
+                      <span className="fs-pop-action-copy">
+                        <span className="fs-pop-action-icon" aria-hidden="true">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                           <polyline points="16 17 21 12 16 7" />
                           <line x1="21" y1="12" x2="9" y2="12" />
                         </svg>
-                      </div>
-                      Se déconnecter
+                        </span>
+                        <span>Se deconnecter</span>
+                      </span>
+                      <svg className="fs-pop-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
                     </button>
                   </div>
                 </div>
-              )}
+              ), document.body)}
               <div className="fs-footer-head">
                 <div className="fs-avatar-wrap">
                   {renderAvatar('fs-avatar')}
@@ -6142,6 +6219,12 @@
                     <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
                   </svg>
                   {isInstalled ? 'LumenOS installé' : 'Installer LumenOS'}
+                </button>
+                <button type="button" className="fs-account-install" onClick={() => { setAccountOpen(false); onNavigate('settings'); }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 7h16" /><path d="M6 7v12h12V7" /><path d="M9 11h6" /><path d="M9 15h4" />
+                  </svg>
+                  Settings
                 </button>
                 <button type="button" className="fs-account-secondary" onClick={() => { setAccountOpen(false); onLogout(); }} title="Se déconnecter">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -7614,18 +7697,10 @@
 
       const signInWithProvider = async provider => {
         if (busy) return;
-        setErrMsg('');
-        setStatus('loading');
-        try {
-          const { error } = await window._fsSb.auth.signInWithOAuth({
-            provider,
-            options: { redirectTo: window.location.origin + window.location.pathname }
-          });
-          if (error) throw error;
-        } catch (e) {
-          setStatus('idle');
-          setErrMsg(`${provider === 'google' ? 'Google' : 'OAuth'} indisponible pour le moment. Utilise l'email.`);
-        }
+        setStatus('idle');
+        setErrMsg(provider === 'google' ? 'Connexion Google bientôt disponible' : 'OAuth bientôt disponible');
+        setShaking(true);
+        setTimeout(() => setShaking(false), 460);
       };
 
       const showPasskeyHint = () => {
@@ -7916,67 +7991,419 @@
     window.applyFontPreset = applyFontPreset;
     applyFontPreset((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })());
 
-    /* ── Personnalisation Hub ─────────────────────────────────────────────────── */
+    function BlenderCrystalScene() {
+      const canvasRef = React.useRef(null);
+      React.useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: true });
+        if (!gl) return;
+        const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.0);vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uMvp*vec4(aPosition,1.0);}`;
+        const fs = `precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;uniform vec3 uLight;uniform vec3 uEye;uniform vec3 uAccent1;uniform vec3 uAccent2;uniform float uAlpha;void main(){vec3 n=normalize(vNormal);vec3 l=normalize(uLight-vWorld);vec3 e=normalize(uEye-vWorld);float d=max(dot(n,l),0.0);float rim=pow(1.0-max(dot(n,e),0.0),2.25);float sp=pow(max(dot(reflect(-l,n),e),0.0),34.0);float side=clamp(n.x*.5+n.z*.22+.5,0.0,1.0);vec3 theme=mix(uAccent1,uAccent2,side);vec3 glass=mix(theme,vec3(1.0),.18);vec3 color=mix(vColor,theme,.82)*(0.34+d*0.82)+theme*rim*.78+glass*sp*.34;gl_FragColor=vec4(color,uAlpha);}`;
+        const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+        const program = gl.createProgram();
+        gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        const loc = { pos: gl.getAttribLocation(program,'aPosition'), normal: gl.getAttribLocation(program,'aNormal'), color: gl.getAttribLocation(program,'aColor'), mvp: gl.getUniformLocation(program,'uMvp'), model: gl.getUniformLocation(program,'uModel'), light: gl.getUniformLocation(program,'uLight'), eye: gl.getUniformLocation(program,'uEye'), accent1: gl.getUniformLocation(program,'uAccent1'), accent2: gl.getUniformLocation(program,'uAccent2'), alpha: gl.getUniformLocation(program,'uAlpha') };
+        const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+        const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+        const norm = v => { const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
+        const buildCrystal = () => {
+          const data = [], top=[0,1.52,0], bottom=[0,-1.52,0], upper=[], lower=[];
+          for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI*2/6; upper.push([Math.cos(a)*.58,.72,Math.sin(a)*.58]); lower.push([Math.cos(a)*.50,-.78,Math.sin(a)*.50]); }
+          const colors=[[.92,.92,.94],[.82,.84,.9],[.74,.78,.86],[.88,.82,.92],[.64,.66,.78],[.9,.9,.94]];
+          const tri=(a,b,c,col)=>{ const n=norm(cross(sub(b,a),sub(c,a))); [a,b,c].forEach(p=>data.push(...p,...n,...col)); };
+          for(let i=0;i<6;i++){ const j=(i+1)%6,col=colors[i]; tri(top,upper[i],upper[j],col); tri(upper[i],lower[i],lower[j],col.map(v=>v*.82)); tri(upper[i],lower[j],upper[j],col.map(v=>Math.min(1,v*.96))); tri(bottom,lower[j],lower[i],col.map(v=>v*.68)); }
+          return new Float32Array(data);
+        };
+        const mesh=buildCrystal(), buffer=gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+        const stride=36;
+        gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos,3,gl.FLOAT,false,stride,0);
+        gl.enableVertexAttribArray(loc.normal); gl.vertexAttribPointer(loc.normal,3,gl.FLOAT,false,stride,12);
+        gl.enableVertexAttribArray(loc.color); gl.vertexAttribPointer(loc.color,3,gl.FLOAT,false,stride,24);
+        const count=mesh.length/9;
+        const ident=()=>[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+        const mul=(a,b)=>{ const o=[]; for(let r=0;r<4;r++) for(let c=0;c<4;c++) o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3]; return o; };
+        const translate=(x,y,z)=>{ const m=ident(); m[12]=x;m[13]=y;m[14]=z;return m; };
+        const scale=(x,y,z)=>{ const m=ident(); m[0]=x;m[5]=y;m[10]=z;return m; };
+        const rotX=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m; };
+        const rotY=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m; };
+        const rotZ=a=>{ const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[1]=s;m[4]=-s;m[5]=c;return m; };
+        const perspective=(fov,aspect,near,far)=>{ const f=1/Math.tan(fov/2),nf=1/(near-far); return [f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,(2*far*near)*nf,0]; };
+        const lookAt=(eye,target,up)=>{ const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x); return [x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-x[0]*eye[0]-x[1]*eye[1]-x[2]*eye[2],-y[0]*eye[0]-y[1]*eye[1]-y[2]*eye[2],-z[0]*eye[0]-z[1]*eye[1]-z[2]*eye[2],1]; };
+        const resize=()=>{ const dpr=Math.min(window.devicePixelRatio||1,1.35),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight); if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);} gl.viewport(0,0,canvas.width,canvas.height); };
+        const readTheme = () => {
+          const css = getComputedStyle(document.documentElement);
+          const parse = (name, fallback) => {
+            const raw = (css.getPropertyValue(name) || fallback).trim().split(',').map(v => Math.max(0, Math.min(255, parseFloat(v) || 0)) / 255);
+            return raw.length >= 3 ? raw.slice(0,3) : fallback.split(',').map(v=>parseFloat(v)/255);
+          };
+          return [parse('--theme-c1-rgb','143,220,255'), parse('--theme-c2-rgb','184,145,255')];
+        };
+        let theme = readTheme(), nextThemeRead = 0;
+        const draw=(model,vp,alpha)=>{ gl.uniformMatrix4fv(loc.model,false,new Float32Array(model)); gl.uniformMatrix4fv(loc.mvp,false,new Float32Array(mul(vp,model))); gl.uniform1f(loc.alpha,alpha); gl.drawArrays(gl.TRIANGLES,0,count); };
+        let raf=0, lastFrame=0;
+        const render=t=>{ if(document.hidden){ raf=requestAnimationFrame(render); return; } if(t-lastFrame<28){ raf=requestAnimationFrame(render); return; } lastFrame=t; if(t>nextThemeRead){ theme=readTheme(); nextThemeRead=t+600; } resize(); const time=t*.001; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform3f(loc.light,-2.6,3.6,3.8); gl.uniform3f(loc.eye,0,.1,5.4); gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]); gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]); const vp=mul(perspective(Math.PI/4,canvas.width/canvas.height,.1,100),lookAt([0,.12,5.25],[0,0,0],[0,1,0])); const bob=Math.sin(time*1.35)*.08; draw(mul(translate(0,bob,0),mul(rotY(time*.62),mul(rotX(-.13+Math.sin(time*.8)*.045),scale(.95,1,.95)))),vp,.86); for(let i=0;i<5;i++){ const a=time*(.36+i*.025)+i*Math.PI*2/5,r=1.34+(i%3)*.1,s=.115+(i%3)*.02; draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.7+i)*.32+bob*.45,Math.sin(a)*.66),mul(rotY(-time*.95+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72); } raf=requestAnimationFrame(render); };
+        raf=requestAnimationFrame(render);
+        return () => cancelAnimationFrame(raf);
+      }, []);
+      return <canvas ref={canvasRef} className="fsBlenderCrystalCanvas" aria-hidden="true" />;
+    }
+
+    /* ── Personnalisation Hub — premium floating 3D crystal + hairline flux ─── */
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
       const CARDS = [
-        { id: 'fond', target: 'fond', eyebrow: 'Ambiance', title: 'Thèmes', desc: "Définissez l'atmosphère visuelle de votre espace avec des thèmes soigneusement calibrés.", c1: '#a5b8ff', c2: '#c084fc', bars: 8, icon: <path d="M4 14c4-7 12-7 16 0"/>, visual: 'palette' },
-        { id: 'fonts', target: 'fonts', eyebrow: 'Typographie', title: 'Polices', desc: 'Choisissez une direction typographique premium pour toute votre interface.', c1: '#f0c38e', c2: '#f7a8c4', bars: 6, icon: <path d="M5 18 10 5h4l5 13M7 14h10"/>, visual: 'type' },
-        { id: 'widgets', target: 'variants', eyebrow: 'Dashboard', title: 'Widgets', desc: 'Ajustez vos widgets, variantes et cartes pour composer un tableau de bord utile.', c1: '#4ade80', c2: '#2dd4bf', bars: 5, icon: <path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/>, visual: 'grid' },
-        { id: 'notes', target: 'notes-style', eyebrow: 'Carte mentale', title: 'Notes', desc: 'Changez le design de votre carte mentale avec trois styles bien distincts.', c1: '#67e8f9', c2: '#fb7185', bars: 4, icon: <path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/>, visual: 'nodes' },
+        { id:'fond',    target:'fond',         eyebrow:'Ambiance',      title:'Thèmes',  c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
+        { id:'fonts',   target:'fonts',        eyebrow:'Typographie',   title:'Polices', c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
+        { id:'widgets', target:'variants',     eyebrow:'Dashboard',     title:'Widgets', c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
+        { id:'notes',   target:'notes-style',  eyebrow:'Carte mentale', title:'Notes',   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
       ];
-      const renderMini = card => (
-        <div style={{height:78,borderRadius:18,position:'relative',overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',marginTop:16}}>
-          <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 20% 20%,${card.c1}26,transparent 44%),radial-gradient(circle at 82% 72%,${card.c2}1f,transparent 46%)`}}/>
-          {card.visual === 'palette' && [0,1,2].map((i)=><div key={i} style={{position:'absolute',left:16+i*36,top:18,width:26,height:42,borderRadius:9,background:i===0?card.c1:i===1?card.c2:'rgba(255,255,255,0.13)',boxShadow:`0 12px 26px ${card.c1}20`}}/>)}
-          {card.visual === 'type' && <><div style={{position:'absolute',left:18,top:16,fontFamily:T.display,fontSize:34,fontWeight:850,color:card.c1,letterSpacing:'-0.04em'}}>Aa</div><div style={{position:'absolute',right:18,top:22,width:82,height:6,borderRadius:99,background:'rgba(255,255,255,0.18)'}}/><div style={{position:'absolute',right:36,top:38,width:64,height:5,borderRadius:99,background:'rgba(255,255,255,0.10)'}}/></>}
-          {card.visual === 'grid' && <div style={{position:'absolute',inset:14,display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:7}}>{[0,1,2].map(i=><div key={i} style={{borderRadius:10,background:i===0?`${card.c1}28`:'rgba(255,255,255,0.075)',border:`1px solid ${i===0?card.c1+'44':'rgba(255,255,255,0.08)'}`}}/>)}</div>}
-          {card.visual === 'nodes' && <svg viewBox="0 0 220 78" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}><path d="M52 38 C86 16 126 16 162 38M80 52 C106 72 136 70 160 50" stroke="rgba(255,255,255,0.18)" strokeWidth="1.4" fill="none"/>{[[48,38,card.c1],[112,24,card.c2],[166,46,card.c1]].map(([x,y,c],i)=><circle key={i} cx={x} cy={y} r={i===1?13:10} fill={c} opacity=".85"/>)}</svg>}
-        </div>
-      );
+      const POS = [[1,1],[3,1],[1,3],[3,3]];
+      const FLUX = [
+        { key:'TL', d:'M 22 22 C 30 35 39 43 48 48 C 58 40 67 48 63 57 C 59 66 44 61 47 50', c:'#a5b8ff', cx:22, cy:22 },
+        { key:'TR', d:'M 78 22 C 70 35 61 43 52 48 C 42 40 33 48 37 57 C 41 66 56 61 53 50', c:'#f0c38e', cx:78, cy:22 },
+        { key:'BL', d:'M 22 78 C 31 66 40 58 48 52 C 58 60 67 52 63 43 C 59 34 44 39 47 50', c:'#4ade80', cx:22, cy:78 },
+        { key:'BR', d:'M 78 78 C 69 66 60 58 52 52 C 42 60 33 52 37 43 C 41 34 56 39 53 50', c:'#67e8f9', cx:78, cy:78 },
+      ];
+      const FRAGMENTS = [
+        { size: 10, x: 50, y: -4, dur: 15, delay: -1.4, color: '#e8edff', z: 18 },
+        { size: 7, x: 88, y: 24, dur: 18, delay: -7.2, color: '#a5b8ff', z: 26 },
+        { size: 13, x: 92, y: 66, dur: 21, delay: -10.4, color: '#67e8f9', z: 14 },
+        { size: 6, x: 62, y: 102, dur: 16, delay: -5.5, color: '#f0c38e', z: 20 },
+        { size: 9, x: 18, y: 76, dur: 19, delay: -12.2, color: '#c084fc', z: 16 },
+        { size: 5, x: 10, y: 32, dur: 14, delay: -8.6, color: '#ffffff', z: 28 },
+        { size: 12, x: 34, y: 6, dur: 23, delay: -16.5, color: '#b8f4ff', z: 10 },
+      ];
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <style>{`
-            .fs-perso-grid{flex:1;padding:clamp(14px,2vh,24px) clamp(20px,3vw,40px) clamp(16px,2.5vh,32px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:14px;min-height:0}
-            @media (max-width:768px){.fs-perso-grid{grid-template-columns:1fr;grid-template-rows:none;overflow-y:auto;padding:14px 16px 96px}.fs-perso-card{min-height:230px}}
+            @keyframes fsOrbFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}
+            @keyframes fsOrbHalo{0%,100%{opacity:.18;transform:scale(.98)}50%{opacity:.32;transform:scale(1.03)}}
+            @keyframes fsFluxBreathe{0%,100%{opacity:.45}50%{opacity:.82}}
+            @keyframes fsRingOuter{from{transform:rotateX(72deg) rotateY(8deg) rotateZ(0deg)}to{transform:rotateX(72deg) rotateY(8deg) rotateZ(360deg)}}
+            @keyframes fsRingMid{from{transform:rotateY(74deg) rotateX(12deg) rotateZ(360deg)}to{transform:rotateY(74deg) rotateX(12deg) rotateZ(0deg)}}
+            @keyframes fsRingInner{from{transform:rotateX(38deg) rotateY(42deg) rotateZ(0deg)}to{transform:rotateX(38deg) rotateY(42deg) rotateZ(360deg)}}
+            @keyframes fsRingPulse{0%,100%{opacity:.7}50%{opacity:1}}
+            @keyframes fsCrystalSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+            @keyframes fsCrystalTilt{0%,100%{transform:rotateX(0deg) rotateZ(0deg)}50%{transform:rotateX(8deg) rotateZ(-2deg)}}
+            @keyframes fsCrystalGleam{0%,100%{opacity:.35;transform:scale(.95) rotate(0deg)}50%{opacity:.7;transform:scale(1.08) rotate(180deg)}}
+            @keyframes fsCrystalFloor{0%,100%{opacity:.38;transform:scaleX(.92)}50%{opacity:.68;transform:scaleX(1.08)}}
+            @keyframes fsCoreCrystalFloat{0%,100%{transform:translate3d(0,4px,0) rotateX(-8deg) rotateZ(-1.2deg)}50%{transform:translate3d(0,-10px,0) rotateX(7deg) rotateZ(1.4deg)}}
+            @keyframes fsCoreCrystalTurn{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+            @keyframes fsFragmentOrbit{from{transform:rotateZ(0deg) rotateX(64deg) rotateY(-16deg)}to{transform:rotateZ(360deg) rotateX(64deg) rotateY(-16deg)}}
+            @keyframes fsFragmentCounter{from{transform:rotateZ(0deg) rotateY(0deg)}to{transform:rotateZ(-360deg) rotateY(360deg)}}
+            @keyframes fsCrystalRay{0%,100%{opacity:.24}50%{opacity:.55}}
+            @keyframes fsFluxOrbitLine{from{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(0deg)}to{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(360deg)}}
+            @keyframes fsThemeCrystalAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.94) rotate(0deg)}50%{opacity:.58;transform:translate3d(-50%,-50%,0) scale(1.04) rotate(8deg)}}
+            .fsPCard{border-radius:18px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:14px;display:flex;flex-direction:column;gap:10px;transition:all .42s cubic-bezier(.22,1,.36,1);align-self:center;justify-self:center;width:100%;max-width:184px}
+            .fsPLayout{flex:1;display:grid;grid-template-columns:1fr 1.55fr 1fr;grid-template-rows:1fr 1.5fr 1fr;position:relative;padding:clamp(10px,1.8vh,18px) clamp(14px,2.5vw,30px) clamp(14px,2vh,24px);min-height:0;align-items:center;justify-items:center}
+            .fsPCenter{grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;width:100%;height:100%;z-index:5}
+            .fsPHalo{display:none!important}
+            .fsRing,.fsRingNode{display:none!important}
+            .fsPFloat{display:none!important}
+            .fsCrystalStageFrame{background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible;isolation:isolate}
+            .fsCrystalScene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1120px;transform-style:preserve-3d}
+            .fsThemeCrystalAura{position:absolute;left:50%;top:50%;width:clamp(150px,18vw,220px);height:clamp(170px,21vw,250px);border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.18) 42%,rgba(var(--theme-c1-rgb),.055) 67%,transparent 74%);filter:blur(20px) saturate(1.05);mix-blend-mode:screen;pointer-events:none;z-index:6;animation:fsThemeCrystalAura 7.6s cubic-bezier(.4,0,.2,1) infinite}
+            .fsThemeCrystalAura:after{content:"";position:absolute;inset:18%;border-radius:inherit;background:conic-gradient(from 130deg,rgba(var(--theme-c1-rgb),.18),transparent 26%,rgba(var(--theme-c2-rgb),.16),transparent 62%,rgba(var(--theme-c1-rgb),.12));filter:blur(10px);opacity:.72}
+            .fsBlenderCrystalCanvas{position:absolute;inset:-12%;width:124%;height:124%;display:block;z-index:8;pointer-events:none;filter:drop-shadow(0 24px 42px rgba(var(--theme-c1-rgb),.24)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.18))}
+            .fsCrystalRays{display:none!important}
+            .fsOrbitShell{display:none!important}
+            .fsCrystalShard{position:absolute;transform-style:preserve-3d;animation:fsFragmentCounter 18s linear infinite}
+            .fsCrystalShard svg{display:none}
+            .fsShard3d{position:absolute;inset:0;transform-style:preserve-3d;filter:drop-shadow(0 8px 14px rgba(103,232,249,.22))}
+            .fsShardFace{position:absolute;left:50%;top:50%;width:100%;height:145%;margin-left:-50%;margin-top:-72.5%;clip-path:polygon(50% 0%,95% 34%,66% 100%,34% 100%,5% 34%);background:linear-gradient(150deg,rgba(255,255,255,.86),var(--shard-color),rgba(42,36,92,.42));border:1px solid rgba(255,255,255,.42);backface-visibility:visible}
+            .fsShardFace:nth-child(1){transform:rotateY(0deg) translateZ(calc(var(--shard-depth) * 1px))}
+            .fsShardFace:nth-child(2){transform:rotateY(90deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.84}
+            .fsShardFace:nth-child(3){transform:rotateY(180deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.72}
+            .fsShardFace:nth-child(4){transform:rotateY(270deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.8}
+            .fsMainCrystalFloat{display:none!important}
+            .fsMainCrystalTurn{position:absolute;inset:0;transform-style:preserve-3d;animation:fsCoreCrystalTurn 10.5s linear infinite;filter:drop-shadow(0 24px 46px rgba(103,232,249,.22))}
+            .fsMainCrystalSvg{display:none}
+            .fsVolCrystal{position:absolute;left:50%;top:50%;width:132px;height:190px;margin-left:-66px;margin-top:-95px;transform-style:preserve-3d}
+            .fsVolFacet{position:absolute;left:50%;top:50%;width:44px;height:116px;margin-left:-22px;margin-top:-42px;clip-path:polygon(50% 0%,100% 16%,84% 100%,16% 100%,0% 16%);background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(184,244,255,.5) 28%,rgba(165,184,255,.34) 62%,rgba(20,18,56,.68));border:1px solid rgba(255,255,255,.44);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -22px 34px rgba(13,12,42,.34);backface-visibility:visible;transform-origin:50% 50%}
+            .fsVolFacet::after{content:"";position:absolute;left:49%;top:2%;bottom:3%;width:1px;background:linear-gradient(to bottom,rgba(255,255,255,.72),rgba(255,255,255,.12),transparent)}
+            .fsVolFacet:nth-child(1){transform:rotateY(0deg) translateZ(38px)}
+            .fsVolFacet:nth-child(2){transform:rotateY(60deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(3){transform:rotateY(120deg) translateZ(38px);opacity:.78}
+            .fsVolFacet:nth-child(4){transform:rotateY(180deg) translateZ(38px);opacity:.68}
+            .fsVolFacet:nth-child(5){transform:rotateY(240deg) translateZ(38px);opacity:.78}
+            .fsVolFacet:nth-child(6){transform:rotateY(300deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(7){width:108px;height:64px;margin-left:-54px;margin-top:-100px;clip-path:polygon(50% 0%,100% 72%,50% 100%,0% 72%);background:linear-gradient(150deg,rgba(255,255,255,.96),rgba(184,244,255,.55),rgba(126,103,255,.24));transform:rotateX(64deg) translateZ(38px);opacity:.92}
+            .fsVolFacet:nth-child(8){width:104px;height:78px;margin-left:-52px;margin-top:44px;clip-path:polygon(0% 0%,100% 0%,50% 100%);background:linear-gradient(180deg,rgba(119,145,255,.36),rgba(19,16,54,.76));transform:rotateX(-64deg) translateZ(38px);opacity:.82}
+            .fsCrystalFloor{display:none!important}
+            @media(max-width:640px){
+              .fsPLayout{display:grid!important;grid-template-columns:1fr 1fr!important;grid-template-rows:auto auto auto!important;gap:12px!important;padding:14px 14px 110px!important;overflow-y:auto!important;align-items:stretch!important;justify-items:stretch!important}
+              .fsPSvgOvl{display:none!important}
+              .fsPCenter{grid-column:1 / -1!important;grid-row:1!important;height:232px!important;width:100%!important;justify-self:center!important}
+              .fsCrystalStageFrame{width:min(254px,84vw)!important;height:218px!important;aspect-ratio:auto!important}
+              .fsThemeCrystalAura{width:172px!important;height:198px!important;filter:blur(18px) saturate(1.05)}
+              .fsBlenderCrystalCanvas{inset:-8%!important;width:116%!important;height:116%!important}
+              .fsPCrystalCore{inset:16% 22% 18%!important;transform:scale(.9)}
+              .fsMainCrystalFloat{width:112px!important;height:160px!important;margin-left:-56px!important;margin-top:-80px!important}
+              .fsVolCrystal{width:108px!important;height:158px!important;margin-left:-54px!important;margin-top:-79px!important}
+              .fsVolFacet{width:36px!important;height:96px!important;margin-left:-18px!important;margin-top:-34px!important}
+              .fsVolFacet:nth-child(7){width:88px!important;height:52px!important;margin-left:-44px!important;margin-top:-82px!important}
+              .fsVolFacet:nth-child(8){width:84px!important;height:62px!important;margin-left:-42px!important;margin-top:36px!important}
+              .fsOrbitShell{width:82%!important;height:82%!important;margin:-41% 0 0 -41%!important}
+              .fsCrystalRays{width:52%!important}
+              .fsPCard{max-width:none!important;width:100%!important;padding:13px!important}
+              .fsPCard:nth-of-type(1){grid-column:1!important;grid-row:2!important}
+              .fsPCard:nth-of-type(2){grid-column:2!important;grid-row:2!important}
+              .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
+              .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
+            }
+            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
           `}</style>
-          <div style={{ padding: 'clamp(20px,3vh,36px) clamp(20px,3vw,40px) 0', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}` }} />
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Personnalisation</span>
+
+          {/* ── Header — refined typographic rhythm ── */}
+          <div style={{padding:'clamp(18px,2.8vh,30px) clamp(20px,3vw,40px) 0',flexShrink:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+              <div style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,.55)'}}/>
+              <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.18em',textTransform:'uppercase',color:'rgba(255,255,255,.55)'}}>Personnalisation</span>
             </div>
-            <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(22px,3.2vh,36px)', letterSpacing: '-0.04em', lineHeight: 1.08, marginBottom: 10 }}>
-              Faites-en<br />votre espace.
-            </div>
-            <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.65 }}>
-              Adaptez chaque détail de LumenOS à votre identité, du dashboard jusqu'à vos notes.
-            </div>
+            <div style={{fontFamily:T.display,fontWeight:700,fontSize:'clamp(22px,2.8vh,32px)',letterSpacing:'-0.035em',lineHeight:1.05,marginBottom:10,color:'rgba(255,255,255,.96)'}}>Faites-en votre espace.</div>
+            <div style={{fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.55,fontWeight:400,maxWidth:'42ch'}}>Quatre dimensions, un seul prisme. Ajustez ce que vous voyez, lisez et habitez.</div>
           </div>
-          <div className="fs-perso-grid">
-            {CARDS.map(card => {
+
+          {/* ── Radial grid layout ── */}
+          <div className="fsPLayout">
+
+            {/* SVG flux overlay — hairline gradient strokes, no particles */}
+            <svg className="fsPSvgOvl" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:4,overflow:'visible'}} viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                {FLUX.map(f => (
+                  <linearGradient key={f.key} id={`fsG${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%"   stopColor={f.c} stopOpacity=".42"/>
+                    <stop offset="55%"  stopColor={f.c} stopOpacity=".14"/>
+                    <stop offset="100%" stopColor={f.c} stopOpacity="0"/>
+                  </linearGradient>
+                ))}
+              </defs>
+              {FLUX.map((f, i) => (
+                <g key={f.key} className="fsPFluxLine" style={{animation:`fsFluxBreathe 5s ease-in-out infinite`,animationDelay:`${-i*0.7}s`}}>
+                  {/* Single hairline stroke */}
+                  <path d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth=".4" fill="none" strokeLinecap="round"/>
+                  {/* Tiny static endpoint dot at card corner */}
+                  <circle cx={f.cx} cy={f.cy} r=".75" fill={f.c} opacity=".55"/>
+                </g>
+              ))}
+            </svg>
+
+            {/* ── 4 Compact corner cards — refined typography ── */}
+            {CARDS.map((card, i) => {
+              const [gc, gr] = POS[i];
               const h = hov === card.id;
               return (
-                <div key={card.id} className="fs-perso-card" onClick={() => onNavigate(card.target)}
+                <div key={card.id} className="fsPCard"
+                  onClick={() => onNavigate(card.target)}
                   onMouseEnter={() => setHov(card.id)} onMouseLeave={() => setHov(null)}
-                  style={{ borderRadius: 24, cursor: 'pointer', position: 'relative', overflow: 'hidden', background: h ? 'rgba(255,255,255,0.052)' : 'rgba(255,255,255,0.026)', border: `1px solid ${h ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.058)'}`, backdropFilter: 'blur(32px)', padding: 'clamp(16px,2.2vh,24px)', transition: 'all 0.38s cubic-bezier(0.34,1.56,0.64,1)', transform: h ? 'translateY(-3px)' : 'none', boxShadow: h ? `0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.09), 0 0 60px ${card.c1}18` : '0 4px 24px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth:0 }}>
-                  <div style={{ position: 'absolute', top: -70, right: -70, width: 220, height: 220, borderRadius: '50%', background: `radial-gradient(circle, ${card.c1}${h ? '2a' : '18'} 0%, ${card.c2}10 55%, transparent 72%)`, transition: 'all 0.45s', transform: h ? 'scale(1.12)' : 'scale(1)', pointerEvents: 'none' }} />
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', background: `linear-gradient(135deg,${card.c1}20,${card.c2}14)`, border: `1px solid ${card.c1}30`, borderRadius: 99, padding: '3px 10px', marginBottom: 10, fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: card.c1 }}>{card.eyebrow}</div>
-                      <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 'clamp(16px,2.2vh,22px)', letterSpacing: '-0.03em', marginBottom: 6 }}>{card.title}</div>
-                      <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.6 }}>{card.desc}</div>
+                  style={{
+                    gridColumn:gc, gridRow:gr,
+                    background: h ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)',
+                    border:`1px solid ${h ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)'}`,
+                    boxShadow: h ? `0 12px 32px rgba(0,0,0,.36),0 0 0 .5px rgba(255,255,255,.06)` : '0 1px 8px rgba(0,0,0,.12)',
+                    transform: h ? 'translateY(-2px)' : 'translateY(0)',
+                    zIndex: h ? 10 : 2,
+                  }}
+                >
+                  {/* Whisper-thin corner glow on hover only */}
+                  <div style={{position:'absolute',inset:0,borderRadius:'inherit',background:`radial-gradient(circle at 90% 10%,${card.c1}${h?'1c':'00'},transparent 60%)`,transition:'all .5s',pointerEvents:'none'}}/>
+
+                  {/* Top row: icon (left) + arrow indicator (right) */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',position:'relative'}}>
+                    <div style={{width:28,height:28,borderRadius:9,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',justifyContent:'center',color: h ? card.c1 : 'rgba(255,255,255,.65)',transition:'color .35s'}}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg>
                     </div>
-                    <div style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, background: h ? `linear-gradient(135deg,${card.c1},${card.c2})` : 'rgba(255,255,255,0.07)', border: `1px solid ${h ? 'transparent' : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)', color: h ? '#07070d' : T.muted, boxShadow: h ? `0 6px 22px ${card.c1}44` : 'none', transform: h ? 'scale(1.06)' : 'scale(1)' }}><svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg></div>
+                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color:h?'rgba(255,255,255,.7)':'rgba(255,255,255,.25)',transform:h?'translateX(2px)':'translateX(0)',transition:'all .35s cubic-bezier(.22,1,.36,1)'}}><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                   </div>
-                  {renderMini(card)}
-                  <div style={{ display: 'flex', gap: 5, marginTop: 14, position: 'relative' }}>
-                    {[...Array(card.bars)].map((_, i) => (
-                      <div key={i} style={{ height: 3, flex: i === 0 ? 2.2 : 1, borderRadius: 99, background: i === 0 ? `linear-gradient(90deg,${card.c1},${card.c2})` : i === 1 ? `rgba(255,255,255,${h ? .18 : .10})` : i === 2 ? `rgba(255,255,255,${h ? .13 : .07})` : i === 3 ? `rgba(255,255,255,${h ? .09 : .05})` : `rgba(255,255,255,${h ? .06 : .03})`, transition: 'background 0.3s' }} />
-                    ))}
-                  </div>
+
+                  {/* Eyebrow */}
+                  <div style={{fontSize:9,fontWeight:600,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginTop:'auto'}}>{card.eyebrow}</div>
+
+                  {/* Title — typographic hero */}
+                  <div style={{fontFamily:T.display,fontWeight:600,fontSize:'clamp(15px,1.9vh,18px)',letterSpacing:'-0.02em',color:'rgba(255,255,255,.96)',position:'relative'}}>{card.title}</div>
                 </div>
               );
             })}
+
+            {/* ── Center: Orbital Personalization System — infinite rings + 3D crystal ── */}
+            <div className="fsPCenter">
+              <div className="fsCrystalStageFrame" style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
+                <div className="fsCrystalScene">
+                  <div className="fsThemeCrystalAura" aria-hidden="true" />
+                  <BlenderCrystalScene />
+                  <div className="fsPHalo" style={{position:'absolute',inset:'-12%',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                  <div className="fsOrbitShell">
+                    {FRAGMENTS.map((frag, i) => (
+                      <div key={i} className="fsCrystalShard" style={{
+                        left:`${frag.x}%`,
+                        top:`${frag.y}%`,
+                        width:frag.size,
+                        height:frag.size * 1.45,
+                        marginLeft:frag.size / -2,
+                        marginTop:(frag.size * 1.45) / -2,
+                        animationDuration:`${frag.dur}s`,
+                        animationDelay:`${frag.delay}s`,
+                        transform:`translateZ(${frag.z}px)`,
+                      }}>
+                        <div className="fsShard3d" style={{'--shard-color':frag.color,'--shard-depth':Math.max(2, frag.size * .42)}}>
+                          {[0,1,2,3].map(face => <span key={face} className="fsShardFace"/>)}
+                        </div>
+                        <svg viewBox="0 0 20 30" width={frag.size} height={frag.size * 1.45} aria-hidden="true">
+                          <polygon points="10,1 18,9 13,29 7,29 2,9" fill={frag.color} opacity=".76"/>
+                          <path d="M10 1v28M2 9h16M7 29 10 9l3 20" stroke="rgba(255,255,255,.54)" strokeWidth="1" fill="none" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="fsMainCrystalFloat">
+                    <div className="fsMainCrystalTurn">
+                      <div className="fsVolCrystal" aria-hidden="true">
+                        {[0,1,2,3,4,5,6,7].map(face => <span key={face} className="fsVolFacet"/>)}
+                      </div>
+                      <svg className="fsMainCrystalSvg" viewBox="0 0 124 178" aria-hidden="true">
+                        <defs>
+                          <linearGradient id="fsMainCrystalLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(245,248,255,.92)"/>
+                            <stop offset="38%" stopColor="rgba(165,184,255,.58)"/>
+                            <stop offset="100%" stopColor="rgba(74,65,145,.42)"/>
+                          </linearGradient>
+                          <linearGradient id="fsMainCrystalRight" x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(184,244,255,.84)"/>
+                            <stop offset="46%" stopColor="rgba(192,132,252,.5)"/>
+                            <stop offset="100%" stopColor="rgba(34,27,84,.62)"/>
+                          </linearGradient>
+                          <linearGradient id="fsMainCrystalCore" x1="50%" y1="0%" x2="50%" y2="100%">
+                            <stop offset="0%" stopColor="rgba(255,255,255,.95)"/>
+                            <stop offset="30%" stopColor="rgba(226,232,255,.74)"/>
+                            <stop offset="66%" stopColor="rgba(111,151,255,.38)"/>
+                            <stop offset="100%" stopColor="rgba(18,16,52,.72)"/>
+                          </linearGradient>
+                          <filter id="fsMainCrystalGlow" x="-45%" y="-35%" width="190%" height="180%">
+                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                            <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.72 0 0 0 0 1 0 0 0 .55 0"/>
+                            <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+                          </filter>
+                        </defs>
+                        <path d="M62 4 112 42 94 134 62 174 30 134 12 42Z" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.52)" strokeWidth="1.2" filter="url(#fsMainCrystalGlow)"/>
+                        <polygon points="62,4 112,42 62,54 12,42" fill="rgba(255,255,255,.74)" opacity=".82"/>
+                        <polygon points="12,42 62,54 30,134" fill="url(#fsMainCrystalLeft)"/>
+                        <polygon points="112,42 62,54 94,134" fill="url(#fsMainCrystalRight)"/>
+                        <polygon points="62,54 94,134 62,174 30,134" fill="url(#fsMainCrystalCore)"/>
+                        <polygon points="62,4 62,54 12,42" fill="rgba(167,180,255,.38)"/>
+                        <polygon points="62,4 112,42 62,54" fill="rgba(103,232,249,.34)"/>
+                        <path d="M62 5v168M12 42l50 12 50-12M30 134l32-80 32 80M30 134h64" stroke="rgba(255,255,255,.42)" strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M44 48 62 14 82 47M42 80 61 58M83 80 64 58" stroke="rgba(255,255,255,.24)" strokeWidth=".8" fill="none" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="fsCrystalFloor" style={{position:'absolute',left:'23%',right:'23%',bottom:'15%',height:'8%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.36),rgba(103,232,249,.16) 42%,transparent 72%)',filter:'blur(9px)',pointerEvents:'none',zIndex:2}}/>
+                </div>
+
+                {/* Soft ambient halo */}
+                <div className="fsPHalo" style={{position:'absolute',inset:'-18%',borderRadius:'50%',background:'radial-gradient(circle,rgba(167,180,255,.16),rgba(192,132,252,.06) 50%,transparent 72%)',filter:'blur(28px)',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                {/* Float wrapper — gentle vertical breath */}
+                <div className="fsPFloat" style={{animation:'fsOrbFloat 6s ease-in-out infinite',width:'100%',height:'100%',position:'relative'}}>
+
+                  {/* 3D scene with perspective */}
+                  <div style={{perspective:'780px',perspectiveOrigin:'50% 50%',width:'100%',height:'100%',position:'relative',transformStyle:'preserve-3d'}}>
+
+                    {/* Drop shadow under entire system */}
+                    <div style={{position:'absolute',left:'18%',right:'18%',bottom:'-4%',height:'10%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(0,0,0,.5),transparent 65%)',filter:'blur(8px)',pointerEvents:'none'}}/>
+
+                    {/* ── Ring 1 — Outer horizontal orbit (18s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'-3%',borderRadius:'50%',border:'1.5px solid rgba(255,255,255,.18)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.06), 0 0 28px rgba(167,180,250,.05)',animation:'fsRingOuter 22s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      {/* Satellite node */}
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-3,width:6,height:6,marginLeft:-3,borderRadius:'50%',background:'rgba(255,255,255,.96)',boxShadow:'0 0 10px rgba(167,180,250,.85),0 0 3px #fff',animation:'fsRingPulse 3s ease-in-out infinite'}}/>
+                      {/* Counter-satellite (opposite side) */}
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',bottom:-2,width:3,height:3,marginLeft:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.6)',boxShadow:'0 0 5px rgba(167,180,250,.5)'}}/>
+                    </div>
+
+                    {/* ── Ring 2 — Vertical orbit, reverse direction (28s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'7%',borderRadius:'50%',border:'1.2px solid rgba(255,255,255,.14)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.05), 0 0 22px rgba(240,195,142,.04)',animation:'fsRingMid 32s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2.5,width:5,height:5,marginLeft:-2.5,borderRadius:'50%',background:'rgba(255,255,255,.93)',boxShadow:'0 0 8px rgba(240,195,142,.75)',animation:'fsRingPulse 3.5s ease-in-out infinite',animationDelay:'-1.2s'}}/>
+                    </div>
+
+                    {/* ── Ring 3 — Diagonal orbit (24s) ── */}
+                    <div className="fsRing" style={{position:'absolute',inset:'18%',borderRadius:'50%',border:'1px solid rgba(255,255,255,.12)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.04), 0 0 16px rgba(74,222,128,.03)',animation:'fsRingInner 26s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
+                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2,width:4,height:4,marginLeft:-2,borderRadius:'50%',background:'rgba(255,255,255,.9)',boxShadow:'0 0 6px rgba(103,232,249,.7)',animation:'fsRingPulse 4s ease-in-out infinite',animationDelay:'-2s'}}/>
+                      <div className="fsRingNode" style={{position:'absolute',right:-1.5,top:'50%',width:3,height:3,marginTop:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.55)',boxShadow:'0 0 5px rgba(74,222,128,.5)'}}/>
+                    </div>
+
+                    {/* ── Central 3D Crystal — floating octahedron ── */}
+                    <div className="fsPCrystalCore" style={{position:'absolute',inset:'14% 18% 18%',display:'flex',alignItems:'center',justifyContent:'center',zIndex:3,transformStyle:'preserve-3d'}}>
+
+                      {/* Inner gleam halo behind crystal */}
+                      <div className="fsCrystalGleam" style={{position:'absolute',inset:'-34%',borderRadius:28,clipPath:'polygon(50% 0%,92% 28%,76% 100%,24% 100%,8% 28%)',background:'conic-gradient(from 90deg,rgba(255,255,255,.22),rgba(167,180,255,.18) 25%,transparent 50%,rgba(192,132,252,.16) 75%,rgba(255,255,255,.22))',filter:'blur(14px)',animation:'fsCrystalGleam 9s ease-in-out infinite',pointerEvents:'none'}}/>
+
+                      {/* Subtle tilt wrapper for organic motion */}
+                      <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalTilt 11s ease-in-out infinite'}}>
+                        {/* Y-axis spin */}
+                        <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalSpin 14s linear infinite'}}>
+
+                          {/* 8 octahedron facets — 4 top + 4 bottom, each at correct 3D position */}
+                          {[
+                            {a:45,  t:true},  {a:135, t:true},  {a:225, t:true},  {a:315, t:true},
+                            {a:45,  t:false}, {a:135, t:false}, {a:225, t:false}, {a:315, t:false},
+                          ].map((f, i) => (
+                            <svg key={i} viewBox="0 0 80 100" style={{
+                              position:'absolute',
+                              top:'50%', left:'50%',
+                              width:84, height:112,
+                              marginLeft:-42, marginTop:-56,
+                              /* Order matters: translateZ AFTER rotations so it moves along the rotated normal */
+                              transform:`translateZ(34px) rotateY(${f.a}deg) rotateX(${f.t?58:-58}deg)`,
+                              transformOrigin:'50% 50%',
+                              overflow:'visible',
+                              backfaceVisibility:'visible',
+                            }}>
+                              <defs>
+                                <linearGradient id={`fsCG${i}`} x1="50%" y1={f.t?"0%":"100%"} x2="50%" y2={f.t?"100%":"0%"}>
+                                  <stop offset="0%" stopColor="rgba(255,255,255,.55)"/>
+                                  <stop offset="22%" stopColor="rgba(220,225,255,.32)"/>
+                                  <stop offset="55%" stopColor="rgba(167,180,255,.18)"/>
+                                  <stop offset="85%" stopColor="rgba(120,100,170,.12)"/>
+                                  <stop offset="100%" stopColor="rgba(16,11,32,.6)"/>
+                                </linearGradient>
+                                <linearGradient id={`fsCE${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="rgba(255,255,255,.62)"/>
+                                  <stop offset="100%" stopColor="rgba(255,255,255,.22)"/>
+                                </linearGradient>
+                              </defs>
+                              {/* Main facet — triangle */}
+                              <polygon
+                                points={f.t ? "40,4 76,92 4,92" : "4,8 76,8 40,96"}
+                                fill={`url(#fsCG${i})`}
+                                stroke={`url(#fsCE${i})`}
+                                strokeWidth="0.9"
+                                strokeLinejoin="round"
+                              />
+                              {/* Inner spine — adds 3D facet definition */}
+                              <line
+                                x1="40" y1={f.t?"4":"96"} x2="40" y2={f.t?"92":"8"}
+                                stroke="rgba(255,255,255,.18)"
+                                strokeWidth="0.45"
+                              />
+                            </svg>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Caustic glow underneath — subtle ground hint */}
+                      <div className="fsCrystalFloor" style={{position:'absolute',left:'8%',right:'8%',bottom:'-12%',height:'13%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.34),rgba(103,232,249,.14) 42%,transparent 70%)',filter:'blur(8px)',pointerEvents:'none'}}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -9150,9 +9577,269 @@
       );
     }
 
+    function SettingsScreen({ onNavigate, user, onUserUpdate }) {
+      const [query, setQuery] = React.useState('');
+      const [saved, setSaved] = React.useState(false);
+      const [email, setEmail] = React.useState(user?.email || '');
+      const [emailTouched, setEmailTouched] = React.useState(false);
+      const [darkMode, setDarkMode] = React.useState(true);
+      const [opts, setOpts] = React.useState({ deadline:true, summary:true, nudge:true, security:true });
+      const [installPrompt, setInstallPrompt] = React.useState(null);
+      const [isInstalled, setIsInstalled] = React.useState(fsIsStandaloneDisplay);
+      const fileRef = React.useRef(null);
+      const refs = React.useRef({});
+      const displayName = user?.name || user?.username || 'Utilisateur';
+      const displayEmail = user?.email || 'Compte local';
+      const profilePhoto = user?.photo || user?.avatar || null;
+      const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
+      const emailOk = !emailTouched || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      const sections = [
+        ['profile','Profil','Nom, email, photo','01'],
+        ['notifications','Notifications','Rappels utiles','02'],
+        ['security','Securite','Sessions et alertes','03'],
+        ['appearance','Apparence','Theme et interface','04'],
+        ['billing','Facturation','Usage et limites','05'],
+        ['danger','Zone Danger','Actions sensibles','06'],
+      ];
+      const searchable = [
+        ['profile','Modifier ton email de connexion'],
+        ['notifications','Recevoir un rappel 30 min avant chaque echeance'],
+        ['notifications','Recevoir un resume hebdomadaire'],
+        ['security','Voir les sessions actives'],
+        ['security','Recevoir une alerte de securite'],
+        ['appearance','Synchroniser le dark mode avec le theme'],
+        ['billing','Voir ton usage mensuel'],
+        ['danger','Supprimer le compte'],
+      ];
+      const results = query.trim() ? searchable.filter(([_, t]) => t.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6) : [];
+      const flashSave = () => {
+        setSaved(true);
+        window.clearTimeout(window.__fsSettingsSavedTimer);
+        window.__fsSettingsSavedTimer = window.setTimeout(() => setSaved(false), 2500);
+      };
+      React.useEffect(() => {
+        const handler = e => { e.preventDefault(); setInstallPrompt(e); };
+        window.addEventListener('beforeinstallprompt', handler);
+        const unwatchStandalone = fsWatchMediaQuery('(display-mode: standalone)', setIsInstalled);
+        return () => {
+          window.removeEventListener('beforeinstallprompt', handler);
+          unwatchStandalone();
+        };
+      }, []);
+      const handleInstall = async () => {
+        if (installPrompt) {
+          installPrompt.prompt();
+          const { outcome } = await installPrompt.userChoice;
+          if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); }
+        }
+        flashSave();
+      };
+      const handlePhotoFile = e => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          const nextUser = { ...(user || {}), name: displayName, email: displayEmail, photo: dataUrl };
+          try {
+            localStorage.setItem('fs_user', JSON.stringify(nextUser));
+            localStorage.setItem('fs_img_profile', dataUrl);
+          } catch (_) {}
+          onUserUpdate && onUserUpdate(nextUser);
+          try { window._fsFlushPush?.(true); } catch(_) {}
+          flashSave();
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+      };
+      const scrollTo = id => refs.current[id]?.scrollIntoView({ behavior:'smooth', block:'start' });
+      React.useEffect(() => {
+        const onKey = e => {
+          const mod = e.metaKey || e.ctrlKey;
+          if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); document.getElementById('fs-settings-search')?.focus(); }
+          if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); flashSave(); }
+          if (e.key === '?') { e.preventDefault(); setQuery('raccourcis'); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+      const Toggle = ({ value, onChange }) => (
+        <button onClick={() => { onChange(!value); flashSave(); }} aria-pressed={value} style={{width:50,height:30,borderRadius:999,border:`1px solid ${value?'rgba(var(--theme-c1-rgb),0.42)':'rgba(255,255,255,0.10)'}`,background:value?'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))':'rgba(255,255,255,0.055)',padding:3,cursor:'pointer',boxShadow:value?'0 12px 28px rgba(var(--theme-c1-rgb),0.20), inset 0 1px 0 rgba(255,255,255,0.30)':'inset 0 1px 0 rgba(255,255,255,0.06)',transition:'all .22s var(--mineral-ease)'}}>
+          <span style={{display:'block',width:22,height:22,borderRadius:'50%',background:value?'#071016':'rgba(248,246,252,0.82)',transform:`translateX(${value?20:0}px)`,transition:'transform .22s var(--mineral-ease)',boxShadow:'0 8px 18px rgba(0,0,0,0.24)'}} />
+        </button>
+      );
+      const Row = ({ title, desc, value, set }) => (
+        <div className="fs-settings-row">
+          <div style={{minWidth:0}}><div className="fs-settings-row-title">{title}</div><div className="fs-settings-row-desc">{desc}</div></div>
+          <Toggle value={value} onChange={set} />
+        </div>
+      );
+      const Card = ({ id, title, desc, danger, children }) => (
+        <section ref={el => refs.current[id] = el} className={'fs-settings-card' + (danger ? ' fs-settings-card-danger' : '')}>
+          <div className="fs-settings-card-head">
+            <div><div className="fs-settings-card-title">{title}</div><div className="fs-settings-card-desc">{desc}</div></div>
+            {danger && <div className="fs-settings-danger-badge">!</div>}
+          </div>
+          {children}
+        </section>
+      );
+      return (
+        <div style={{width:'100%',height:'100%',overflow:'hidden',fontFamily:T.font,color:T.text}}>
+          <style>{`
+            .fs-settings-grid{display:grid;grid-template-columns:292px minmax(0,1fr);height:100%;min-height:0;background:radial-gradient(ellipse 80% 48% at 68% -10%,rgba(var(--theme-c1-rgb),0.14),transparent 62%),radial-gradient(ellipse 60% 44% at 96% 92%,rgba(var(--theme-c2-rgb),0.09),transparent 60%)}
+            .fs-settings-sidebar{position:sticky;top:0;height:100%;overflow:auto;border-right:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.64),rgba(var(--mineral-bg-rgb),0.42));padding:26px 18px;box-shadow:inset -1px 0 0 rgba(255,255,255,0.025)}
+            .fs-settings-main{min-width:0;overflow:auto;padding:30px 38px 48px;scrollbar-width:thin}
+            .fs-settings-shell{max-width:1040px;margin:0 auto}
+            .fs-settings-nav-btn{width:100%;text-align:left;border:1px solid rgba(255,255,255,0.055);background:rgba(255,255,255,0.025);color:${T.muted};border-radius:18px;padding:13px 13px;cursor:pointer;font-family:${T.font};transition:transform .2s var(--mineral-ease),background .2s,border-color .2s,color .2s;display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center}
+            .fs-settings-nav-index{width:30px;height:30px;border-radius:11px;display:grid;place-items:center;background:rgba(var(--theme-c1-rgb),0.09);color:${T.c1};font-size:10px;font-weight:900}
+            .fs-settings-nav-btn:hover{background:rgba(255,255,255,0.065);border-color:rgba(var(--theme-c1-rgb),0.22);color:${T.text};transform:translateY(-1px)}
+            .fs-settings-hero{position:relative;overflow:hidden;border-radius:30px;padding:28px;border:1px solid rgba(var(--theme-c1-rgb),0.16);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.15),rgba(var(--theme-c2-rgb),0.07) 42%,rgba(255,255,255,0.035));box-shadow:0 30px 90px rgba(0,0,0,0.30),0 14px 44px rgba(var(--theme-c1-rgb),0.10),inset 0 1px 0 rgba(255,255,255,0.10);margin-bottom:18px}
+            .fs-settings-hero:after{content:"";position:absolute;right:30px;bottom:-45px;width:190px;height:190px;border-radius:50%;border:1px solid rgba(var(--theme-c1-rgb),0.18);box-shadow:inset 0 0 48px rgba(var(--theme-c1-rgb),0.08);pointer-events:none}
+            .fs-settings-save{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;border-radius:13px;border:1px solid rgba(var(--theme-c1-rgb),0.18);background:rgba(255,255,255,0.045);color:${T.muted};font-size:12px;font-weight:850;transition:all .24s var(--mineral-ease);white-space:nowrap}
+            .fs-settings-save.is-saved{background:rgba(var(--theme-c1-rgb),0.14);color:${T.c1};box-shadow:0 12px 28px rgba(var(--theme-c1-rgb),0.12)}
+            .fs-settings-field{height:44px;border-radius:15px;border:1px solid rgba(255,255,255,0.085);background:rgba(255,255,255,0.05);color:${T.text};font-family:${T.font};outline:none;padding:0 14px;box-sizing:border-box;box-shadow:inset 0 1px 0 rgba(255,255,255,0.035)}
+            .fs-settings-field:focus{border-color:rgba(var(--theme-c1-rgb),0.46);background:rgba(var(--theme-c1-rgb),0.055);box-shadow:0 0 0 3px rgba(var(--theme-c1-rgb),0.10),inset 0 1px 0 rgba(255,255,255,0.06)}
+            .fs-settings-card{scroll-margin-top:20px;border-radius:26px;border:1px solid rgba(255,255,255,0.075);background:linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.024));box-shadow:0 20px 62px rgba(0,0,0,0.23),inset 0 1px 0 rgba(255,255,255,0.065);padding:24px 26px;margin-bottom:16px}
+            .fs-settings-card-danger{border-color:rgba(251,113,133,0.30);background:linear-gradient(180deg,rgba(251,113,133,0.085),rgba(255,255,255,0.026))}
+            .fs-settings-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+            .fs-settings-card-title{font-size:18px;font-weight:920;color:${T.text};letter-spacing:-0.01em}
+            .fs-settings-card-danger .fs-settings-card-title{color:${T.rose}}
+            .fs-settings-card-desc{font-size:12.5px;line-height:1.65;color:${T.muted};margin-top:5px;max-width:640px}
+            .fs-settings-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 0;border-top:1px solid rgba(255,255,255,0.055)}
+            .fs-settings-row-title{font-size:14px;font-weight:850;color:${T.text}}
+            .fs-settings-row-desc{font-size:12.5px;line-height:1.6;color:${T.muted};margin-top:4px}
+            .fs-settings-danger-badge{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.24);color:${T.rose};font-weight:950}
+            .fs-settings-photo{width:100px;height:100px;border-radius:30px;border:1px solid rgba(var(--theme-c1-rgb),0.28);background:linear-gradient(145deg,rgba(255,255,255,0.13),rgba(var(--theme-c1-rgb),0.22),rgba(var(--theme-c2-rgb),0.12));color:${T.text};display:grid;place-items:center;overflow:hidden;cursor:pointer;font:900 30px ${T.display};box-shadow:0 24px 56px rgba(var(--theme-c1-rgb),0.16),inset 0 1px 0 rgba(255,255,255,0.14);transition:transform .22s var(--mineral-ease),box-shadow .22s}
+            .fs-settings-photo:hover{transform:translateY(-2px);box-shadow:0 30px 66px rgba(var(--theme-c1-rgb),0.22),inset 0 1px 0 rgba(255,255,255,0.16)}
+            .fs-settings-photo img{width:100%;height:100%;object-fit:cover;display:block}
+            @media(max-width:900px){.fs-settings-grid{display:block}.fs-settings-sidebar{position:relative;height:auto;padding:16px 14px;border-right:none;border-bottom:1px solid rgba(255,255,255,0.065)}.fs-settings-sidebar nav{display:flex;overflow-x:auto;gap:8px}.fs-settings-nav-btn{min-width:164px}.fs-settings-main{padding:18px 14px 104px}.fs-settings-hero{padding:22px;border-radius:24px}.fs-settings-card{padding:20px;border-radius:22px}.fs-settings-row{align-items:flex-start}.fs-settings-photo{width:86px;height:86px;border-radius:26px}}
+          `}</style>
+          <div className="fs-settings-grid">
+            <aside className="fs-settings-sidebar">
+              <button onClick={() => onNavigate('dashboard')} style={{height:38,borderRadius:13,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:T.muted,padding:'0 12px',fontSize:12,fontWeight:800,fontFamily:T.font,cursor:'pointer',marginBottom:22}}>Retour</button>
+              <div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.9)',marginBottom:10}}>Control center</div>
+              <div style={{fontFamily:T.display,fontSize:31,fontWeight:850,letterSpacing:'-0.04em',lineHeight:0.96,marginBottom:10}}>Settings</div>
+              <div style={{fontSize:12,lineHeight:1.65,color:T.muted,marginBottom:20}}>Une navigation courte, des labels humains, et un retour de sauvegarde visible.</div>
+              <nav style={{display:'grid',gap:9}}>{sections.map(([id,label,hint,idx]) => <button key={id} className="fs-settings-nav-btn" onClick={() => scrollTo(id)}><span className="fs-settings-nav-index">{idx}</span><span><div style={{fontSize:13,fontWeight:850,color:'inherit'}}>{label}</div><div style={{fontSize:11,color:T.faint,marginTop:3}}>{hint}</div></span></button>)}</nav>
+            </aside>
+            <main className="fs-settings-main">
+              <div className="fs-settings-shell">
+                <div className="fs-settings-hero">
+                <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:20,alignItems:'start'}}>
+                  <div><div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.95)',marginBottom:10}}>LumenOS preferences</div><div style={{fontFamily:T.display,fontSize:'clamp(36px,4.5vw,60px)',fontWeight:850,letterSpacing:'-0.045em',lineHeight:0.96}}>Reglages clairs, sans friction.</div><div style={{maxWidth:620,fontSize:13,lineHeight:1.7,color:T.muted,marginTop:12}}>Tout ce qui concerne ton compte, tes rappels, ta securite et ton apparence dans une interface lisible.</div></div>
+                  <div className={'fs-settings-save' + (saved ? ' is-saved' : '')}>{saved ? 'Sauvegarde ✓' : 'Auto-save actif'}</div>
+                </div>
+                <div style={{position:'relative',zIndex:2,marginTop:22}}>
+                <input id="fs-settings-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher un reglage...  Cmd/Ctrl + K" className="fs-settings-field" style={{width:'100%',height:56,paddingLeft:48,fontSize:14,borderRadius:18}} />
+                <svg width={17} height={17} viewBox="0 0 16 16" fill="none" style={{position:'absolute',left:18,top:20,opacity:.45}}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
+                {results.length > 0 && <div style={{position:'absolute',left:0,right:0,top:64,zIndex:5,borderRadius:18,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(var(--mineral-bg-rgb),0.96)',boxShadow:'0 24px 70px rgba(0,0,0,0.36)',padding:8,backdropFilter:'blur(18px)'}}>{results.map(([id,text]) => <button key={id+text} onClick={() => { scrollTo(id); setQuery(''); }} style={{width:'100%',textAlign:'left',border:'none',background:'transparent',color:T.text,padding:'11px 12px',borderRadius:12,cursor:'pointer',fontFamily:T.font,fontSize:12.5}}>{text}</button>)}</div>}
+                </div>
+              </div>
+              <Card id="profile" title="Compte LumenOS" desc="Ton profil, ta photo et l'installation de l'app sont regroupes ici.">
+                <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhotoFile} />
+                <div style={{display:'grid',gridTemplateColumns:'auto minmax(0,1fr)',gap:18,alignItems:'center',padding:'8px 0 18px'}}>
+                  <button type="button" className="fs-settings-photo" onClick={() => fileRef.current && fileRef.current.click()} title="Changer la photo de profil">
+                    {profilePhoto ? <img src={profilePhoto} alt={displayName} /> : userInitial}
+                  </button>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:900,letterSpacing:'0.14em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.92)',marginBottom:7}}>Compte LumenOS</div>
+                    <div style={{fontFamily:T.display,fontSize:26,fontWeight:850,letterSpacing:'-0.035em',color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{displayName}</div>
+                    <div style={{fontSize:12.5,color:T.muted,marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{displayEmail}</div>
+                    <button type="button" onClick={() => fileRef.current && fileRef.current.click()} style={{marginTop:12,height:34,borderRadius:12,border:'1px solid rgba(var(--theme-c1-rgb),0.22)',background:'rgba(var(--theme-c1-rgb),0.10)',color:T.c1,padding:'0 12px',fontSize:11,fontWeight:850,fontFamily:T.font,cursor:'pointer'}}>Changer la photo</button>
+                  </div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
+                  <input className="fs-settings-field" value={displayName} readOnly />
+                  <div><input className="fs-settings-field" value={email} onChange={e=>setEmail(e.target.value)} onBlur={() => setEmailTouched(true)} style={{width:'100%',borderColor:emailOk?'rgba(255,255,255,0.085)':'rgba(251,113,133,0.42)'}} />{!emailOk && <div style={{fontSize:11,color:T.rose,marginTop:7}}>Entre un email valide, par exemple alex@domain.com.</div>}</div>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.055)',marginTop:16,paddingTop:16}}>
+                  <div style={{minWidth:0}}><div style={{fontSize:14,fontWeight:850}}>Installer LumenOS</div><div style={{fontSize:12.5,color:T.muted,marginTop:4}}>{isInstalled ? 'LumenOS est deja installe sur cet appareil.' : 'Ajoute LumenOS a ton bureau pour ouvrir ton espace sans friction.'}</div></div>
+                  <button type="button" onClick={handleInstall} style={{height:40,borderRadius:13,border:'1px solid rgba(var(--theme-c1-rgb),0.28)',background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.18),rgba(var(--theme-c2-rgb),0.10))',color:T.c1,padding:'0 14px',fontWeight:850,fontFamily:T.font,cursor:'pointer',whiteSpace:'nowrap'}}>{isInstalled ? 'Installe' : 'Installer'}</button>
+                </div>
+              </Card>
+              <Card id="notifications" title="Notifications" desc="Des rappels utiles, jamais du bruit gratuit.">
+                <Row title="Rappel avant echeance" desc="Recois un rappel 30 min avant chaque echeance importante." value={opts.deadline} set={v=>setOpts(o=>({...o,deadline:v}))} />
+                <Row title="Resume hebdomadaire" desc="Chaque lundi, vois ce qui a avance et ce qui merite ton attention." value={opts.summary} set={v=>setOpts(o=>({...o,summary:v}))} />
+                <Row title="Focus nudges" desc="Si tu changes d'onglet pendant une session, LumenOS t'encourage discretement." value={opts.nudge} set={v=>setOpts(o=>({...o,nudge:v}))} />
+              </Card>
+              <Card id="security" title="Securite" desc="Controle les acces actifs et les alertes sensibles.">
+                <Row title="Alertes de connexion" desc="Recois un message si une nouvelle session se connecte a ton compte." value={opts.security} set={v=>setOpts(o=>({...o,security:v}))} />
+                {['Windows - Paris - actif maintenant','Mobile Safari - il y a 2 h'].map((s,i)=><div key={s} style={{display:'flex',justifyContent:'space-between',gap:12,padding:'13px 0',borderTop:'1px solid rgba(255,255,255,0.055)',fontSize:12.5,color:T.muted}}><span>{s}</span><button onClick={flashSave} style={{border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:i?T.rose:T.faint,borderRadius:10,padding:'6px 10px',cursor:'pointer',fontFamily:T.font,fontSize:11}}>{i?'Revoquer':'Actuelle'}</button></div>)}
+              </Card>
+              <Card id="appearance" title="Apparence" desc="Dark mode complet, theme coherent, aucune surface oubliee.">
+                <Row title="Mode sombre synchronise" desc="Le dark mode suit ton theme actif sur dashboard, notes, focus et settings." value={darkMode} set={setDarkMode} />
+                <select className="fs-settings-field" value={darkMode ? 'dark' : 'system'} onChange={e=>{setDarkMode(e.target.value === 'dark'); flashSave();}} style={{width:'100%',marginTop:12}}><option value="dark">Dark premium</option><option value="system">Systeme</option></select>
+              </Card>
+              <Card id="billing" title="Facturation" desc="Vois ton usage avant d'atteindre une limite surprise.">
+                <div style={{display:'grid',gridTemplateColumns:'120px 1fr',gap:20,alignItems:'center'}}><div style={{width:104,height:104,borderRadius:'50%',display:'grid',placeItems:'center',background:'conic-gradient(var(--theme-c1) 0 68%, rgba(255,255,255,0.08) 68% 100%)',boxShadow:'0 20px 48px rgba(var(--theme-c1-rgb),0.16)'}}><div style={{width:76,height:76,borderRadius:'50%',background:'var(--mineral-bg)',display:'grid',placeItems:'center',fontWeight:900}}>68%</div></div><div><div style={{fontSize:14,fontWeight:900}}>Usage mensuel</div><div style={{fontSize:12.5,color:T.muted,lineHeight:1.6,marginTop:6}}>68 sessions focus utilisees sur la limite actuelle. Spotify et Supabase sont detectes automatiquement.</div></div></div>
+              </Card>
+              <Card id="danger" title="Zone Danger" desc="Actions irreversibles. Accessibles, mais jamais au premier plan." danger>
+                <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',borderTop:'1px solid rgba(251,113,133,0.18)',paddingTop:16}}><div><div style={{fontSize:14,fontWeight:850}}>Supprimer le compte</div><div style={{fontSize:12.5,color:T.muted,marginTop:4}}>Efface les donnees locales et coupe les synchronisations liees au compte.</div></div><button onClick={flashSave} style={{height:40,borderRadius:13,border:'1px solid rgba(251,113,133,0.34)',background:'rgba(251,113,133,0.10)',color:T.rose,padding:'0 14px',fontWeight:850,fontFamily:T.font,cursor:'pointer'}}>Supprimer</button></div>
+              </Card>
+              </div>
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    const APP_ROUTE_SCREENS = new Set([
+      'dashboard', 'tasks', 'cristaux', 'notes', 'edit', 'perso', 'settings', 'fond',
+      'fonts', 'notes-style', 'variants', 'session', 'evolution', 'progression'
+    ]);
+
+    class ScreenErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+      }
+      static getDerivedStateFromError() {
+        return { hasError: true };
+      }
+      componentDidCatch(error) {
+        try { console.error('LumenOS screen render failed', error); } catch (_) {}
+      }
+      componentDidUpdate(prevProps) {
+        if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+          this.setState({ hasError: false });
+        }
+      }
+      render() {
+        if (!this.state.hasError) return this.props.children;
+        return (
+          <div style={{height:'100%',display:'grid',placeItems:'center',padding:28,boxSizing:'border-box',fontFamily:T.font,color:T.text,background:'radial-gradient(circle at 50% 0%,rgba(var(--theme-c1-rgb),0.16),transparent 42%)'}}>
+            <div style={{width:'min(520px,100%)',borderRadius:28,border:'1px solid rgba(var(--theme-c1-rgb),0.18)',background:'linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))',boxShadow:'0 28px 80px rgba(0,0,0,0.34),inset 0 1px 0 rgba(255,255,255,0.08)',padding:28}}>
+              <div style={{fontSize:11,fontWeight:900,letterSpacing:'0.15em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.92)',marginBottom:10}}>Reload protection</div>
+              <div style={{fontFamily:T.display,fontSize:36,fontWeight:850,letterSpacing:'-0.04em',lineHeight:1}}>On remet l'espace en place.</div>
+              <div style={{fontSize:13,lineHeight:1.7,color:T.muted,marginTop:12}}>Une section a mal charge. Retourne au dashboard puis reviens dans les settings.</div>
+              <button type="button" onClick={() => this.props.onNavigate?.('dashboard')} style={{marginTop:18,height:42,borderRadius:14,border:'1px solid rgba(var(--theme-c1-rgb),0.30)',background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--theme-c2-rgb),0.12))',color:T.c1,padding:'0 16px',fontWeight:900,fontFamily:T.font,cursor:'pointer'}}>Retour dashboard</button>
+            </div>
+          </div>
+        );
+      }
+    }
+
     function App() {
       const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
       const [screen, setScreen] = _uSC('boot');
+      const readRouteScreen = () => {
+        try {
+          const raw = String(window.location.hash || '').replace(/^#\/?/, '').trim();
+          return APP_ROUTE_SCREENS.has(raw) ? raw : 'dashboard';
+        } catch(e) { return 'dashboard'; }
+      };
+      const setRoutedScreen = (next, replace = false) => {
+        if (APP_ROUTE_SCREENS.has(next)) {
+          try {
+            const nextHash = `#${next}`;
+            if (window.location.hash !== nextHash) {
+              if (replace) window.history.replaceState(null, '', nextHash);
+              else window.history.pushState(null, '', nextHash);
+            }
+          } catch(e) {}
+        }
+        setScreen(next);
+      };
       const [syncEpoch, setSyncEpoch] = _uSC(0);
       const [user, setUser] = _uSC(() => {
         try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; }
@@ -9297,7 +9984,7 @@
             hostEmail: hostData?.email || '',
             friendUser: { name: hostData?.name || '?', initial: (hostData?.name || '?')[0].toUpperCase(), color: '#4ade80' },
           });
-          setScreen('dashboard');
+          setRoutedScreen('dashboard', true);
         };
         const onEnd = (e) => {
           setActiveSession(a => {
@@ -9339,7 +10026,7 @@
           window.dispatchEvent(new CustomEvent('fs-focus-tasks-update'));
         } catch(e) {}
         setShowSession(false);
-        setScreen('dashboard');
+        setRoutedScreen('dashboard', true);
         /* Insert into Supabase sessions table for cross-device Together */
         if (session.type === 'together' && session.friendId) {
           try {
@@ -9513,8 +10200,18 @@
       };
 
       const go = s => {
-        setScreen(s);
+        setRoutedScreen(s);
       };
+
+      _uEC(() => {
+        if (!user?.id) return;
+        const onRouteChange = () => {
+          const next = readRouteScreen();
+          setScreen(prev => (prev === next ? prev : next));
+        };
+        window.addEventListener('hashchange', onRouteChange);
+        return () => window.removeEventListener('hashchange', onRouteChange);
+      }, [user?.id]);
 
       const handleAuth = (authUser, isNew, remote) => {
         if (remote && remote.widgets) setWidgets(remote.widgets);
@@ -9537,7 +10234,7 @@
           window._fsStartSessionRealtime(authUser.id);
         }
         if (remote) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote }));
-        setScreen(isNew ? 'onboarding' : 'dashboard');
+        setScreen(isNew ? 'onboarding' : readRouteScreen());
       };
 
       /* Validate the persisted session at startup. If there's a stale fs_user
@@ -9590,7 +10287,7 @@
                 setWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
               }
               const introPending = localStorage.getItem('fs_intro_pending') === '1' && !(remote && remote.onboarded);
-              setScreen(introPending ? 'onboarding' : 'dashboard');
+              setScreen(introPending ? 'onboarding' : readRouteScreen());
               /* ── Eagerly sync email into user_data so friend lookup works ── */
               try {
                 const userEmail = session.user.email?.toLowerCase();
@@ -9632,7 +10329,7 @@
         try { localStorage.setItem('fs_onboarded', '1'); } catch (e) { }
         try { localStorage.removeItem('fs_intro_pending'); } catch (e) { }
         try { window._fsFlushPush?.(); } catch (e) { }
-        setScreen('dashboard');
+        setRoutedScreen('dashboard', true);
       };
 
       const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
@@ -9662,12 +10359,14 @@
             <div key={screen} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
+                <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} />}
                 {screen === 'tasks' && <TasksScreen />}
                 {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux' })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
+                {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
@@ -9675,6 +10374,7 @@
                 {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
                 {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
+                </ScreenErrorBoundary>
               </div>
             </div>
           )}
@@ -9996,7 +10696,7 @@
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
       return (
-        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${index * 0.05}s` }}
+        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${Math.min(index, 6) * 0.032}s` }}
           onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
           onKeyDown={e=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPreview(); } }}
           onClick={onPreview}>
@@ -10032,8 +10732,13 @@
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const uid = user?.id || 'guest';
       const storageKey = `fs_friends_${uid}`;
+      const displayStorageKey = `${storageKey}_display`;
 
       const [friends, setFriends] = React.useState(() => {
+        try {
+          const display = JSON.parse(localStorage.getItem(displayStorageKey) || '[]');
+          if (Array.isArray(display) && display.length) return display;
+        } catch(e) {}
         try { return JSON.parse(localStorage.getItem(storageKey)||'[]'); } catch(e) { return []; }
       });
       const [reverseFriends, setReverseFriends] = React.useState([]);
@@ -10094,49 +10799,86 @@
         if (!open || !user?.id) return;
         setLoaded(false);
         const myId = user.id;
-        const ownP = window._fsLoadRemote(myId);
-        const revP = window._fsSb
-          ? window._fsSb.from('user_data').select('user_id, name, email, updated_at')
-              .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
-          : Promise.resolve({ data: [] });
-        Promise.all([ownP, revP]).then(async ([remote, revResult]) => {
-          const raw = Array.isArray(remote?.friends) ? remote.friends : [];
-          let localCached = [];
-          try { localCached = JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) {}
-          let clean = uniqueFriends([...localCached, ...raw]);
-          const revData = revResult?.data || [];
-          let reverse = revData
-            .filter(r => r.user_id !== myId && !clean.some(f => f.id === r.user_id))
-            .map(r => ({
-              id: r.user_id,
-              name: r.name || r.email?.split('@')[0] || 'Unknown',
-              email: r.email || '',
-              initial: (r.name || r.email || '?')[0].toUpperCase(),
-              color: '#4ade80',
-              photo: null,
-              updatedAt: r.updated_at
-            }));
-          // Batch-fetch latest profile photos (via images column) for ALL friends
-          const allIds = [...clean.map(f => f.id), ...reverse.map(f => f.id)];
-          if (window._fsSb && allIds.length > 0) {
-            try {
-              const { data: imgRows } = await window._fsSb
-                .from('user_data').select('user_id, images')
-                .in('user_id', allIds);
-              if (imgRows) {
-                const photoMap = Object.fromEntries(
-                  imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null])
-                );
-                clean = clean.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null }));
-                reverse = reverse.map(f => ({ ...f, photo: photoMap[f.id] || null }));
-              }
-            } catch(e) {}
+        let cancelled = false;
+        let clean = uniqueFriends(friends);
+        try {
+          const localCached = JSON.parse(localStorage.getItem(storageKey) || '[]');
+          const displayCached = JSON.parse(localStorage.getItem(displayStorageKey) || '[]');
+          const localClean = uniqueFriends([...clean, ...localCached, ...displayCached]);
+          if (localClean.length) {
+            clean = localClean;
+            setFriends(localClean);
           }
+        } catch(e) {}
+        const applyPhotos = async (ownList, reverseList = []) => {
+          if (!window._fsSb) return { ownList, reverseList };
+          const allIds = [...ownList.map(f => f.id), ...reverseList.map(f => f.id)];
+          if (!allIds.length) return { ownList, reverseList };
+          try {
+            const { data: imgRows } = await window._fsSb
+              .from('user_data').select('user_id, images')
+              .in('user_id', allIds);
+            if (!imgRows) return { ownList, reverseList };
+            const photoMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null]));
+            return {
+              ownList: ownList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
+              reverseList: reverseList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
+            };
+          } catch(e) {
+            return { ownList, reverseList };
+          }
+        };
+        (async () => {
+          let remote = null;
+          try {
+            if (window._fsSb) {
+              const { data } = await window._fsSb
+                .from('user_data').select('friends')
+                .eq('user_id', myId)
+                .maybeSingle();
+              remote = data;
+            } else if (window._fsLoadRemote) {
+              remote = await window._fsLoadRemote(myId);
+            }
+          } catch(e) {
+            try { remote = await window._fsLoadRemote?.(myId); } catch(_) {}
+          }
+          if (cancelled) return;
+          const raw = Array.isArray(remote?.friends) ? remote.friends : [];
+          clean = uniqueFriends([...clean, ...raw]);
           setFriends(clean);
           try { localStorage.setItem(storageKey, JSON.stringify(clean)); } catch(e) {}
-          setReverseFriends(reverse);
+          try { localStorage.setItem(displayStorageKey, JSON.stringify(clean)); } catch(e) {}
           setLoaded(true);
-        });
+
+          let reverse = [];
+          try {
+            const revResult = window._fsSb
+              ? await window._fsSb.from('user_data').select('user_id, name, email, updated_at')
+                  .filter('friends', 'cs', JSON.stringify([{ id: myId }]))
+              : { data: [] };
+            const revData = revResult?.data || [];
+            reverse = revData
+              .filter(r => r.user_id !== myId && !clean.some(f => f.id === r.user_id))
+              .map(r => ({
+                id: r.user_id,
+                name: r.name || r.email?.split('@')[0] || 'Unknown',
+                email: r.email || '',
+                initial: (r.name || r.email || '?')[0].toUpperCase(),
+                color: '#4ade80',
+                photo: null,
+                updatedAt: r.updated_at
+              }));
+          } catch(e) {}
+          const withPhotos = await applyPhotos(clean, reverse);
+          if (cancelled) return;
+          const fullDisplay = uniqueFriends([...withPhotos.ownList, ...withPhotos.reverseList]);
+          setFriends(fullDisplay);
+          setReverseFriends([]);
+          try { localStorage.setItem(storageKey, JSON.stringify(withPhotos.ownList)); } catch(e) {}
+          try { localStorage.setItem(displayStorageKey, JSON.stringify(fullDisplay)); } catch(e) {}
+        })();
+        return () => { cancelled = true; };
       }, [open, user?.id]);
 
       /* Save — only after load, use UPDATE (not upsert) to guarantee only own row is touched */
@@ -11189,7 +11931,7 @@
       );
     }
 
-    function SessionBarPremium({ session, user, onEnd, focusNudgeOpen = false }) {
+    function SessionBarPremium({ session, user, onEnd, focusNudgeOpen = false, embedded = false }) {
       const [secs, setSecs] = _uS8(0);
       const [hovered, setHovered] = _uS8(false);
       const barRef = _uR8(null);
@@ -11252,12 +11994,16 @@
       const circ = 2 * Math.PI * R;
       const label = isTogether ? 'Focus partagé' : 'Session active';
       const detail = isTogether ? partnerName : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
-      const barShift = focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scale(.86)' : (hovered ? 'translateY(-2px)' : 'translateY(0)');
-      const haloShift = focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scaleX(.30)' : 'translateX(0) scaleX(1)';
+      const barShift = embedded
+        ? (focusNudgeOpen ? 'translateX(clamp(-430px, -34vw, -260px)) scale(.72)' : (hovered ? 'translateY(-1px)' : 'translateY(0)'))
+        : (focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scale(.86)' : (hovered ? 'translateY(-2px)' : 'translateY(0)'));
+      const haloShift = embedded
+        ? (focusNudgeOpen ? 'translateX(clamp(-430px, -34vw, -260px)) scaleX(.24)' : 'translateX(0) scaleX(1)')
+        : (focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scaleX(.30)' : 'translateX(0) scaleX(1)');
       const compacting = !!focusNudgeOpen;
 
       return (
-        <div className={`fs-session-wrap${focusNudgeOpen ? ' fs-session-nudge-open' : ''}`} style={{ position:'relative', flexShrink:0, display:'flex', justifyContent:'center', padding:'14px 24px 8px', zIndex:100 }}>
+        <div className={`fs-session-wrap${focusNudgeOpen ? ' fs-session-nudge-open' : ''}${embedded ? ' fs-session-embedded' : ''}`} style={{ position:'relative', flexShrink:0, display:'flex', justifyContent:embedded ? 'center' : 'center', padding:embedded ? 0 : '14px 24px 8px', zIndex:100, width:embedded ? 'min(720px, 100%)' : undefined, minWidth:0, margin:embedded ? '0 auto' : undefined }}>
           <style>{`
             .fs-session-bar{opacity:0;}
             .fs-session-bar::before{content:'';position:absolute;inset:-1px;border-radius:999px;padding:1px;background:linear-gradient(120deg,rgba(var(--theme-c1-rgb),.42),rgba(255,255,255,.13),rgba(var(--theme-c2-rgb),.28));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;}
@@ -11280,7 +12026,7 @@
           <div
             ref={haloRef}
             style={{
-              position:'absolute', top:7, width:'min(740px, calc(100% - 48px))', height:62, borderRadius:999,
+              position:'absolute', top:embedded ? -6 : 7, width:embedded ? 'min(700px, 100%)' : 'min(740px, calc(100% - 48px))', height:embedded ? 52 : 62, borderRadius:999,
               background:`radial-gradient(ellipse at 50% 50%, ${over ? 'rgba(255,107,138,0.20)' : c1(0.18)} 0%, transparent 68%)`,
               filter:'blur(18px)', opacity:focusNudgeOpen ? .32 : .46, pointerEvents:'none',
               transform: haloShift,
@@ -11293,7 +12039,7 @@
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-              position:'relative', width:'min(760px, 100%)', maxWidth: compacting ? 160 : 760, height:compacting ? 58 : 68, borderRadius:999,
+              position:'relative', width:embedded ? 'min(700px, 100%)' : 'min(760px, 100%)', maxWidth: compacting ? 160 : (embedded ? 700 : 760), height:compacting ? 58 : (embedded ? 56 : 68), borderRadius:999,
               display:compacting ? 'flex' : 'grid', justifyContent:compacting ? 'center' : undefined, gridTemplateColumns:compacting ? undefined : 'minmax(0,1fr) auto minmax(0,1fr)', alignItems:'center',
               gap:compacting ? 0 : 14, padding:compacting ? '0 10px' : '0 10px 0 18px',
               background:'linear-gradient(180deg, rgba(18,22,36,0.72), rgba(8,10,20,0.82))',
@@ -11916,7 +12662,60 @@
       fp:0, xp:0, heatmap:{}, fpmap:{}, unlocks:['default'], activeSkin:'default',
       quests:{daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}} };
   }
-  window._gLoad = uid => { try{ return JSON.parse(localStorage.getItem(`fs_gamif_${uid||'g'}`)||'null')||_gDefault(); }catch(e){ return _gDefault(); } };
+  function _gPrevDateKey(key) {
+    const [y,m,d] = String(key || '').split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  function _gDateKeyFrom(value) {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function _gActivityDates(uid, g) {
+    const dates = new Set();
+    try { (JSON.parse(localStorage.getItem('fs_streak') || '[]') || []).forEach(d => dates.add(d)); } catch(e) {}
+    try { Object.keys(g?.heatmap || {}).forEach(d => { if ((g.heatmap[d] || 0) > 0) dates.add(d); }); } catch(e) {}
+    try {
+      const history = JSON.parse(localStorage.getItem(`fs_session_history_${uid || 'guest'}`) || '[]') || [];
+      history.forEach(s => {
+        if (s?.completed || s?.completedAt) {
+          const key = _gDateKeyFrom(s.completedAt || s.endedAt || s.startedAt || s.startTime);
+          if (key) dates.add(key);
+        }
+      });
+    } catch(e) {}
+    return dates;
+  }
+  function _gHydrateStreakFromActivity(uid, g) {
+    if (!g || typeof g !== 'object') g = _gDefault();
+    if (!g.streaks) g.streaks = _gDefault().streaks;
+    const dates = _gActivityDates(uid, g);
+    const today = window._gToday();
+    const yest = _gPrevDateKey(today);
+    let cur = dates.has(today) ? today : yest;
+    if (!cur || !dates.has(cur)) return g;
+    let daily = 0;
+    while (cur && dates.has(cur)) {
+      daily++;
+      cur = _gPrevDateKey(cur);
+    }
+    const lastDate = dates.has(today) ? today : yest;
+    const current = Number(g.streaks.daily || 0);
+    const stale = g.streaks.lastDate !== today && g.streaks.lastDate !== yest;
+    if (daily > current || stale) {
+      g.streaks = { ..._gDefault().streaks, ...g.streaks, daily, lastDate, weekly: Math.floor(daily / 7) };
+    }
+    return g;
+  }
+  window._gLoad = uid => {
+    let g;
+    try{ g = JSON.parse(localStorage.getItem(`fs_gamif_${uid||'g'}`)||'null')||_gDefault(); }catch(e){ g = _gDefault(); }
+    return _gHydrateStreakFromActivity(uid, g);
+  };
   window._gSave = (uid,data) => {
     try{ localStorage.setItem(`fs_gamif_${uid||'g'}`,JSON.stringify(data)); }catch(e){}
     window.dispatchEvent(new CustomEvent('fs-gamif-update',{detail:data}));
@@ -12573,8 +13372,27 @@
 
   <script>
     if ('serviceWorker' in navigator) {
+      let fsSwRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (fsSwRefreshing) return;
+        fsSwRefreshing = true;
+        window.location.reload();
+      });
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => {
+            try { reg.update(); } catch (_) {}
+            reg.addEventListener('updatefound', () => {
+              const worker = reg.installing;
+              if (!worker) return;
+              worker.addEventListener('statechange', () => {
+                if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                  worker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            });
+          })
+          .catch(() => {});
       });
     }
   </script>
