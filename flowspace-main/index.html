@@ -3338,12 +3338,12 @@
         e.target.value = '';
       };
 
-      const applyImage = (src) => {
+      const applyImage = async (src) => {
         setImgSrc(src);
         setCropSrc(null);
         try { window._fsMarkImageTouched?.(storageKey); } catch (err) {}
         try {
-          if (window._fsStoreLocalImage) window._fsStoreLocalImage(storageKey, src);
+          if (window._fsStoreLocalImage) await window._fsStoreLocalImage(storageKey, src);
           else localStorage.setItem(storageKey, src);
         } catch (err) {}
         try { window._fsFlushPush?.(); } catch (err) {}
