@@ -1012,7 +1012,7 @@
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
-                       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style'];
+                       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_DEFAULT_WIDGET_STYLE = { opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 };
@@ -1023,6 +1023,7 @@
     const _fsOrigRemoveItem = Storage.prototype.removeItem;
     function _fsRawSet(k, v) { _fsOrigSetItem.call(localStorage, k, v); }
     function _fsRawRemove(k) { _fsOrigRemoveItem.call(localStorage, k); }
+    window._fsRawSet = _fsRawSet;
 
     function _fsNumberInRange(value, fallback, min, max) {
       const n = Number(value);
@@ -1237,7 +1238,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       if ([...dirtyKeys].some(k => /^fs_gamif_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
       return p;
     }
@@ -1285,6 +1286,10 @@
         const widgetStyle = _fsNormalizeWidgetStyle(remote.widget_style, _fsReadRememberedWidgetStyle(userId) || _fsReadWidgetStyle());
         _fsRawSet('fs_widget_style', JSON.stringify(widgetStyle));
         _fsRememberWidgetStyle(userId, widgetStyle);
+        if (widgetStyle.fontPresetId) {
+          _fsRawSet('fs_font_preset', widgetStyle.fontPresetId);
+          try { window.applyFontPreset?.(widgetStyle.fontPresetId); } catch (_) { }
+        }
         if (widgetStyle.noteMapStyle) {
           _fsRawSet('fs_note_map_style', widgetStyle.noteMapStyle);
           window._fsCurrentMapStyle = widgetStyle.noteMapStyle;
@@ -1292,8 +1297,18 @@
         }
       } else {
         const rememberedStyle = _fsReadRememberedWidgetStyle(userId);
-        if (rememberedStyle) _fsRawSet('fs_widget_style', JSON.stringify(rememberedStyle));
-        else _fsRawRemove('fs_widget_style');
+        if (rememberedStyle) {
+          _fsRawSet('fs_widget_style', JSON.stringify(rememberedStyle));
+          if (rememberedStyle.fontPresetId) {
+            _fsRawSet('fs_font_preset', rememberedStyle.fontPresetId);
+            try { window.applyFontPreset?.(rememberedStyle.fontPresetId); } catch (_) { }
+          }
+        }
+        else {
+          _fsRawRemove('fs_widget_style');
+          _fsRawRemove('fs_font_preset');
+          try { window.applyFontPreset?.('signature'); } catch (_) { }
+        }
       }
 
       /* Images – restore from remote; only clear local keys when remote has images
@@ -1367,6 +1382,10 @@
         const v = localStorage.getItem('fs_note_map_style');
         if (v != null) r.widget_style = { ...(r.widget_style || {}), noteMapStyle: v };
       } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_font_preset');
+        if (v != null) r.widget_style = { ...(r.widget_style || {}), fontPresetId: v };
+      } catch (_) { }
       try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; if (v != null) r.gamification = JSON.parse(v); } catch (_) { }
       return r;
     }
@@ -1393,6 +1412,10 @@
       try {
         const v = localStorage.getItem('fs_note_map_style');
         if (v != null) payload.widget_style = { ...(payload.widget_style || {}), noteMapStyle: v };
+      } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_font_preset');
+        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), fontPresetId: v };
       } catch (_) { }
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); if (v != null) payload.gamification = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
@@ -1447,13 +1470,17 @@
       if (!u) return;
       try {
         const p = { user_id: u.id, updated_at: new Date().toISOString() };
-        if (widgetStyleObj != null) {
-          p.widget_style = _fsNormalizeWidgetStyle(widgetStyleObj);
-          _fsRememberWidgetStyle(u.id, p.widget_style);
-        }
+        if (widgetStyleObj != null) p.widget_style = _fsNormalizeWidgetStyle(widgetStyleObj);
+        else p.widget_style = _fsReadWidgetStyle();
+        try {
+          const font = localStorage.getItem('fs_font_preset');
+          if (font) p.widget_style = { ...(p.widget_style || {}), fontPresetId: font };
+        } catch(_) {}
+        _fsRememberWidgetStyle(u.id, p.widget_style);
         const v = localStorage.getItem('fs_bgtheme'); if (v) p.bg_theme = v;
+        try { const custom = localStorage.getItem('fs_custom_bg'); if (custom) p.custom_bg = JSON.parse(custom); } catch(_) {}
         try { const w = localStorage.getItem('fs_widgets'); if (w) p.widgets = JSON.parse(w); } catch(_) {}
-        const { error } = await _fsSb.from('user_data').update(p).eq('user_id', u.id);
+        const { error } = await _fsSb.from('user_data').upsert(p, { onConflict: 'user_id' });
         if (error) console.warn('[fs] style-only update failed', error);
       } catch (e) { console.warn('[fs] style-only push failed', e); }
     }
@@ -10035,7 +10062,7 @@
           const r = e.detail;
           if (r.widgets) setWidgets(r.widgets);
           if (r.bg_theme) setBgThemeId(r.bg_theme);
-          if (r.widget_style) setWidgetStyle(normalizeWidgetStyle(r.widget_style));
+          if (r.widget_style) applySyncedWidgetStyle(r.widget_style);
           setSyncEpoch(n => n + 1);
         };
         window.addEventListener('fs-remote-update', handler);
@@ -10159,6 +10186,15 @@
 
       const DEFAULT_WIDGET_STYLE = window.FS_DEFAULT_WIDGET_STYLE || { opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 };
       const normalizeWidgetStyle = style => window._fsNormalizeWidgetStyle ? window._fsNormalizeWidgetStyle(style, DEFAULT_WIDGET_STYLE) : { ...DEFAULT_WIDGET_STYLE, ...(style || {}) };
+      const applySyncedWidgetStyle = style => {
+        const normalized = normalizeWidgetStyle(style);
+        setWidgetStyle(normalized);
+        if (normalized.fontPresetId) {
+          try { window._fsRawSet ? window._fsRawSet('fs_font_preset', normalized.fontPresetId) : localStorage.setItem('fs_font_preset', normalized.fontPresetId); } catch (e) { }
+          if (window.applyFontPreset) window.applyFontPreset(normalized.fontPresetId);
+          setFontPresetId(normalized.fontPresetId);
+        }
+      };
       const [widgetStyle, setWidgetStyle] = _uSC(() => {
         return window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE;
       });
@@ -10245,8 +10281,8 @@
         if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
         /* widget_style: _fsSeedLocalFromRemote already set _fsIgnorePush=true for 2s,
            so this setWidgetStyle won't trigger a redundant push */
-        if (remote && remote.widget_style != null) setWidgetStyle(normalizeWidgetStyle(remote.widget_style));
-        else setWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
+        if (remote && remote.widget_style != null) applySyncedWidgetStyle(remote.widget_style);
+        else applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
         try {
           if (isNew) localStorage.setItem('fs_intro_pending', '1');
           else localStorage.removeItem('fs_intro_pending');
@@ -10307,10 +10343,10 @@
                  Suppress the resulting localStorage write from scheduling a redundant push. */
               if (remote && remote.widget_style != null) {
                 try { window._fsSetIgnorePush(true); } catch(_) {}
-                setWidgetStyle(normalizeWidgetStyle(remote.widget_style));
+                applySyncedWidgetStyle(remote.widget_style);
                 setTimeout(() => { try { window._fsSetIgnorePush(false); } catch(_) {} }, 2200);
               } else {
-                setWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
+                applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
               }
               const introPending = localStorage.getItem('fs_intro_pending') === '1' && !(remote && remote.onboarded);
               setScreen(introPending ? 'onboarding' : readRouteScreen());
