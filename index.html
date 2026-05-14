@@ -1106,6 +1106,8 @@
     }
 
     const FS_USER_BACKUP_PREFIX = 'fs_user_backup_';
+    const FS_VISUAL_PREFS_PREFIX = 'fs_visual_prefs_';
+    const FS_LAST_LOGOUT_USER_KEY = 'fs_last_logout_user';
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
@@ -1114,6 +1116,106 @@
 
     function _fsBackupKey(userId) {
       return userId ? `${FS_USER_BACKUP_PREFIX}${userId}` : null;
+    }
+
+    function _fsVisualPrefsKey(userId) {
+      return userId ? `${FS_VISUAL_PREFS_PREFIX}${userId}` : null;
+    }
+
+    function _fsSnapshotVisualPrefs(userId = window._fsSbUser?.id, styleOverride = null) {
+      const prefs = { saved_at: new Date().toISOString() };
+      try {
+        const bg = localStorage.getItem('fs_bgtheme');
+        if (bg != null) prefs.bg_theme = bg;
+      } catch (_) { }
+      try {
+        const custom = localStorage.getItem('fs_custom_bg');
+        if (custom != null) prefs.custom_bg = JSON.parse(custom);
+      } catch (_) { }
+      try {
+        const baseStyle = styleOverride != null ? styleOverride : JSON.parse(localStorage.getItem('fs_widget_style') || 'null');
+        prefs.widget_style = _fsNormalizeWidgetStyle(baseStyle);
+      } catch (_) {
+        if (styleOverride != null) prefs.widget_style = _fsNormalizeWidgetStyle(styleOverride);
+      }
+      try {
+        const font = localStorage.getItem('fs_font_preset');
+        if (font) {
+          prefs.font_preset = font;
+          prefs.widget_style = { ...(prefs.widget_style || _fsReadWidgetStyle()), fontPresetId: font };
+        }
+      } catch (_) { }
+      try {
+        const noteMap = localStorage.getItem('fs_note_map_style');
+        if (noteMap) prefs.widget_style = { ...(prefs.widget_style || _fsReadWidgetStyle()), noteMapStyle: noteMap };
+      } catch (_) { }
+      return prefs;
+    }
+
+    function _fsBackupVisualPrefs(userId = window._fsSbUser?.id, styleOverride = null, markLogout = false) {
+      const key = _fsVisualPrefsKey(userId);
+      if (!key) return null;
+      try {
+        const prefs = _fsSnapshotVisualPrefs(userId, styleOverride);
+        _fsRawSet(key, JSON.stringify(prefs));
+        if (markLogout) _fsRawSet(FS_LAST_LOGOUT_USER_KEY, userId);
+        return prefs;
+      } catch (e) {
+        console.warn('[fs] visual prefs backup failed', e);
+        return null;
+      }
+    }
+    window._fsBackupVisualPrefs = _fsBackupVisualPrefs;
+
+    function _fsApplyVisualPrefs(userId, prefs) {
+      if (!userId || !prefs) return false;
+      try {
+        _fsIgnorePush = true;
+        if (prefs.bg_theme != null) _fsRawSet('fs_bgtheme', prefs.bg_theme);
+        if (prefs.custom_bg != null) _fsRawSet('fs_custom_bg', JSON.stringify(prefs.custom_bg));
+        if (prefs.widget_style != null) {
+          const style = _fsNormalizeWidgetStyle(prefs.widget_style);
+          _fsRawSet('fs_widget_style', JSON.stringify(style));
+          _fsRememberWidgetStyle(userId, style);
+          if (style.noteMapStyle) {
+            _fsRawSet('fs_note_map_style', style.noteMapStyle);
+            window._fsCurrentMapStyle = style.noteMapStyle;
+          }
+          if (style.fontPresetId) {
+            _fsRawSet('fs_font_preset', style.fontPresetId);
+            try { window.applyFontPreset?.(style.fontPresetId); } catch (_) { }
+          }
+        }
+        if (prefs.font_preset) {
+          _fsRawSet('fs_font_preset', prefs.font_preset);
+          try { window.applyFontPreset?.(prefs.font_preset); } catch (_) { }
+        }
+        setTimeout(() => { _fsIgnorePush = false; }, 500);
+        return true;
+      } catch (e) {
+        console.warn('[fs] visual prefs apply failed', e);
+        _fsIgnorePush = false;
+        return false;
+      }
+    }
+
+    function _fsRestoreLogoutVisualPrefs(userId, remote) {
+      const key = _fsVisualPrefsKey(userId);
+      if (!key) return false;
+      try {
+        const lastLogoutUser = localStorage.getItem(FS_LAST_LOGOUT_USER_KEY);
+        if (lastLogoutUser !== userId) return false;
+        const prefs = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!prefs || !(prefs.bg_theme || prefs.widget_style || prefs.font_preset || prefs.custom_bg)) return false;
+        const savedMs = _fsIsoMs(prefs.saved_at);
+        const remoteMs = _fsIsoMs(remote?.updated_at);
+        const recentEnough = savedMs > 0 && Date.now() - savedMs < 1000 * 60 * 60 * 24;
+        const notClearlyStale = !remoteMs || savedMs > remoteMs - 1000 * 60 * 10;
+        if (!recentEnough || !notClearlyStale) return false;
+        return _fsApplyVisualPrefs(userId, prefs);
+      } catch (_) {
+        return false;
+      }
     }
 
     function _fsBackupLocalUserData(userId = window._fsSbUser?.id) {
@@ -1357,6 +1459,11 @@
 
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
+      if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
+        await _fsFlushPush(true);
+        try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
+        return { source: 'logout-visual', remote: _fsSnapshotLocalData(userId) };
+      }
       if (!remote && _fsSameLocalUser(userId)) {
         await _fsFlushPush(true);
         return { source: 'local', remote };
@@ -1508,6 +1615,9 @@
       if (!window._fsSbUser || !window._fsSyncReady || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
       _fsMarkLocalWrite();
       window._fsDirtyKeys.add(key);
+      if (['fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'].includes(key)) {
+        try { _fsBackupVisualPrefs(window._fsSbUser.id); } catch (_) { }
+      }
       clearTimeout(_fsPushTimer);
       _fsPushTimer = setTimeout(_fsFlushPush, 800);
     }
@@ -10259,9 +10369,11 @@
         const styleToSave = normalizeWidgetStyle(widgetStyle);
         try { window._fsRememberWidgetStyle?.(user?.id || window._fsSbUser?.id, styleToSave); } catch (e) { }
         try { localStorage.setItem('fs_widget_style', JSON.stringify(styleToSave)); } catch (e) { }
+        try { window._fsBackupVisualPrefs?.(user?.id || window._fsSbUser?.id, styleToSave, true); } catch (e) { }
         try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
         try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 2800); } catch (e) { }
         try { await withLogoutTimeout(window._fsFlushPush?.(true), 1800); } catch (e) { }
+        try { window._fsBackupVisualPrefs?.(user?.id || window._fsSbUser?.id, styleToSave, true); } catch (e) { }
         try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
         try { await withLogoutTimeout(window._fsSb.auth.signOut(), 1500); } catch (e) { }
         window._fsSbUser = null;
