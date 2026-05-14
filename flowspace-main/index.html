@@ -2239,6 +2239,7 @@
       localStorage.setItem('sp_refresh_token', d.refresh_token);
       localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
       localStorage.removeItem('sp_code_verifier');
+      localStorage.removeItem('sp_needs_reconnect');
     }
 
     async function _spRefresh() {
@@ -2271,6 +2272,7 @@
 
     function disconnectSpotify() {
       ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier'].forEach(k => localStorage.removeItem(k));
+      localStorage.setItem('sp_needs_reconnect', '1');
       window.dispatchEvent(new Event('sp_disconnected'));
     }
 
@@ -2287,6 +2289,7 @@
     // ── SpotifyWidget ────────────────────────────────────────────────
     function SpotifyWidget({ variant = 1, style }) {
       const [connected, setConnected] = React.useState(() => !!localStorage.getItem('sp_access_token'));
+      const [needsReconnect, setNeedsReconnect] = React.useState(() => localStorage.getItem('sp_needs_reconnect') === '1');
       const [track, setTrack] = React.useState(null);
       const [playing, setPlaying] = React.useState(false);
       const [progressMs, setProgressMs] = React.useState(0);
@@ -2297,8 +2300,16 @@
       const waveDelay = React.useRef([...Array(24)].map((_, i) => i * 0.04)).current;
 
       React.useEffect(() => {
-        const onConn = () => setConnected(true);
-        const onDisc = () => { setConnected(false); setTrack(null); };
+        const onConn = () => {
+          localStorage.removeItem('sp_needs_reconnect');
+          setNeedsReconnect(false);
+          setConnected(true);
+        };
+        const onDisc = () => {
+          setNeedsReconnect(true);
+          setConnected(false);
+          setTrack(null);
+        };
         window.addEventListener('sp_connected', onConn);
         window.addEventListener('sp_disconnected', onDisc);
         return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); };
@@ -2400,25 +2411,65 @@
 
       // ── État non connecté ──
       if (!connected) {
-        const ConnectView = ({ compact }) => (
-          <div style={{ height: '100%', display: 'flex', flexDirection: compact ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? 10 : 14, padding: compact ? '12px 18px' : '20px 24px' }}>
-            <div style={{ width: compact ? 34 : 46, height: compact ? 34 : 46, borderRadius: '50%', background: 'rgba(29,185,84,0.12)', border: '1.5px solid rgba(29,185,84,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width={compact ? 17 : 23} height={compact ? 17 : 23} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-            </div>
-            {!compact && (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 3 }}>Musique Spotify</div>
-                <Sub ch="Connecte ton compte pour contrôler ta musique" style={{ fontSize: 11 }} />
+        const pageTitle = needsReconnect ? 'Spotify déconnecté' : 'Relier Spotify';
+        const pageCopy = needsReconnect
+          ? 'Reconnecte ton compte pour relier le widget musique à ton dashboard.'
+          : 'Connecte Spotify pour piloter ta musique depuis LumenOS.';
+        const pageCta = needsReconnect ? 'Reconnecter Spotify' : 'Connecter Spotify';
+        const ConnectView = ({ compact }) => {
+          if (compact) return (
+            <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', boxSizing: 'border-box' }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(29,185,84,0.16), transparent 52%), radial-gradient(circle at 86% 14%, rgba(255,255,255,0.14), transparent 34%)', opacity: 0.9, pointerEvents: 'none' }} />
+              <div style={{ width: 36, height: 36, borderRadius: 14, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 26px rgba(29,185,84,0.15)', position: 'relative' }}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
               </div>
-            )}
-            <button onClick={initiateSpotifyAuth} style={{ display: 'flex', alignItems: 'center', gap: 7, background: SP, border: 'none', borderRadius: 20, padding: compact ? '7px 13px' : '9px 18px', color: '#000', fontSize: compact ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 0 14px rgba(29,185,84,0.3)', transition: 'transform 0.15s, box-shadow 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = '0 0 22px rgba(29,185,84,0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 0 14px rgba(29,185,84,0.3)'; }}>
-              <span style={{ fontSize: compact ? 16 : 18, lineHeight: 1, fontWeight: 400 }}>+</span>
-              {compact ? 'Connecter' : 'Connecter Spotify'}
-            </button>
-          </div>
-        );
+              <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                <div style={{ fontSize: 13, fontWeight: 760, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pageTitle}</div>
+                <Sub ch={needsReconnect ? 'Compte à relier' : 'Widget musique'} style={{ fontSize: 11, marginTop: 2 }} />
+              </div>
+              <button onClick={initiateSpotifyAuth} aria-label={pageCta} style={{ width: 36, height: 36, borderRadius: 13, border: '1px solid rgba(255,255,255,0.18)', background: `linear-gradient(135deg, ${SP}, #7dffae)`, color: '#06140a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 12px 24px rgba(29,185,84,0.24)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.03)'; e.currentTarget.style.boxShadow = '0 16px 30px rgba(29,185,84,0.34)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(29,185,84,0.24)'; }}>
+                <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
+              </button>
+            </div>
+          );
+
+          return (
+            <div style={{ height: '100%', position: 'relative', overflow: 'hidden', padding: '18px 20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 12%, rgba(29,185,84,0.28), transparent 34%), radial-gradient(circle at 88% 8%, rgba(255,255,255,0.16), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: 1, borderRadius: 21, border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 28, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: 'rgba(248,250,255,0.72)', fontSize: 10.5, fontWeight: 740, letterSpacing: 0.7, textTransform: 'uppercase', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: needsReconnect ? '#f59e0b' : SP, boxShadow: `0 0 14px ${needsReconnect ? '#f59e0b' : SP}` }} />
+                  {needsReconnect ? 'À reconnecter' : 'Connexion'}
+                </span>
+                <div style={{ width: 40, height: 40, borderRadius: 16, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.34)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 18px 38px rgba(29,185,84,0.18)' }}>
+                  <svg width={20} height={20} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
+                </div>
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <div style={{ fontSize: 18, lineHeight: 1.08, fontWeight: 780, color: T.text, marginBottom: 8, letterSpacing: 0 }}>{pageTitle}</div>
+                <div style={{ maxWidth: 270, fontSize: 12.5, lineHeight: 1.45, color: T.muted }}>{pageCopy}</div>
+              </div>
+
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['Lecture', 'Pause', 'Morceaux'].map(x => (
+                    <span key={x} style={{ padding: '5px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(248,250,255,0.62)', fontSize: 10.5, fontWeight: 660 }}>{x}</span>
+                  ))}
+                </div>
+                <button onClick={initiateSpotifyAuth} style={{ minHeight: 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, #7dffae)`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 16, padding: '10px 15px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.015)'; e.currentTarget.style.boxShadow = '0 22px 42px rgba(29,185,84,0.36), inset 0 1px 0 rgba(255,255,255,0.40)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)'; }}>
+                  {pageCta}
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
+                </button>
+              </div>
+            </div>
+          );
+        };
         if (variant === 1) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         if (variant === 5) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         return <Shell flat style={style}><ConnectView compact /></Shell>;
