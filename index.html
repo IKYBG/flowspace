@@ -1015,6 +1015,7 @@
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
+    const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
     const FS_DEFAULT_WIDGET_STYLE = { opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 };
     window.FS_DEFAULT_WIDGET_STYLE = FS_DEFAULT_WIDGET_STYLE;
 
@@ -1332,6 +1333,32 @@
       try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
     }
 
+    function _fsMarkWidgetsLocalWrite() {
+      try { _fsRawSet(FS_WIDGETS_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
+    }
+
+    function _fsStableJson(value) {
+      try { return JSON.stringify(value ?? null); } catch (_) { return ''; }
+    }
+
+    function _fsLocalDashboardLooksNewer(userId, remote) {
+      if (!_fsSameLocalUser(userId)) return false;
+      let localWidgets = null;
+      try {
+        const raw = localStorage.getItem('fs_widgets');
+        if (raw == null) return false;
+        localWidgets = JSON.parse(raw);
+      } catch (_) { return false; }
+      if (_fsStableJson(localWidgets) === _fsStableJson(remote?.widgets)) return false;
+      let localMs = _fsIsoMs(localStorage.getItem(FS_WIDGETS_LOCAL_WRITE_KEY));
+      const remoteMs = _fsIsoMs(remote?.updated_at);
+      if (!localMs) {
+        localMs = Date.now();
+        try { _fsRawSet(FS_WIDGETS_LOCAL_WRITE_KEY, new Date(localMs).toISOString()); } catch (_) { }
+      }
+      return localMs > 0 && (!remoteMs || localMs > remoteMs - 1000 * 60 * 10);
+    }
+
     function _fsImageTouchKey(imageKey) {
       return imageKey && imageKey.startsWith('fs_img_') ? `fs_image_touched_${imageKey.slice(7)}` : null;
     }
@@ -1508,6 +1535,10 @@
         await _fsFlushPush(true);
         return { source: 'local', remote };
       }
+      if (_fsLocalDashboardLooksNewer(userId, remote)) {
+        await _fsFlushPush(true);
+        return { source: 'local-dashboard', remote: _fsSnapshotLocalData(userId) };
+      }
       if (_fsBackupLooksNewer(userId, remote) && _fsRestoreLocalUserData(userId)) {
         await _fsFlushPush(true);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
@@ -1651,6 +1682,7 @@
       if (!window._fsSbUser || !window._fsSyncReady || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
       _fsMarkLocalWrite();
       window._fsDirtyKeys.add(key);
+      if (key === 'fs_widgets') _fsMarkWidgetsLocalWrite();
       if (['fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'].includes(key)) {
         try { _fsBackupVisualPrefs(window._fsSbUser.id); } catch (_) { }
       }
@@ -1685,6 +1717,10 @@
           const hasSavedData = _fsRemoteHasSavedData(payload.new);
           if (!hasSavedData && _fsLocalHasSavedData(userId)) return;
           if (_fsLocalLooksNewer(userId, payload.new)) {
+            _fsFlushPush(true);
+            return;
+          }
+          if (_fsLocalDashboardLooksNewer(userId, payload.new)) {
             _fsFlushPush(true);
             return;
           }
@@ -10497,7 +10533,7 @@
               const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || null, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
               setUser(authUser);
-              if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local') {
+              if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local' || syncResult.source === 'local-dashboard') {
                 const synced = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(session.user.id);
                 if (synced && synced.widgets) setWidgets(synced.widgets);
                 else setWidgets(DEFAULT_WIDGETS);
