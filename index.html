@@ -1251,6 +1251,19 @@
       return localMs > 0 && (!remoteMs || localMs > remoteMs + 1500);
     }
 
+    function _fsBackupLooksNewer(userId, remote) {
+      const key = _fsBackupKey(userId);
+      if (!key) return false;
+      try {
+        const backup = JSON.parse(localStorage.getItem(key) || 'null');
+        const backupMs = _fsIsoMs(backup?.saved_at);
+        const remoteMs = _fsIsoMs(remote?.updated_at);
+        return backupMs > 0 && (!remoteMs || backupMs > remoteMs + 500);
+      } catch (_) {
+        return false;
+      }
+    }
+
     async function _fsLoadRemote(userId) {
       try {
         const { data, error } = await _fsSb
@@ -1351,6 +1364,10 @@
       if (_fsLocalLooksNewer(userId, remote)) {
         await _fsFlushPush(true);
         return { source: 'local', remote };
+      }
+      if (_fsBackupLooksNewer(userId, remote) && _fsRestoreLocalUserData(userId)) {
+        await _fsFlushPush(true);
+        return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       if (!_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
         await _fsFlushPush(true);
