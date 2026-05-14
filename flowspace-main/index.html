@@ -1030,6 +1030,7 @@
     const FS_IMAGE_IDB_STORE = 'images';
     const FS_IMAGE_IDB_REF = '__fs_idb_image__:';
     const FS_IMAGE_LOCAL_LIMIT = 900 * 1024;
+    const FS_IMAGE_REMOTE_LIMIT = 4 * 1024 * 1024;
     let _fsImageDbPromise = null;
 
     function _fsIsImageDbRef(value) {
@@ -1112,6 +1113,26 @@
       return dbSrc || null;
     }
     window._fsReadLocalImage = _fsReadLocalImage;
+
+    async function _fsCollectRemoteImages() {
+      const images = {};
+      const keys = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('fs_img_')) keys.push(k);
+        }
+      } catch (_) { }
+      for (const k of keys) {
+        try {
+          let v = localStorage.getItem(k);
+          if (_fsIsImageDbRef(v)) v = await _fsReadLocalImage(k);
+          if (typeof v === 'string' && v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_REMOTE_LIMIT) images[k] = v;
+        } catch (_) { }
+      }
+      return images;
+    }
+    window._fsCollectRemoteImages = _fsCollectRemoteImages;
 
     function _fsNumberInRange(value, fallback, min, max) {
       const n = Number(value);
@@ -1713,15 +1734,8 @@
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); if (v != null) payload.gamification = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
 
-      /* Images – aggregate all fs_img_* keys */
-      const images = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('fs_img_')) {
-          const v = localStorage.getItem(k);
-          if (v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_LOCAL_LIMIT) images[k] = v;
-        }
-      }
+      /* Images – aggregate all fs_img_* keys, including GIFs kept in IndexedDB */
+      const images = window._fsCollectRemoteImages ? await window._fsCollectRemoteImages() : {};
       payload.images = images;
 
       if (!force && dirtyKeys.size > 0) {
@@ -3458,6 +3472,7 @@
       const storageKey = widgetId ? `fs_img_${widgetId}` : 'fs_img_widget';
       window._fsImageMemory = window._fsImageMemory || {};
       const [imgSrc, setImgSrc] = _uSI(() => {
+        if (readOnly) return initialSrc && !_fsIsImageDbRef(initialSrc) ? initialSrc : null;
         if (window._fsImageMemory?.[storageKey]) return window._fsImageMemory[storageKey];
         try {
           const local = localStorage.getItem(storageKey);
@@ -3473,6 +3488,7 @@
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
 
       _uEI(() => {
+        if (readOnly) return;
         let alive = true;
         if (window._fsReadLocalImage) {
           window._fsReadLocalImage(storageKey).then(src => {
@@ -3483,6 +3499,10 @@
       }, [storageKey]);
 
       _uEI(() => {
+        if (readOnly) {
+          setImgSrc(initialSrc && !_fsIsImageDbRef(initialSrc) ? initialSrc : null);
+          return;
+        }
         if (window._fsImageMemory?.[storageKey]) {
           setImgSrc(window._fsImageMemory[storageKey]);
           return;
