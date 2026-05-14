@@ -2273,7 +2273,12 @@
       const r = await fetch('https://api.spotify.com/v1' + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
       if (r.status === 204 || r.status === 202) return null;
       if (r.status === 401) { disconnectSpotify(); throw Object.assign(new Error('unauthorized'), { status: 401 }); }
-      if (!r.ok) throw new Error('Spotify API ' + r.status);
+      if (!r.ok) {
+        const err = new Error('Spotify API ' + r.status);
+        err.status = r.status;
+        try { err.body = await r.text(); } catch (e) {}
+        throw err;
+      }
       const ct = r.headers.get('content-type') || '';
       return ct.includes('json') ? r.json() : null;
     }
@@ -2304,6 +2309,7 @@
       const [playing, setPlaying] = React.useState(false);
       const [progressMs, setProgressMs] = React.useState(0);
       const [durationMs, setDurationMs] = React.useState(0);
+      const [playbackHint, setPlaybackHint] = React.useState('');
       const [busy, setBusy] = React.useState(false);
       const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
       const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
@@ -2313,12 +2319,14 @@
         const onConn = () => {
           localStorage.removeItem('sp_needs_reconnect');
           setNeedsReconnect(false);
+          setPlaybackHint('Recherche de ta musique...');
           setConnected(true);
         };
         const onDisc = () => {
           setNeedsReconnect(true);
           setConnected(false);
           setTrack(null);
+          setPlaybackHint('');
         };
         window.addEventListener('sp_connected', onConn);
         window.addEventListener('sp_disconnected', onDisc);
@@ -2328,23 +2336,59 @@
       React.useEffect(() => {
         if (!connected) return;
         let dead = false;
+        async function readPlayback() {
+          let player = null;
+          try {
+            player = await spotifyApi('/me/player');
+          } catch (e) {
+            if (e.status === 401) throw e;
+          }
+          if (player?.item) return player;
+          const current = await spotifyApi('/me/player/currently-playing');
+          if (current?.item) return current;
+          return null;
+        }
         async function poll() {
           try {
-            const d = await spotifyApi('/me/player');
+            const d = await readPlayback();
             if (dead) return;
-            if (d && d.item) { setTrack(d.item); setPlaying(d.is_playing); setProgressMs(d.progress_ms || 0); setDurationMs(d.item.duration_ms || 0); }
-          } catch (e) { if (e.status === 401) setConnected(false); }
+            if (d?.item) {
+              setTrack(d.item);
+              setPlaying(!!d.is_playing);
+              setProgressMs(d.progress_ms || 0);
+              setDurationMs(d.item.duration_ms || 0);
+              setPlaybackHint('');
+            } else {
+              setPlaybackHint('Lance une musique sur Spotify, le widget se synchronise tout seul.');
+            }
+          } catch (e) {
+            if (dead) return;
+            if (e.status === 401) setConnected(false);
+            else if (e.status === 403) setPlaybackHint('Compte connecté. Lance un titre dans Spotify pour afficher la musique.');
+            else setPlaybackHint('Spotify connecté, synchronisation en attente...');
+          }
         }
         poll();
-        const iv = setInterval(poll, 4000);
-        return () => { dead = true; clearInterval(iv); };
+        const iv = setInterval(poll, 3000);
+        const onVisible = () => { if (!document.hidden) poll(); };
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('focus', poll);
+        return () => {
+          dead = true;
+          clearInterval(iv);
+          document.removeEventListener('visibilitychange', onVisible);
+          window.removeEventListener('focus', poll);
+        };
       }, [connected]);
 
       function fmt(ms) { const s = Math.floor(ms / 1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
 
       async function cmd(path, method = 'PUT') {
         setBusy(true);
-        try { await spotifyApi(path, { method }); } catch(e) {}
+        try { await spotifyApi(path, { method }); }
+        catch(e) {
+          if (e.status === 403) setPlaybackHint('Contrôle indisponible sur ce compte, mais la lecture reste affichée.');
+        }
         setTimeout(() => setBusy(false), 700);
       }
       const togglePlay = () => { if (playing) { cmd('/me/player/pause'); setPlaying(false); } else { cmd('/me/player/play'); setPlaying(true); } };
@@ -2360,9 +2404,9 @@
         disconnectSpotify();
       };
 
-      const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url;
-      const title = track?.name || (connected ? 'Lance une musique' : '—');
-      const artist = track?.artists?.map(a => a.name).join(', ') || '';
+      const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || track?.images?.[1]?.url || track?.images?.[0]?.url;
+      const title = track?.name || (connected ? 'Spotify connecté' : '—');
+      const artist = track?.artists?.map(a => a.name).join(', ') || track?.show?.publisher || playbackHint || '';
       const prog = durationMs ? progressMs / durationMs : 0;
       const openSpotifyAuth = e => {
         e?.preventDefault?.();
