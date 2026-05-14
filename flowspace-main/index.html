@@ -1332,6 +1332,31 @@
       try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
     }
 
+    function _fsImageTouchKey(imageKey) {
+      return imageKey && imageKey.startsWith('fs_img_') ? `fs_image_touched_${imageKey.slice(7)}` : null;
+    }
+
+    function _fsMarkImageTouched(imageKey) {
+      const key = _fsImageTouchKey(imageKey);
+      if (!key) return;
+      try { _fsRawSet(key, new Date().toISOString()); } catch (_) { }
+    }
+    window._fsMarkImageTouched = _fsMarkImageTouched;
+
+    function _fsImageTouchedMs(imageKey) {
+      const key = _fsImageTouchKey(imageKey);
+      if (!key) return 0;
+      try { return _fsIsoMs(localStorage.getItem(key)); } catch (_) { return 0; }
+    }
+
+    function _fsShouldKeepLocalImage(imageKey, localValue, remoteValue, remoteUpdatedAt) {
+      if (!imageKey || !localValue || localValue === remoteValue) return false;
+      const touchedMs = _fsImageTouchedMs(imageKey);
+      const remoteMs = _fsIsoMs(remoteUpdatedAt);
+      const isAnimatedGif = /^data:image\/gif(?:;|,)/i.test(String(localValue));
+      return isAnimatedGif || (touchedMs > 0 && (!remoteMs || touchedMs > remoteMs - 1000 * 60 * 10));
+    }
+
     function _fsDirtyPayloadFromSnapshot(snapshot, dirtyKeys) {
       const p = {};
       if (dirtyKeys.has('fs_tasks') && Object.prototype.hasOwnProperty.call(snapshot, 'tasks')) p.tasks = snapshot.tasks;
@@ -1426,14 +1451,25 @@
         }
       }
 
-      /* Images – restore from remote; only clear local keys when remote has images
-         (preserves locally-stored images that were too large to sync) */
+      /* Images – restore from remote, but never let an older/smaller remote
+         image replace a locally changed GIF that could be too large to sync. */
       if (remote && remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) {
+        const protectedLocalImages = {};
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
+          if (k && k.startsWith('fs_img_')) {
+            const localValue = localStorage.getItem(k);
+            const remoteValue = remote.images[k];
+            if (_fsShouldKeepLocalImage(k, localValue, remoteValue, remote.updated_at)) {
+              protectedLocalImages[k] = localValue;
+            }
+            _fsRawRemove(k);
+          }
         }
         Object.entries(remote.images).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+        });
+        Object.entries(protectedLocalImages).forEach(([k, v]) => {
           if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
         });
       }
@@ -3141,6 +3177,7 @@
         setImgSrc(src);
         setCropSrc(null);
         try { localStorage.setItem(storageKey, src); } catch (err) {}
+        try { window._fsMarkImageTouched?.(storageKey); } catch (err) {}
         try { window._fsFlushPush?.(); } catch (err) {}
       };
 
