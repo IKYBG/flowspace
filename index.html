@@ -3170,7 +3170,9 @@
     // ── Image Widget ─────────────────────────────────────────────────────
     function ImageWidget({ style, widgetId, initialSrc, readOnly = false }) {
       const storageKey = widgetId ? `fs_img_${widgetId}` : 'fs_img_widget';
+      window._fsImageMemory = window._fsImageMemory || {};
       const [imgSrc, setImgSrc] = _uSI(() => {
+        if (window._fsImageMemory?.[storageKey]) return window._fsImageMemory[storageKey];
         if (initialSrc) return initialSrc;
         try { return localStorage.getItem(storageKey) || null; } catch (e) { return null; }
       });
@@ -3181,6 +3183,10 @@
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
 
       _uEI(() => {
+        if (window._fsImageMemory?.[storageKey]) {
+          setImgSrc(window._fsImageMemory[storageKey]);
+          return;
+        }
         if (typeof initialSrc !== 'undefined') setImgSrc(initialSrc || null);
       }, [initialSrc]);
 
@@ -3212,8 +3218,9 @@
       const applyImage = (src) => {
         setImgSrc(src);
         setCropSrc(null);
-        try { localStorage.setItem(storageKey, src); } catch (err) {}
+        try { window._fsImageMemory[storageKey] = src; } catch (err) {}
         try { window._fsMarkImageTouched?.(storageKey); } catch (err) {}
+        try { localStorage.setItem(storageKey, src); } catch (err) {}
         try { window._fsFlushPush?.(); } catch (err) {}
       };
 
