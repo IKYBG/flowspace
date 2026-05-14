@@ -10243,8 +10243,8 @@
         try { window._fsRememberWidgetStyle?.(user?.id || window._fsSbUser?.id, styleToSave); } catch (e) { }
         try { localStorage.setItem('fs_widget_style', JSON.stringify(styleToSave)); } catch (e) { }
         try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
-        try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 1200); } catch (e) { }
-        try { await withLogoutTimeout(window._fsFlushPush?.(), 1200); } catch (e) { }
+        try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 2800); } catch (e) { }
+        try { await withLogoutTimeout(window._fsFlushPush?.(true), 1800); } catch (e) { }
         try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
         try { await withLogoutTimeout(window._fsSb.auth.signOut(), 1500); } catch (e) { }
         window._fsSbUser = null;
@@ -10276,12 +10276,13 @@
       }, [user?.id]);
 
       const handleAuth = (authUser, isNew, remote) => {
-        if (remote && remote.widgets) setWidgets(remote.widgets);
+        const visualSource = remote || (authUser?.id && window._fsSnapshotLocalData ? window._fsSnapshotLocalData(authUser.id) : null);
+        if (visualSource && visualSource.widgets) setWidgets(visualSource.widgets);
         else setWidgets(DEFAULT_WIDGETS);
-        if (remote && remote.bg_theme) setBgThemeId(remote.bg_theme);
+        if (visualSource && visualSource.bg_theme) setBgThemeId(visualSource.bg_theme);
         /* widget_style: _fsSeedLocalFromRemote already set _fsIgnorePush=true for 2s,
            so this setWidgetStyle won't trigger a redundant push */
-        if (remote && remote.widget_style != null) applySyncedWidgetStyle(remote.widget_style);
+        if (visualSource && visualSource.widget_style != null) applySyncedWidgetStyle(visualSource.widget_style);
         else applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
         try {
           if (isNew) localStorage.setItem('fs_intro_pending', '1');
@@ -10295,7 +10296,7 @@
           window._fsStartRealtime(authUser.id);
           window._fsStartSessionRealtime(authUser.id);
         }
-        if (remote) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: remote }));
+        if (visualSource) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: visualSource }));
         setScreen(isNew ? 'onboarding' : readRouteScreen());
       };
 
@@ -10338,12 +10339,13 @@
                 setSyncEpoch(n => n + 1);
                 window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: synced || {} }));
               }
-              /* Always apply visual style from remote regardless of sync source —
-                 ensures cross-device consistency (PC settings reach mobile and vice-versa).
-                 Suppress the resulting localStorage write from scheduling a redundant push. */
-              if (remote && remote.widget_style != null) {
+              /* Apply the reconciled visual source and suppress the resulting
+                 localStorage write from scheduling a redundant push. */
+              const visualSource = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(session.user.id);
+              if (visualSource && visualSource.widget_style != null) {
                 try { window._fsSetIgnorePush(true); } catch(_) {}
-                applySyncedWidgetStyle(remote.widget_style);
+                if (visualSource.bg_theme) setBgThemeId(visualSource.bg_theme);
+                applySyncedWidgetStyle(visualSource.widget_style);
                 setTimeout(() => { try { window._fsSetIgnorePush(false); } catch(_) {} }, 2200);
               } else {
                 applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
