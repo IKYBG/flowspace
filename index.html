@@ -1026,6 +1026,93 @@
     function _fsRawRemove(k) { _fsOrigRemoveItem.call(localStorage, k); }
     window._fsRawSet = _fsRawSet;
 
+    const FS_IMAGE_IDB_NAME = 'lumenos-image-cache';
+    const FS_IMAGE_IDB_STORE = 'images';
+    const FS_IMAGE_IDB_REF = '__fs_idb_image__:';
+    const FS_IMAGE_LOCAL_LIMIT = 900 * 1024;
+    let _fsImageDbPromise = null;
+
+    function _fsIsImageDbRef(value) {
+      return typeof value === 'string' && value.startsWith(FS_IMAGE_IDB_REF);
+    }
+
+    function _fsImageDb() {
+      if (!('indexedDB' in window)) return Promise.resolve(null);
+      if (_fsImageDbPromise) return _fsImageDbPromise;
+      _fsImageDbPromise = new Promise(resolve => {
+        const req = indexedDB.open(FS_IMAGE_IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(FS_IMAGE_IDB_STORE)) db.createObjectStore(FS_IMAGE_IDB_STORE, { keyPath: 'key' });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      });
+      return _fsImageDbPromise;
+    }
+
+    async function _fsImageDbSet(imageKey, src) {
+      const db = await _fsImageDb();
+      if (!db || !imageKey || typeof src !== 'string') return false;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(FS_IMAGE_IDB_STORE, 'readwrite');
+          tx.objectStore(FS_IMAGE_IDB_STORE).put({ key: imageKey, src, updated_at: new Date().toISOString() });
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch (_) { resolve(false); }
+      });
+    }
+
+    async function _fsImageDbGet(imageKey) {
+      const db = await _fsImageDb();
+      if (!db || !imageKey) return null;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(FS_IMAGE_IDB_STORE, 'readonly');
+          const req = tx.objectStore(FS_IMAGE_IDB_STORE).get(imageKey);
+          req.onsuccess = () => resolve(req.result?.src || null);
+          req.onerror = () => resolve(null);
+        } catch (_) { resolve(null); }
+      });
+    }
+
+    async function _fsStoreLocalImage(imageKey, src) {
+      window._fsImageMemory = window._fsImageMemory || {};
+      if (!imageKey || typeof src !== 'string') return false;
+      window._fsImageMemory[imageKey] = src;
+      const isGif = /^data:image\/gif(?:;|,)/i.test(src);
+      const shouldUseDbRef = isGif || src.length > FS_IMAGE_LOCAL_LIMIT;
+      const savedToDb = await _fsImageDbSet(imageKey, src);
+      try {
+        if (shouldUseDbRef && savedToDb) _fsRawSet(imageKey, `${FS_IMAGE_IDB_REF}${imageKey}`);
+        else _fsRawSet(imageKey, src);
+      } catch (_) {
+        if (savedToDb) {
+          try { _fsRawSet(imageKey, `${FS_IMAGE_IDB_REF}${imageKey}`); } catch (e) { }
+        }
+      }
+      return savedToDb;
+    }
+    window._fsStoreLocalImage = _fsStoreLocalImage;
+
+    async function _fsReadLocalImage(imageKey) {
+      window._fsImageMemory = window._fsImageMemory || {};
+      if (window._fsImageMemory[imageKey]) return window._fsImageMemory[imageKey];
+      let local = null;
+      try { local = localStorage.getItem(imageKey); } catch (_) { }
+      if (local && !_fsIsImageDbRef(local)) {
+        window._fsImageMemory[imageKey] = local;
+        return local;
+      }
+      const dbSrc = await _fsImageDbGet(imageKey);
+      if (dbSrc) window._fsImageMemory[imageKey] = dbSrc;
+      return dbSrc || null;
+    }
+    window._fsReadLocalImage = _fsReadLocalImage;
+
     function _fsNumberInRange(value, fallback, min, max) {
       const n = Number(value);
       return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
@@ -1245,7 +1332,10 @@
         });
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
-          if (k && k.startsWith('fs_img_')) data.images[k] = localStorage.getItem(k);
+          if (k && k.startsWith('fs_img_')) {
+            const v = localStorage.getItem(k);
+            if (v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_LOCAL_LIMIT) data.images[k] = v;
+          }
         }
         _fsRawSet(key, JSON.stringify(data));
       } catch (e) { console.warn('[fs] local backup failed', e); }
@@ -1263,7 +1353,7 @@
         Object.entries(data.general || {}).forEach(([k, v]) => { if (v != null) _fsRawSet(k, String(v)); });
         Object.entries(data.scoped || {}).forEach(([k, v]) => { if (v != null) _fsRawSet(k, String(v)); });
         Object.entries(data.images || {}).forEach(([k, v]) => {
-          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) _fsRawSet(k, v);
         });
         setTimeout(() => { _fsIgnorePush = false; }, 500);
         return true;
@@ -1391,6 +1481,7 @@
       if (!imageKey || !localValue || localValue === remoteValue) return false;
       const touchedMs = _fsImageTouchedMs(imageKey);
       const remoteMs = _fsIsoMs(remoteUpdatedAt);
+      if (_fsIsImageDbRef(localValue)) return true;
       const isAnimatedGif = /^data:image\/gif(?:;|,)/i.test(String(localValue));
       return isAnimatedGif || (touchedMs > 0 && (!remoteMs || touchedMs > remoteMs - 1000 * 60 * 10));
     }
@@ -1505,7 +1596,7 @@
           }
         }
         Object.entries(remote.images).forEach(([k, v]) => {
-          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) _fsRawSet(k, v);
         });
         Object.entries(protectedLocalImages).forEach(([k, v]) => {
           if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
@@ -1626,9 +1717,12 @@
       const images = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('fs_img_')) images[k] = localStorage.getItem(k);
+        if (k && k.startsWith('fs_img_')) {
+          const v = localStorage.getItem(k);
+          if (v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_LOCAL_LIMIT) images[k] = v;
+        }
       }
-      if (Object.keys(images).length > 0) payload.images = images;
+      payload.images = images;
 
       if (!force && dirtyKeys.size > 0) {
         const snapshot = _fsSnapshotLocalData(u.id);
@@ -3184,8 +3278,12 @@
       window._fsImageMemory = window._fsImageMemory || {};
       const [imgSrc, setImgSrc] = _uSI(() => {
         if (window._fsImageMemory?.[storageKey]) return window._fsImageMemory[storageKey];
+        try {
+          const local = localStorage.getItem(storageKey);
+          if (local && !/^__fs_idb_image__:/.test(local)) return local;
+        } catch (e) { }
         if (initialSrc) return initialSrc;
-        try { return localStorage.getItem(storageKey) || null; } catch (e) { return null; }
+        return null;
       });
       const [hover, setHover] = _uSI(false);
       const [cropSrc, setCropSrc] = _uSI(null);
@@ -3194,10 +3292,24 @@
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
 
       _uEI(() => {
+        let alive = true;
+        if (window._fsReadLocalImage) {
+          window._fsReadLocalImage(storageKey).then(src => {
+            if (alive && src) setImgSrc(src);
+          });
+        }
+        return () => { alive = false; };
+      }, [storageKey]);
+
+      _uEI(() => {
         if (window._fsImageMemory?.[storageKey]) {
           setImgSrc(window._fsImageMemory[storageKey]);
           return;
         }
+        try {
+          const local = localStorage.getItem(storageKey);
+          if (local && /^__fs_idb_image__:/.test(local)) return;
+        } catch (e) { }
         if (typeof initialSrc !== 'undefined') setImgSrc(initialSrc || null);
       }, [initialSrc]);
 
@@ -3229,9 +3341,11 @@
       const applyImage = (src) => {
         setImgSrc(src);
         setCropSrc(null);
-        try { window._fsImageMemory[storageKey] = src; } catch (err) {}
         try { window._fsMarkImageTouched?.(storageKey); } catch (err) {}
-        try { localStorage.setItem(storageKey, src); } catch (err) {}
+        try {
+          if (window._fsStoreLocalImage) window._fsStoreLocalImage(storageKey, src);
+          else localStorage.setItem(storageKey, src);
+        } catch (err) {}
         try { window._fsFlushPush?.(); } catch (err) {}
       };
 
