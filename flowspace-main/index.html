@@ -2211,7 +2211,8 @@
       return path + '/';
     })();
     const SPOTIFY_REDIRECT_URI = window.location.origin + _spRedirectPath;
-    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
+    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played';
+    const SPOTIFY_SCOPE_VERSION = 'playback-fallback-v2';
     const SP = '#1db954';
 
     function _spRand(n) {
@@ -2233,6 +2234,7 @@
       const challenge = _spB64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
       localStorage.setItem('sp_code_verifier', verifier);
       localStorage.setItem('sp_return_hash', window.location.hash || '#dashboard');
+      localStorage.removeItem('sp_auth_error');
       const p = new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, response_type: 'code', redirect_uri: SPOTIFY_REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: SPOTIFY_SCOPES, show_dialog: 'true' });
       window.location.href = 'https://accounts.spotify.com/authorize?' + p;
     }
@@ -2246,15 +2248,21 @@
       localStorage.setItem('sp_access_token', d.access_token);
       localStorage.setItem('sp_refresh_token', d.refresh_token);
       localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
+      localStorage.setItem('sp_scope_version', SPOTIFY_SCOPE_VERSION);
       localStorage.removeItem('sp_code_verifier');
       localStorage.removeItem('sp_needs_reconnect');
+      localStorage.removeItem('sp_auth_error');
     }
 
     async function _spRefresh() {
       const rt = localStorage.getItem('sp_refresh_token');
       if (!rt) throw new Error('no refresh token');
       const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'refresh_token', refresh_token: rt }) });
-      if (!r.ok) throw new Error('refresh failed');
+      if (!r.ok) {
+        const err = new Error('refresh failed ' + r.status);
+        err.status = r.status;
+        throw err;
+      }
       const d = await r.json();
       localStorage.setItem('sp_access_token', d.access_token);
       localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
@@ -2264,7 +2272,8 @@
 
     async function _spToken() {
       const exp = parseInt(localStorage.getItem('sp_token_expiry') || '0');
-      if (Date.now() < exp - 60000) return localStorage.getItem('sp_access_token');
+      const at = localStorage.getItem('sp_access_token');
+      if (at && Date.now() < exp - 60000) return at;
       return _spRefresh();
     }
 
@@ -2276,6 +2285,7 @@
       if (!r.ok) {
         const err = new Error('Spotify API ' + r.status);
         err.status = r.status;
+        err.path = path;
         try { err.body = await r.text(); } catch (e) {}
         throw err;
       }
@@ -2284,7 +2294,7 @@
     }
 
     function disconnectSpotify() {
-      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier'].forEach(k => localStorage.removeItem(k));
+      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier','sp_scope_version','sp_auth_error'].forEach(k => localStorage.removeItem(k));
       localStorage.setItem('sp_needs_reconnect', '1');
       window.dispatchEvent(new Event('sp_disconnected'));
     }
@@ -2293,9 +2303,17 @@
     window._spHandleCallback = async () => {
       const p = new URLSearchParams(window.location.search);
       const code = p.get('code');
-      if (!code || !localStorage.getItem('sp_code_verifier')) return;
       const returnHash = localStorage.getItem('sp_return_hash') || '#dashboard';
       localStorage.removeItem('sp_return_hash');
+      const authError = p.get('error');
+      if (authError) {
+        localStorage.setItem('sp_auth_error', authError);
+        localStorage.setItem('sp_needs_reconnect', '1');
+        window.history.replaceState({}, '', window.location.pathname + returnHash);
+        window.dispatchEvent(new CustomEvent('sp_auth_error', { detail: { error: authError } }));
+        return;
+      }
+      if (!code || !localStorage.getItem('sp_code_verifier')) return;
       window.history.replaceState({}, '', window.location.pathname + returnHash);
       try { await _spExchange(code); window.dispatchEvent(new Event('sp_connected')); }
       catch (e) { console.error('Spotify callback:', e); }
@@ -2310,6 +2328,8 @@
       const [progressMs, setProgressMs] = React.useState(0);
       const [durationMs, setDurationMs] = React.useState(0);
       const [playbackHint, setPlaybackHint] = React.useState('');
+      const [reauthNeeded, setReauthNeeded] = React.useState(() => !!localStorage.getItem('sp_access_token') && localStorage.getItem('sp_scope_version') !== SPOTIFY_SCOPE_VERSION);
+      const [authError, setAuthError] = React.useState(() => localStorage.getItem('sp_auth_error') || '');
       const [busy, setBusy] = React.useState(false);
       const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
       const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
@@ -2318,7 +2338,10 @@
       React.useEffect(() => {
         const onConn = () => {
           localStorage.removeItem('sp_needs_reconnect');
+          localStorage.removeItem('sp_auth_error');
           setNeedsReconnect(false);
+          setAuthError('');
+          setReauthNeeded(false);
           setPlaybackHint('Recherche de ta musique...');
           setConnected(true);
         };
@@ -2328,9 +2351,18 @@
           setTrack(null);
           setPlaybackHint('');
         };
+        const onAuthError = e => {
+          const err = e?.detail?.error || localStorage.getItem('sp_auth_error') || 'access_denied';
+          setAuthError(err);
+          setNeedsReconnect(true);
+          setConnected(false);
+          setTrack(null);
+          setPlaybackHint('');
+        };
         window.addEventListener('sp_connected', onConn);
         window.addEventListener('sp_disconnected', onDisc);
-        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); };
+        window.addEventListener('sp_auth_error', onAuthError);
+        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); };
       }, []);
 
       React.useEffect(() => {
@@ -2339,13 +2371,16 @@
         async function readPlayback() {
           let player = null;
           try {
-            player = await spotifyApi('/me/player');
+            player = await spotifyApi('/me/player?market=from_token&additional_types=track,episode');
           } catch (e) {
             if (e.status === 401) throw e;
           }
           if (player?.item) return player;
-          const current = await spotifyApi('/me/player/currently-playing');
+          const current = await spotifyApi('/me/player/currently-playing?market=from_token&additional_types=track,episode');
           if (current?.item) return current;
+          const recent = await spotifyApi('/me/player/recently-played?limit=1');
+          const recentItem = recent?.items?.[0]?.track;
+          if (recentItem) return { item: recentItem, is_playing: false, progress_ms: 0, is_recent: true };
           return null;
         }
         async function poll() {
@@ -2357,13 +2392,21 @@
               setPlaying(!!d.is_playing);
               setProgressMs(d.progress_ms || 0);
               setDurationMs(d.item.duration_ms || 0);
-              setPlaybackHint('');
+              setPlaybackHint(d.is_recent ? 'Dernier morceau écouté. Lance Spotify pour le direct.' : '');
             } else {
               setPlaybackHint('Lance une musique sur Spotify, le widget se synchronise tout seul.');
             }
           } catch (e) {
             if (dead) return;
-            if (e.status === 401) setConnected(false);
+            if (e.status === 401) {
+              setConnected(false);
+              setNeedsReconnect(true);
+              setPlaybackHint('');
+            }
+            else if (e.status === 403 && String(e.body || '').toLowerCase().includes('scope')) {
+              setReauthNeeded(true);
+              setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage fiable du widget.');
+            }
             else if (e.status === 403) setPlaybackHint('Compte connecté. Lance un titre dans Spotify pour afficher la musique.');
             else setPlaybackHint('Spotify connecté, synchronisation en attente...');
           }
@@ -2471,11 +2514,13 @@
 
       // ── État non connecté ──
       if (!connected) {
-        const pageTitle = needsReconnect ? 'Spotify déconnecté' : 'Relier Spotify';
-        const pageCopy = needsReconnect
+        const pageTitle = authError ? 'Connexion Spotify bloquée' : (needsReconnect ? 'Spotify déconnecté' : 'Relier Spotify');
+        const pageCopy = authError
+          ? 'Spotify n’a pas autorisé la connexion. Réessaie avec le bon compte Spotify.'
+          : needsReconnect
           ? 'Reconnecte ton compte pour relier le widget musique à ton dashboard.'
           : 'Connecte Spotify pour piloter ta musique depuis LumenOS.';
-        const pageCta = needsReconnect ? 'Reconnecter Spotify' : 'Connecter Spotify';
+        const pageCta = needsReconnect || authError ? 'Reconnecter Spotify' : 'Connecter Spotify';
         const ConnectView = ({ compact }) => {
           if (compact) return (
             <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', boxSizing: 'border-box' }}>
@@ -2533,6 +2578,31 @@
         if (variant === 1) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         if (variant === 5) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         return <Shell flat style={style}><ConnectView compact /></Shell>;
+      }
+
+      if (reauthNeeded && !track) {
+        const ReauthView = ({ compact }) => (
+          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: compact ? 'row' : 'column', justifyContent: 'center', alignItems: compact ? 'center' : 'stretch', gap: compact ? 12 : 18, padding: compact ? '12px 14px' : '20px 22px', boxSizing: 'border-box' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 12%, rgba(29,185,84,0.22), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div style={{ width: compact ? 36 : 44, height: compact ? 36 : 44, borderRadius: 16, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(29,185,84,0.16)' }}>
+                <svg width={compact ? 18 : 21} height={compact ? 18 : 21} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: compact ? 13 : 17, lineHeight: 1.1, fontWeight: 780, color: T.text, whiteSpace: compact ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>Autoriser Spotify</div>
+                {!compact && <div style={{ marginTop: 7, maxWidth: 280, fontSize: 12.5, lineHeight: 1.45, color: T.muted }}>Mets à jour l’autorisation pour afficher la musique de tous les comptes.</div>}
+                {compact && <Sub ch="Permission à mettre à jour" style={{ fontSize: 11, marginTop: 2 }} />}
+              </div>
+            </div>
+            <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ position: 'relative', minHeight: compact ? 36 : 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, #7dffae)`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: compact ? 13 : 16, padding: compact ? '8px 12px' : '10px 15px', color: '#06140a', fontSize: compact ? 12 : 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}>
+              {compact ? 'Autoriser' : 'Mettre à jour Spotify'}
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
+            </button>
+          </div>
+        );
+        if (variant === 1) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
+        if (variant === 5) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
+        return <Shell flat style={style}><ReauthView compact /></Shell>;
       }
 
       // ── Connecté : player réel ──
