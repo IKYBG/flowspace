@@ -1009,6 +1009,7 @@
     window._fsHydratedSavedData = false;
     window._fsDirtyThisSession = false;
     window._fsDirtyKeys = new Set();
+    window._fsImagePublishQueued = false;
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -1035,6 +1036,25 @@
 
     function _fsIsImageDbRef(value) {
       return typeof value === 'string' && value.startsWith(FS_IMAGE_IDB_REF);
+    }
+
+    function _fsHasLocalImageDbRefs() {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('fs_img_') && _fsIsImageDbRef(localStorage.getItem(k))) return true;
+        }
+      } catch (_) { }
+      return false;
+    }
+
+    function _fsMarkImageDirtyForSync(imageKey) {
+      if (!imageKey || !imageKey.startsWith('fs_img_')) return;
+      try {
+        window._fsDirtyThisSession = true;
+        window._fsDirtyKeys.add(imageKey);
+        _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString());
+      } catch (_) { }
     }
 
     function _fsImageDb() {
@@ -1095,6 +1115,7 @@
           try { _fsRawSet(imageKey, `${FS_IMAGE_IDB_REF}${imageKey}`); } catch (e) { }
         }
       }
+      _fsMarkImageDirtyForSync(imageKey);
       return savedToDb;
     }
     window._fsStoreLocalImage = _fsStoreLocalImage;
@@ -1408,9 +1429,29 @@
         window._fsDirtyThisSession = false;
         window._fsDirtyKeys.clear();
       }
-      if (ready) window._fsHydrationLock = false;
+      if (ready) {
+        window._fsHydrationLock = false;
+        _fsQueueImagePublish();
+      }
     }
     window._fsSetSyncReady = _fsSetSyncReady;
+
+    function _fsQueueImagePublish() {
+      if (!window._fsSbUser || !window._fsSyncReady || window._fsImagePublishQueued) return;
+      window._fsImagePublishQueued = true;
+      setTimeout(async () => {
+        window._fsImagePublishQueued = false;
+        if (!window._fsSbUser || !window._fsSyncReady || !_fsHasLocalImageDbRefs()) return;
+        try {
+          const images = window._fsCollectRemoteImages ? await window._fsCollectRemoteImages() : {};
+          if (Object.keys(images).length === 0) return;
+          await _fsFlushPush(true);
+        } catch (e) {
+          console.warn('[fs] image publish retry failed', e);
+        }
+      }, 1200);
+    }
+    window._fsQueueImagePublish = _fsQueueImagePublish;
 
     function _fsReleaseHydrationLock(delay = 1500) {
       clearTimeout(window._fsHydrationUnlockTimer);
@@ -11206,7 +11247,10 @@
       const renderFriendWidget = w => {
         const type = (w.id || w.label || '').toLowerCase().split('_')[0];
         if (type === 'image') {
-          const src = data?.images?.[`fs_img_${w.id}`] || data?.images?.fs_img_widget || null;
+          const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
+          const imageValues = Object.entries(imageMap)
+            .filter(([k, v]) => k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v));
+          const src = imageMap[`fs_img_${w.id}`] || imageMap[w.id] || imageMap.fs_img_widget || imageValues[0]?.[1] || null;
           return <ImageWidget widgetId={w.id} initialSrc={src} readOnly style={{ height:'100%' }} />;
         }
         const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[w.label?.toLowerCase?.()];
