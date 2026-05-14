@@ -2952,6 +2952,7 @@
       const [cropSrc, setCropSrc] = _uSI(null);
       const inputRef = _uRI(null);
       const containerRef = _uRI(null);
+      const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
 
       _uEI(() => {
         if (typeof initialSrc !== 'undefined') setImgSrc(initialSrc || null);
@@ -2968,8 +2969,16 @@
       const handleFile = e => {
         const file = e.target.files?.[0];
         if (!file) return;
+        const isGifFile = file.type === 'image/gif' || /\.gif$/i.test(file.name || '');
         const reader = new FileReader();
-        reader.onload = ev => setCropSrc(ev.target.result);
+        reader.onload = ev => {
+          const nextSrc = ev.target.result;
+          if (isGifFile) {
+            applyImage(nextSrc);
+            return;
+          }
+          setCropSrc(nextSrc);
+        };
         reader.readAsDataURL(file);
         e.target.value = '';
       };
@@ -2978,6 +2987,7 @@
         setImgSrc(src);
         setCropSrc(null);
         try { localStorage.setItem(storageKey, src); } catch (err) {}
+        try { window._fsFlushPush?.(); } catch (err) {}
       };
 
       const getAspectRatio = () => {
@@ -3002,8 +3012,24 @@
             onMouseLeave={() => setHover(false)}
             style={{
               width: '100%', height: '100%', position: 'relative', cursor: readOnly ? 'default' : 'pointer', overflow: 'hidden', borderRadius: 'inherit',
-              ...(imgSrc ? { backgroundImage: `url(${imgSrc})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)' })
+              ...(imgSrc && !isAnimatedGif ? { backgroundImage: `url(${imgSrc})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)' })
             }}>
+            {imgSrc && isAnimatedGif && (
+              <img
+                src={imgSrc}
+                alt=""
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                  borderRadius: 'inherit'
+                }}
+              />
+            )}
             {!imgSrc && (
               <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <svg width={28} height={28} viewBox="0 0 24 24" fill="none"><rect x={3} y={3} width={18} height={18} rx={4} stroke={`${c1(0.533)}`} strokeWidth={1.6} /><circle cx={8.5} cy={8.5} r={1.5} fill={`${c1(0.533)}`} /><path d="M3 15l5-5 4 4 3-3 6 6" stroke={`${c1(0.533)}`} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" /></svg>
