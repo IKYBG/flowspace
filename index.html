@@ -1090,6 +1090,17 @@
       return Number.isFinite(ms) ? ms : 0;
     }
 
+    function _fsWithTimeout(promise, ms, fallback) {
+      let timer;
+      return Promise.race([
+        Promise.resolve(promise).finally(() => clearTimeout(timer)),
+        new Promise(resolve => {
+          timer = setTimeout(() => resolve(fallback), ms);
+        })
+      ]);
+    }
+    window._fsWithTimeout = _fsWithTimeout;
+
     function _fsSameLocalUser(userId) {
       try {
         const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
@@ -1420,11 +1431,11 @@
 
     async function _fsLoadRemote(userId) {
       try {
-        const { data, error } = await _fsSb
+        const { data, error } = await _fsWithTimeout(_fsSb
           .from('user_data')
           .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, updated_at')
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle(), 6000, { data: null, error: { message: 'load remote timeout' } });
         if (error) { console.warn('[fs] load remote failed', error); return null; }
         return data;
       } catch (e) { console.warn('[fs] load remote threw', e); return null; }
@@ -1523,28 +1534,28 @@
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
       if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
         return { source: 'logout-visual', remote: _fsSnapshotLocalData(userId) };
       }
       if (!remote && _fsSameLocalUser(userId)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
       if (_fsLocalLooksNewer(userId, remote)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
       if (_fsLocalDashboardLooksNewer(userId, remote)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local-dashboard', remote: _fsSnapshotLocalData(userId) };
       }
       if (_fsBackupLooksNewer(userId, remote) && _fsRestoreLocalUserData(userId)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       if (!_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
-        await _fsFlushPush(true);
+        await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       if (!remote) {
@@ -10517,7 +10528,9 @@
         let mounted = true;
         (async () => {
           try {
-            const { data } = await window._fsSb.auth.getSession();
+            const { data } = await (window._fsWithTimeout
+              ? window._fsWithTimeout(window._fsSb.auth.getSession(), 6000, { data: { session: null } })
+              : window._fsSb.auth.getSession());
             if (!mounted) return;
             const session = data?.session;
             if (session?.user) {
