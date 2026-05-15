@@ -4411,7 +4411,10 @@
             const local = localStorage.getItem(key);
             if (!src && local && !/^__fs_idb_image__:/.test(local)) src = local;
           } catch (_) {}
-          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) images[w.id] = src;
+          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) {
+            images[w.id] = src;
+            images[key] = src;
+          }
         }));
         return images;
       };
@@ -4434,7 +4437,7 @@
           type: 'lumenos-dashboard-template',
           version: 1,
           createdAt: new Date().toISOString(),
-          widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 })),
+          widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1, imageKey: w.label === 'Image' ? `fs_img_${w.id}` : undefined })),
           visuals: readTemplateVisuals(),
           mediaIncluded: includeTemplateMedia
         };
@@ -4481,19 +4484,24 @@
           try { if (v.note_map_style) localStorage.setItem('fs_note_map_style', v.note_map_style); } catch (_) {}
           try {
             const images = tpl.images && typeof tpl.images === 'object' ? tpl.images : {};
+            let restoredCount = 0;
             for (const [i, w] of nextWidgets.entries()) {
               if (w.label !== 'Image') continue;
               const original = tpl.widgets[i] || {};
-              const src = images[original.id] || images[`fs_img_${original.id}`] || null;
+              const src = images[original.imageKey] || images[original.id] || images[`fs_img_${original.id}`] || Object.values(images).find(v => typeof v === 'string' && /^data:image\//i.test(v)) || null;
               if (!src || typeof src !== 'string' || _fsIsImageDbRef(src)) continue;
               const key = `fs_img_${w.id}`;
               window._fsImageMemory = window._fsImageMemory || {};
               window._fsImageMemory[key] = src;
               try { window._fsMarkImageTouched?.(key); } catch (_) {}
               try { if (window._fsStoreLocalImage) await window._fsStoreLocalImage(key, src); else localStorage.setItem(key, src); } catch (_) {}
+              restoredCount += 1;
             }
-            try { window._fsFlushPush?.(); } catch (_) {}
+            if (restoredCount > 0) addToast({ message: `${restoredCount} média${restoredCount > 1 ? 's' : ''} restauré${restoredCount > 1 ? 's' : ''}`, type: 'success', icon: '✓' });
           } catch (_) {}
+          try { localStorage.setItem('fs_widgets', JSON.stringify(nextWidgets)); } catch (_) {}
+          try { onSave(nextWidgets); } catch (_) {}
+          try { window._fsFlushPush?.(true); } catch (_) {}
           setWidgets(nextWidgets);
           setSelected(null);
           setShowPresets(false);
