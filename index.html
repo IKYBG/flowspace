@@ -1031,7 +1031,7 @@
     const FS_IMAGE_IDB_STORE = 'images';
     const FS_IMAGE_IDB_REF = '__fs_idb_image__:';
     const FS_IMAGE_LOCAL_LIMIT = 900 * 1024;
-    const FS_IMAGE_REMOTE_LIMIT = 4 * 1024 * 1024;
+    const FS_IMAGE_REMOTE_LIMIT = 12 * 1024 * 1024;
     let _fsImageDbPromise = null;
 
     function _fsIsImageDbRef(value) {
@@ -1778,6 +1778,23 @@
       /* Images – aggregate all fs_img_* keys, including GIFs kept in IndexedDB */
       const images = window._fsCollectRemoteImages ? await window._fsCollectRemoteImages() : {};
       payload.images = images;
+      const pushImagesOnly = async () => {
+        if (Object.keys(images).length === 0) return { error: null, skipped: true };
+        return _fsSb.from('user_data')
+          .update({ images, updated_at: payload.updated_at })
+          .eq('user_id', u.id);
+      };
+      const clearDirtyAfterPush = (keepImageDirty = false) => {
+        if (!keepImageDirty) {
+          window._fsDirtyThisSession = false;
+          window._fsDirtyKeys.clear();
+          return;
+        }
+        [...window._fsDirtyKeys].forEach(k => {
+          if (!String(k).startsWith('fs_img_')) window._fsDirtyKeys.delete(k);
+        });
+        window._fsDirtyThisSession = window._fsDirtyKeys.size > 0;
+      };
 
       if (!force && dirtyKeys.size > 0) {
         const snapshot = _fsSnapshotLocalData(u.id);
@@ -1789,6 +1806,14 @@
         const { error } = await _fsSb.from('user_data').update(partial).eq('user_id', u.id);
         if (error) {
           console.warn('[fs] partial push failed:', error);
+          if (partial.images) {
+            const imgResult = await pushImagesOnly();
+            if (imgResult?.error) console.warn('[fs] partial image push failed:', imgResult.error);
+            else {
+              dirtyKeys.forEach(k => { if (String(k).startsWith('fs_img_')) window._fsDirtyKeys.delete(k); });
+              window._fsDirtyThisSession = window._fsDirtyKeys.size > 0;
+            }
+          }
         } else {
           dirtyKeys.forEach(k => window._fsDirtyKeys.delete(k));
           if (window._fsDirtyKeys.size === 0) window._fsDirtyThisSession = false;
@@ -1803,12 +1828,16 @@
         const { error: e2 } = await _fsSb.from('user_data').upsert(payloadNoImages, { onConflict: 'user_id' });
         if (e2) console.warn('[fs] push failed (no images):', e2);
         else {
-          window._fsDirtyThisSession = false;
-          window._fsDirtyKeys.clear();
+          const imgResult = await pushImagesOnly();
+          if (imgResult?.error) {
+            console.warn('[fs] image-only push failed:', imgResult.error);
+            clearDirtyAfterPush(true);
+          } else {
+            clearDirtyAfterPush(false);
+          }
         }
       } else {
-        window._fsDirtyThisSession = false;
-        window._fsDirtyKeys.clear();
+        clearDirtyAfterPush(false);
       }
     }
     window._fsFlushPush = _fsFlushPush;
@@ -11249,7 +11278,7 @@
         if (type === 'image') {
           const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
           const imageValues = Object.entries(imageMap)
-            .filter(([k, v]) => k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v));
+            .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && v && !_fsIsImageDbRef(v));
           const src = imageMap[`fs_img_${w.id}`] || imageMap[w.id] || imageMap.fs_img_widget || imageValues[0]?.[1] || null;
           return <ImageWidget widgetId={w.id} initialSrc={src} readOnly style={{ height:'100%' }} />;
         }
