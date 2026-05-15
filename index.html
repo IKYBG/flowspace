@@ -4287,6 +4287,30 @@
         const json = JSON.stringify(payload);
         return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
       };
+      const compactTemplateLink = link => {
+        const value = String(link || '');
+        if (!value) return '';
+        const marker = '#fs-template=';
+        const idx = value.indexOf(marker);
+        if (idx < 0) return value.length > 56 ? `${value.slice(0, 30)}…${value.slice(-18)}` : value;
+        return `${value.slice(0, idx + marker.length)}${value.slice(idx + marker.length, idx + marker.length + 18)}…${value.slice(-14)}`;
+      };
+      const formatTemplateSize = link => {
+        const bytes = new Blob([String(link || '')]).size;
+        if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        if (bytes > 1024) return `${Math.round(bytes / 1024)} KB`;
+        return `${bytes} B`;
+      };
+      const copyTemplateLink = async () => {
+        if (!templateLink) return;
+        try {
+          await navigator.clipboard?.writeText(templateLink);
+          setTemplateCopied(true);
+          addToast({ message: 'Lien copié', type: 'success', icon: '✓' });
+        } catch (_) {
+          addToast({ message: 'Copie impossible, sélectionne le code', type: 'error', icon: '!' });
+        }
+      };
       const decodeTemplate = raw => {
         const cleaned = String(raw || '').trim();
         const fromHash = cleaned.match(/[#&?]fs-template=([^&]+)/)?.[1];
@@ -4345,7 +4369,6 @@
         const token = encodeTemplate(payload);
         const url = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
         setTemplateLink(url);
-        setTemplateInput(url);
         setTemplateCopied(false);
         try {
           await navigator.clipboard?.writeText(url);
@@ -4805,9 +4828,23 @@
                     </div>
                     <button onClick={createDashboardTemplate} style={{ marginTop:18, height:44, borderRadius:15, border:'none', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#071018', padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 18px 38px ${c1(0.24)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>Créer et copier</button>
                     {templateLink && (
-                      <div style={{ marginTop:16, borderRadius:16, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(0,0,0,0.20)', padding:12 }}>
-                        <div style={{ fontSize:10, fontWeight:850, color:templateCopied ? T.green : T.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>{templateCopied ? 'Copié' : 'Lien généré'}</div>
-                        <div style={{ marginTop:7, fontSize:11, lineHeight:1.45, color:'rgba(244,246,251,0.72)', wordBreak:'break-all' }}>{templateLink}</div>
+                      <div style={{ marginTop:16, borderRadius:18, border:`1px solid ${templateCopied ? 'rgba(92,230,165,0.24)' : 'rgba(255,255,255,0.08)'}`, background:'linear-gradient(145deg,rgba(0,0,0,0.24),rgba(255,255,255,0.035))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+                          <div style={{ minWidth:0 }}>
+                            <div style={{ fontSize:10, fontWeight:900, color:templateCopied ? T.green : T.c1, letterSpacing:'0.09em', textTransform:'uppercase' }}>{templateCopied ? 'Lien copié' : 'Lien prêt'}</div>
+                            <div style={{ marginTop:6, maxWidth:'100%', fontSize:11, lineHeight:1.35, color:'rgba(244,246,251,0.72)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{compactTemplateLink(templateLink)}</div>
+                          </div>
+                          <button onClick={copyTemplateLink} style={{ height:36, minWidth:84, borderRadius:13, border:`1px solid ${c1(0.24)}`, background:c1(0.12), color:T.c1, fontSize:11, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 12px 26px ${c1(0.08)}, inset 0 1px 0 rgba(255,255,255,0.07)` }}>{templateCopied ? 'Recopier' : 'Copier'}</button>
+                        </div>
+                        <div style={{ marginTop:10, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:10 }}>
+                          <span style={{ fontSize:10.5, color:T.muted, lineHeight:1.35 }}>Taille du template</span>
+                          <span style={{ fontSize:10.5, color:templateLink.length > 120000 ? T.warm : T.muted, fontWeight:850 }}>{formatTemplateSize(templateLink)}</span>
+                        </div>
+                        {templateLink.length > 120000 && (
+                          <div style={{ marginTop:10, borderRadius:13, border:'1px solid rgba(255,196,87,0.20)', background:'rgba(255,196,87,0.075)', color:T.warm, padding:'9px 10px', fontSize:10.8, lineHeight:1.38, fontWeight:650 }}>
+                            Les GIFs rendent ce lien lourd. Pour partager vite, désactive les médias.
+                          </div>
+                        )}
                       </div>
                     )}
                   </section>
