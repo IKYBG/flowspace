@@ -4297,10 +4297,40 @@
         const json = JSON.stringify(payload);
         return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
       };
+      const base64UrlFromBytes = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      const bytesFromBase64Url = token => {
+        const b64 = String(token || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (String(token || '').length % 4)) % 4);
+        return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      };
+      const compactUuid = uuid => {
+        const hex = String(uuid || '').replace(/-/g, '');
+        if (!/^[0-9a-f]{32}$/i.test(hex)) return uuid;
+        return base64UrlFromBytes(Uint8Array.from(hex.match(/.{2}/g).map(x => parseInt(x, 16))));
+      };
+      const expandUuid = token => {
+        const raw = String(token || '');
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return raw;
+        try {
+          const hex = Array.from(bytesFromBase64Url(raw)).map(x => x.toString(16).padStart(2, '0')).join('');
+          if (hex.length !== 32) return raw;
+          return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+        } catch (_) {
+          return raw;
+        }
+      };
+      const makeShortTemplateId = () => {
+        try {
+          const a = new Uint8Array(8);
+          crypto.getRandomValues(a);
+          return base64UrlFromBytes(a);
+        } catch (_) {
+          return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        }
+      };
       const compactTemplateLink = link => {
         const value = String(link || '');
         if (!value) return '';
-        const marker = value.includes('#fs-template-id=') ? '#fs-template-id=' : '#fs-template=';
+        const marker = value.includes('#t=') ? '#t=' : (value.includes('#fs-template-id=') ? '#fs-template-id=' : '#fs-template=');
         const idx = value.indexOf(marker);
         if (idx < 0) return value.length > 56 ? `${value.slice(0, 30)}…${value.slice(-18)}` : value;
         return `${value.slice(0, idx + marker.length)}${value.slice(idx + marker.length, idx + marker.length + 18)}…${value.slice(-14)}`;
@@ -4321,19 +4351,10 @@
           addToast({ message: 'Copie impossible, sélectionne le code', type: 'error', icon: '!' });
         }
       };
-      const makeTemplateId = () => {
-        try {
-          const a = new Uint8Array(8);
-          crypto.getRandomValues(a);
-          return Array.from(a).map(x => x.toString(16).padStart(2, '0')).join('');
-        } catch (_) {
-          return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-        }
-      };
       const saveTemplateRemote = async payload => {
         const user = window._fsSbUser;
         if (!window._fsSb || !user?.id) throw new Error('login required');
-        const id = makeTemplateId();
+        const id = makeShortTemplateId();
         const key = `_fs_template_${id}`;
         const { data } = await window._fsSb.from('user_data').select('images').eq('user_id', user.id).maybeSingle();
         const images = data?.images && typeof data.images === 'object' ? data.images : {};
@@ -4346,13 +4367,14 @@
           const result = await window._fsSb.from('user_data').upsert({ user_id: user.id, ...snapshot, images: nextImages, updated_at }, { onConflict: 'user_id' });
           if (result.error) throw result.error;
         }
-        return `${window.location.origin}${window.location.pathname}#fs-template-id=${encodeURIComponent(`${user.id}.${id}`)}`;
+        return `${window.location.origin}${window.location.pathname}#t=${encodeURIComponent(`${compactUuid(user.id)}.${id}`)}`;
       };
       const loadRemoteTemplate = async raw => {
         const cleaned = String(raw || '').trim();
-        const match = cleaned.match(/[#&?]fs-template-id=([^&]+)/)?.[1];
+        const match = cleaned.match(/[#&?]t=([^&]+)/)?.[1] || cleaned.match(/[#&?]fs-template-id=([^&]+)/)?.[1];
         if (!match || !window._fsSb) return null;
-        const [userId, templateId] = decodeURIComponent(match).split('.');
+        const [userToken, templateId] = decodeURIComponent(match).split('.');
+        const userId = expandUuid(userToken);
         if (!userId || !templateId) return null;
         const { data, error } = await window._fsSb.from('user_data').select('images').eq('user_id', userId).maybeSingle();
         if (error) throw error;
@@ -4921,7 +4943,7 @@
                     </div>
                     <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Charger un template</div>
                     <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Colle un lien court de préréglage. Le dashboard en édition sera remplacé avant sauvegarde.</div>
-                    <input value={templateInput} onChange={e => setTemplateInput(e.target.value.trim())} placeholder="https://...#fs-template-id=..." style={{ marginTop:16, width:'100%', height:48, borderRadius:16, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12, lineHeight:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} />
+                    <input value={templateInput} onChange={e => setTemplateInput(e.target.value.trim())} placeholder="https://...#t=..." style={{ marginTop:16, width:'100%', height:48, borderRadius:16, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12, lineHeight:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} />
                     <button onClick={() => applyDashboardTemplate()} style={{ marginTop:12, height:44, borderRadius:15, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.07)` }}>Appliquer le préréglage</button>
                   </section>
                 </div>
