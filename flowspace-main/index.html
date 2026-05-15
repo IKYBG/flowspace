@@ -4350,6 +4350,70 @@
           new Promise(resolve => { timer = setTimeout(() => resolve(fallback), ms); })
         ]);
       };
+      const dataUrlToBlob = src => {
+        const m = String(src || '').match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+        if (!m) return null;
+        const mime = m[1] || 'application/octet-stream';
+        const body = m[3] || '';
+        const binary = m[2] ? atob(body) : decodeURIComponent(body);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new Blob([bytes], { type: mime });
+      };
+      const blobToDataUrl = blob => new Promise(resolve => {
+        try {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        } catch (_) {
+          resolve(null);
+        }
+      });
+      const uploadTemplateMedia = async (mediaImages, templateId) => {
+        const refs = {};
+        const inline = {};
+        let uploaded = 0, inlined = 0, skipped = 0;
+        const buckets = ['template-media', 'dashboard-templates', 'images'];
+        const entries = Object.entries(mediaImages || {}).filter(([, src]) => typeof src === 'string' && /^data:image\//i.test(src));
+        for (const [imageKey, src] of entries) {
+          const blob = dataUrlToBlob(src);
+          const ext = /^data:image\/gif/i.test(src) ? 'gif' : /^data:image\/png/i.test(src) ? 'png' : /^data:image\/webp/i.test(src) ? 'webp' : 'jpg';
+          const path = `${window._fsSbUser?.id || 'anon'}/${templateId}/${imageKey.replace(/[^a-z0-9_-]/gi, '_')}.${ext}`;
+          let saved = false;
+          if (blob && window._fsSb?.storage) {
+            for (const bucket of buckets) {
+              try {
+                const res = await withTimeout(window._fsSb.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type || `image/${ext}` }), 6500, { error: { message: 'storage timeout' } });
+                if (!res?.error) {
+                  refs[imageKey] = { kind: 'storage', bucket, path, mime: blob.type || `image/${ext}` };
+                  uploaded += 1;
+                  saved = true;
+                  break;
+                }
+              } catch (_) {}
+            }
+          }
+          if (!saved && src.length < 1024 * 1024) {
+            inline[imageKey] = src;
+            refs[imageKey] = imageKey;
+            inlined += 1;
+            saved = true;
+          }
+          if (!saved) skipped += 1;
+        }
+        return { refs, inline, uploaded, inlined, skipped };
+      };
+      const resolveTemplateMediaRef = async (ref, remoteImages = {}) => {
+        if (!ref) return null;
+        if (typeof ref === 'string') return remoteImages[ref] || remoteImages[`fs_img_${ref}`] || null;
+        if (ref.kind === 'storage' && ref.bucket && ref.path && window._fsSb?.storage) {
+          const res = await withTimeout(window._fsSb.storage.from(ref.bucket).download(ref.path), 6500, null);
+          const blob = res?.data || null;
+          return blob ? await blobToDataUrl(blob) : null;
+        }
+        return null;
+      };
       const copyTemplateLink = async () => {
         if (!templateLink) return;
         try {
@@ -4360,21 +4424,21 @@
           addToast({ message: 'Copie impossible, sélectionne le code', type: 'error', icon: '!' });
         }
       };
-      const saveTemplateRemote = async (payload, mediaImages = {}) => {
+      const saveTemplateRemote = async (payload, inlineImages = {}) => {
         const user = window._fsSbUser;
         if (!window._fsSb || !user?.id) throw new Error('login required');
-        const id = makeShortTemplateId();
+        const id = payload.templateId || makeShortTemplateId();
         const key = `_fs_template_${id}`;
         const { data } = await window._fsSb.from('user_data').select('images').eq('user_id', user.id).maybeSingle();
         const images = data?.images && typeof data.images === 'object' ? data.images : {};
         const templatePayload = { ...payload };
         delete templatePayload.images;
-        const nextImages = { ...images, ...mediaImages, [key]: templatePayload };
+        const nextImages = { ...images, ...inlineImages, [key]: templatePayload };
         window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: templatePayload };
         const updated_at = new Date().toISOString();
         let mediaSaved = true;
         let { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
-        if (error && Object.keys(mediaImages || {}).length) {
+        if (error && Object.keys(inlineImages || {}).length) {
           mediaSaved = false;
           const lightImages = { ...images, [key]: { ...templatePayload, mediaIncluded: false, imageRefs: {} } };
           window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: lightImages[key] };
@@ -4400,13 +4464,13 @@
         if (!tpl || typeof tpl !== 'object') throw new Error('remote template missing');
         const imageRefs = tpl.imageRefs && typeof tpl.imageRefs === 'object' ? tpl.imageRefs : {};
         const images = {};
-        Object.entries(imageRefs).forEach(([widgetId, imageKey]) => {
-          const src = data?.images?.[imageKey] || data?.images?.[widgetId] || data?.images?.[`fs_img_${widgetId}`] || null;
+        for (const [widgetId, imageRef] of Object.entries(imageRefs)) {
+          const src = await resolveTemplateMediaRef(imageRef, data?.images || {}) || data?.images?.[widgetId] || data?.images?.[`fs_img_${widgetId}`] || null;
           if (typeof src === 'string' && src && !_fsIsImageDbRef(src)) {
             images[widgetId] = src;
-            images[imageKey] = src;
+            if (typeof imageRef === 'string') images[imageRef] = src;
           }
-        });
+        }
         return { ...tpl, images: { ...(tpl.images || {}), ...images } };
       };
       const decodeTemplate = async raw => {
@@ -4462,34 +4526,52 @@
         setTemplateCopied(false);
         addToast({ message: 'Création du préréglage...', type: 'success', icon: '↗' });
         try {
+          const templateId = makeShortTemplateId();
           const baseWidgets = widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1, imageKey: w.label === 'Image' ? `fs_img_${w.id}` : undefined }));
-          const mediaRefs = includeTemplateMedia ? Object.fromEntries(widgets.filter(w => w.label === 'Image').map(w => [w.id, `fs_img_${w.id}`])) : {};
+          const originalMediaRefs = includeTemplateMedia ? Object.fromEntries(widgets.filter(w => w.label === 'Image').map(w => [w.id, `fs_img_${w.id}`])) : {};
           const lightPayload = {
             type: 'lumenos-dashboard-template',
             version: 1,
+            templateId,
             createdAt: new Date().toISOString(),
             widgets: baseWidgets,
             visuals: readTemplateVisuals(),
             mediaIncluded: false,
             imageRefs: {}
           };
-          let payload = { ...lightPayload, mediaIncluded: includeTemplateMedia, imageRefs: mediaRefs };
+          let payload = { ...lightPayload, mediaIncluded: includeTemplateMedia, imageRefs: originalMediaRefs };
           let templateMedia = includeTemplateMedia ? await withTimeout(readTemplateMedia(widgets), 2500, {}) : {};
           const mediaBytes = templateMediaBytes(templateMedia);
-          const mediaLooksSafe = includeTemplateMedia && mediaBytes > 0 && mediaBytes < 5 * 1024 * 1024;
+          const mediaLooksSafe = includeTemplateMedia && mediaBytes > 0;
+          let inlineMedia = {};
           let url = '';
           let mediaSaved = false;
           if (includeTemplateMedia && !mediaLooksSafe) {
             payload = lightPayload;
             templateMedia = {};
             addToast({ message: mediaBytes ? 'Médias trop lourds, lien créé sans médias' : 'Aucun média prêt à inclure', type: 'error', icon: '!' });
+          } else if (mediaLooksSafe) {
+            const uploaded = await withTimeout(uploadTemplateMedia(templateMedia, templateId), 11000, { refs: {}, inline: {}, uploaded: 0, inlined: 0, skipped: Object.keys(templateMedia).length });
+            inlineMedia = uploaded.inline || {};
+            const nextRefs = {};
+            Object.entries(originalMediaRefs).forEach(([widgetId, imageKey]) => {
+              const ref = uploaded.refs?.[imageKey];
+              if (ref) nextRefs[widgetId] = ref;
+            });
+            if (Object.keys(nextRefs).length) {
+              payload = { ...payload, imageRefs: nextRefs, mediaIncluded: true };
+              if (uploaded.skipped > 0) addToast({ message: `${uploaded.skipped} média trop lourd ignoré`, type: 'error', icon: '!' });
+            } else {
+              payload = lightPayload;
+              addToast({ message: 'Storage indisponible, lien créé sans médias', type: 'error', icon: '!' });
+            }
           }
           try {
             if (window._fsSbUser?.id && window._fsSb) {
-              const result = await withTimeout(saveTemplateRemote(payload, mediaLooksSafe ? templateMedia : {}), 5500, null);
+              const result = await withTimeout(saveTemplateRemote(payload, inlineMedia), 5500, null);
               if (result?.url) {
                 url = result.url;
-                mediaSaved = !!result.mediaSaved && mediaLooksSafe;
+                mediaSaved = !!result.mediaSaved && payload.mediaIncluded;
               }
             }
           } catch (e) {
