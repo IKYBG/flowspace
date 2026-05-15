@@ -4351,23 +4351,32 @@
           addToast({ message: 'Copie impossible, sélectionne le code', type: 'error', icon: '!' });
         }
       };
-      const saveTemplateRemote = async payload => {
+      const saveTemplateRemote = async (payload, mediaImages = {}) => {
         const user = window._fsSbUser;
         if (!window._fsSb || !user?.id) throw new Error('login required');
         const id = makeShortTemplateId();
         const key = `_fs_template_${id}`;
         const { data } = await window._fsSb.from('user_data').select('images').eq('user_id', user.id).maybeSingle();
         const images = data?.images && typeof data.images === 'object' ? data.images : {};
-        const nextImages = { ...images, [key]: payload };
-        window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: payload };
+        const templatePayload = { ...payload };
+        delete templatePayload.images;
+        const nextImages = { ...images, ...mediaImages, [key]: templatePayload };
+        window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: templatePayload };
         const updated_at = new Date().toISOString();
-        const { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
+        let mediaSaved = true;
+        let { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
+        if (error && Object.keys(mediaImages || {}).length) {
+          mediaSaved = false;
+          const lightImages = { ...images, [key]: { ...templatePayload, mediaIncluded: false, imageRefs: {} } };
+          window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: lightImages[key] };
+          error = (await window._fsSb.from('user_data').update({ images: lightImages, updated_at }).eq('user_id', user.id)).error;
+        }
         if (error) {
           const snapshot = window._fsSnapshotLocalData?.(user.id) || {};
           const result = await window._fsSb.from('user_data').upsert({ user_id: user.id, ...snapshot, images: nextImages, updated_at }, { onConflict: 'user_id' });
           if (result.error) throw result.error;
         }
-        return `${window.location.origin}${window.location.pathname}#t=${encodeURIComponent(`${compactUuid(user.id)}.${id}`)}`;
+        return { url: `${window.location.origin}${window.location.pathname}#t=${encodeURIComponent(`${compactUuid(user.id)}.${id}`)}`, mediaSaved };
       };
       const loadRemoteTemplate = async raw => {
         const cleaned = String(raw || '').trim();
@@ -4380,7 +4389,16 @@
         if (error) throw error;
         const tpl = data?.images?.[`_fs_template_${templateId}`];
         if (!tpl || typeof tpl !== 'object') throw new Error('remote template missing');
-        return tpl;
+        const imageRefs = tpl.imageRefs && typeof tpl.imageRefs === 'object' ? tpl.imageRefs : {};
+        const images = {};
+        Object.entries(imageRefs).forEach(([widgetId, imageKey]) => {
+          const src = data?.images?.[imageKey] || data?.images?.[widgetId] || data?.images?.[`fs_img_${widgetId}`] || null;
+          if (typeof src === 'string' && src && !_fsIsImageDbRef(src)) {
+            images[widgetId] = src;
+            images[imageKey] = src;
+          }
+        });
+        return { ...tpl, images: { ...(tpl.images || {}), ...images } };
       };
       const decodeTemplate = async raw => {
         const cleaned = String(raw || '').trim();
@@ -4411,10 +4429,7 @@
             const local = localStorage.getItem(key);
             if (!src && local && !/^__fs_idb_image__:/.test(local)) src = local;
           } catch (_) {}
-          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) {
-            images[w.id] = src;
-            images[key] = src;
-          }
+          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) images[key] = src;
         }));
         return images;
       };
@@ -4430,7 +4445,7 @@
         }));
       const templatePreviewImageFor = w => {
         if (!includeTemplateMedia || w?.label !== 'Image') return null;
-        return templatePreviewMedia?.[w.id] || null;
+        return templatePreviewMedia?.[`fs_img_${w.id}`] || templatePreviewMedia?.[w.id] || null;
       };
       const createDashboardTemplate = async () => {
         const payload = {
@@ -4439,17 +4454,25 @@
           createdAt: new Date().toISOString(),
           widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1, imageKey: w.label === 'Image' ? `fs_img_${w.id}` : undefined })),
           visuals: readTemplateVisuals(),
-          mediaIncluded: includeTemplateMedia
+          mediaIncluded: includeTemplateMedia,
+          imageRefs: includeTemplateMedia ? Object.fromEntries(widgets.filter(w => w.label === 'Image').map(w => [w.id, `fs_img_${w.id}`])) : {}
         };
-        if (includeTemplateMedia) payload.images = await readTemplateMedia(widgets);
+        const templateMedia = includeTemplateMedia ? await readTemplateMedia(widgets) : {};
         let url = '';
+        let mediaSaved = true;
         try {
-          if (window._fsSbUser?.id && window._fsSb) url = await saveTemplateRemote(payload);
+          if (window._fsSbUser?.id && window._fsSb) {
+            const result = await saveTemplateRemote(payload, templateMedia);
+            url = result.url;
+            mediaSaved = result.mediaSaved;
+          }
         } catch (e) {
           console.warn('[fs] remote template save failed', e);
           if (includeTemplateMedia) {
-            addToast({ message: 'Images trop lourdes pour ce lien. Réessaie sans médias.', type: 'error', icon: '!' });
-            return;
+            addToast({ message: 'Médias trop lourds pour la sync. Template créé sans médias.', type: 'error', icon: '!' });
+            const lightPayload = { ...payload, mediaIncluded: false, imageRefs: {} };
+            const token = encodeTemplate(lightPayload);
+            url = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
           }
         }
         if (!url) {
@@ -4462,6 +4485,7 @@
         }
         setTemplateLink(url);
         setTemplateCopied(false);
+        if (includeTemplateMedia && !mediaSaved) addToast({ message: 'Template créé, médias trop lourds ignorés', type: 'error', icon: '!' });
         try {
           await navigator.clipboard?.writeText(url);
           setTemplateCopied(true);
