@@ -4241,6 +4241,8 @@
       const [templateInput, setTemplateInput] = _uS9('');
       const [templateLink, setTemplateLink] = _uS9('');
       const [templateCopied, setTemplateCopied] = _uS9(false);
+      const [includeTemplateMedia, setIncludeTemplateMedia] = _uS9(false);
+      const [templatePreviewMedia, setTemplatePreviewMedia] = _uS9({});
       const [confirmDeleteId, setConfirmDeleteId] = _uS9(null);
       const [pickerWidget, setPickerWidget] = _uS9(null);
       const [drag, setDrag] = _uS9(null);
@@ -4254,6 +4256,17 @@
       const [settleId, setSettleId] = _uS9(null);
       const [snapTransform, setSnapTransform] = _uS9(null);
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
+      _uEff9(() => {
+        let alive = true;
+        if (!includeTemplateMedia) {
+          setTemplatePreviewMedia({});
+          return () => { alive = false; };
+        }
+        readTemplateMedia(widgets).then(images => {
+          if (alive) setTemplatePreviewMedia(images);
+        });
+        return () => { alive = false; };
+      }, [includeTemplateMedia, widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
       const CATALOG = [
         { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
@@ -4290,6 +4303,21 @@
         try { const v = localStorage.getItem('fs_note_map_style'); if (v) out.note_map_style = v; } catch (_) {}
         return out;
       };
+      const readTemplateMedia = async list => {
+        const images = {};
+        await Promise.all((Array.isArray(list) ? list : []).filter(w => w?.label === 'Image').map(async w => {
+          const key = `fs_img_${w.id}`;
+          let src = null;
+          try { src = window._fsImageMemory?.[key] || null; } catch (_) {}
+          try { if (!src && window._fsReadLocalImage) src = await window._fsReadLocalImage(key); } catch (_) {}
+          try {
+            const local = localStorage.getItem(key);
+            if (!src && local && !/^__fs_idb_image__:/.test(local)) src = local;
+          } catch (_) {}
+          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) images[w.id] = src;
+        }));
+        return images;
+      };
       const sanitizeTemplateWidgets = list => (Array.isArray(list) ? list : [])
         .filter(w => w && typeof w.label === 'string' && typeof w.col === 'string' && typeof w.row === 'string')
         .slice(0, 24)
@@ -4300,14 +4328,20 @@
           row: w.row,
           variant: Number(w.variant) || 1
         }));
+      const templatePreviewImageFor = w => {
+        if (!includeTemplateMedia || w?.label !== 'Image') return null;
+        return templatePreviewMedia?.[w.id] || null;
+      };
       const createDashboardTemplate = async () => {
         const payload = {
           type: 'lumenos-dashboard-template',
           version: 1,
           createdAt: new Date().toISOString(),
           widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 })),
-          visuals: readTemplateVisuals()
+          visuals: readTemplateVisuals(),
+          mediaIncluded: includeTemplateMedia
         };
+        if (includeTemplateMedia) payload.images = await readTemplateMedia(widgets);
         const token = encodeTemplate(payload);
         const url = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
         setTemplateLink(url);
@@ -4321,7 +4355,7 @@
           addToast({ message: 'Préréglage généré', type: 'success', icon: '✓' });
         }
       };
-      const applyDashboardTemplate = raw => {
+      const applyDashboardTemplate = async raw => {
         try {
           const tpl = decodeTemplate(raw || templateInput);
           if (tpl?.type !== 'lumenos-dashboard-template' || !Array.isArray(tpl.widgets)) throw new Error('invalid template');
@@ -4333,6 +4367,21 @@
           try { if (v.widget_style) localStorage.setItem('fs_widget_style', JSON.stringify(_fsNormalizeWidgetStyle(v.widget_style))); } catch (_) {}
           try { if (v.font_preset) localStorage.setItem('fs_font_preset', v.font_preset); } catch (_) {}
           try { if (v.note_map_style) localStorage.setItem('fs_note_map_style', v.note_map_style); } catch (_) {}
+          try {
+            const images = tpl.images && typeof tpl.images === 'object' ? tpl.images : {};
+            for (const [i, w] of nextWidgets.entries()) {
+              if (w.label !== 'Image') continue;
+              const original = tpl.widgets[i] || {};
+              const src = images[original.id] || images[`fs_img_${original.id}`] || null;
+              if (!src || typeof src !== 'string' || _fsIsImageDbRef(src)) continue;
+              const key = `fs_img_${w.id}`;
+              window._fsImageMemory = window._fsImageMemory || {};
+              window._fsImageMemory[key] = src;
+              try { window._fsMarkImageTouched?.(key); } catch (_) {}
+              try { if (window._fsStoreLocalImage) await window._fsStoreLocalImage(key, src); else localStorage.setItem(key, src); } catch (_) {}
+            }
+            try { window._fsFlushPush?.(); } catch (_) {}
+          } catch (_) {}
           setWidgets(nextWidgets);
           setSelected(null);
           setShowPresets(false);
@@ -4719,6 +4768,41 @@
                     </div>
                     <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Créer un template</div>
                     <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Génère un lien partageable du dashboard actuel : widgets, tailles, positions et style visuel.</div>
+                    <button
+                      type="button"
+                      onClick={() => { setIncludeTemplateMedia(v => !v); setTemplateLink(''); setTemplateCopied(false); }}
+                      aria-pressed={includeTemplateMedia}
+                      style={{ marginTop:16, width:'100%', minHeight:48, borderRadius:17, border:`1px solid ${includeTemplateMedia ? c1(0.34) : 'rgba(255,255,255,0.09)'}`, background:includeTemplateMedia ? `linear-gradient(135deg,${c1(0.16)},rgba(var(--theme-c2-rgb),0.08))` : 'rgba(255,255,255,0.045)', color:T.text, padding:'9px 12px', display:'grid', gridTemplateColumns:'1fr 42px', gap:12, alignItems:'center', cursor:'pointer', fontFamily:T.font, textAlign:'left', boxShadow:includeTemplateMedia ? `0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.08)` : 'inset 0 1px 0 rgba(255,255,255,0.055)', transition:'all .22s cubic-bezier(.16,1,.3,1)' }}>
+                      <span>
+                        <span style={{ display:'block', fontSize:12.5, fontWeight:900, letterSpacing:'-0.01em' }}>Inclure images & GIFs</span>
+                        <span style={{ display:'block', marginTop:3, fontSize:10.8, lineHeight:1.35, color:T.muted }}>Les médias apparaîtront quand un user charge ton lien.</span>
+                      </span>
+                      <span style={{ width:42, height:24, borderRadius:999, padding:3, boxSizing:'border-box', background:includeTemplateMedia ? 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))' : 'rgba(255,255,255,0.10)', boxShadow:includeTemplateMedia ? `0 10px 24px ${c1(0.22)}` : 'inset 0 1px 0 rgba(255,255,255,0.08)', transition:'all .22s cubic-bezier(.16,1,.3,1)' }}>
+                        <span style={{ display:'block', width:18, height:18, borderRadius:'50%', background:includeTemplateMedia ? '#071018' : 'rgba(255,255,255,0.78)', transform:includeTemplateMedia ? 'translateX(18px)' : 'translateX(0)', transition:'transform .22s cubic-bezier(.16,1,.3,1)' }} />
+                      </span>
+                    </button>
+                    <div style={{ marginTop:16, borderRadius:20, border:'1px solid rgba(255,255,255,0.085)', background:'radial-gradient(circle at 18% 12%,rgba(var(--theme-c1-rgb),0.16),transparent 36%),linear-gradient(145deg,rgba(255,255,255,0.065),rgba(255,255,255,0.025))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
+                        <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.10em', textTransform:'uppercase', color:T.muted }}>Aperçu du lien</div>
+                        <div style={{ fontSize:10, fontWeight:850, color:includeTemplateMedia ? T.green : T.muted }}>{includeTemplateMedia ? 'Médias inclus' : 'Médias privés'}</div>
+                      </div>
+                      <div style={{ position:'relative', height:132, borderRadius:16, overflow:'hidden', background:'linear-gradient(145deg,rgba(var(--mineral-bg-rgb),0.78),rgba(var(--mineral-surface-rgb),0.54))', border:'1px solid rgba(255,255,255,0.065)' }}>
+                        <div style={{ position:'absolute', inset:0, background:'radial-gradient(circle at 30% 20%,rgba(var(--theme-c1-rgb),0.18),transparent 34%),radial-gradient(circle at 76% 70%,rgba(var(--theme-c2-rgb),0.14),transparent 38%)' }} />
+                        {widgets.slice(0, 24).map(w => {
+                          const [pc1, pc2] = parseSpan(w.col);
+                          const [pr1, pr2] = parseSpan(w.row);
+                          const img = templatePreviewImageFor(w);
+                          const cat = CATALOG.find(c => c.label === w.label);
+                          return (
+                            <div key={`tpl-preview-${w.id}`} style={{ position:'absolute', left:`${((pc1 - 1) / COLS) * 100}%`, top:`${((pr1 - 1) / ROWS) * 100}%`, width:`${((pc2 - pc1) / COLS) * 100}%`, height:`${((pr2 - pr1) / ROWS) * 100}%`, padding:3, boxSizing:'border-box' }}>
+                              <div style={{ width:'100%', height:'100%', borderRadius:10, overflow:'hidden', background:img ? `url(${img}) center/cover` : 'linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.055))', border:'1px solid rgba(255,255,255,0.12)', boxShadow:`0 8px 18px rgba(0,0,0,0.28), 0 0 16px ${c1(0.05)}`, display:'grid', placeItems:'center' }}>
+                                {!img && <span style={{ fontSize:14, color:cat?.color || T.c1, opacity:0.9 }}>{cat?.icon || '◇'}</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <button onClick={createDashboardTemplate} style={{ marginTop:18, height:44, borderRadius:15, border:'none', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#071018', padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 18px 38px ${c1(0.24)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>Créer et copier</button>
                     {templateLink && (
                       <div style={{ marginTop:16, borderRadius:16, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(0,0,0,0.20)', padding:12 }}>
