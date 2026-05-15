@@ -4237,6 +4237,10 @@
       const [selected, setSelected] = _uS9(null);
       const [widgets, setWidgets] = _uS9(initialWidgets);
       const [showPicker, setShowPicker] = _uS9(false);
+      const [showPresets, setShowPresets] = _uS9(false);
+      const [templateInput, setTemplateInput] = _uS9('');
+      const [templateLink, setTemplateLink] = _uS9('');
+      const [templateCopied, setTemplateCopied] = _uS9(false);
       const [confirmDeleteId, setConfirmDeleteId] = _uS9(null);
       const [pickerWidget, setPickerWidget] = _uS9(null);
       const [drag, setDrag] = _uS9(null);
@@ -4266,6 +4270,77 @@
       const TRAY = CATALOG.map(c => c.label);
 
       const parseSpan = s => s.split('/').map(Number);
+      const encodeTemplate = payload => {
+        const json = JSON.stringify(payload);
+        return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      };
+      const decodeTemplate = raw => {
+        const cleaned = String(raw || '').trim();
+        const fromHash = cleaned.match(/[#&?]fs-template=([^&]+)/)?.[1];
+        const token = decodeURIComponent(fromHash || cleaned).replace(/\s+/g, '');
+        const base64 = token.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (token.length % 4)) % 4);
+        return JSON.parse(decodeURIComponent(escape(atob(base64))));
+      };
+      const readTemplateVisuals = () => {
+        const out = {};
+        try { const v = localStorage.getItem('fs_bgtheme'); if (v) out.bg_theme = v; } catch (_) {}
+        try { const v = localStorage.getItem('fs_custom_bg'); if (v) out.custom_bg = JSON.parse(v); } catch (_) {}
+        try { const v = localStorage.getItem('fs_widget_style'); if (v) out.widget_style = _fsNormalizeWidgetStyle(JSON.parse(v)); } catch (_) {}
+        try { const v = localStorage.getItem('fs_font_preset'); if (v) out.font_preset = v; } catch (_) {}
+        try { const v = localStorage.getItem('fs_note_map_style'); if (v) out.note_map_style = v; } catch (_) {}
+        return out;
+      };
+      const sanitizeTemplateWidgets = list => (Array.isArray(list) ? list : [])
+        .filter(w => w && typeof w.label === 'string' && typeof w.col === 'string' && typeof w.row === 'string')
+        .slice(0, 24)
+        .map((w, i) => ({
+          id: `${String(w.label || 'widget').toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_${i}`,
+          label: w.label,
+          col: w.col,
+          row: w.row,
+          variant: Number(w.variant) || 1
+        }));
+      const createDashboardTemplate = async () => {
+        const payload = {
+          type: 'lumenos-dashboard-template',
+          version: 1,
+          createdAt: new Date().toISOString(),
+          widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 })),
+          visuals: readTemplateVisuals()
+        };
+        const token = encodeTemplate(payload);
+        const url = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
+        setTemplateLink(url);
+        setTemplateInput(url);
+        setTemplateCopied(false);
+        try {
+          await navigator.clipboard?.writeText(url);
+          setTemplateCopied(true);
+          addToast({ message: 'Lien de préréglage copié', type: 'success', icon: '✓' });
+        } catch (_) {
+          addToast({ message: 'Préréglage généré', type: 'success', icon: '✓' });
+        }
+      };
+      const applyDashboardTemplate = raw => {
+        try {
+          const tpl = decodeTemplate(raw || templateInput);
+          if (tpl?.type !== 'lumenos-dashboard-template' || !Array.isArray(tpl.widgets)) throw new Error('invalid template');
+          const nextWidgets = sanitizeTemplateWidgets(tpl.widgets);
+          if (!nextWidgets.length) throw new Error('empty template');
+          const v = tpl.visuals || {};
+          try { if (v.bg_theme) localStorage.setItem('fs_bgtheme', v.bg_theme); } catch (_) {}
+          try { if (v.custom_bg) localStorage.setItem('fs_custom_bg', JSON.stringify(v.custom_bg)); } catch (_) {}
+          try { if (v.widget_style) localStorage.setItem('fs_widget_style', JSON.stringify(_fsNormalizeWidgetStyle(v.widget_style))); } catch (_) {}
+          try { if (v.font_preset) localStorage.setItem('fs_font_preset', v.font_preset); } catch (_) {}
+          try { if (v.note_map_style) localStorage.setItem('fs_note_map_style', v.note_map_style); } catch (_) {}
+          setWidgets(nextWidgets);
+          setSelected(null);
+          setShowPresets(false);
+          addToast({ message: 'Préréglage appliqué au dashboard', type: 'success', icon: '✓' });
+        } catch (e) {
+          addToast({ message: 'Lien de préréglage invalide', type: 'error', icon: '!' });
+        }
+      };
 
       const findFreeSpot = ws => {
         for (let r = 1; r <= ROWS; r++) {
@@ -4467,6 +4542,8 @@
             <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
               <button onClick={() => setShowPicker(p => !p)}
                 style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter un widget</button>
+              <button onClick={() => { setShowPresets(true); setShowPicker(false); }}
+                style={{ background: showPresets ? `linear-gradient(135deg,${c1(0.18)},rgba(var(--theme-c2-rgb),0.10))` : 'linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.032))', border: `1px solid ${showPresets ? c1(0.38) : 'rgba(255,255,255,0.085)'}`, borderRadius: 12, padding: '9px 15px', color: showPresets ? T.c1 : T.text, fontSize: 12, fontWeight: 850, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s cubic-bezier(.16,1,.3,1)', boxShadow: showPresets ? `0 12px 30px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.10)` : 'inset 0 1px 0 rgba(255,255,255,0.06)' }}>Préréglage</button>
               {showPicker && (
                 <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 9, width: 'min(430px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
                   <div style={{ gridColumn: '1/-1', padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
@@ -4622,6 +4699,47 @@
             })}
           </div>}
           {/* ── Variant-picker overlay ─────────────────────────────────────── */}
+          {showPresets && (
+            <div onMouseDown={e => e.stopPropagation()} style={{ position:'absolute', inset:0, zIndex:650, display:'grid', placeItems:'center', padding:24, background:'rgba(5,6,14,0.76)', backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', animation:'scaleIn .18s cubic-bezier(.16,1,.3,1) both' }}>
+              <div style={{ width:'min(880px,100%)', borderRadius:28, border:'1px solid rgba(255,255,255,0.10)', background:'linear-gradient(145deg,rgba(var(--mineral-surface-rgb),0.96),rgba(var(--mineral-bg-rgb),0.94))', boxShadow:'0 34px 100px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.09)', overflow:'hidden' }}>
+                <div style={{ padding:'22px 26px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:18, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+                  <div>
+                    <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.14em', textTransform:'uppercase', color:T.c1 }}>Préréglages dashboard</div>
+                    <div style={{ marginTop:6, fontFamily:T.display, fontSize:26, lineHeight:1, fontWeight:850, letterSpacing:'-0.04em', color:T.text }}>Templates premium</div>
+                    <div style={{ marginTop:8, fontSize:12.5, lineHeight:1.55, color:T.muted, maxWidth:560 }}>Sauvegarde ton layout actuel ou applique un lien de template. Les images personnelles restent privées.</div>
+                  </div>
+                  <button onClick={() => setShowPresets(false)} style={{ width:38, height:38, borderRadius:14, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(255,255,255,0.045)', color:T.muted, cursor:'pointer', display:'grid', placeItems:'center', flexShrink:0 }}>
+                    <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"/></svg>
+                  </button>
+                </div>
+                <div style={{ padding:24, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:16 }}>
+                  <section style={{ minHeight:260, borderRadius:22, border:`1px solid ${c1(0.24)}`, background:`linear-gradient(155deg,${c1(0.12)},rgba(255,255,255,0.035))`, padding:20, boxShadow:`0 20px 46px rgba(0,0,0,0.28), 0 0 40px ${c1(0.06)}, inset 0 1px 0 rgba(255,255,255,0.08)` }}>
+                    <div style={{ width:44, height:44, borderRadius:16, background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#071018', display:'grid', placeItems:'center', boxShadow:`0 16px 34px ${c1(0.22)}, inset 0 1px 0 rgba(255,255,255,0.38)` }}>
+                      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
+                    </div>
+                    <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Créer un template</div>
+                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Génère un lien partageable du dashboard actuel : widgets, tailles, positions et style visuel.</div>
+                    <button onClick={createDashboardTemplate} style={{ marginTop:18, height:44, borderRadius:15, border:'none', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#071018', padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 18px 38px ${c1(0.24)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>Créer et copier</button>
+                    {templateLink && (
+                      <div style={{ marginTop:16, borderRadius:16, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(0,0,0,0.20)', padding:12 }}>
+                        <div style={{ fontSize:10, fontWeight:850, color:templateCopied ? T.green : T.muted, letterSpacing:'0.08em', textTransform:'uppercase' }}>{templateCopied ? 'Copié' : 'Lien généré'}</div>
+                        <div style={{ marginTop:7, fontSize:11, lineHeight:1.45, color:'rgba(244,246,251,0.72)', wordBreak:'break-all' }}>{templateLink}</div>
+                      </div>
+                    )}
+                  </section>
+                  <section style={{ minHeight:260, borderRadius:22, border:'1px solid rgba(255,255,255,0.09)', background:'linear-gradient(155deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))', padding:20, boxShadow:'0 18px 42px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.07)' }}>
+                    <div style={{ width:44, height:44, borderRadius:16, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.10)', color:T.c1, display:'grid', placeItems:'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
+                      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+                    </div>
+                    <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Charger un template</div>
+                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Colle un lien ou un code de préréglage. Le dashboard en édition sera remplacé avant sauvegarde.</div>
+                    <textarea value={templateInput} onChange={e => setTemplateInput(e.target.value)} placeholder="Colle ton lien de template ici..." style={{ marginTop:16, width:'100%', height:92, resize:'none', borderRadius:16, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'13px 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12, lineHeight:1.5 }} />
+                    <button onClick={() => applyDashboardTemplate()} style={{ marginTop:12, height:44, borderRadius:15, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.07)` }}>Appliquer le préréglage</button>
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
           {pickerWidget && (() => {
             const cat = CATALOG.find(c => c.label === pickerWidget);
             if (!cat || !cat.C) return null;
