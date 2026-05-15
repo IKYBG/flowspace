@@ -1237,6 +1237,35 @@
       } catch (_) { return false; }
     }
 
+    function _fsCurrentLocalUserId() {
+      try { return JSON.parse(localStorage.getItem('fs_user') || 'null')?.id || null; }
+      catch (_) { return null; }
+    }
+
+    function _fsClearLocalAppData(userId = null) {
+      try {
+        _fsIgnorePush = true;
+        FS_GENERAL_DATA_KEYS.forEach(k => _fsRawRemove(k));
+        _fsRawRemove('fs_intro_pending');
+        _fsRawRemove('fs_session_focus_tasks');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
+        }
+        if (userId) {
+          [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => _fsRawRemove(k));
+        }
+        window._fsImageMemory = {};
+        window._fsDirtyThisSession = false;
+        window._fsDirtyKeys.clear();
+      } catch (e) {
+        console.warn('[fs] clear local app data failed', e);
+      } finally {
+        setTimeout(() => { _fsIgnorePush = false; }, 600);
+      }
+    }
+    window._fsClearLocalAppData = _fsClearLocalAppData;
+
     function _fsUserScopedSyncKey(key, userId = window._fsSbUser?.id) {
       return !!(userId && (
         key === `fs_gamif_${userId}` ||
@@ -1598,6 +1627,7 @@
     /* Replace local cache with remote payload */
     function _fsSeedLocalFromRemote(remote, userId = remote?.user_id || window._fsSbUser?.id) {
       _fsIgnorePush = true;
+      const sameLocalUser = _fsSameLocalUser(userId);
 
       if (remote && remote.tasks != null) _fsRawSet('fs_tasks', JSON.stringify(remote.tasks));
       else _fsRawRemove('fs_tasks');
@@ -1644,26 +1674,26 @@
 
       /* Images – restore from remote, but never let an older/smaller remote
          image replace a locally changed GIF that could be too large to sync. */
-      if (remote && remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) {
-        const protectedLocalImages = {};
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('fs_img_')) {
-            const localValue = localStorage.getItem(k);
-            const remoteValue = remote.images[k];
-            if (_fsShouldKeepLocalImage(k, localValue, remoteValue, remote.updated_at)) {
-              protectedLocalImages[k] = localValue;
-            }
-            _fsRawRemove(k);
+      const protectedLocalImages = {};
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('fs_img_')) {
+          const localValue = localStorage.getItem(k);
+          const remoteValue = remote?.images?.[k];
+          if (sameLocalUser && _fsShouldKeepLocalImage(k, localValue, remoteValue, remote?.updated_at)) {
+            protectedLocalImages[k] = localValue;
           }
+          _fsRawRemove(k);
         }
+      }
+      if (remote && remote.images && typeof remote.images === 'object' && Object.keys(remote.images).length > 0) {
         Object.entries(remote.images).forEach(([k, v]) => {
           if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) _fsRawSet(k, v);
         });
-        Object.entries(protectedLocalImages).forEach(([k, v]) => {
-          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
-        });
       }
+      Object.entries(protectedLocalImages).forEach(([k, v]) => {
+        if (k && k.startsWith('fs_img_') && typeof v === 'string' && v) _fsRawSet(k, v);
+      });
 
       if (userId) {
         if (remote && remote.gamification != null) {
@@ -1686,12 +1716,21 @@
 
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
+      const sameLocalUser = _fsSameLocalUser(userId);
+      const previousLocalUserId = _fsCurrentLocalUserId();
+      const lastLogoutUserId = (() => { try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY); } catch (_) { return null; } })();
+      const localBelongsToRequestedUser = previousLocalUserId === userId || lastLogoutUserId === userId;
+      const hasOrphanLocalData = !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
+      if (!sameLocalUser && (previousLocalUserId || hasOrphanLocalData)) {
+        try { _fsBackupLocalUserData(previousLocalUserId || lastLogoutUserId || undefined); } catch (_) { }
+        _fsClearLocalAppData(userId);
+      }
       if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
         return { source: 'logout-visual', remote: _fsSnapshotLocalData(userId) };
       }
-      if (!remote && _fsSameLocalUser(userId)) {
+      if (!remote && sameLocalUser) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
@@ -1707,14 +1746,16 @@
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
-      if (!_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
+      if (sameLocalUser && !_fsRemoteHasSavedData(remote) && _fsRestoreLocalUserData(userId)) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
       if (!remote) {
+        _fsClearLocalAppData(userId);
         return { source: 'empty-remote', remote };
       }
       if (remote && !_fsRemoteHasSavedData(remote)) {
+        _fsClearLocalAppData(userId);
         return { source: 'empty-remote', remote };
       }
       _fsSeedLocalFromRemote(remote, userId);
@@ -8318,7 +8359,7 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
-          if (syncResult.source !== 'empty-remote' || mode === 'signup') window._fsSetSyncReady?.(true);
+          window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
@@ -10925,13 +10966,14 @@
               /* Start Realtime for returning users */
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
-              if (syncResult.source !== 'empty-remote') window._fsSetSyncReady?.(true);
+              window._fsSetSyncReady?.(true);
               /* Start Realtime only after initial data hydration. */
               window._fsStartRealtime(session.user.id);
               window._fsStartSessionRealtime(session.user.id);
-              const localUser = (() => {
+              const rawLocalUser = (() => {
                 try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (_) { return null; }
               })();
+              const localUser = rawLocalUser?.id === session.user.id ? rawLocalUser : null;
               const userEmail = session.user.email?.toLowerCase();
               const userMeta = session.user.user_metadata;
               const finalName = (remote && remote.name) || localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
