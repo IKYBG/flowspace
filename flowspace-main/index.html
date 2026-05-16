@@ -1199,6 +1199,8 @@
           : [];
         const publishableImages = Object.entries(images)
           .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && /^data:image\//i.test(v));
+        const publishableGifs = publishableImages.filter(([, v]) => /^data:image\/gif(?:;|,)/i.test(String(v)));
+        const missingExactWidgets = imageWidgets.filter(w => !images[`fs_img_${w.id}`]);
         for (const w of imageWidgets) {
           const exactKey = `fs_img_${w.id}`;
           if (images[exactKey]) continue;
@@ -1209,6 +1211,10 @@
           }
           if (imageWidgets.length === 1 && publishableImages.length === 1) {
             images[exactKey] = publishableImages[0][1];
+            continue;
+          }
+          if (missingExactWidgets.length === 1 && missingExactWidgets[0]?.id === w.id && publishableGifs.length === 1) {
+            images[exactKey] = publishableGifs[0][1];
           }
         }
       } catch (_) { }
@@ -11706,6 +11712,32 @@
         return () => { cancelled = true; };
       }, [friend.id]);
 
+      React.useEffect(() => {
+        if (!data || loading || !window._fsSb) return;
+        const imageWidgets = Array.isArray(data.widgets)
+          ? data.widgets.filter(w => String(w?.label || w?.id || '').toLowerCase().split('_')[0] === 'image')
+          : [];
+        if (!imageWidgets.length) return;
+        const imageMap = data.images && typeof data.images === 'object' ? data.images : {};
+        const hasMissing = imageWidgets.some(w => {
+          const exact = imageMap[`fs_img_${w.id}`] || imageMap[w.id];
+          return !(typeof exact === 'string' && /^data:image\//i.test(exact));
+        });
+        if (!hasMissing) return;
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+          try {
+            const { data: fresh } = await window._fsSb
+              .from('user_data')
+              .select('widgets, bg_theme, custom_bg, widget_style, images, updated_at')
+              .eq('user_id', friend.id)
+              .maybeSingle();
+            if (!cancelled && fresh?.images && JSON.stringify(fresh.images) !== JSON.stringify(data.images || {})) setData(fresh);
+          } catch (_) { }
+        }, 2600);
+        return () => { cancelled = true; clearTimeout(timer); };
+      }, [data, loading, friend.id]);
+
       const formatLastConnection = value => {
         if (!value) return 'indisponible';
         const d = new Date(value);
@@ -11769,6 +11801,8 @@
           .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && /^data:image\/gif(?:;|,)/i.test(String(v)))
           .map(([, v]) => v);
         if (imageWidgets.length === 1 && gifValues.length === 1) return gifValues[0];
+        const missingExactWidgets = imageWidgets.filter(x => !isRemoteImageSrc(imageMap[`fs_img_${x.id}`]) && !isRemoteImageSrc(imageMap[x.id]));
+        if (missingExactWidgets.length === 1 && missingExactWidgets[0]?.id === w.id && gifValues.length === 1) return gifValues[0];
         return null;
       };
       const renderFriendWidget = w => {
