@@ -11691,13 +11691,22 @@
           let remote = null;
           try {
             if (window._fsSb) {
-              const { data: slim, error } = await window._fsSb
+              const { data: base, error: baseError } = await window._fsSb
                 .from('user_data')
-                .select('widgets, bg_theme, custom_bg, widget_style, images, updated_at')
+                .select('widgets, bg_theme, custom_bg, widget_style, updated_at')
                 .eq('user_id', friend.id)
                 .maybeSingle();
-              if (error) console.warn('[fs] friend dashboard slim load failed', error);
-              remote = slim || null;
+              if (baseError) console.warn('[fs] friend dashboard base load failed', baseError);
+              remote = base || null;
+              if (remote) {
+                const { data: media, error: mediaError } = await window._fsSb
+                  .from('user_data')
+                  .select('images, updated_at')
+                  .eq('user_id', friend.id)
+                  .maybeSingle();
+                if (mediaError) console.warn('[fs] friend dashboard media load failed', mediaError);
+                if (media?.images) remote = { ...remote, images: media.images, updated_at: media.updated_at || remote.updated_at };
+              }
             }
             if (!remote && window._fsLoadRemote) remote = await window._fsLoadRemote(friend.id);
           } catch (e) {
@@ -11729,10 +11738,10 @@
           try {
             const { data: fresh } = await window._fsSb
               .from('user_data')
-              .select('widgets, bg_theme, custom_bg, widget_style, images, updated_at')
+              .select('images, updated_at')
               .eq('user_id', friend.id)
               .maybeSingle();
-            if (!cancelled && fresh?.images && JSON.stringify(fresh.images) !== JSON.stringify(data.images || {})) setData(fresh);
+            if (!cancelled && fresh?.images && JSON.stringify(fresh.images) !== JSON.stringify(data.images || {})) setData(prev => ({ ...(prev || data), images: fresh.images, updated_at: fresh.updated_at || prev?.updated_at || data.updated_at }));
           } catch (_) { }
         }, 2600);
         return () => { cancelled = true; clearTimeout(timer); };
@@ -11811,7 +11820,9 @@
         const type = labelType || idType;
         if (type === 'image') {
           const src = resolveFriendImageSrc(w);
-          if (!src) return <div style={{ width:'100%', height:'100%', borderRadius:'inherit', background:`linear-gradient(135deg, rgba(var(--mineral-surface-rgb),0.36), rgba(var(--mineral-bg-rgb),0.44))` }} />;
+          if (!src) return <div style={{ width:'100%', height:'100%', borderRadius:'inherit', display:'grid', placeItems:'center', background:`radial-gradient(circle at 38% 24%, ${c1(0.16)}, transparent 34%), linear-gradient(135deg, rgba(var(--mineral-surface-rgb),0.36), rgba(var(--mineral-bg-rgb),0.44))` }}>
+            <div style={{ width:34, height:34, borderRadius:14, border:`1px solid ${c1(0.20)}`, background:c1(0.08), boxShadow:`0 10px 28px ${c1(0.12)}`, animation:'fwSpin 1.4s linear infinite', clipPath:'polygon(50% 0, 88% 28%, 72% 100%, 28% 100%, 12% 28%)' }} />
+          </div>;
           return <ImageWidget widgetId={w.id} initialSrc={src} readOnly performanceMode="dashboard" style={{ height:'100%' }} />;
         }
         const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[idType];
@@ -11872,7 +11883,22 @@
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:12, textAlign:'center', padding:24 }}>
                   <div style={{ fontSize:14, fontWeight:800, color:T.text }}>Dashboard indisponible</div>
                   <div style={{ fontSize:12, color:T.muted, maxWidth:360, lineHeight:1.55 }}>Impossible de charger le tableau de bord de cet ami pour le moment. Réessaie dans quelques secondes.</div>
-                  <button onClick={() => { setLoading(true); setLoadError(false); window._fsLoadRemote?.(friend.id).then(remote => { setData(remote); setLoadError(!remote); setLoading(false); }); }} style={{ marginTop:6, height:34, borderRadius:12, border:`1px solid ${c1(0.28)}`, background:c1(0.11), color:T.c1, padding:'0 14px', fontSize:11, fontWeight:800, cursor:'pointer', fontFamily:T.font }}>Réessayer</button>
+                  <button onClick={async () => {
+                    setLoading(true);
+                    setLoadError(false);
+                    let remote = null;
+                    try {
+                      const { data: base } = await window._fsSb.from('user_data').select('widgets, bg_theme, custom_bg, widget_style, updated_at').eq('user_id', friend.id).maybeSingle();
+                      remote = base || null;
+                      if (remote) {
+                        const { data: media } = await window._fsSb.from('user_data').select('images, updated_at').eq('user_id', friend.id).maybeSingle();
+                        if (media?.images) remote = { ...remote, images: media.images, updated_at: media.updated_at || remote.updated_at };
+                      }
+                    } catch (_) { }
+                    setData(remote);
+                    setLoadError(!remote);
+                    setLoading(false);
+                  }} style={{ marginTop:6, height:34, borderRadius:12, border:`1px solid ${c1(0.28)}`, background:c1(0.11), color:T.c1, padding:'0 14px', fontSize:11, fontWeight:800, cursor:'pointer', fontFamily:T.font }}>Réessayer</button>
                 </div>
               ) : widgets.length === 0 ? (
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:12 }}>
