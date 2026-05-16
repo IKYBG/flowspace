@@ -3614,7 +3614,9 @@
       const inputRef = _uRI(null);
       const containerRef = _uRI(null);
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
-      const pauseGif = isAnimatedGif && (performanceMode === 'edit' || (performanceMode === 'dashboard' && largeGif && !gifAwake));
+      const heavyGifByData = isAnimatedGif && typeof imgSrc === 'string' && imgSrc.length > 420000;
+      const guardDashboardGif = isAnimatedGif && performanceMode === 'dashboard' && (largeGif || heavyGifByData);
+      const pauseGif = isAnimatedGif && (performanceMode === 'edit' || (guardDashboardGif && !gifAwake));
 
       _uEI(() => {
         if (readOnly) return;
@@ -3665,6 +3667,12 @@
           window.removeEventListener('resize', updateSize);
         };
       }, [isAnimatedGif, imgSrc]);
+
+      _uEI(() => {
+        if (!gifAwake || !guardDashboardGif) return;
+        const timer = setTimeout(() => setGifAwake(false), 8000);
+        return () => clearTimeout(timer);
+      }, [gifAwake, guardDashboardGif]);
 
       // Expose trigger for edit mode button
       _uEI(() => {
@@ -3719,18 +3727,19 @@
         <Shell style={{ padding: 0, ...style }}>
           <div ref={containerRef}
             onClick={() => {
+              if (guardDashboardGif) { setGifAwake(true); return; }
               if (!readOnly) inputRef.current?.click();
-              else if (isAnimatedGif && performanceMode === 'dashboard' && largeGif) setGifAwake(v => !v);
             }}
             onTouchEnd={e => {
-              if (!readOnly) { e.preventDefault(); inputRef.current?.click(); return; }
-              if (isAnimatedGif && performanceMode === 'dashboard' && largeGif) {
+              if (guardDashboardGif) {
                 e.preventDefault();
-                setGifAwake(v => !v);
+                setGifAwake(true);
+                return;
               }
+              if (!readOnly) { e.preventDefault(); inputRef.current?.click(); return; }
             }}
-            onMouseEnter={() => { setHover(true); if (isAnimatedGif && performanceMode === 'dashboard') setGifAwake(true); }}
-            onMouseLeave={() => { setHover(false); if (isAnimatedGif && performanceMode === 'dashboard') setGifAwake(false); }}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
             style={{
               width: '100%', height: '100%', position: 'relative', cursor: readOnly ? 'default' : 'pointer', overflow: 'hidden', borderRadius: 'inherit',
               contain: 'layout paint style', contentVisibility: 'auto', isolation: 'isolate', transform: 'translateZ(0)', backfaceVisibility: 'hidden',
@@ -3772,8 +3781,8 @@
                 <span style={{ width: 38, height: 38, borderRadius: 16, display: 'grid', placeItems: 'center', background: `linear-gradient(145deg, ${c1(0.26)}, ${c2(0.16)})`, border: `1px solid ${c1(0.28)}`, boxShadow: `0 14px 34px ${c1(0.18)}, inset 0 1px 0 rgba(255,255,255,0.2)` }}>
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1.8 16.2 6l-1.8 10.2H5.6L3.8 6 10 1.8Z" fill="currentColor" opacity=".92"/><path d="M10 1.8v14.4M3.8 6h12.4" stroke="rgba(255,255,255,.38)" strokeWidth="1.2" strokeLinecap="round"/></svg>
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 850, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.text }}>{performanceMode === 'edit' ? 'GIF pause' : 'GIF fluide'}</span>
-                <span style={{ fontSize: 10.5, lineHeight: 1.35, fontWeight: 650, color: T.muted, maxWidth: 150 }}>{performanceMode === 'edit' ? 'Reprise apres edition' : 'Survole pour animer'}</span>
+                <span style={{ fontSize: 11, fontWeight: 850, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.text }}>{performanceMode === 'edit' ? 'GIF pause' : 'GIF optimise'}</span>
+                <span style={{ fontSize: 10.5, lineHeight: 1.35, fontWeight: 650, color: T.muted, maxWidth: 150 }}>{performanceMode === 'edit' ? 'Reprise apres edition' : 'Clique pour animer 8s'}</span>
               </div>
             )}
             {!imgSrc && (
@@ -3782,7 +3791,7 @@
                 <span style={{ fontSize: 11, fontWeight: 600, color: `${c1(0.6)}`, fontFamily: T.font, letterSpacing: '0.04em' }}>Toucher pour ajouter</span>
               </div>
             )}
-            {(hover || !imgSrc) && !readOnly && imgSrc && (
+            {(hover || !imgSrc) && !readOnly && imgSrc && !guardDashboardGif && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, backdropFilter: 'blur(2px)', transition: 'all 0.2s' }}>
                 <svg width={28} height={28} viewBox="0 0 24 24" fill="none"><rect x={3} y={3} width={18} height={18} rx={4} stroke="rgba(255,255,255,0.85)" strokeWidth={1.6} /><circle cx={8.5} cy={8.5} r={1.5} fill="rgba(255,255,255,0.85)" /><path d="M3 15l5-5 4 4 3-3 6 6" stroke="rgba(255,255,255,0.85)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" /></svg>
                 <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: T.font, letterSpacing: '0.04em' }}>Changer la photo</span>
