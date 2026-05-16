@@ -1046,7 +1046,7 @@
     const FS_IMAGE_IDB_STORE = 'images';
     const FS_IMAGE_IDB_REF = '__fs_idb_image__:';
     const FS_IMAGE_LOCAL_LIMIT = 900 * 1024;
-    const FS_IMAGE_REMOTE_LIMIT = 18 * 1024 * 1024;
+    const FS_IMAGE_REMOTE_LIMIT = 35 * 1024 * 1024;
     let _fsImageDbPromise = null;
 
     function _fsIsImageDbRef(value) {
@@ -3713,7 +3713,8 @@
           if (window._fsStoreLocalImage) await window._fsStoreLocalImage(storageKey, src);
           else localStorage.setItem(storageKey, src);
         } catch (err) {}
-        try { window._fsFlushPush?.(); } catch (err) {}
+        try { window._fsFlushPush?.(true); } catch (err) {}
+        setTimeout(() => { try { window._fsFlushPush?.(true); } catch (err) {} }, 1400);
       };
 
       const getAspectRatio = () => {
@@ -11733,37 +11734,25 @@
         ? `${window.buildGrad(friendTheme)}, ${friendTheme.base}`
         : 'rgba(8,7,18,0.99)';
       const isRemoteImageSrc = value => typeof value === 'string' && /^data:image\/(?:gif|png|jpe?g|webp|avif|svg\+xml)(?:;|,)/i.test(value) && !_fsIsImageDbRef(value);
-      const resolveFriendImageSrc = (w, imageIndex = 0) => {
+      const resolveFriendImageSrc = w => {
         const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
         const candidates = [
           `fs_img_${w.id}`,
-          w.id,
-          `fs_img_${String(w.label || '').toLowerCase()}`,
-          'fs_img_widget'
+          w.id
         ].filter(Boolean);
         for (const key of candidates) {
           const value = imageMap[key];
           if (isRemoteImageSrc(value)) return value;
         }
-        const imageValues = Object.entries(imageMap)
-          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && isRemoteImageSrc(v));
-        if (imageValues.length === 1) return imageValues[0][1];
-        const typedMatch = imageValues.find(([k]) => String(k).toLowerCase().includes(String(w.id || '').toLowerCase()));
-        if (typedMatch?.[1]) return typedMatch[1];
-        return imageValues[imageIndex]?.[1] || imageValues[0]?.[1] || null;
+        return null;
       };
-      const renderFriendWidget = (w, imageIndex = 0) => {
+      const renderFriendWidget = w => {
         const labelType = String(w.label || '').toLowerCase();
         const idType = String(w.id || '').toLowerCase().split('_')[0];
         const type = labelType || idType;
         if (type === 'image') {
-          const src = resolveFriendImageSrc(w, imageIndex);
-          if (!src) {
-            return <div style={{ width:'100%', height:'100%', borderRadius:'inherit', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, background:`radial-gradient(circle at 35% 20%, ${c1(0.18)}, transparent 34%), rgba(var(--mineral-surface-rgb),0.40)`, color:T.muted, textAlign:'center', padding:16, boxSizing:'border-box' }}>
-              <div style={{ width:34, height:34, borderRadius:14, display:'grid', placeItems:'center', background:c1(0.12), border:`1px solid ${c1(0.22)}`, color:T.c1 }}>◈</div>
-              <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase' }}>Media non synchronise</div>
-            </div>;
-          }
+          const src = resolveFriendImageSrc(w);
+          if (!src) return <div style={{ width:'100%', height:'100%', borderRadius:'inherit', background:`linear-gradient(135deg, rgba(var(--mineral-surface-rgb),0.36), rgba(var(--mineral-bg-rgb),0.44))` }} />;
           return <ImageWidget widgetId={w.id} initialSrc={src} readOnly performanceMode="dashboard" style={{ height:'100%' }} />;
         }
         const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[idType];
@@ -11833,17 +11822,13 @@
                 </div>
               ) : (
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12, height:'100%', pointerEvents:'none', position:'relative', zIndex:1 }}>
-                  {widgets.map((w, i) => {
-                    const type = String(w.label || w.id || '').toLowerCase().split('_')[0];
-                    const imageIndex = widgets.slice(0, i).filter(x => String(x.label || x.id || '').toLowerCase().split('_')[0] === 'image').length;
-                    return (
+                  {widgets.map((w, i) => (
                     <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'visible', borderRadius:22, padding:1, boxSizing:'border-box', background:`linear-gradient(145deg, rgba(255,255,255,0.16), ${c1(0.20)}, rgba(255,255,255,0.04))`, boxShadow:`0 14px 34px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)`, animationDelay:`${140 + i * 76}ms` }}>
                       <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:21, position:'relative' }}>
-                        {renderFriendWidget(w, type === 'image' ? imageIndex : 0)}
+                        {renderFriendWidget(w)}
                       </div>
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               )}
               {/* Read-only overlay */}
