@@ -1193,6 +1193,26 @@
         });
       } catch (_) { }
       try {
+        const widgets = JSON.parse(localStorage.getItem('fs_widgets') || '[]');
+        const imageWidgets = Array.isArray(widgets)
+          ? widgets.filter(w => String(w?.label || w?.id || '').toLowerCase().split('_')[0] === 'image')
+          : [];
+        const publishableImages = Object.entries(images)
+          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && /^data:image\//i.test(v));
+        for (const w of imageWidgets) {
+          const exactKey = `fs_img_${w.id}`;
+          if (images[exactKey]) continue;
+          const exactLocal = await _fsReadLocalImage(exactKey);
+          if (typeof exactLocal === 'string' && exactLocal && !_fsIsImageDbRef(exactLocal) && exactLocal.length <= FS_IMAGE_REMOTE_LIMIT) {
+            images[exactKey] = exactLocal;
+            continue;
+          }
+          if (imageWidgets.length === 1 && publishableImages.length === 1) {
+            images[exactKey] = publishableImages[0][1];
+          }
+        }
+      } catch (_) { }
+      try {
         Object.entries(window._fsRemoteTemplateImages || {}).forEach(([k, v]) => {
           if (k && k.startsWith('_fs_template_') && v && typeof v === 'object') images[k] = v;
         });
@@ -11744,6 +11764,11 @@
           const value = imageMap[key];
           if (isRemoteImageSrc(value)) return value;
         }
+        const imageWidgets = widgets.filter(x => String(x?.label || x?.id || '').toLowerCase().split('_')[0] === 'image');
+        const gifValues = Object.entries(imageMap)
+          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && /^data:image\/gif(?:;|,)/i.test(String(v)))
+          .map(([, v]) => v);
+        if (imageWidgets.length === 1 && gifValues.length === 1) return gifValues[0];
         return null;
       };
       const renderFriendWidget = w => {
