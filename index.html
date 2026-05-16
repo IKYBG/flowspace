@@ -1150,6 +1150,27 @@
     }
     window._fsReadLocalImage = _fsReadLocalImage;
 
+    function _fsImageRenderSrc(src, imageKey = 'default') {
+      if (typeof src !== 'string' || !src.startsWith('data:image/')) return src || null;
+      window._fsImageObjectUrls = window._fsImageObjectUrls || {};
+      const cacheKey = `${imageKey}:${src.length}:${src.slice(0, 42)}`;
+      if (window._fsImageObjectUrls[cacheKey]) return window._fsImageObjectUrls[cacheKey];
+      try {
+        const parts = src.split(',');
+        if (parts.length < 2) return src;
+        const mime = (parts[0].match(/^data:([^;]+)/) || [])[1] || 'image/png';
+        const bin = atob(parts[1]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        window._fsImageObjectUrls[cacheKey] = url;
+        return url;
+      } catch (_) {
+        return src;
+      }
+    }
+    window._fsImageRenderSrc = _fsImageRenderSrc;
+
     async function _fsCollectRemoteImages() {
       const images = {};
       const keys = [];
@@ -3630,6 +3651,7 @@
       const containerRef = _uRI(null);
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
       const pauseGif = isAnimatedGif && performanceMode === 'edit';
+      const renderSrc = imgSrc && window._fsImageRenderSrc ? window._fsImageRenderSrc(imgSrc, storageKey) : imgSrc;
 
       _uEI(() => {
         if (readOnly) return;
@@ -3721,11 +3743,11 @@
             style={{
               width: '100%', height: '100%', position: 'relative', cursor: readOnly ? 'default' : 'pointer', overflow: 'hidden', borderRadius: 'inherit',
               contain: 'layout paint style', contentVisibility: 'auto', isolation: 'isolate', transform: 'translateZ(0)', backfaceVisibility: 'hidden',
-              ...(imgSrc && !isAnimatedGif ? { backgroundImage: `url(${imgSrc})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)' })
+              ...(imgSrc && !isAnimatedGif ? { backgroundImage: `url(${renderSrc})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)' })
             }}>
             {imgSrc && isAnimatedGif && !pauseGif && (
               <img
-                src={imgSrc}
+                src={renderSrc}
                 alt=""
                 aria-hidden="true"
                 decoding="async"
@@ -11711,7 +11733,7 @@
         ? `${window.buildGrad(friendTheme)}, ${friendTheme.base}`
         : 'rgba(8,7,18,0.99)';
       const isRemoteImageSrc = value => typeof value === 'string' && /^data:image\/(?:gif|png|jpe?g|webp|avif|svg\+xml)(?:;|,)/i.test(value) && !_fsIsImageDbRef(value);
-      const resolveFriendImageSrc = w => {
+      const resolveFriendImageSrc = (w, imageIndex = 0) => {
         const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
         const candidates = [
           `fs_img_${w.id}`,
@@ -11727,14 +11749,21 @@
           .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && isRemoteImageSrc(v));
         if (imageValues.length === 1) return imageValues[0][1];
         const typedMatch = imageValues.find(([k]) => String(k).toLowerCase().includes(String(w.id || '').toLowerCase()));
-        return typedMatch?.[1] || null;
+        if (typedMatch?.[1]) return typedMatch[1];
+        return imageValues[imageIndex]?.[1] || imageValues[0]?.[1] || null;
       };
-      const renderFriendWidget = w => {
+      const renderFriendWidget = (w, imageIndex = 0) => {
         const labelType = String(w.label || '').toLowerCase();
         const idType = String(w.id || '').toLowerCase().split('_')[0];
         const type = labelType || idType;
         if (type === 'image') {
-          const src = resolveFriendImageSrc(w);
+          const src = resolveFriendImageSrc(w, imageIndex);
+          if (!src) {
+            return <div style={{ width:'100%', height:'100%', borderRadius:'inherit', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, background:`radial-gradient(circle at 35% 20%, ${c1(0.18)}, transparent 34%), rgba(var(--mineral-surface-rgb),0.40)`, color:T.muted, textAlign:'center', padding:16, boxSizing:'border-box' }}>
+              <div style={{ width:34, height:34, borderRadius:14, display:'grid', placeItems:'center', background:c1(0.12), border:`1px solid ${c1(0.22)}`, color:T.c1 }}>◈</div>
+              <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase' }}>Media non synchronise</div>
+            </div>;
+          }
           return <ImageWidget widgetId={w.id} initialSrc={src} readOnly performanceMode="dashboard" style={{ height:'100%' }} />;
         }
         const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[idType];
@@ -11804,11 +11833,17 @@
                 </div>
               ) : (
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12, height:'100%', pointerEvents:'none', position:'relative', zIndex:1 }}>
-                  {widgets.map((w, i) => (
-                    <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'hidden', borderRadius:20, animationDelay:`${140 + i * 76}ms` }}>
-                      {renderFriendWidget(w)}
+                  {widgets.map((w, i) => {
+                    const type = String(w.label || w.id || '').toLowerCase().split('_')[0];
+                    const imageIndex = widgets.slice(0, i).filter(x => String(x.label || x.id || '').toLowerCase().split('_')[0] === 'image').length;
+                    return (
+                    <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'visible', borderRadius:22, padding:1, boxSizing:'border-box', background:`linear-gradient(145deg, rgba(255,255,255,0.16), ${c1(0.20)}, rgba(255,255,255,0.04))`, boxShadow:`0 14px 34px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)`, animationDelay:`${140 + i * 76}ms` }}>
+                      <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:21, position:'relative' }}>
+                        {renderFriendWidget(w, type === 'image' ? imageIndex : 0)}
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               {/* Read-only overlay */}
