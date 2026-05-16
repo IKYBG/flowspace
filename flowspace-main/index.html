@@ -3589,7 +3589,7 @@
     }
 
     // ── Image Widget ─────────────────────────────────────────────────────
-    function ImageWidget({ style, widgetId, initialSrc, readOnly = false }) {
+    function ImageWidget({ style, widgetId, initialSrc, readOnly = false, performanceMode = 'live' }) {
       const storageKey = widgetId ? `fs_img_${widgetId}` : 'fs_img_widget';
       window._fsImageMemory = window._fsImageMemory || {};
       const [imgSrc, setImgSrc] = _uSI(() => {
@@ -3603,10 +3603,13 @@
         return null;
       });
       const [hover, setHover] = _uSI(false);
+      const [gifAwake, setGifAwake] = _uSI(false);
+      const [largeGif, setLargeGif] = _uSI(false);
       const [cropSrc, setCropSrc] = _uSI(null);
       const inputRef = _uRI(null);
       const containerRef = _uRI(null);
       const isAnimatedGif = typeof imgSrc === 'string' && /^data:image\/gif(?:;|,)/i.test(imgSrc);
+      const pauseGif = isAnimatedGif && (performanceMode === 'edit' || (performanceMode === 'dashboard' && largeGif && !gifAwake));
 
       _uEI(() => {
         if (readOnly) return;
@@ -3634,6 +3637,29 @@
         } catch (e) { }
         if (typeof initialSrc !== 'undefined') setImgSrc(initialSrc || null);
       }, [initialSrc]);
+
+      _uEI(() => {
+        if (!isAnimatedGif || !containerRef.current) {
+          setLargeGif(false);
+          setGifAwake(false);
+          return;
+        }
+        const el = containerRef.current;
+        const updateSize = () => {
+          const rect = el.getBoundingClientRect();
+          const area = Math.max(0, rect.width * rect.height);
+          const heavyDataUrl = typeof imgSrc === 'string' && imgSrc.length > 1800000;
+          setLargeGif(area > 180000 || heavyDataUrl);
+        };
+        updateSize();
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateSize) : null;
+        if (ro) ro.observe(el);
+        window.addEventListener('resize', updateSize, { passive: true });
+        return () => {
+          if (ro) ro.disconnect();
+          window.removeEventListener('resize', updateSize);
+        };
+      }, [isAnimatedGif, imgSrc]);
 
       // Expose trigger for edit mode button
       _uEI(() => {
@@ -3687,15 +3713,25 @@
       return (
         <Shell style={{ padding: 0, ...style }}>
           <div ref={containerRef}
-            onClick={() => { if (!readOnly) inputRef.current?.click(); }}
-            onTouchEnd={e => { if (!readOnly) { e.preventDefault(); inputRef.current?.click(); } }}
-            onMouseEnter={() => setHover(true)}
-            onMouseLeave={() => setHover(false)}
+            onClick={() => {
+              if (!readOnly) inputRef.current?.click();
+              else if (isAnimatedGif && performanceMode === 'dashboard' && largeGif) setGifAwake(v => !v);
+            }}
+            onTouchEnd={e => {
+              if (!readOnly) { e.preventDefault(); inputRef.current?.click(); return; }
+              if (isAnimatedGif && performanceMode === 'dashboard' && largeGif) {
+                e.preventDefault();
+                setGifAwake(v => !v);
+              }
+            }}
+            onMouseEnter={() => { setHover(true); if (isAnimatedGif && performanceMode === 'dashboard') setGifAwake(true); }}
+            onMouseLeave={() => { setHover(false); if (isAnimatedGif && performanceMode === 'dashboard') setGifAwake(false); }}
             style={{
               width: '100%', height: '100%', position: 'relative', cursor: readOnly ? 'default' : 'pointer', overflow: 'hidden', borderRadius: 'inherit',
+              contain: 'layout paint style', contentVisibility: 'auto', isolation: 'isolate', transform: 'translateZ(0)', backfaceVisibility: 'hidden',
               ...(imgSrc && !isAnimatedGif ? { backgroundImage: `url(${imgSrc})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)' })
             }}>
-            {imgSrc && isAnimatedGif && (
+            {imgSrc && isAnimatedGif && !pauseGif && (
               <img
                 src={imgSrc}
                 alt=""
@@ -3707,9 +3743,33 @@
                   height: '100%',
                   objectFit: 'cover',
                   display: 'block',
-                  borderRadius: 'inherit'
+                  borderRadius: 'inherit',
+                  contain: 'strict',
+                  transform: 'translateZ(0)',
+                  backfaceVisibility: 'hidden',
+                  willChange: 'transform'
                 }}
               />
+            )}
+            {imgSrc && pauseGif && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  background: `radial-gradient(circle at 42% 28%, ${c1(0.28)}, transparent 34%), linear-gradient(145deg, rgba(var(--mineral-surface-rgb),0.86), rgba(var(--mineral-bg-rgb),0.78))`,
+                  border: `1px solid ${c1(0.18)}`,
+                  boxShadow: `inset 0 1px 0 rgba(255,255,255,0.16), 0 18px 40px rgba(0,0,0,0.18)`,
+                  borderRadius: 'inherit',
+                  color: T.text,
+                  textAlign: 'center',
+                  padding: 18
+                }}>
+                <span style={{ width: 38, height: 38, borderRadius: 16, display: 'grid', placeItems: 'center', background: `linear-gradient(145deg, ${c1(0.26)}, ${c2(0.16)})`, border: `1px solid ${c1(0.28)}`, boxShadow: `0 14px 34px ${c1(0.18)}, inset 0 1px 0 rgba(255,255,255,0.2)` }}>
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 1.8 16.2 6l-1.8 10.2H5.6L3.8 6 10 1.8Z" fill="currentColor" opacity=".92"/><path d="M10 1.8v14.4M3.8 6h12.4" stroke="rgba(255,255,255,.38)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 850, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.text }}>{performanceMode === 'edit' ? 'GIF pause' : 'GIF fluide'}</span>
+                <span style={{ fontSize: 10.5, lineHeight: 1.35, fontWeight: 650, color: T.muted, maxWidth: 150 }}>{performanceMode === 'edit' ? 'Reprise apres edition' : 'Survole pour animer'}</span>
+              </div>
             )}
             {!imgSrc && (
               <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -3890,7 +3950,7 @@
       streak: (v, id, ctx) => React.createElement(StreakWidget, { variant: v, user: ctx?.user }),
       countdown: (v) => React.createElement(CountdownWidget, { variant: v }),
       links: (v, id) => React.createElement(LinksWidget, { variant: v, widgetId: id }),
-      image: (v, id) => React.createElement(ImageWidget, { variant: v, widgetId: id }),
+      image: (v, id, ctx) => React.createElement(ImageWidget, { variant: v, widgetId: id, performanceMode: ctx?.performanceMode || 'live' }),
       notes: (v) => React.createElement(NotesWidget, { variant: v }),
     };
     window.WIDGET_COMPONENTS = WIDGET_COMPONENTS;
@@ -4226,8 +4286,8 @@
             {widgets.map((w, i) => {
               const rowSpan = w.row ? parseInt(w.row.split('/')[1]) - parseInt(w.row.split('/')[0]) : 1;
               return (
-                <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms` }}>
-                  {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id, { user }) : null}
+                <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms`, contain: 'layout paint style', contentVisibility: 'auto', transform: 'translateZ(0)' }}>
+                  {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id, { user, performanceMode: 'dashboard' }) : null}
                 </div>
               );
             })}
@@ -4776,15 +4836,15 @@
                 const st = snapTransform?.id === w.id ? snapTransform : null;
                 return (
                   <div key={w.id}
-                    style={{ gridColumn: w.col, gridRow: w.row, position: 'relative', zIndex: drag?.id === w.id ? 10 : selected === w.id ? 5 : 1, transform: st ? `translate(${st.dx}px,${st.dy}px)` : undefined, transition: st?.live ? 'transform 0.42s cubic-bezier(0.34,1.56,0.64,1)' : undefined }}>
+                    style={{ gridColumn: w.col, gridRow: w.row, position: 'relative', zIndex: drag?.id === w.id ? 10 : selected === w.id ? 5 : 1, transform: st ? `translate(${st.dx}px,${st.dy}px)` : undefined, transition: st?.live ? 'transform 0.42s cubic-bezier(0.34,1.56,0.64,1)' : undefined, contain: 'layout paint style' }}>
                     {(isMoving || isResizing) ? (
                       <div style={{ width: '100%', height: '100%', borderRadius: 24, background: `${c1(0.024)}`, border: `1.5px dashed ${c1(0.251)}` }} />
                     ) : (
                       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                         {/* Widget content — non-interactive in edit mode */}
-                        <div style={{ width: '100%', height: '100%', borderRadius: 24, overflow: 'hidden', pointerEvents: 'none' }}>
+                        <div style={{ width: '100%', height: '100%', borderRadius: 24, overflow: 'hidden', pointerEvents: 'none', contain: 'layout paint style', contentVisibility: 'auto', transform: 'translateZ(0)' }}>
                           {window.WIDGET_COMPONENTS?.[w.label.toLowerCase()]
-                            ? window.WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id)
+                            ? window.WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id, { performanceMode: 'edit' })
                             : <div style={{ width: '100%', height: '100%', borderRadius: 24, background: 'rgba(255,255,255,0.032)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.muted }}>{w.label}</span></div>
                           }
                         </div>
