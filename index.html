@@ -1011,6 +1011,7 @@
     window._fsDirtyKeys = new Set();
     window._fsImagePublishQueued = false;
     window._fsRemoteTemplateImages = {};
+    window._fsRemoteTemplateMedia = {};
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -1153,6 +1154,9 @@
         } catch (_) { }
       }
       try {
+        Object.entries(window._fsRemoteTemplateMedia || {}).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) images[k] = v;
+        });
         Object.entries(window._fsRemoteTemplateImages || {}).forEach(([k, v]) => {
           if (k && k.startsWith('_fs_template_') && v && typeof v === 'object') images[k] = v;
         });
@@ -4370,18 +4374,54 @@
           resolve(null);
         }
       });
+      const optimizeTemplateImage = src => new Promise(resolve => {
+        const raw = String(src || '');
+        if (!raw || /^data:image\/gif/i.test(raw) || raw.length < 900 * 1024) return resolve(raw);
+        try {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const maxSide = 1600;
+              const scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+              canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(blob => {
+                if (!blob) return resolve(raw);
+                blobToDataUrl(blob).then(next => resolve(next && next.length < raw.length ? next : raw));
+              }, 'image/webp', 0.82);
+            } catch (_) {
+              resolve(raw);
+            }
+          };
+          img.onerror = () => resolve(raw);
+          img.src = raw;
+        } catch (_) {
+          resolve(raw);
+        }
+      });
       const uploadTemplateMedia = async (mediaImages, templateId) => {
         const refs = {};
         const inline = {};
         let uploaded = 0, inlined = 0, skipped = 0;
         const buckets = ['template-media', 'dashboard-templates', 'images'];
+        const inlineLimit = Math.min(FS_IMAGE_REMOTE_LIMIT || 12 * 1024 * 1024, 8 * 1024 * 1024);
         const entries = Object.entries(mediaImages || {}).filter(([, src]) => typeof src === 'string' && /^data:image\//i.test(src));
         for (const [imageKey, src] of entries) {
-          const blob = dataUrlToBlob(src);
-          const ext = /^data:image\/gif/i.test(src) ? 'gif' : /^data:image\/png/i.test(src) ? 'png' : /^data:image\/webp/i.test(src) ? 'webp' : 'jpg';
+          const prepared = await optimizeTemplateImage(src);
+          const blob = dataUrlToBlob(prepared);
+          const ext = /^data:image\/gif/i.test(prepared) ? 'gif' : /^data:image\/png/i.test(prepared) ? 'png' : /^data:image\/webp/i.test(prepared) ? 'webp' : 'jpg';
           const path = `${window._fsSbUser?.id || 'anon'}/${templateId}/${imageKey.replace(/[^a-z0-9_-]/gi, '_')}.${ext}`;
           let saved = false;
-          if (blob && window._fsSb?.storage) {
+          if (prepared.length <= inlineLimit) {
+            inline[imageKey] = prepared;
+            refs[imageKey] = imageKey;
+            inlined += 1;
+            saved = true;
+          }
+          if (!saved && blob && window._fsSb?.storage) {
             for (const bucket of buckets) {
               try {
                 const res = await withTimeout(window._fsSb.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type || `image/${ext}` }), 6500, { error: { message: 'storage timeout' } });
@@ -4393,12 +4433,6 @@
                 }
               } catch (_) {}
             }
-          }
-          if (!saved && src.length < 1024 * 1024) {
-            inline[imageKey] = src;
-            refs[imageKey] = imageKey;
-            inlined += 1;
-            saved = true;
           }
           if (!saved) skipped += 1;
         }
@@ -4435,6 +4469,7 @@
         delete templatePayload.images;
         const nextImages = { ...images, ...inlineImages, [key]: templatePayload };
         window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: templatePayload };
+        window._fsRemoteTemplateMedia = { ...(window._fsRemoteTemplateMedia || {}), ...inlineImages };
         const updated_at = new Date().toISOString();
         let mediaSaved = true;
         let { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
@@ -4563,7 +4598,7 @@
               if (uploaded.skipped > 0) addToast({ message: `${uploaded.skipped} média trop lourd ignoré`, type: 'error', icon: '!' });
             } else {
               payload = lightPayload;
-              addToast({ message: 'Storage indisponible, lien créé sans médias', type: 'error', icon: '!' });
+              addToast({ message: 'Médias trop lourds, lien créé sans médias', type: 'error', icon: '!' });
             }
           }
           try {
