@@ -1032,7 +1032,7 @@
     const FS_IMAGE_IDB_STORE = 'images';
     const FS_IMAGE_IDB_REF = '__fs_idb_image__:';
     const FS_IMAGE_LOCAL_LIMIT = 900 * 1024;
-    const FS_IMAGE_REMOTE_LIMIT = 12 * 1024 * 1024;
+    const FS_IMAGE_REMOTE_LIMIT = 18 * 1024 * 1024;
     let _fsImageDbPromise = null;
 
     function _fsIsImageDbRef(value) {
@@ -1152,6 +1152,11 @@
           if (typeof v === 'string' && v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_REMOTE_LIMIT) images[k] = v;
         } catch (_) { }
       }
+      try {
+        Object.entries(window._fsImageMemory || {}).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_REMOTE_LIMIT) images[k] = v;
+        });
+      } catch (_) { }
       try {
         Object.entries(window._fsRemoteTemplateImages || {}).forEach(([k, v]) => {
           if (k && k.startsWith('_fs_template_') && v && typeof v === 'object') images[k] = v;
@@ -11713,16 +11718,34 @@
       const friendBg = friendTheme && window.buildGrad
         ? `${window.buildGrad(friendTheme)}, ${friendTheme.base}`
         : 'rgba(8,7,18,0.99)';
-      const renderFriendWidget = w => {
-        const type = (w.id || w.label || '').toLowerCase().split('_')[0];
-        if (type === 'image') {
-          const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
-          const imageValues = Object.entries(imageMap)
-            .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && v && !_fsIsImageDbRef(v));
-          const src = imageMap[`fs_img_${w.id}`] || imageMap[w.id] || imageMap.fs_img_widget || imageValues[0]?.[1] || null;
-          return <ImageWidget widgetId={w.id} initialSrc={src} readOnly style={{ height:'100%' }} />;
+      const isRemoteImageSrc = value => typeof value === 'string' && /^data:image\/(?:gif|png|jpe?g|webp|avif|svg\+xml)(?:;|,)/i.test(value) && !_fsIsImageDbRef(value);
+      const resolveFriendImageSrc = w => {
+        const imageMap = data?.images && typeof data.images === 'object' ? data.images : {};
+        const candidates = [
+          `fs_img_${w.id}`,
+          w.id,
+          `fs_img_${String(w.label || '').toLowerCase()}`,
+          'fs_img_widget'
+        ].filter(Boolean);
+        for (const key of candidates) {
+          const value = imageMap[key];
+          if (isRemoteImageSrc(value)) return value;
         }
-        const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[w.label?.toLowerCase?.()];
+        const imageValues = Object.entries(imageMap)
+          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && isRemoteImageSrc(v));
+        if (imageValues.length === 1) return imageValues[0][1];
+        const typedMatch = imageValues.find(([k]) => String(k).toLowerCase().includes(String(w.id || '').toLowerCase()));
+        return typedMatch?.[1] || null;
+      };
+      const renderFriendWidget = w => {
+        const labelType = String(w.label || '').toLowerCase();
+        const idType = String(w.id || '').toLowerCase().split('_')[0];
+        const type = labelType || idType;
+        if (type === 'image') {
+          const src = resolveFriendImageSrc(w);
+          return <ImageWidget widgetId={w.id} initialSrc={src} readOnly performanceMode="dashboard" style={{ height:'100%' }} />;
+        }
+        const factory = window.WIDGET_COMPONENTS?.[type] || window.WIDGET_COMPONENTS?.[idType];
         return factory
           ? factory(w.variant||1, w.id)
           : <div style={{ width:'100%', height:'100%', background:'rgba(255,255,255,0.04)', borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center' }}><span style={{ fontSize:10, color:T.muted, textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:600 }}>{w.label}</span></div>;
