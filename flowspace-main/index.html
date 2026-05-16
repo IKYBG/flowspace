@@ -1011,7 +1011,6 @@
     window._fsDirtyKeys = new Set();
     window._fsImagePublishQueued = false;
     window._fsRemoteTemplateImages = {};
-    window._fsRemoteTemplateMedia = {};
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
@@ -1154,9 +1153,6 @@
         } catch (_) { }
       }
       try {
-        Object.entries(window._fsRemoteTemplateMedia || {}).forEach(([k, v]) => {
-          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) images[k] = v;
-        });
         Object.entries(window._fsRemoteTemplateImages || {}).forEach(([k, v]) => {
           if (k && k.startsWith('_fs_template_') && v && typeof v === 'object') images[k] = v;
         });
@@ -4255,8 +4251,6 @@
       const [templateInput, setTemplateInput] = _uS9('');
       const [templateLink, setTemplateLink] = _uS9('');
       const [templateCopied, setTemplateCopied] = _uS9(false);
-      const [includeTemplateMedia, setIncludeTemplateMedia] = _uS9(false);
-      const [templatePreviewMedia, setTemplatePreviewMedia] = _uS9({});
       const [templateBusy, setTemplateBusy] = _uS9(false);
       const [confirmDeleteId, setConfirmDeleteId] = _uS9(null);
       const [pickerWidget, setPickerWidget] = _uS9(null);
@@ -4271,17 +4265,6 @@
       const [settleId, setSettleId] = _uS9(null);
       const [snapTransform, setSnapTransform] = _uS9(null);
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
-      _uEff9(() => {
-        let alive = true;
-        if (!includeTemplateMedia) {
-          setTemplatePreviewMedia({});
-          return () => { alive = false; };
-        }
-        readTemplateMedia(widgets).then(images => {
-          if (alive) setTemplatePreviewMedia(images);
-        });
-        return () => { alive = false; };
-      }, [includeTemplateMedia, widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
       const CATALOG = [
         { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
@@ -4346,107 +4329,12 @@
         if (bytes > 1024) return `${Math.round(bytes / 1024)} KB`;
         return `${bytes} B`;
       };
-      const templateMediaBytes = media => Object.values(media || {}).reduce((sum, v) => sum + (typeof v === 'string' ? v.length : 0), 0);
       const withTimeout = (promise, ms, fallback) => {
         let timer;
         return Promise.race([
           Promise.resolve(promise).finally(() => clearTimeout(timer)),
           new Promise(resolve => { timer = setTimeout(() => resolve(fallback), ms); })
         ]);
-      };
-      const dataUrlToBlob = src => {
-        const m = String(src || '').match(/^data:([^;,]+)?(;base64)?,(.*)$/);
-        if (!m) return null;
-        const mime = m[1] || 'application/octet-stream';
-        const body = m[3] || '';
-        const binary = m[2] ? atob(body) : decodeURIComponent(body);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return new Blob([bytes], { type: mime });
-      };
-      const blobToDataUrl = blob => new Promise(resolve => {
-        try {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(blob);
-        } catch (_) {
-          resolve(null);
-        }
-      });
-      const optimizeTemplateImage = src => new Promise(resolve => {
-        const raw = String(src || '');
-        if (!raw || /^data:image\/gif/i.test(raw) || raw.length < 900 * 1024) return resolve(raw);
-        try {
-          const img = new Image();
-          img.onload = () => {
-            try {
-              const maxSide = 1600;
-              const scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
-              canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(blob => {
-                if (!blob) return resolve(raw);
-                blobToDataUrl(blob).then(next => resolve(next && next.length < raw.length ? next : raw));
-              }, 'image/webp', 0.82);
-            } catch (_) {
-              resolve(raw);
-            }
-          };
-          img.onerror = () => resolve(raw);
-          img.src = raw;
-        } catch (_) {
-          resolve(raw);
-        }
-      });
-      const uploadTemplateMedia = async (mediaImages, templateId) => {
-        const refs = {};
-        const inline = {};
-        let uploaded = 0, inlined = 0, skipped = 0;
-        const buckets = ['template-media', 'dashboard-templates', 'images'];
-        const inlineLimit = Math.min(FS_IMAGE_REMOTE_LIMIT || 12 * 1024 * 1024, 8 * 1024 * 1024);
-        const entries = Object.entries(mediaImages || {}).filter(([, src]) => typeof src === 'string' && /^data:image\//i.test(src));
-        for (const [imageKey, src] of entries) {
-          const prepared = await optimizeTemplateImage(src);
-          const blob = dataUrlToBlob(prepared);
-          const ext = /^data:image\/gif/i.test(prepared) ? 'gif' : /^data:image\/png/i.test(prepared) ? 'png' : /^data:image\/webp/i.test(prepared) ? 'webp' : 'jpg';
-          const path = `${window._fsSbUser?.id || 'anon'}/${templateId}/${imageKey.replace(/[^a-z0-9_-]/gi, '_')}.${ext}`;
-          let saved = false;
-          if (prepared.length <= inlineLimit) {
-            inline[imageKey] = prepared;
-            refs[imageKey] = imageKey;
-            inlined += 1;
-            saved = true;
-          }
-          if (!saved && blob && window._fsSb?.storage) {
-            for (const bucket of buckets) {
-              try {
-                const res = await withTimeout(window._fsSb.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type || `image/${ext}` }), 6500, { error: { message: 'storage timeout' } });
-                if (!res?.error) {
-                  refs[imageKey] = { kind: 'storage', bucket, path, mime: blob.type || `image/${ext}` };
-                  uploaded += 1;
-                  saved = true;
-                  break;
-                }
-              } catch (_) {}
-            }
-          }
-          if (!saved) skipped += 1;
-        }
-        return { refs, inline, uploaded, inlined, skipped };
-      };
-      const resolveTemplateMediaRef = async (ref, remoteImages = {}) => {
-        if (!ref) return null;
-        if (typeof ref === 'string') return remoteImages[ref] || remoteImages[`fs_img_${ref}`] || null;
-        if (ref.kind === 'storage' && ref.bucket && ref.path && window._fsSb?.storage) {
-          const res = await withTimeout(window._fsSb.storage.from(ref.bucket).download(ref.path), 6500, null);
-          const blob = res?.data || null;
-          return blob ? await blobToDataUrl(blob) : null;
-        }
-        return null;
       };
       const copyTemplateLink = async () => {
         if (!templateLink) return;
@@ -4458,7 +4346,7 @@
           addToast({ message: 'Copie impossible, sélectionne le code', type: 'error', icon: '!' });
         }
       };
-      const saveTemplateRemote = async (payload, inlineImages = {}) => {
+      const saveTemplateRemote = async payload => {
         const user = window._fsSbUser;
         if (!window._fsSb || !user?.id) throw new Error('login required');
         const id = payload.templateId || makeShortTemplateId();
@@ -4467,24 +4355,16 @@
         const images = data?.images && typeof data.images === 'object' ? data.images : {};
         const templatePayload = { ...payload };
         delete templatePayload.images;
-        const nextImages = { ...images, ...inlineImages, [key]: templatePayload };
+        const nextImages = { ...images, [key]: templatePayload };
         window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: templatePayload };
-        window._fsRemoteTemplateMedia = { ...(window._fsRemoteTemplateMedia || {}), ...inlineImages };
         const updated_at = new Date().toISOString();
-        let mediaSaved = true;
         let { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
-        if (error && Object.keys(inlineImages || {}).length) {
-          mediaSaved = false;
-          const lightImages = { ...images, [key]: { ...templatePayload, mediaIncluded: false, imageRefs: {} } };
-          window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: lightImages[key] };
-          error = (await window._fsSb.from('user_data').update({ images: lightImages, updated_at }).eq('user_id', user.id)).error;
-        }
         if (error) {
           const snapshot = window._fsSnapshotLocalData?.(user.id) || {};
           const result = await window._fsSb.from('user_data').upsert({ user_id: user.id, ...snapshot, images: nextImages, updated_at }, { onConflict: 'user_id' });
           if (result.error) throw result.error;
         }
-        return { url: `${window.location.origin}${window.location.pathname}#t=${encodeURIComponent(`${compactUuid(user.id)}.${id}`)}`, mediaSaved };
+        return { url: `${window.location.origin}${window.location.pathname}#t=${encodeURIComponent(`${compactUuid(user.id)}.${id}`)}` };
       };
       const loadRemoteTemplate = async raw => {
         const cleaned = String(raw || '').trim();
@@ -4497,16 +4377,7 @@
         if (error) throw error;
         const tpl = data?.images?.[`_fs_template_${templateId}`];
         if (!tpl || typeof tpl !== 'object') throw new Error('remote template missing');
-        const imageRefs = tpl.imageRefs && typeof tpl.imageRefs === 'object' ? tpl.imageRefs : {};
-        const images = {};
-        for (const [widgetId, imageRef] of Object.entries(imageRefs)) {
-          const src = await resolveTemplateMediaRef(imageRef, data?.images || {}) || data?.images?.[widgetId] || data?.images?.[`fs_img_${widgetId}`] || null;
-          if (typeof src === 'string' && src && !_fsIsImageDbRef(src)) {
-            images[widgetId] = src;
-            if (typeof imageRef === 'string') images[imageRef] = src;
-          }
-        }
-        return { ...tpl, images: { ...(tpl.images || {}), ...images } };
+        return { ...tpl, images: {} };
       };
       const decodeTemplate = async raw => {
         const cleaned = String(raw || '').trim();
@@ -4526,21 +4397,6 @@
         try { const v = localStorage.getItem('fs_note_map_style'); if (v) out.note_map_style = v; } catch (_) {}
         return out;
       };
-      const readTemplateMedia = async list => {
-        const images = {};
-        await Promise.all((Array.isArray(list) ? list : []).filter(w => w?.label === 'Image').map(async w => {
-          const key = `fs_img_${w.id}`;
-          let src = null;
-          try { src = window._fsImageMemory?.[key] || null; } catch (_) {}
-          try { if (!src && window._fsReadLocalImage) src = await window._fsReadLocalImage(key); } catch (_) {}
-          try {
-            const local = localStorage.getItem(key);
-            if (!src && local && !/^__fs_idb_image__:/.test(local)) src = local;
-          } catch (_) {}
-          if (src && typeof src === 'string' && !_fsIsImageDbRef(src)) images[key] = src;
-        }));
-        return images;
-      };
       const sanitizeTemplateWidgets = list => (Array.isArray(list) ? list : [])
         .filter(w => w && typeof w.label === 'string' && typeof w.col === 'string' && typeof w.row === 'string')
         .slice(0, 24)
@@ -4551,10 +4407,6 @@
           row: w.row,
           variant: Number(w.variant) || 1
         }));
-      const templatePreviewImageFor = w => {
-        if (!includeTemplateMedia || w?.label !== 'Image') return null;
-        return templatePreviewMedia?.[`fs_img_${w.id}`] || templatePreviewMedia?.[w.id] || null;
-      };
       const createDashboardTemplate = async () => {
         if (templateBusy) return;
         setTemplateBusy(true);
@@ -4562,63 +4414,28 @@
         addToast({ message: 'Création du préréglage...', type: 'success', icon: '↗' });
         try {
           const templateId = makeShortTemplateId();
-          const baseWidgets = widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1, imageKey: w.label === 'Image' ? `fs_img_${w.id}` : undefined }));
-          const originalMediaRefs = includeTemplateMedia ? Object.fromEntries(widgets.filter(w => w.label === 'Image').map(w => [w.id, `fs_img_${w.id}`])) : {};
-          const lightPayload = {
+          const payload = {
             type: 'lumenos-dashboard-template',
             version: 1,
             templateId,
             createdAt: new Date().toISOString(),
-            widgets: baseWidgets,
-            visuals: readTemplateVisuals(),
-            mediaIncluded: false,
-            imageRefs: {}
+            widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 })),
+            visuals: readTemplateVisuals()
           };
-          let payload = { ...lightPayload, mediaIncluded: includeTemplateMedia, imageRefs: originalMediaRefs };
-          let templateMedia = includeTemplateMedia ? await withTimeout(readTemplateMedia(widgets), 2500, {}) : {};
-          const mediaBytes = templateMediaBytes(templateMedia);
-          const mediaLooksSafe = includeTemplateMedia && mediaBytes > 0;
-          let inlineMedia = {};
           let url = '';
-          let mediaSaved = false;
-          if (includeTemplateMedia && !mediaLooksSafe) {
-            payload = lightPayload;
-            templateMedia = {};
-            addToast({ message: mediaBytes ? 'Médias trop lourds, lien créé sans médias' : 'Aucun média prêt à inclure', type: 'error', icon: '!' });
-          } else if (mediaLooksSafe) {
-            const uploaded = await withTimeout(uploadTemplateMedia(templateMedia, templateId), 11000, { refs: {}, inline: {}, uploaded: 0, inlined: 0, skipped: Object.keys(templateMedia).length });
-            inlineMedia = uploaded.inline || {};
-            const nextRefs = {};
-            Object.entries(originalMediaRefs).forEach(([widgetId, imageKey]) => {
-              const ref = uploaded.refs?.[imageKey];
-              if (ref) nextRefs[widgetId] = ref;
-            });
-            if (Object.keys(nextRefs).length) {
-              payload = { ...payload, imageRefs: nextRefs, mediaIncluded: true };
-              if (uploaded.skipped > 0) addToast({ message: `${uploaded.skipped} média trop lourd ignoré`, type: 'error', icon: '!' });
-            } else {
-              payload = lightPayload;
-              addToast({ message: 'Médias trop lourds, lien créé sans médias', type: 'error', icon: '!' });
-            }
-          }
           try {
             if (window._fsSbUser?.id && window._fsSb) {
-              const result = await withTimeout(saveTemplateRemote(payload, inlineMedia), 5500, null);
-              if (result?.url) {
-                url = result.url;
-                mediaSaved = !!result.mediaSaved && payload.mediaIncluded;
-              }
+              const result = await withTimeout(saveTemplateRemote(payload), 4000, null);
+              if (result?.url) url = result.url;
             }
           } catch (e) {
             console.warn('[fs] remote template save failed', e);
           }
           if (!url) {
-            const token = encodeTemplate(lightPayload);
+            const token = encodeTemplate(payload);
             url = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
-            if (includeTemplateMedia) addToast({ message: 'Sync lente, lien léger créé sans médias', type: 'error', icon: '!' });
           }
           setTemplateLink(url);
-          if (includeTemplateMedia && mediaLooksSafe && !mediaSaved) addToast({ message: 'Template créé, médias ignorés par la sync', type: 'error', icon: '!' });
           try {
             await navigator.clipboard?.writeText(url);
             setTemplateCopied(true);
@@ -4634,9 +4451,7 @@
               version: 1,
               createdAt: new Date().toISOString(),
               widgets: widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 })),
-              visuals: readTemplateVisuals(),
-              mediaIncluded: false,
-              imageRefs: {}
+              visuals: readTemplateVisuals()
             };
             const token = encodeTemplate(fallbackPayload);
             const fallbackUrl = `${window.location.origin}${window.location.pathname}#fs-template=${encodeURIComponent(token)}`;
@@ -4663,23 +4478,6 @@
           try { if (v.widget_style) localStorage.setItem('fs_widget_style', JSON.stringify(_fsNormalizeWidgetStyle(v.widget_style))); } catch (_) {}
           try { if (v.font_preset) localStorage.setItem('fs_font_preset', v.font_preset); } catch (_) {}
           try { if (v.note_map_style) localStorage.setItem('fs_note_map_style', v.note_map_style); } catch (_) {}
-          try {
-            const images = tpl.images && typeof tpl.images === 'object' ? tpl.images : {};
-            let restoredCount = 0;
-            for (const [i, w] of nextWidgets.entries()) {
-              if (w.label !== 'Image') continue;
-              const original = tpl.widgets[i] || {};
-              const src = images[original.imageKey] || images[original.id] || images[`fs_img_${original.id}`] || Object.values(images).find(v => typeof v === 'string' && /^data:image\//i.test(v)) || null;
-              if (!src || typeof src !== 'string' || _fsIsImageDbRef(src)) continue;
-              const key = `fs_img_${w.id}`;
-              window._fsImageMemory = window._fsImageMemory || {};
-              window._fsImageMemory[key] = src;
-              try { window._fsMarkImageTouched?.(key); } catch (_) {}
-              try { if (window._fsStoreLocalImage) await window._fsStoreLocalImage(key, src); else localStorage.setItem(key, src); } catch (_) {}
-              restoredCount += 1;
-            }
-            if (restoredCount > 0) addToast({ message: `${restoredCount} média${restoredCount > 1 ? 's' : ''} restauré${restoredCount > 1 ? 's' : ''}`, type: 'success', icon: '✓' });
-          } catch (_) {}
           try { localStorage.setItem('fs_widgets', JSON.stringify(nextWidgets)); } catch (_) {}
           try { onSave(nextWidgets); } catch (_) {}
           try { window._fsFlushPush?.(true); } catch (_) {}
@@ -5068,36 +4866,31 @@
                       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
                     </div>
                     <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Créer un template</div>
-                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Génère un lien court partageable : widgets, tailles, positions, style visuel et médias si activé.</div>
-                    <button
-                      type="button"
-                      onClick={() => { setIncludeTemplateMedia(v => !v); setTemplateLink(''); setTemplateCopied(false); }}
-                      aria-pressed={includeTemplateMedia}
-                      style={{ marginTop:16, width:'100%', minHeight:48, borderRadius:17, border:`1px solid ${includeTemplateMedia ? c1(0.34) : 'rgba(255,255,255,0.09)'}`, background:includeTemplateMedia ? `linear-gradient(135deg,${c1(0.16)},rgba(var(--theme-c2-rgb),0.08))` : 'rgba(255,255,255,0.045)', color:T.text, padding:'9px 12px', display:'grid', gridTemplateColumns:'1fr 42px', gap:12, alignItems:'center', cursor:'pointer', fontFamily:T.font, textAlign:'left', boxShadow:includeTemplateMedia ? `0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.08)` : 'inset 0 1px 0 rgba(255,255,255,0.055)', transition:'all .22s cubic-bezier(.16,1,.3,1)' }}>
+                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Génère un lien court partageable : widgets, tailles, positions, thème et style. Les images/GIFs restent privés.</div>
+                    <div style={{ marginTop:16, borderRadius:17, border:'1px solid rgba(255,255,255,0.09)', background:'rgba(255,255,255,0.045)', color:T.text, padding:'11px 12px', display:'flex', gap:11, alignItems:'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.055)' }}>
+                      <span style={{ width:32, height:32, borderRadius:12, display:'grid', placeItems:'center', background:c1(0.12), color:T.c1, flexShrink:0 }}>
+                        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5"/><path d="M12 12v9"/><path d="M12 12L4 7.5"/></svg>
+                      </span>
                       <span>
-                        <span style={{ display:'block', fontSize:12.5, fontWeight:900, letterSpacing:'-0.01em' }}>Inclure images & GIFs</span>
-                        <span style={{ display:'block', marginTop:3, fontSize:10.8, lineHeight:1.35, color:T.muted }}>Les médias apparaîtront quand un user charge ton lien.</span>
+                        <span style={{ display:'block', fontSize:12.5, fontWeight:900, letterSpacing:'-0.01em' }}>Template layout uniquement</span>
+                        <span style={{ display:'block', marginTop:3, fontSize:10.8, lineHeight:1.35, color:T.muted }}>Plus fiable, lien court, aucun stockage média.</span>
                       </span>
-                      <span style={{ width:42, height:24, borderRadius:999, padding:3, boxSizing:'border-box', background:includeTemplateMedia ? 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))' : 'rgba(255,255,255,0.10)', boxShadow:includeTemplateMedia ? `0 10px 24px ${c1(0.22)}` : 'inset 0 1px 0 rgba(255,255,255,0.08)', transition:'all .22s cubic-bezier(.16,1,.3,1)' }}>
-                        <span style={{ display:'block', width:18, height:18, borderRadius:'50%', background:includeTemplateMedia ? '#071018' : 'rgba(255,255,255,0.78)', transform:includeTemplateMedia ? 'translateX(18px)' : 'translateX(0)', transition:'transform .22s cubic-bezier(.16,1,.3,1)' }} />
-                      </span>
-                    </button>
+                    </div>
                     <div style={{ marginTop:16, borderRadius:20, border:'1px solid rgba(255,255,255,0.085)', background:'radial-gradient(circle at 18% 12%,rgba(var(--theme-c1-rgb),0.16),transparent 36%),linear-gradient(145deg,rgba(255,255,255,0.065),rgba(255,255,255,0.025))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
                         <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.10em', textTransform:'uppercase', color:T.muted }}>Aperçu du lien</div>
-                        <div style={{ fontSize:10, fontWeight:850, color:includeTemplateMedia ? T.green : T.muted }}>{includeTemplateMedia ? 'Médias inclus' : 'Médias privés'}</div>
+                        <div style={{ fontSize:10, fontWeight:850, color:T.muted }}>Layout seul</div>
                       </div>
                       <div style={{ position:'relative', height:132, borderRadius:16, overflow:'hidden', background:'linear-gradient(145deg,rgba(var(--mineral-bg-rgb),0.78),rgba(var(--mineral-surface-rgb),0.54))', border:'1px solid rgba(255,255,255,0.065)' }}>
                         <div style={{ position:'absolute', inset:0, background:'radial-gradient(circle at 30% 20%,rgba(var(--theme-c1-rgb),0.18),transparent 34%),radial-gradient(circle at 76% 70%,rgba(var(--theme-c2-rgb),0.14),transparent 38%)' }} />
                         {widgets.slice(0, 24).map(w => {
                           const [pc1, pc2] = parseSpan(w.col);
                           const [pr1, pr2] = parseSpan(w.row);
-                          const img = templatePreviewImageFor(w);
                           const cat = CATALOG.find(c => c.label === w.label);
                           return (
                             <div key={`tpl-preview-${w.id}`} style={{ position:'absolute', left:`${((pc1 - 1) / COLS) * 100}%`, top:`${((pr1 - 1) / ROWS) * 100}%`, width:`${((pc2 - pc1) / COLS) * 100}%`, height:`${((pr2 - pr1) / ROWS) * 100}%`, padding:3, boxSizing:'border-box' }}>
-                              <div style={{ width:'100%', height:'100%', borderRadius:10, overflow:'hidden', background:img ? `url(${img}) center/cover` : 'linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.055))', border:'1px solid rgba(255,255,255,0.12)', boxShadow:`0 8px 18px rgba(0,0,0,0.28), 0 0 16px ${c1(0.05)}`, display:'grid', placeItems:'center' }}>
-                                {!img && <span style={{ fontSize:14, color:cat?.color || T.c1, opacity:0.9 }}>{cat?.icon || '◇'}</span>}
+                              <div style={{ width:'100%', height:'100%', borderRadius:10, overflow:'hidden', background:'linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.055))', border:'1px solid rgba(255,255,255,0.12)', boxShadow:`0 8px 18px rgba(0,0,0,0.28), 0 0 16px ${c1(0.05)}`, display:'grid', placeItems:'center' }}>
+                                <span style={{ fontSize:14, color:cat?.color || T.c1, opacity:0.9 }}>{cat?.icon || '◇'}</span>
                               </div>
                             </div>
                           );
@@ -5118,11 +4911,6 @@
                           <span style={{ fontSize:10.5, color:T.muted, lineHeight:1.35 }}>Taille du lien</span>
                           <span style={{ fontSize:10.5, color:templateLink.length > 120000 ? T.warm : T.muted, fontWeight:850 }}>{formatTemplateSize(templateLink)}</span>
                         </div>
-                        {templateLink.length > 120000 && (
-                          <div style={{ marginTop:10, borderRadius:13, border:'1px solid rgba(255,196,87,0.20)', background:'rgba(255,196,87,0.075)', color:T.warm, padding:'9px 10px', fontSize:10.8, lineHeight:1.38, fontWeight:650 }}>
-                            Les GIFs rendent ce lien lourd. Pour partager vite, désactive les médias.
-                          </div>
-                        )}
                       </div>
                     )}
                   </section>
@@ -5131,7 +4919,7 @@
                       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
                     </div>
                     <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Charger un template</div>
-                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Colle un lien court de préréglage. Le dashboard en édition sera remplacé avant sauvegarde.</div>
+                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Colle un lien court de préréglage. Le layout en édition sera remplacé avant sauvegarde.</div>
                     <input value={templateInput} onChange={e => setTemplateInput(e.target.value.trim())} placeholder="https://...#t=..." style={{ marginTop:16, width:'100%', height:48, borderRadius:16, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12, lineHeight:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} />
                     <button onClick={() => applyDashboardTemplate()} style={{ marginTop:12, height:44, borderRadius:15, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.07)` }}>Appliquer le préréglage</button>
                   </section>
