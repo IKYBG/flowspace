@@ -11698,14 +11698,21 @@
                 .maybeSingle();
               if (baseError) console.warn('[fs] friend dashboard base load failed', baseError);
               remote = base || null;
-              if (remote) {
-                const { data: media, error: mediaError } = await window._fsSb
+              if (remote && !cancelled) {
+                setData(remote);
+                setLoadError(false);
+                setLoading(false);
+                window._fsSb
                   .from('user_data')
                   .select('images, updated_at')
                   .eq('user_id', friend.id)
-                  .maybeSingle();
-                if (mediaError) console.warn('[fs] friend dashboard media load failed', mediaError);
-                if (media?.images) remote = { ...remote, images: media.images, updated_at: media.updated_at || remote.updated_at };
+                  .maybeSingle()
+                  .then(({ data: media, error: mediaError }) => {
+                    if (mediaError) console.warn('[fs] friend dashboard media load failed', mediaError);
+                    if (!cancelled && media?.images) setData(prev => ({ ...(prev || remote), images: media.images, updated_at: media.updated_at || prev?.updated_at || remote.updated_at }));
+                  })
+                  .catch(e => console.warn('[fs] friend dashboard media load threw', e));
+                return;
               }
             }
             if (!remote && window._fsLoadRemote) remote = await window._fsLoadRemote(friend.id);
@@ -11741,9 +11748,9 @@
               .select('images, updated_at')
               .eq('user_id', friend.id)
               .maybeSingle();
-            if (!cancelled && fresh?.images && JSON.stringify(fresh.images) !== JSON.stringify(data.images || {})) setData(prev => ({ ...(prev || data), images: fresh.images, updated_at: fresh.updated_at || prev?.updated_at || data.updated_at }));
+            if (!cancelled && fresh?.images && fresh.images !== data.images) setData(prev => ({ ...(prev || data), images: fresh.images, updated_at: fresh.updated_at || prev?.updated_at || data.updated_at }));
           } catch (_) { }
-        }, 2600);
+        }, 700);
         return () => { cancelled = true; clearTimeout(timer); };
       }, [data, loading, friend.id]);
 
@@ -11891,8 +11898,15 @@
                       const { data: base } = await window._fsSb.from('user_data').select('widgets, bg_theme, custom_bg, widget_style, updated_at').eq('user_id', friend.id).maybeSingle();
                       remote = base || null;
                       if (remote) {
-                        const { data: media } = await window._fsSb.from('user_data').select('images, updated_at').eq('user_id', friend.id).maybeSingle();
-                        if (media?.images) remote = { ...remote, images: media.images, updated_at: media.updated_at || remote.updated_at };
+                        setData(remote);
+                        setLoadError(false);
+                        setLoading(false);
+                        window._fsSb.from('user_data').select('images, updated_at').eq('user_id', friend.id).maybeSingle()
+                          .then(({ data: media }) => {
+                            if (media?.images) setData(prev => ({ ...(prev || remote), images: media.images, updated_at: media.updated_at || prev?.updated_at || remote.updated_at }));
+                          })
+                          .catch(() => {});
+                        return;
                       }
                     } catch (_) { }
                     setData(remote);
