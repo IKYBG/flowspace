@@ -1035,6 +1035,82 @@
     const FS_DEFAULT_WIDGET_STYLE = { opacity: 1, radius: 22, glowColor: '#8fdcff', glowIntensity: 0 };
     window.FS_DEFAULT_WIDGET_STYLE = FS_DEFAULT_WIDGET_STYLE;
 
+    const FS_SAFE_TEXT_LIMIT = 1200;
+    const FS_SAFE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    function _fsSafeText(value, max = FS_SAFE_TEXT_LIMIT) {
+      return String(value ?? '')
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, max);
+    }
+    function _fsSafeEmail(value) {
+      const email = _fsSafeText(value, 254).toLowerCase();
+      return FS_SAFE_EMAIL_RE.test(email) ? email : '';
+    }
+    function _fsSafeJson(value, maxString = 200000) {
+      if (value == null) return value;
+      if (typeof value === 'string') return value.slice(0, maxString);
+      if (typeof value === 'number' || typeof value === 'boolean') return value;
+      if (Array.isArray(value)) return value.slice(0, 250).map(v => _fsSafeJson(v, maxString));
+      if (typeof value === 'object') {
+        const out = {};
+        Object.entries(value).slice(0, 120).forEach(([k, v]) => {
+          const key = _fsSafeText(k, 80);
+          if (key) out[key] = _fsSafeJson(v, maxString);
+        });
+        return out;
+      }
+      return null;
+    }
+    function _fsSafeFriend(friend, selfId = '') {
+      if (!friend || typeof friend !== 'object') return null;
+      const id = _fsSafeText(friend.id || friend.user_id || '', 80);
+      const email = _fsSafeEmail(friend.email || '');
+      if (!id || id === selfId || !email) return null;
+      return {
+        id,
+        name: _fsSafeText(friend.name || email.split('@')[0], 64),
+        email,
+        photo: typeof friend.photo === 'string' && friend.photo.startsWith('data:image/') ? friend.photo.slice(0, 240000) : null,
+        addedAt: Number(friend.addedAt || Date.now()),
+        updatedAt: friend.updatedAt || friend.updated_at || null
+      };
+    }
+    function _fsSanitizePayload(payload, userId = window._fsSbUser?.id) {
+      const safe = { ...payload };
+      if (safe.user_id && safe.user_id !== userId) safe.user_id = userId;
+      if (safe.name != null) safe.name = _fsSafeText(safe.name, 64);
+      if (safe.email != null) safe.email = _fsSafeEmail(safe.email);
+      if (safe.tasks != null) safe.tasks = _fsSafeJson(safe.tasks);
+      if (safe.notes != null) safe.notes = _fsSafeText(safe.notes, 500000);
+      if (safe.widgets != null) safe.widgets = _fsSafeJson(safe.widgets);
+      if (safe.custom_bg != null) safe.custom_bg = _fsSafeJson(safe.custom_bg);
+      if (safe.widget_style != null) safe.widget_style = _fsNormalizeWidgetStyle(_fsSafeJson(safe.widget_style));
+      if (safe.gamification != null) safe.gamification = _fsSafeJson(safe.gamification);
+      if (safe.friends != null) {
+        const seen = new Set();
+        safe.friends = (Array.isArray(safe.friends) ? safe.friends : [])
+          .map(f => _fsSafeFriend(f, userId))
+          .filter(f => f && !seen.has(f.id) && seen.add(f.id))
+          .slice(0, 120);
+      }
+      if (safe.images != null && typeof safe.images === 'object') {
+        const images = {};
+        Object.entries(safe.images).slice(0, 80).forEach(([k, v]) => {
+          const key = _fsSafeText(k, 90);
+          if (!key) return;
+          if (typeof v === 'string' && (/^data:image\//i.test(v) || /^__fs_idb_image__:/i.test(v))) images[key] = v.slice(0, FS_IMAGE_REMOTE_LIMIT);
+          else if (v && typeof v === 'object') images[key] = _fsSafeJson(v, 120000);
+        });
+        safe.images = images;
+      }
+      return safe;
+    }
+    window._fsSafeEmail = _fsSafeEmail;
+    window._fsSafeText = _fsSafeText;
+    window._fsSanitizePayload = _fsSanitizePayload;
+
     /* Raw setItem/removeItem that bypass our sync patch */
     const _fsOrigSetItem = Storage.prototype.setItem;
     const _fsOrigRemoveItem = Storage.prototype.removeItem;
@@ -1570,20 +1646,25 @@
 
     async function _fsSaveUserProfile(userId, name, email, knownRemote = null) {
       if (!userId) return;
-      const profile = { name, email: (email || '').toLowerCase() };
+      const safeEmail = _fsSafeEmail(email);
+      if (!safeEmail) return;
+      const profile = _fsSanitizePayload({ name: _fsSafeText(name, 64), email: safeEmail }, userId);
       try {
         if (knownRemote) {
           const { error } = await _fsSb.from('user_data').update(profile).eq('user_id', userId);
           if (error) console.warn('[fs] profile update failed', error);
+          await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).catch(() => null);
           return;
         }
         if (!window._fsSyncReady && !window._fsHydratedSavedData) return;
         const snapshot = _fsSnapshotLocalData(userId);
+        const payload = _fsSanitizePayload({ user_id: userId, ...snapshot, ...profile, updated_at: new Date().toISOString() }, userId);
         const { error } = await _fsSb.from('user_data').upsert(
-          { user_id: userId, ...snapshot, ...profile, updated_at: new Date().toISOString() },
+          payload,
           { onConflict: 'user_id' }
         );
         if (error) console.warn('[fs] profile upsert failed', error);
+        await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).catch(() => null);
       } catch (e) { console.warn('[fs] save user profile failed', e); }
     }
     window._fsSaveUserProfile = _fsSaveUserProfile;
@@ -1691,7 +1772,7 @@
           .eq('user_id', userId)
           .maybeSingle(), 6000, { data: null, error: { message: 'load remote timeout' } });
         if (error) { console.warn('[fs] load remote failed', error); return null; }
-        return data;
+        return data ? _fsSanitizePayload(data, userId) : null;
       } catch (e) { console.warn('[fs] load remote threw', e); return null; }
     }
     window._fsLoadRemote = _fsLoadRemote;
@@ -1869,7 +1950,7 @@
       const u = window._fsSbUser;
       if (!u || (!window._fsSyncReady && !force)) return;
       const dirtyKeys = new Set(window._fsDirtyKeys || []);
-      const payload = { user_id: u.id, updated_at: new Date().toISOString() };
+      let payload = { user_id: u.id, updated_at: new Date().toISOString() };
 
       try { const v = localStorage.getItem('fs_tasks');   if (v != null) payload.tasks = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_notes');   if (v != null) payload.notes = v; } catch (_) { }
@@ -1895,10 +1976,11 @@
       /* Images – aggregate all fs_img_* keys, including GIFs kept in IndexedDB */
       const images = window._fsCollectRemoteImages ? await window._fsCollectRemoteImages() : {};
       payload.images = images;
+      payload = _fsSanitizePayload(payload, u.id);
       const pushImagesOnly = async () => {
         if (Object.keys(images).length === 0) return { error: null, skipped: true };
         return _fsSb.from('user_data')
-          .update({ images, updated_at: payload.updated_at })
+          .update(_fsSanitizePayload({ images, updated_at: payload.updated_at }, u.id))
           .eq('user_id', u.id);
       };
       const clearDirtyAfterPush = (keepImageDirty = false) => {
@@ -1915,12 +1997,12 @@
 
       if (!force && dirtyKeys.size > 0) {
         const snapshot = _fsSnapshotLocalData(u.id);
-        const partial = _fsDirtyPayloadFromSnapshot(snapshot, dirtyKeys);
+        const partial = _fsSanitizePayload(_fsDirtyPayloadFromSnapshot(snapshot, dirtyKeys), u.id);
         if (dirtyKeys.has(`fs_friends_${u.id}`) && Object.prototype.hasOwnProperty.call(payload, 'friends')) partial.friends = payload.friends;
         if ([...dirtyKeys].some(k => k && k.startsWith('fs_img_')) && Object.keys(images).length > 0) partial.images = images;
         if (Object.keys(partial).length === 0) return;
         partial.updated_at = payload.updated_at;
-        const { error } = await _fsSb.from('user_data').update(partial).eq('user_id', u.id);
+        const { error } = await _fsSb.from('user_data').update(_fsSanitizePayload(partial, u.id)).eq('user_id', u.id);
         if (error) {
           console.warn('[fs] partial push failed:', error);
           if (partial.images) {
@@ -1977,7 +2059,7 @@
         const v = localStorage.getItem('fs_bgtheme'); if (v) p.bg_theme = v;
         try { const custom = localStorage.getItem('fs_custom_bg'); if (custom) p.custom_bg = JSON.parse(custom); } catch(_) {}
         try { const w = localStorage.getItem('fs_widgets'); if (w) p.widgets = JSON.parse(w); } catch(_) {}
-        const { error } = await _fsSb.from('user_data').upsert(p, { onConflict: 'user_id' });
+        const { error } = await _fsSb.from('user_data').upsert(_fsSanitizePayload(p, u.id), { onConflict: 'user_id' });
         if (error) console.warn('[fs] style-only update failed', error);
       } catch (e) { console.warn('[fs] style-only push failed', e); }
     }
@@ -2076,7 +2158,20 @@
     /* ── Helper: look up a FlowSpace user by email ─────────────────────── */
     async function _fsLookupUserByEmail(email) {
       try {
-        const trimmed = email.trim().toLowerCase();
+        const trimmed = _fsSafeEmail(email);
+        if (!trimmed) return null;
+        const publicResult = await _fsSb
+          .from('profiles_public')
+          .select('user_id, name, email, photo, updated_at')
+          .ilike('email', trimmed)
+          .maybeSingle();
+        if (!publicResult.error && publicResult.data) {
+          const data = publicResult.data;
+          return { id: data.user_id, name: data.name || trimmed.split('@')[0], email: data.email,
+                   photo: data.photo || null,
+                   initial: (data.name || '?')[0].toUpperCase(),
+                   color: '#4ade80', updatedAt: data.updated_at };
+        }
         const { data, error } = await _fsSb
           .from('user_data')
           .select('user_id, name, email, photo, updated_at')
@@ -8762,10 +8857,28 @@
       const [status, setStatus] = _uSAuth('idle');
       const [errMsg, setErrMsg] = _uSAuth('');
       const [shaking, setShaking] = _uSAuth(false);
+      const AUTH_RATE_KEY = 'fs_auth_attempts_v1';
+      const readAuthAttempts = () => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(AUTH_RATE_KEY) || '[]');
+          const cutoff = Date.now() - 10 * 60 * 1000;
+          return Array.isArray(raw) ? raw.filter(ts => Number(ts) > cutoff) : [];
+        } catch (_) { return []; }
+      };
+      const rememberAuthAttempt = () => {
+        try {
+          const attempts = [...readAuthAttempts(), Date.now()].slice(-8);
+          localStorage.setItem(AUTH_RATE_KEY, JSON.stringify(attempts));
+        } catch (_) { }
+      };
+      const clearAuthAttempts = () => {
+        try { localStorage.removeItem(AUTH_RATE_KEY); } catch (_) { }
+      };
 
       const validate = () => {
         if (mode === 'signup' && !uname.trim()) return "Entrez un nom d'utilisateur";
-        if (!email.trim() || !email.includes('@')) return 'Adresse email invalide';
+        if (mode === 'signup' && uname.trim().length > 48) return "Nom d'utilisateur trop long";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Adresse email invalide';
         if (pass.length < 6) return 'Mot de passe min. 6 caractères';
         return null;
       };
@@ -8777,11 +8890,18 @@
           setTimeout(() => setShaking(false), 460);
           return;
         }
+        if (readAuthAttempts().length >= 6) {
+          setErrMsg('Trop de tentatives, rÃ©essayez dans quelques minutes');
+          setShaking(true);
+          setTimeout(() => setShaking(false), 460);
+          return;
+        }
+        rememberAuthAttempt();
         setStatus('loading'); setErrMsg('');
 
         const sb = window._fsSb;
-        const trimmedEmail = email.trim();
-        const displayName = uname.trim() || trimmedEmail.split('@')[0];
+        const trimmedEmail = _fsSafeEmail(email);
+        const displayName = (uname.trim() || trimmedEmail.split('@')[0]).slice(0, 48);
 
         try {
           window._fsSetSyncReady?.(false);
@@ -8809,6 +8929,7 @@
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
           const u = { name: finalName, email: trimmedEmail, id: sbUser.id, photo: remote?.images?.['fs_img_profile'] || null, ts: Date.now() };
           try { localStorage.setItem('fs_user', JSON.stringify(u)); } catch (e) { }
+          clearAuthAttempts();
 
           /* Keep friend lookup fresh without clobbering synced app data. */
           await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote);
@@ -8827,7 +8948,11 @@
           else if (/Password should be/i.test(msg)) msg = 'Mot de passe min. 6 caractères';
           else if (/rate limit|too many/i.test(msg)) msg = 'Trop de tentatives, réessayez dans quelques minutes';
           else if (/Email not confirmed/i.test(msg)) msg = 'Confirmez votre email avant de vous connecter';
-          setErrMsg(msg);
+          setErrMsg(/rate limit|too many/i.test(msg)
+            ? 'Trop de tentatives, rÃ©essayez dans quelques minutes'
+            : /Email not confirmed/i.test(msg)
+              ? 'Confirmez votre email avant de vous connecter'
+              : 'Connexion impossible. VÃ©rifiez vos informations.');
         }
       };
 
