@@ -8945,12 +8945,6 @@
           setTimeout(() => setShaking(false), 460);
           return;
         }
-        if (readAuthAttempts().length >= 6) {
-          setErrMsg('Trop de tentatives, rÃ©essayez dans quelques minutes');
-          setShaking(true);
-          setTimeout(() => setShaking(false), 460);
-          return;
-        }
         setStatus('loading'); setErrMsg('');
 
         const sb = window._fsSb;
@@ -9006,21 +9000,14 @@
           setStatus('idle');
           setShaking(true);
           setTimeout(() => setShaking(false), 460);
-          let msg = e?.message || 'Erreur de connexion';
-          if (/Invalid login credentials|Password should be|rate limit|too many/i.test(msg)) rememberAuthAttempt();
-          if (/Invalid login credentials/i.test(msg)) msg = 'Email ou mot de passe incorrect';
-          else if (/already registered|already exists/i.test(msg)) msg = 'Compte existant — connectez-vous';
-          else if (/Password should be/i.test(msg)) msg = 'Mot de passe min. 6 caractères';
-          else if (/rate limit|too many/i.test(msg)) msg = 'Trop de tentatives, réessayez dans quelques minutes';
-          else if (/Email not confirmed/i.test(msg)) msg = 'Confirmez votre email avant de vous connecter';
-          setErrMsg(/rate limit|too many/i.test(msg)
-            ? 'Trop de tentatives, rÃ©essayez dans quelques minutes'
-            : /Email not confirmed/i.test(msg)
-              ? 'Confirmez votre email avant de vous connecter'
-              : 'Connexion impossible. VÃ©rifiez vos informations.');
-          if (/rate limit|too many|Trop de tentatives/i.test(msg)) setErrMsg('Trop de tentatives, reessayez dans quelques minutes');
-          else if (/Email not confirmed|Confirmez votre email/i.test(msg)) setErrMsg('Confirmez votre email avant de vous connecter');
-          else if (/Invalid login credentials|Email ou mot de passe incorrect/i.test(msg)) setErrMsg('Email ou mot de passe incorrect');
+          const rawMsg = String(e?.message || 'Erreur de connexion');
+          console.warn('[fs] auth error detail', { message: rawMsg, status: e?.status, name: e?.name });
+          if (/Invalid login credentials|Password should be|rate limit|too many/i.test(rawMsg)) rememberAuthAttempt();
+          if (/rate limit|too many/i.test(rawMsg)) setErrMsg('Trop de tentatives, reessayez dans quelques minutes');
+          else if (/Email not confirmed|email_not_confirmed/i.test(rawMsg)) setErrMsg('Confirmez votre email avant de vous connecter');
+          else if (/Invalid login credentials|invalid_credentials/i.test(rawMsg)) setErrMsg('Email ou mot de passe incorrect');
+          else if (/Password should be|weak_password/i.test(rawMsg)) setErrMsg('Mot de passe min. 6 caracteres');
+          else if (/NetworkError|Failed to fetch|fetch|timeout/i.test(rawMsg)) setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
           else setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
         }
       };
