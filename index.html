@@ -1584,7 +1584,7 @@
     window._fsRestoreLocalUserData = _fsRestoreLocalUserData;
 
     function _fsRemoteHasSavedData(remote) {
-      if (!remote) return false;
+      if (!remote || remote.__fsLoadFailed) return false;
       return remote.tasks != null ||
         remote.notes != null ||
         remote.widgets != null ||
@@ -1595,6 +1595,7 @@
         remote.gamification != null ||
         (Array.isArray(remote.friends) && remote.friends.length > 0);
     }
+    window._fsRemoteHasSavedData = _fsRemoteHasSavedData;
 
     function _fsLocalHasSavedData(userId = window._fsSbUser?.id) {
       return _fsRemoteHasSavedData(_fsSnapshotLocalData(userId));
@@ -1611,6 +1612,11 @@
         _fsQueueImagePublish();
       }
     }
+
+    function _fsRemoteLoadFailed(remote) {
+      return !!(remote && remote.__fsLoadFailed);
+    }
+    window._fsRemoteLoadFailed = _fsRemoteLoadFailed;
     window._fsSetSyncReady = _fsSetSyncReady;
 
     function _fsQueueImagePublish() {
@@ -1765,15 +1771,25 @@
     }
 
     async function _fsLoadRemote(userId) {
-      try {
-        const { data, error } = await _fsWithTimeout(_fsSb
-          .from('user_data')
-          .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, updated_at')
-          .eq('user_id', userId)
-          .maybeSingle(), 6000, { data: null, error: { message: 'load remote timeout' } });
-        if (error) { console.warn('[fs] load remote failed', error); return null; }
-        return data ? _fsSanitizePayload(data, userId) : null;
-      } catch (e) { console.warn('[fs] load remote threw', e); return null; }
+      if (!userId) return null;
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const { data, error } = await _fsWithTimeout(_fsSb
+            .from('user_data')
+            .select('tasks, notes, widgets, name, onboarded, bg_theme, custom_bg, widget_style, images, email, friends, gamification, updated_at')
+            .eq('user_id', userId)
+            .maybeSingle(), 12000, { data: null, error: { message: 'load remote timeout' } });
+          if (!error) return data ? _fsSanitizePayload(data, userId) : null;
+          lastError = error;
+          console.warn('[fs] load remote failed', error);
+        } catch (e) {
+          lastError = e;
+          console.warn('[fs] load remote threw', e);
+        }
+        await new Promise(resolve => setTimeout(resolve, 420 + attempt * 680));
+      }
+      return { __fsLoadFailed: true, error: lastError?.message || 'remote load failed' };
     }
     window._fsLoadRemote = _fsLoadRemote;
 
@@ -1873,12 +1889,16 @@
 
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
+      if (_fsRemoteLoadFailed(remote)) {
+        console.warn('[fs] remote sync unavailable; keeping local cache untouched');
+        return { source: 'load-failed', remote: null };
+      }
       const sameLocalUser = _fsSameLocalUser(userId);
       const previousLocalUserId = _fsCurrentLocalUserId();
       const lastLogoutUserId = (() => { try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY); } catch (_) { return null; } })();
       const localBelongsToRequestedUser = previousLocalUserId === userId || lastLogoutUserId === userId;
       const hasOrphanLocalData = !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
-      if (!sameLocalUser && (previousLocalUserId || hasOrphanLocalData)) {
+      if (!sameLocalUser && previousLocalUserId && previousLocalUserId !== userId) {
         try { _fsBackupLocalUserData(previousLocalUserId || lastLogoutUserId || undefined); } catch (_) { }
         _fsClearLocalAppData(userId);
       }
@@ -1890,6 +1910,11 @@
       if (!remote && sameLocalUser) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
+      }
+      if (!remote && hasOrphanLocalData && !previousLocalUserId) {
+        window._fsSetSyncReady?.(true);
+        await _fsWithTimeout(_fsFlushPush(true), 3500, null);
+        return { source: 'local-first-sync', remote: _fsSnapshotLocalData(userId) };
       }
       if (_fsLocalLooksNewer(userId, remote)) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
@@ -2091,6 +2116,18 @@
     /* Flush pending writes when the tab is closing */
     window.addEventListener('beforeunload', () => {
       if (window._fsSyncReady && _fsPushTimer) { clearTimeout(_fsPushTimer); _fsFlushPush(); }
+    });
+    window.addEventListener('pagehide', () => {
+      if (window._fsSyncReady) {
+        if (_fsPushTimer) clearTimeout(_fsPushTimer);
+        _fsFlushPush(true);
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && window._fsSyncReady) {
+        if (_fsPushTimer) clearTimeout(_fsPushTimer);
+        _fsFlushPush(true);
+      }
     });
 
     /* ── Realtime: cross-device live sync for user_data ─────────────────── */
@@ -8923,6 +8960,7 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
+          if (syncResult.source === 'load-failed') throw new Error('sync_unavailable');
           window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
@@ -11535,6 +11573,19 @@
               /* Start Realtime for returning users */
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
+              if (syncResult.source === 'load-failed') {
+                const localSnapshot = window._fsSnapshotLocalData?.(session.user.id);
+                if (window._fsRemoteHasSavedData?.(localSnapshot)) {
+                  if (localSnapshot.widgets) setWidgets(localSnapshot.widgets);
+                  if (localSnapshot.bg_theme) setBgThemeId(localSnapshot.bg_theme);
+                  if (localSnapshot.widget_style) applySyncedWidgetStyle(localSnapshot.widget_style);
+                  setSyncEpoch(n => n + 1);
+                  setScreen(readRouteScreen());
+                } else {
+                  setScreen('auth');
+                }
+                return;
+              }
               window._fsSetSyncReady?.(true);
               /* Start Realtime only after initial data hydration. */
               window._fsStartRealtime(session.user.id);
@@ -11549,7 +11600,7 @@
               const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || null, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
               setUser(authUser);
-              if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local' || syncResult.source === 'local-dashboard') {
+              if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local' || syncResult.source === 'local-dashboard' || syncResult.source === 'local-first-sync') {
                 const synced = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(session.user.id);
                 if (synced && synced.widgets) setWidgets(synced.widgets);
                 else setWidgets(DEFAULT_WIDGETS);
