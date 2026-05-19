@@ -8951,11 +8951,10 @@
           setTimeout(() => setShaking(false), 460);
           return;
         }
-        rememberAuthAttempt();
         setStatus('loading'); setErrMsg('');
 
         const sb = window._fsSb;
-        const trimmedEmail = _fsSafeEmail(email);
+        const trimmedEmail = email.trim().toLowerCase();
         const displayName = (uname.trim() || trimmedEmail.split('@')[0]).slice(0, 48);
 
         try {
@@ -8976,10 +8975,17 @@
           }
 
           window._fsSbUser = sbUser;
-          const remote = await window._fsLoadRemote(sbUser.id);
-          const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
-          if (syncResult.source === 'load-failed') window._fsRetryRemoteHydration?.(sbUser.id);
-          else window._fsSetSyncReady?.(true);
+          let remote = null;
+          let syncResult = { source: 'load-failed', remote: null };
+          try {
+            remote = await window._fsLoadRemote(sbUser.id);
+            syncResult = await window._fsReconcileRemote(sbUser.id, remote);
+            if (syncResult.source === 'load-failed') window._fsRetryRemoteHydration?.(sbUser.id);
+            else window._fsSetSyncReady?.(true);
+          } catch (syncError) {
+            console.warn('[fs] post-login sync failed, continuing auth', syncError);
+            window._fsRetryRemoteHydration?.(sbUser.id);
+          }
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
@@ -8988,7 +8994,9 @@
           clearAuthAttempts();
 
           /* Keep friend lookup fresh without clobbering synced app data. */
-          if (syncResult.source !== 'load-failed') await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote);
+          if (syncResult.source !== 'load-failed') {
+            try { await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote); } catch (profileError) { console.warn('[fs] profile save after login failed', profileError); }
+          }
 
           setStatus('success');
           const isNewUser = mode === 'signup';
@@ -8999,6 +9007,7 @@
           setShaking(true);
           setTimeout(() => setShaking(false), 460);
           let msg = e?.message || 'Erreur de connexion';
+          if (/Invalid login credentials|Password should be|rate limit|too many/i.test(msg)) rememberAuthAttempt();
           if (/Invalid login credentials/i.test(msg)) msg = 'Email ou mot de passe incorrect';
           else if (/already registered|already exists/i.test(msg)) msg = 'Compte existant — connectez-vous';
           else if (/Password should be/i.test(msg)) msg = 'Mot de passe min. 6 caractères';
@@ -9009,6 +9018,10 @@
             : /Email not confirmed/i.test(msg)
               ? 'Confirmez votre email avant de vous connecter'
               : 'Connexion impossible. VÃ©rifiez vos informations.');
+          if (/rate limit|too many|Trop de tentatives/i.test(msg)) setErrMsg('Trop de tentatives, reessayez dans quelques minutes');
+          else if (/Email not confirmed|Confirmez votre email/i.test(msg)) setErrMsg('Confirmez votre email avant de vous connecter');
+          else if (/Invalid login credentials|Email ou mot de passe incorrect/i.test(msg)) setErrMsg('Email ou mot de passe incorrect');
+          else setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
         }
       };
 
