@@ -1946,6 +1946,24 @@
     }
     window._fsReconcileRemote = _fsReconcileRemote;
 
+    async function _fsRetryRemoteHydration(userId, tries = 4) {
+      if (!userId) return null;
+      for (let i = 0; i < tries; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1200 + i * 900));
+        const remote = await _fsLoadRemote(userId);
+        if (_fsRemoteLoadFailed(remote)) continue;
+        const result = await _fsReconcileRemote(userId, remote);
+        if (result.source !== 'load-failed') {
+          _fsSetSyncReady(true);
+          const hydrated = result.source === 'remote' ? remote : _fsSnapshotLocalData(userId);
+          if (hydrated) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: hydrated }));
+          return result;
+        }
+      }
+      return null;
+    }
+    window._fsRetryRemoteHydration = _fsRetryRemoteHydration;
+
     function _fsSnapshotLocalData(userId = window._fsSbUser?.id) {
       const r = {};
       try { const v = localStorage.getItem('fs_tasks'); if (v != null) r.tasks = JSON.parse(v); } catch (_) { }
@@ -8960,8 +8978,8 @@
           window._fsSbUser = sbUser;
           const remote = await window._fsLoadRemote(sbUser.id);
           const syncResult = await window._fsReconcileRemote(sbUser.id, remote);
-          if (syncResult.source === 'load-failed') throw new Error('sync_unavailable');
-          window._fsSetSyncReady?.(true);
+          if (syncResult.source === 'load-failed') window._fsRetryRemoteHydration?.(sbUser.id);
+          else window._fsSetSyncReady?.(true);
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
@@ -8970,7 +8988,7 @@
           clearAuthAttempts();
 
           /* Keep friend lookup fresh without clobbering synced app data. */
-          await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote);
+          if (syncResult.source !== 'load-failed') await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote);
 
           setStatus('success');
           const isNewUser = mode === 'signup';
@@ -11573,29 +11591,31 @@
               /* Start Realtime for returning users */
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
-              if (syncResult.source === 'load-failed') {
-                const localSnapshot = window._fsSnapshotLocalData?.(session.user.id);
-                if (window._fsRemoteHasSavedData?.(localSnapshot)) {
-                  if (localSnapshot.widgets) setWidgets(localSnapshot.widgets);
-                  if (localSnapshot.bg_theme) setBgThemeId(localSnapshot.bg_theme);
-                  if (localSnapshot.widget_style) applySyncedWidgetStyle(localSnapshot.widget_style);
-                  setSyncEpoch(n => n + 1);
-                  setScreen(readRouteScreen());
-                } else {
-                  setScreen('auth');
-                }
-                return;
-              }
-              window._fsSetSyncReady?.(true);
-              /* Start Realtime only after initial data hydration. */
-              window._fsStartRealtime(session.user.id);
-              window._fsStartSessionRealtime(session.user.id);
               const rawLocalUser = (() => {
                 try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (_) { return null; }
               })();
               const localUser = rawLocalUser?.id === session.user.id ? rawLocalUser : null;
               const userEmail = session.user.email?.toLowerCase();
               const userMeta = session.user.user_metadata;
+              if (syncResult.source === 'load-failed') {
+                const localSnapshot = window._fsSnapshotLocalData?.(session.user.id);
+                const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?', photo: localUser?.photo || null, ts: Date.now() };
+                try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
+                setUser(authUser);
+                if (window._fsRemoteHasSavedData?.(localSnapshot)) {
+                  if (localSnapshot.widgets) setWidgets(localSnapshot.widgets);
+                  if (localSnapshot.bg_theme) setBgThemeId(localSnapshot.bg_theme);
+                  if (localSnapshot.widget_style) applySyncedWidgetStyle(localSnapshot.widget_style);
+                  setSyncEpoch(n => n + 1);
+                }
+                setScreen(readRouteScreen());
+                window._fsRetryRemoteHydration?.(session.user.id);
+                return;
+              }
+              window._fsSetSyncReady?.(true);
+              /* Start Realtime only after initial data hydration. */
+              window._fsStartRealtime(session.user.id);
+              window._fsStartSessionRealtime(session.user.id);
               const finalName = (remote && remote.name) || localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
               const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || null, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
