@@ -5391,24 +5391,21 @@
         <div onClick={e => e.target === e.currentTarget && onClose()} style={{position:'fixed',inset:0,zIndex:1000,display:'grid',placeItems:'center',padding:18,background:'rgba(0,0,0,.64)',backdropFilter:'blur(30px) saturate(130%)',WebkitBackdropFilter:'blur(30px) saturate(130%)'}}>
           <style>{`
             @keyframes fsLaunchAuraDrift{0%,100%{transform:translate3d(-4%,-2%,0) rotate(-6deg);opacity:.56}50%{transform:translate3d(5%,3%,0) rotate(5deg);opacity:.82}}
-            @keyframes fsLaunchCrystalFloat{0%,100%{transform:translate3d(0,6px,34px) rotateX(57deg) rotateZ(-12deg)}50%{transform:translate3d(0,-10px,54px) rotateX(64deg) rotateZ(12deg)}}
-            @keyframes fsLaunchCrystalSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
             @keyframes fsLaunchRingOrbit{from{transform:rotateX(69deg) rotateZ(0deg)}to{transform:rotateX(69deg) rotateZ(360deg)}}
             @keyframes fsLaunchRingCounter{from{transform:rotateY(68deg) rotateZ(360deg)}to{transform:rotateY(68deg) rotateZ(0deg)}}
-            @keyframes fsLaunchShardOrbit{from{transform:rotateZ(var(--a)) rotateX(62deg) rotateZ(0deg)}to{transform:rotateZ(var(--a)) rotateX(62deg) rotateZ(360deg)}}
-            @keyframes fsLaunchShardFace{from{transform:translateX(var(--r)) rotateZ(var(--ia)) rotateY(0deg)}to{transform:translateX(var(--r)) rotateZ(var(--ia)) rotateY(360deg)}}
             @keyframes fsLaunchStepGlow{0%,100%{opacity:.45;transform:scaleX(.72)}50%{opacity:1;transform:scaleX(1)}}
             @keyframes fsLaunchGleam{0%{transform:translateX(-120%) rotate(18deg);opacity:0}25%{opacity:.62}70%,100%{transform:translateX(160%) rotate(18deg);opacity:0}}
+            @keyframes fsLaunchBlenderAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.92) rotate(-4deg)}50%{opacity:.62;transform:translate3d(-50%,-50%,0) scale(1.06) rotate(7deg)}}
+            @keyframes fsLaunchBlenderFloor{0%,100%{opacity:.34;transform:rotateX(70deg) scaleX(.9)}50%{opacity:.68;transform:rotateX(70deg) scaleX(1.08)}}
             .fs-session-launch-shell:before{content:"";position:absolute;inset:-24% -20% auto;height:68%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.12),transparent);filter:blur(22px);animation:fsLaunchAuraDrift 7s ease-in-out infinite;pointer-events:none}
             .fs-session-launch-preview:before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 22%,rgba(255,255,255,.16) 44%,transparent 62%);animation:fsLaunchGleam 5.6s ease-in-out infinite;pointer-events:none}
             .fs-launch-3d-scene{position:relative;width:100%;height:100%;perspective:900px;transform-style:preserve-3d;display:grid;place-items:center}
             .fs-launch-orbit{position:absolute;border-radius:999px;border:1px solid rgba(var(--theme-c1-rgb),.34);box-shadow:0 0 38px rgba(var(--theme-c1-rgb),.14),inset 0 0 18px rgba(255,255,255,.05);transform-style:preserve-3d}
             .fs-launch-orbit.o1{width:210px;height:82px;animation:fsLaunchRingOrbit 12s linear infinite}
             .fs-launch-orbit.o2{width:168px;height:168px;border-color:rgba(var(--theme-c2-rgb),.28);animation:fsLaunchRingCounter 15s linear infinite}
-            .fs-launch-crystal-wrap{position:relative;z-index:2;transform-style:preserve-3d;animation:fsLaunchCrystalFloat 4.8s ease-in-out infinite}
-            .fs-launch-crystal-core{filter:drop-shadow(0 26px 34px rgba(var(--theme-c1-rgb),.32));animation:fsLaunchCrystalSpin 7.8s linear infinite;transform-style:preserve-3d}
-            .fs-launch-shard-orbit{position:absolute;inset:50% auto auto 50%;width:1px;height:1px;transform-style:preserve-3d;animation:fsLaunchShardOrbit var(--t) linear infinite}
-            .fs-launch-shard{width:12px;height:18px;clip-path:polygon(50% 0,100% 42%,64% 100%,18% 76%,0 30%);background:linear-gradient(145deg,rgba(255,255,255,.86),var(--theme-c1),var(--theme-c2));box-shadow:0 0 18px rgba(var(--theme-c1-rgb),.36);opacity:.86;animation:fsLaunchShardFace 6s linear infinite}
+            .fs-launch-blender-aura{position:absolute;left:50%;top:50%;width:230px;height:250px;border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.38),rgba(var(--theme-c2-rgb),.18) 44%,rgba(var(--theme-c1-rgb),.06) 68%,transparent 76%);filter:blur(18px) saturate(1.08);mix-blend-mode:screen;animation:fsLaunchBlenderAura 7s cubic-bezier(.4,0,.2,1) infinite;pointer-events:none}
+            .fs-launch-3d-scene .fsBlenderCrystalCanvas{position:absolute;inset:-16%;width:132%;height:132%;display:block;z-index:3;pointer-events:none;filter:drop-shadow(0 28px 46px rgba(var(--theme-c1-rgb),.28)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.2))}
+            .fs-launch-blender-floor{position:absolute;bottom:27px;width:188px;height:36px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.12) 48%,transparent 72%);filter:blur(8px);animation:fsLaunchBlenderFloor 4.4s ease-in-out infinite}
             .fs-launch-step{position:relative;overflow:hidden}
             .fs-launch-step:after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--theme-c1),transparent);transform-origin:center;animation:fsLaunchStepGlow 2.8s ease-in-out infinite}
             @media (max-width: 760px){
@@ -5475,12 +5472,13 @@
                 <div style={{display:'grid',gap:14,position:'sticky',top:0}}>
                   <div className="fs-session-launch-preview" style={{height:264,borderRadius:30,border:'1px solid ' + c1(.22),background:'radial-gradient(circle at 50% 36%,' + c1(.28) + ',transparent 48%),radial-gradient(circle at 20% 80%,' + c2(.14) + ',transparent 42%),rgba(255,255,255,.035)',display:'grid',placeItems:'center',position:'relative',overflow:'hidden',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08),0 22px 58px rgba(0,0,0,.24)'}}>
                     <div className="fs-launch-3d-scene">
-                      <div style={{position:'absolute',width:176,height:176,borderRadius:'50%',background:'radial-gradient(circle,' + c1(.38) + ',transparent 68%)',filter:'blur(14px)'}} />
+                      <div className="fs-launch-blender-aura" />
                       <div className="fs-launch-orbit o1" />
                       <div className="fs-launch-orbit o2" />
-                      {[0,60,130,205,282].map((a,i) => <span key={i} className="fs-launch-shard-orbit" style={{'--a':a+'deg','--ia':(-a)+'deg','--r':(84 + (i%2)*22)+'px','--t':(9+i*1.2)+'s'}}><span className="fs-launch-shard" /></span>)}
-                      <div className="fs-launch-crystal-wrap"><div className="fs-launch-crystal-core">{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:crystalShape, gradientId:null, colorProgress:0, progress:0, size:112, seed:crystalShape.charCodeAt(0)*191 }) : <div style={{width:92,height:124,clipPath:'polygon(50% 0,88% 30%,72% 100%,28% 100%,12% 30%)',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))'}} />}</div></div>
-                      <div style={{position:'absolute',bottom:28,width:180,height:34,borderRadius:'50%',background:'radial-gradient(ellipse,' + c1(.30) + ',transparent 70%)',filter:'blur(8px)',transform:'rotateX(70deg)'}} />
+                      {typeof BlenderCrystalScene === 'function'
+                        ? React.createElement(BlenderCrystalScene)
+                        : <div style={{width:92,height:124,clipPath:'polygon(50% 0,88% 30%,72% 100%,28% 100%,12% 30%)',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))'}} />}
+                      <div className="fs-launch-blender-floor" />
                     </div>
                   </div>
                   <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14}}>
