@@ -7207,6 +7207,10 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z" /><path d="M15 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></svg>,
         },
         {
+          target: 'tableau', label: 'Tableau', meta: 'Whiteboard etude',
+          icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M4 5.5h16v12.8H4z"/><path d="M8 21h8"/><path d="M12 18.3V21"/><path d="M7.5 9h5"/><path d="M7.5 12h8.5"/><path d="M16.5 8.7l1.4 1.4-4.7 4.7-1.8.4.4-1.8 4.7-4.7z"/></svg>,
+        },
+        {
           target: 'session', label: 'Focus', meta: 'Sessions & cristaux',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
         },
@@ -7261,6 +7265,7 @@
                 <div className="fs-nav-section">
                   {renderNavButton(navByTarget('tasks'))}
                   {renderNavButton(navByTarget('notes'))}
+                  {renderNavButton(navByTarget('tableau'))}
 
                 <div className="fs-nav-cluster">
                   <button aria-expanded={focusMenuOpen} className={'fs-nav-item fs-nav-parent' + (['session','cristaux'].includes(screen) ? ' active' : '')}
@@ -7539,6 +7544,7 @@
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
               { target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
+              { target: 'tableau',  label: 'Tableau', icon: <svg viewBox="0 0 24 24"><path d="M4 5.5h16v12.8H4z"/><path d="M8 21h8"/><path d="M12 18.3V21"/><path d="M7.5 9h5"/><path d="M7.5 12h8.5"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
             ].map(item => (
               <button key={item.target}
@@ -8688,6 +8694,255 @@
       );
     };
     window.NotesScreen = NotesScreen;
+  </script>
+
+  <script type="text/babel">
+    function TableauScreen({ user }) {
+      const storageKey = `fs_tableau_v1_${user?.id || 'guest'}`;
+      const seed = () => ({
+        folders: ['Maths', 'Physique', 'NSI'],
+        pages: [
+          {
+            id: 'p-maths-1',
+            folder: 'Maths',
+            title: 'Derivation - cours',
+            tags: ['maths', 'a-revoir'],
+            updatedAt: Date.now(),
+            zones: [
+              { id:'z1', label:'Cours', x:56, y:72, w:540, h:430, color:'var(--theme-c1)' },
+              { id:'z2', label:'Questions', x:640, y:72, w:360, h:230, color:'var(--theme-c2)' },
+              { id:'z3', label:'Revision', x:640, y:330, w:360, h:220, color:'#7af6a4' }
+            ],
+            blocks: [
+              { id:'b1', type:'text', x:92, y:118, w:420, h:120, tag:'definition', color:'#8fdcff', text:'Derivee : taux de variation instantane.\\nFormule utile : $f_prime(x)=lim_{h->0}(f(x+h)-f(x))/h$' },
+              { id:'b2', type:'text', x:674, y:124, w:280, h:92, tag:'question', color:'#f8d28b', text:'Pourquoi la derivee annulee aide a trouver un extremum ?' },
+              { id:'b3', type:'flashcard', x:674, y:365, w:282, h:110, tag:'revision', color:'#7af6a4', text:'Carte : definition de la derivee', hidden:true }
+            ],
+            strokes: [],
+            comments: [{ id:'c1', blockId:'b2', text:'A revoir avec un exemple graphique.', author:'Prof' }],
+            history: ['Page creee', 'Zone revision ajoutee']
+          }
+        ]
+      });
+      const read = () => {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(storageKey) || 'null');
+          return parsed?.pages?.length ? parsed : seed();
+        } catch(e) { return seed(); }
+      };
+      const [data, setData] = React.useState(read);
+      const [pageId, setPageId] = React.useState(() => data.pages[0]?.id);
+      const [tool, setTool] = React.useState('select');
+      const [query, setQuery] = React.useState('');
+      const [zoom, setZoom] = React.useState(1);
+      const [focus, setFocus] = React.useState(false);
+      const [selectedBlock, setSelectedBlock] = React.useState(null);
+      const [drawing, setDrawing] = React.useState(null);
+      const boardRef = React.useRef(null);
+      const searchRef = React.useRef(null);
+      const page = data.pages.find(p => p.id === pageId) || data.pages[0];
+
+      React.useEffect(() => {
+        try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch(e) {}
+      }, [data, storageKey]);
+
+      React.useEffect(() => {
+        const onKey = e => {
+          const tag = String(e.target?.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea') return;
+          if (e.key.toLowerCase() === 't') { e.preventDefault(); addBlock('text'); }
+          if (e.key.toLowerCase() === 'f') { e.preventDefault(); makeFlashcard(); }
+          if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
+          if (e.key === 'Escape') { setFocus(false); setSelectedBlock(null); }
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') { e.preventDefault(); exportPage(); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      });
+
+      const updatePage = patch => setData(d => ({
+        ...d,
+        pages: d.pages.map(p => p.id === page.id ? { ...p, ...patch, updatedAt: Date.now(), history: [`Modifie a ${new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}`, ...(p.history || [])].slice(0, 12) } : p)
+      }));
+      const updateBlock = (id, patch) => updatePage({ blocks: page.blocks.map(b => b.id === id ? { ...b, ...patch } : b) });
+      const addBlock = (type = 'text', x = 160, y = 160) => {
+        const b = { id:`b-${Date.now()}`, type, x, y, w:type === 'formula' ? 300 : 330, h: type === 'formula' ? 78 : 116, tag:type, color:type === 'formula' ? '#c084fc' : '#8fdcff', text:type === 'formula' ? '$E=mc^2$' : 'Nouveau bloc de cours' };
+        updatePage({ blocks:[...page.blocks, b] });
+        setSelectedBlock(b.id);
+      };
+      const addPage = () => {
+        const p = { id:`p-${Date.now()}`, folder:'Nouveau', title:'Nouvelle page', tags:['cours'], updatedAt:Date.now(), zones:[{id:'z-new',label:'Cours',x:56,y:72,w:900,h:520,color:'var(--theme-c1)'}], blocks:[], strokes:[], comments:[], history:['Page creee'] };
+        setData(d => ({ ...d, folders:Array.from(new Set([...d.folders, 'Nouveau'])), pages:[p, ...d.pages] }));
+        setPageId(p.id);
+      };
+      const makeFlashcard = () => {
+        const id = selectedBlock || page.blocks[0]?.id;
+        if (!id) return addBlock('flashcard');
+        updateBlock(id, { type:'flashcard', hidden:true, tag:'revision' });
+      };
+      const convertInk = () => {
+        const last = page.strokes?.[page.strokes.length - 1];
+        if (!last) return;
+        addBlock('text', Math.min(840, last.points[0]?.x || 180), Math.min(620, last.points[0]?.y || 180));
+        setTimeout(() => {
+          const newest = (data.pages.find(p => p.id === page.id)?.blocks || []).at?.(-1);
+          if (newest) updateBlock(newest.id, { text:'Note manuscrite convertie en texte', tag:'ink-texte' });
+        }, 0);
+      };
+      const addComment = () => {
+        const id = selectedBlock || page.blocks[0]?.id;
+        if (!id) return;
+        updatePage({ comments:[...(page.comments || []), { id:`c-${Date.now()}`, blockId:id, text:'Commentaire ancre au bloc', author:user?.name || 'Ami' }] });
+      };
+      const exportPage = () => {
+        const content = `${page.title}\\n\\n${page.blocks.map(b => `[${b.tag || b.type}] ${b.text}`).join('\\n\\n')}`;
+        const blob = new Blob([content], { type:'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${page.title.replace(/[^a-z0-9]+/gi,'-').toLowerCase() || 'tableau'}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      };
+      const pageResults = React.useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return data.pages;
+        return data.pages.filter(p => [p.title, p.folder, ...(p.tags || []), ...p.blocks.map(b => `${b.text} ${b.tag}`)].join(' ').toLowerCase().includes(q));
+      }, [data.pages, query]);
+      const renderText = text => String(text || '').split(/(\$[^$]+\$|\[\[[^\]]+\]\])/g).map((part, i) => {
+        if (/^\$[^$]+\$$/.test(part)) return <span key={i} className="fs-board-latex">{part.slice(1,-1)}</span>;
+        if (/^\[\[[^\]]+\]\]$/.test(part)) return <button key={i} className="fs-board-link" onClick={() => setQuery(part.slice(2,-2))}>{part.slice(2,-2)}</button>;
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      });
+      const boardPoint = e => {
+        const r = boardRef.current?.getBoundingClientRect();
+        if (!r) return { x:0, y:0 };
+        return { x:(e.clientX - r.left) / zoom, y:(e.clientY - r.top) / zoom };
+      };
+      const pointerDown = e => {
+        if (!['pen','highlighter'].includes(tool)) return;
+        const p = boardPoint(e);
+        setDrawing({ id:`s-${Date.now()}`, kind:tool, points:[p], color: tool === 'highlighter' ? '#f8d28b' : 'var(--theme-c1)' });
+      };
+      const pointerMove = e => {
+        if (!drawing) return;
+        const p = boardPoint(e);
+        setDrawing(d => ({ ...d, points:[...d.points, p].slice(-800) }));
+      };
+      const pointerUp = () => {
+        if (!drawing) return;
+        updatePage({ strokes:[...(page.strokes || []), drawing] });
+        setDrawing(null);
+      };
+      const strokePath = s => (s.points || []).map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      const subjectProgress = Math.min(100, Math.round((page.blocks.filter(b => b.type === 'flashcard').length + page.blocks.length) * 12));
+
+      return (
+        <div className={'fs-board-screen' + (focus ? ' fs-board-focus' : '')}>
+          <style>{`
+            .fs-board-screen{height:100%;padding:22px;box-sizing:border-box;color:var(--mineral-text);font-family:var(--font-body);overflow:auto;background:radial-gradient(circle at 26% 0%,rgba(var(--theme-c1-rgb),0.14),transparent 34%),radial-gradient(circle at 82% 16%,rgba(var(--theme-c2-rgb),0.12),transparent 30%)}
+            .fs-board-shell{display:grid;grid-template-columns:278px minmax(0,1fr) 286px;gap:16px;min-height:calc(100vh - 44px)}
+            .fs-board-panel,.fs-board-stage,.fs-board-side{border:1px solid rgba(255,255,255,0.085);background:linear-gradient(180deg,rgba(255,255,255,0.072),rgba(255,255,255,0.032));box-shadow:0 24px 70px rgba(0,0,0,0.30),inset 0 1px 0 rgba(255,255,255,0.08);backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);border-radius:26px}
+            .fs-board-panel,.fs-board-side{padding:16px;box-sizing:border-box}
+            .fs-board-title{font-family:var(--font-display);font-size:28px;font-weight:850;letter-spacing:0;line-height:1;margin:0}
+            .fs-board-muted{font-size:12px;color:var(--mineral-muted);line-height:1.5}
+            .fs-board-search{width:100%;height:42px;border-radius:15px;border:1px solid rgba(255,255,255,0.09);background:rgba(5,8,20,0.40);color:var(--mineral-text);padding:0 13px;box-sizing:border-box;outline:none;font-family:var(--font-body);font-size:13px}
+            .fs-board-page-btn{width:100%;text-align:left;border:1px solid rgba(255,255,255,0.055);background:rgba(255,255,255,0.035);border-radius:16px;padding:12px;margin-top:8px;color:var(--mineral-text);cursor:pointer;transition:transform .18s,background .18s,border-color .18s}
+            .fs-board-page-btn.active{background:rgba(var(--theme-c1-rgb),0.13);border-color:rgba(var(--theme-c1-rgb),0.30);box-shadow:0 12px 30px rgba(var(--theme-c1-rgb),0.10)}
+            .fs-board-page-btn:hover{transform:translateY(-1px)}
+            .fs-board-chip{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:rgba(var(--theme-c1-rgb),0.11);border:1px solid rgba(var(--theme-c1-rgb),0.20);color:var(--theme-c1);font-size:10px;font-weight:850;margin:7px 6px 0 0}
+            .fs-board-stage{position:relative;overflow:hidden;display:flex;flex-direction:column}
+            .fs-board-top{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid rgba(255,255,255,0.06)}
+            .fs-board-tool{height:38px;min-width:38px;border-radius:14px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.045);color:var(--mineral-text);font-weight:850;cursor:pointer;transition:transform .16s,background .16s,border-color .16s}
+            .fs-board-tool.active{background:rgba(var(--theme-c1-rgb),0.16);border-color:rgba(var(--theme-c1-rgb),0.34);color:var(--theme-c1)}
+            .fs-board-tool:active{transform:scale(.96)}
+            .fs-board-canvas-wrap{flex:1;overflow:auto;padding:26px;overscroll-behavior:contain}
+            .fs-board-canvas{position:relative;width:1120px;height:760px;transform-origin:0 0;border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,0.94),rgba(239,246,255,0.91));box-shadow:0 30px 90px rgba(0,0,0,0.34),inset 0 0 0 1px rgba(15,23,42,0.08);color:#111827;touch-action:none}
+            .fs-board-zone{position:absolute;border:1px dashed rgba(15,23,42,0.22);border-radius:20px;background:rgba(255,255,255,0.30)}
+            .fs-board-zone span{position:absolute;left:14px;top:10px;font-size:11px;font-weight:900;color:#334155;text-transform:uppercase;letter-spacing:.08em}
+            .fs-board-block{position:absolute;border-radius:18px;border:1px solid rgba(15,23,42,0.12);background:rgba(255,255,255,0.82);box-shadow:0 14px 28px rgba(15,23,42,0.12),inset 0 1px 0 rgba(255,255,255,.9);padding:13px;box-sizing:border-box;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s;overflow:hidden}
+            .fs-board-block.active{border-color:rgba(var(--theme-c1-rgb),0.62);box-shadow:0 18px 42px rgba(var(--theme-c1-rgb),0.20),inset 0 1px 0 rgba(255,255,255,.9)}
+            .fs-board-block:hover{transform:translateY(-1px)}
+            .fs-board-block textarea{width:100%;height:calc(100% - 25px);border:0;background:transparent;resize:none;outline:none;font:600 14px/1.45 var(--font-body);color:#111827}
+            .fs-board-tag{font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#475569;margin-bottom:6px}
+            .fs-board-latex{display:inline-flex;margin:0 3px;padding:2px 7px;border-radius:8px;background:rgba(124,58,237,.10);color:#6d28d9;font-family:var(--font-mono);font-weight:850}
+            .fs-board-link{border:0;background:rgba(14,165,233,.12);color:#0369a1;border-radius:8px;padding:1px 6px;font-weight:850;cursor:pointer}
+            .fs-board-strokes{position:absolute;inset:0;pointer-events:none}
+            .fs-board-mini{position:relative;height:132px;border-radius:18px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.07);overflow:hidden}
+            .fs-board-mini-dot{position:absolute;border-radius:5px;background:rgba(var(--theme-c1-rgb),0.54)}
+            .fs-board-action{height:42px;border:0;border-radius:15px;background:linear-gradient(135deg,rgb(var(--theme-c1-rgb)),rgb(var(--theme-c2-rgb)));color:#050712;font-weight:950;font-family:var(--font-body);cursor:pointer;box-shadow:0 14px 34px rgba(var(--theme-c1-rgb),.24)}
+            .fs-board-secondary{height:38px;border-radius:14px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.045);color:var(--mineral-text);font-weight:850;cursor:pointer}
+            .fs-board-focus .fs-board-panel,.fs-board-focus .fs-board-side{display:none}.fs-board-focus .fs-board-shell{grid-template-columns:1fr}.fs-board-focus .fs-board-screen{padding:0}
+            @media(max-width:1120px){.fs-board-shell{grid-template-columns:1fr}.fs-board-panel,.fs-board-side{order:2}.fs-board-stage{order:1;min-height:620px}.fs-board-canvas-wrap{padding:14px}.fs-board-canvas{width:920px;height:660px}.fs-board-title{font-size:24px}}
+            @media(max-width:720px){.fs-board-screen{padding:12px 12px 96px}.fs-board-shell{gap:12px}.fs-board-panel,.fs-board-side,.fs-board-stage{border-radius:22px}.fs-board-top{overflow:auto}.fs-board-tool{min-width:36px}.fs-board-canvas{width:760px;height:560px}.fs-board-canvas-wrap{min-height:520px}.fs-board-title{font-size:22px}}
+            @media print{body *{visibility:hidden}.fs-board-canvas,.fs-board-canvas *{visibility:visible}.fs-board-canvas{position:fixed!important;left:0;top:0;transform:none!important;box-shadow:none!important}}
+          `}</style>
+          <div className="fs-board-shell">
+            <aside className="fs-board-panel">
+              <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'start'}}>
+                <div><p className="fs-board-title">Tableau</p><div className="fs-board-muted" style={{marginTop:8}}>Cahier blanc structure pour etudier vite.</div></div>
+                <button className="fs-board-tool" onClick={addPage} title="Nouvelle page">+</button>
+              </div>
+              <input ref={searchRef} className="fs-board-search" style={{marginTop:16}} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Recherche / raccourci" />
+              <div style={{marginTop:14}}>
+                {pageResults.map(p => <button key={p.id} className={'fs-board-page-btn' + (p.id === page.id ? ' active' : '')} onClick={()=>setPageId(p.id)}>
+                  <div style={{fontSize:13,fontWeight:900}}>{p.title}</div>
+                  <div className="fs-board-muted">{p.folder} - {p.blocks.length} blocs</div>
+                  {(p.tags || []).map(t => <span key={t} className="fs-board-chip">{t}</span>)}
+                </button>)}
+              </div>
+            </aside>
+            <main className="fs-board-stage">
+              <div className="fs-board-top">
+                <button className={'fs-board-tool' + (tool==='select'?' active':'')} onClick={()=>setTool('select')} title="Selection">S</button>
+                <button className={'fs-board-tool' + (tool==='pen'?' active':'')} onClick={()=>setTool('pen')} title="Stylet">Ink</button>
+                <button className={'fs-board-tool' + (tool==='highlighter'?' active':'')} onClick={()=>setTool('highlighter')} title="Surligneur">Hi</button>
+                <button className="fs-board-tool" onClick={()=>addBlock('text')} title="Bloc texte - touche T">T</button>
+                <button className="fs-board-tool" onClick={()=>addBlock('formula')} title="Formule LaTeX">fx</button>
+                <button className="fs-board-tool" onClick={makeFlashcard} title="Flashcard - touche F">FC</button>
+                <button className="fs-board-tool" onClick={()=>setFocus(v=>!v)} title="Mode focus">Focus</button>
+                <div style={{flex:1}} />
+                <input type="range" min="0.72" max="1.35" step="0.01" value={zoom} onChange={e=>setZoom(Number(e.target.value))} style={{width:110}} />
+                <button className="fs-board-action" onClick={exportPage}>Export</button>
+              </div>
+              <div className="fs-board-canvas-wrap">
+                <div ref={boardRef} className="fs-board-canvas" style={{transform:`scale(${zoom})`}} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onDoubleClick={e=>{ const p=boardPoint(e); addBlock('text',p.x,p.y); }}>
+                  {page.zones.map(z => <div key={z.id} className="fs-board-zone" style={{left:z.x,top:z.y,width:z.w,height:z.h,borderColor:z.color}}><span>{z.label}</span></div>)}
+                  <svg className="fs-board-strokes" viewBox="0 0 1120 760">
+                    {[...(page.strokes || []), ...(drawing ? [drawing] : [])].map(s => <path key={s.id} d={strokePath(s)} fill="none" stroke={s.color} strokeWidth={s.kind === 'highlighter' ? 14 : 3.4} strokeLinecap="round" strokeLinejoin="round" opacity={s.kind === 'highlighter' ? .32 : .92}/>)}
+                  </svg>
+                  {page.blocks.map(b => <div key={b.id} className={'fs-board-block' + (selectedBlock === b.id ? ' active' : '')} style={{left:b.x,top:b.y,width:b.w,height:b.h,borderTop:`4px solid ${b.color || '#8fdcff'}`}} onClick={e=>{e.stopPropagation();setSelectedBlock(b.id);}}>
+                    <div className="fs-board-tag">{b.tag || b.type}</div>
+                    {b.hidden ? <button onClick={()=>updateBlock(b.id,{hidden:false})} style={{width:'100%',height:'calc(100% - 24px)',border:0,borderRadius:12,background:'rgba(15,23,42,.06)',fontWeight:900,cursor:'pointer'}}>Masque - cliquer pour reveler</button>
+                      : selectedBlock === b.id ? <textarea value={b.text} onChange={e=>updateBlock(b.id,{text:e.target.value})}/>
+                      : <div style={{fontSize:14,lineHeight:1.48,fontWeight:650,whiteSpace:'pre-wrap'}}>{renderText(b.text)}</div>}
+                  </div>)}
+                </div>
+              </div>
+            </main>
+            <aside className="fs-board-side">
+              <div style={{display:'grid',gap:12}}>
+                <div><div style={{fontSize:12,fontWeight:950,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--theme-c1)'}}>Navigation</div><div className="fs-board-mini" style={{marginTop:10}}>{page.blocks.map(b=><span key={b.id} className="fs-board-mini-dot" style={{left:`${b.x/11.2}%`,top:`${b.y/7.6}%`,width:Math.max(8,b.w/22),height:Math.max(6,b.h/28)}} />)}</div></div>
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:13}}><div style={{fontSize:14,fontWeight:900}}>Progression matiere</div><div style={{height:9,borderRadius:99,background:'rgba(255,255,255,.07)',marginTop:10,overflow:'hidden'}}><div style={{width:`${subjectProgress}%`,height:'100%',background:'linear-gradient(90deg,var(--theme-c1),var(--theme-c2))'}} /></div><div className="fs-board-muted" style={{marginTop:8}}>{subjectProgress}% structure</div></div>
+                <button className="fs-board-secondary" onClick={convertInk}>Convertir ink en texte</button>
+                <button className="fs-board-secondary" onClick={addComment}>Commenter le bloc</button>
+                <button className="fs-board-secondary" onClick={()=> selectedBlock && updateBlock(selectedBlock,{hidden:true})}>Masquer / memoriser</button>
+                <button className="fs-board-secondary" onClick={()=>window.print()}>PDF propre</button>
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:13}}>
+                  <div style={{fontSize:14,fontWeight:900}}>Commentaires ancres</div>
+                  {(page.comments || []).map(c => <div key={c.id} style={{marginTop:9,padding:10,borderRadius:14,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.06)'}}><div style={{fontSize:11,fontWeight:900,color:'var(--theme-c1)'}}>{c.author}</div><div className="fs-board-muted">{c.text}</div></div>)}
+                </div>
+                <div style={{borderTop:'1px solid rgba(255,255,255,.07)',paddingTop:13}}>
+                  <div style={{fontSize:14,fontWeight:900}}>Session history</div>
+                  {(page.history || []).slice(0,4).map(h => <div key={h} className="fs-board-muted" style={{marginTop:7}}>{h}</div>)}
+                </div>
+                <div style={{display:'flex',gap:8,alignItems:'center',padding:10,borderRadius:16,background:'rgba(122,246,164,.08)',border:'1px solid rgba(122,246,164,.18)'}}><span style={{width:8,height:8,borderRadius:99,background:'#7af6a4'}}/><span className="fs-board-muted">Hors-ligne pret - sauvegarde locale</span></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      );
+    }
+    window.TableauScreen = TableauScreen;
   </script>
 
   <script type="text/babel">
@@ -11106,7 +11361,7 @@
     }
 
     const APP_ROUTE_SCREENS = new Set([
-      'dashboard', 'tasks', 'cristaux', 'notes', 'edit', 'perso', 'settings', 'fond',
+      'dashboard', 'tasks', 'cristaux', 'notes', 'tableau', 'edit', 'perso', 'settings', 'fond',
       'fonts', 'notes-style', 'variants', 'session', 'evolution', 'progression'
     ]);
 
@@ -11717,6 +11972,7 @@
                 {screen === 'tasks' && <TasksScreen />}
                 {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux' })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
+                {screen === 'tableau' && window.TableauScreen && React.createElement(window.TableauScreen, { user })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
                 {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} />}
