@@ -5331,6 +5331,12 @@
       const emailTyped = email.trim().length > 0;
       const emailValid = emailTyped && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
       const canLaunch = mode === 'solo' || emailValid;
+      const launchSteps = [
+        ['Demarrer', mode === 'solo' ? 'Solo' : 'Ensemble'],
+        ['Ton cristal', crystalShape],
+        ['Configurer', cfg.duration + ' min'],
+        ['Pret', canLaunch ? 'Go' : 'Email'],
+      ];
       const acol = mode === 'together' ? T.green : T.c1;
       const toggleFocusTask = id => setFocusTaskIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
@@ -5384,23 +5390,52 @@
       return (
         <div onClick={e => e.target === e.currentTarget && onClose()} style={{position:'fixed',inset:0,zIndex:1000,display:'grid',placeItems:'center',padding:18,background:'rgba(0,0,0,.64)',backdropFilter:'blur(30px) saturate(130%)',WebkitBackdropFilter:'blur(30px) saturate(130%)'}}>
           <style>{`
+            @keyframes fsLaunchAuraDrift{0%,100%{transform:translate3d(-4%,-2%,0) rotate(-6deg);opacity:.56}50%{transform:translate3d(5%,3%,0) rotate(5deg);opacity:.82}}
+            @keyframes fsLaunchCrystalFloat{0%,100%{transform:translate3d(0,6px,34px) rotateX(57deg) rotateZ(-12deg)}50%{transform:translate3d(0,-10px,54px) rotateX(64deg) rotateZ(12deg)}}
+            @keyframes fsLaunchCrystalSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
+            @keyframes fsLaunchRingOrbit{from{transform:rotateX(69deg) rotateZ(0deg)}to{transform:rotateX(69deg) rotateZ(360deg)}}
+            @keyframes fsLaunchRingCounter{from{transform:rotateY(68deg) rotateZ(360deg)}to{transform:rotateY(68deg) rotateZ(0deg)}}
+            @keyframes fsLaunchShardOrbit{from{transform:rotateZ(var(--a)) rotateX(62deg) rotateZ(0deg)}to{transform:rotateZ(var(--a)) rotateX(62deg) rotateZ(360deg)}}
+            @keyframes fsLaunchShardFace{from{transform:translateX(var(--r)) rotateZ(var(--ia)) rotateY(0deg)}to{transform:translateX(var(--r)) rotateZ(var(--ia)) rotateY(360deg)}}
+            @keyframes fsLaunchStepGlow{0%,100%{opacity:.45;transform:scaleX(.72)}50%{opacity:1;transform:scaleX(1)}}
+            @keyframes fsLaunchGleam{0%{transform:translateX(-120%) rotate(18deg);opacity:0}25%{opacity:.62}70%,100%{transform:translateX(160%) rotate(18deg);opacity:0}}
+            .fs-session-launch-shell:before{content:"";position:absolute;inset:-24% -20% auto;height:68%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.12),transparent);filter:blur(22px);animation:fsLaunchAuraDrift 7s ease-in-out infinite;pointer-events:none}
+            .fs-session-launch-preview:before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 22%,rgba(255,255,255,.16) 44%,transparent 62%);animation:fsLaunchGleam 5.6s ease-in-out infinite;pointer-events:none}
+            .fs-launch-3d-scene{position:relative;width:100%;height:100%;perspective:900px;transform-style:preserve-3d;display:grid;place-items:center}
+            .fs-launch-orbit{position:absolute;border-radius:999px;border:1px solid rgba(var(--theme-c1-rgb),.34);box-shadow:0 0 38px rgba(var(--theme-c1-rgb),.14),inset 0 0 18px rgba(255,255,255,.05);transform-style:preserve-3d}
+            .fs-launch-orbit.o1{width:210px;height:82px;animation:fsLaunchRingOrbit 12s linear infinite}
+            .fs-launch-orbit.o2{width:168px;height:168px;border-color:rgba(var(--theme-c2-rgb),.28);animation:fsLaunchRingCounter 15s linear infinite}
+            .fs-launch-crystal-wrap{position:relative;z-index:2;transform-style:preserve-3d;animation:fsLaunchCrystalFloat 4.8s ease-in-out infinite}
+            .fs-launch-crystal-core{filter:drop-shadow(0 26px 34px rgba(var(--theme-c1-rgb),.32));animation:fsLaunchCrystalSpin 7.8s linear infinite;transform-style:preserve-3d}
+            .fs-launch-shard-orbit{position:absolute;inset:50% auto auto 50%;width:1px;height:1px;transform-style:preserve-3d;animation:fsLaunchShardOrbit var(--t) linear infinite}
+            .fs-launch-shard{width:12px;height:18px;clip-path:polygon(50% 0,100% 42%,64% 100%,18% 76%,0 30%);background:linear-gradient(145deg,rgba(255,255,255,.86),var(--theme-c1),var(--theme-c2));box-shadow:0 0 18px rgba(var(--theme-c1-rgb),.36);opacity:.86;animation:fsLaunchShardFace 6s linear infinite}
+            .fs-launch-step{position:relative;overflow:hidden}
+            .fs-launch-step:after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--theme-c1),transparent);transform-origin:center;animation:fsLaunchStepGlow 2.8s ease-in-out infinite}
             @media (max-width: 760px){
               .fs-session-launch-shell{border-radius:26px!important;max-height:calc(100vh - 22px)!important}
               .fs-session-launch-grid{grid-template-columns:1fr!important}
               .fs-session-launch-main{padding:24px 18px 18px!important}
               .fs-session-launch-title{font-size:31px!important}
               .fs-session-launch-side{border-left:0!important;border-top:1px solid rgba(255,255,255,.07)!important;padding:18px!important}
-              .fs-session-launch-preview{height:188px!important}
+              .fs-session-launch-preview{height:220px!important}
               .fs-session-launch-shapes{grid-template-columns:repeat(2,1fr)!important}
+              .fs-session-launch-rail{grid-template-columns:repeat(2,1fr)!important}
             }
           `}</style>
-          <div className="fs-session-launch-shell" style={{width:'min(940px,calc(100vw - 28px))',maxHeight:'min(90vh,760px)',overflow:'hidden',borderRadius:34,border:'1px solid ' + c1(.22),background:'radial-gradient(circle at 18% 0%,' + c1(.18) + ',transparent 42%),radial-gradient(circle at 88% 18%,' + c2(.15) + ',transparent 38%),linear-gradient(145deg,rgba(10,12,24,.96),rgba(11,10,20,.91))',boxShadow:'0 50px 140px rgba(0,0,0,.72),0 0 90px ' + c1(.16) + ',inset 0 1px 0 rgba(255,255,255,.10)',fontFamily:T.font,color:T.text,animation:'scaleIn .28s cubic-bezier(.16,1,.3,1) both',position:'relative'}}>
+          <div className="fs-session-launch-shell" style={{width:'min(980px,calc(100vw - 28px))',maxHeight:'min(90vh,780px)',overflow:'hidden',borderRadius:36,border:'1px solid ' + c1(.24),background:'radial-gradient(circle at 14% 0%,' + c1(.24) + ',transparent 38%),radial-gradient(circle at 82% 12%,' + c2(.18) + ',transparent 42%),linear-gradient(145deg,rgba(10,12,24,.975),rgba(11,10,20,.925))',boxShadow:'0 54px 150px rgba(0,0,0,.74),0 0 100px ' + c1(.18) + ',inset 0 1px 0 rgba(255,255,255,.12)',fontFamily:T.font,color:T.text,animation:'scaleIn .28s cubic-bezier(.16,1,.3,1) both',position:'relative'}}>
             <button type="button" onClick={onClose} aria-label="Fermer" style={{position:'absolute',right:18,top:18,zIndex:4,width:38,height:38,borderRadius:'50%',border:'1px solid rgba(255,255,255,.10)',background:'rgba(255,255,255,.06)',color:T.muted,cursor:'pointer',fontSize:20}}>x</button>
             <div className="fs-session-launch-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1.03fr) minmax(330px,.82fr)',maxHeight:'min(90vh,760px)',overflow:'auto'}}>
               <main className="fs-session-launch-main" style={{padding:'30px 32px 32px',minWidth:0}}>
-                <div style={{display:'inline-flex',alignItems:'center',gap:8,height:30,padding:'0 11px',borderRadius:999,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.08)',fontSize:9,fontWeight:900,letterSpacing:'.13em',textTransform:'uppercase',color:'rgba(248,246,252,.82)'}}><span style={{width:7,height:7,borderRadius:99,background:'var(--theme-c1)',boxShadow:'0 0 16px ' + c1(.8)}} />LumenOS Session</div>
-                <div className="fs-session-launch-title" style={{fontFamily:T.display,fontWeight:900,fontSize:'clamp(31px,4vw,44px)',letterSpacing:0,lineHeight:1.02,marginTop:18}}>Prepare ton focus.</div>
-                <div style={{fontSize:13.5,lineHeight:1.72,color:T.muted,maxWidth:'58ch',marginTop:10}}>Tout tient sur une seule vue. Les reglages essentiels sont prets, tu ajustes seulement ce qui compte puis tu lances.</div>
+                <div style={{display:'inline-flex',alignItems:'center',gap:10,height:34,padding:'0 12px 0 8px',borderRadius:999,background:'linear-gradient(135deg,' + c1(.16) + ',rgba(255,255,255,.045))',border:'1px solid ' + c1(.18),fontSize:9,fontWeight:950,letterSpacing:'.14em',textTransform:'uppercase',color:'rgba(248,246,252,.88)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'}}><span style={{width:20,height:20,borderRadius:8,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',boxShadow:'0 0 20px ' + c1(.52),display:'grid',placeItems:'center',color:'#06070d',fontWeight:950}}>L</span>Rituel LumenOS</div>
+                <div className="fs-session-launch-title" style={{fontFamily:T.display,fontWeight:950,fontSize:'clamp(33px,4.25vw,48px)',letterSpacing:0,lineHeight:1.01,marginTop:18}}>Prepare ton focus.</div>
+                <div style={{fontSize:13.5,lineHeight:1.72,color:T.muted,maxWidth:'60ch',marginTop:10}}>Une capsule de lancement rapide, marquee par ton theme. Choisis le rythme, calibre le cristal, puis pars sans friction.</div>
+
+                <div className="fs-session-launch-rail" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8,marginTop:20}}>
+                  {launchSteps.map(([label,value],i) => <div key={label} className="fs-launch-step" style={{borderRadius:16,border:'1px solid ' + (i === 3 && canLaunch ? c1(.28) : 'rgba(255,255,255,.075)'),background:i === 3 && canLaunch ? 'linear-gradient(145deg,' + c1(.15) + ',' + c2(.07) + ')' : 'rgba(255,255,255,.035)',padding:'11px 12px 12px',boxShadow:'inset 0 1px 0 rgba(255,255,255,.045)'}}>
+                    <div style={{fontSize:9,fontWeight:950,letterSpacing:'.10em',textTransform:'uppercase',color:i === 3 && canLaunch ? T.c1 : T.muted}}>{label}</div>
+                    <div style={{fontSize:12,fontWeight:900,color:T.text,marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{value}</div>
+                  </div>)}
+                </div>
 
                 <section style={{marginTop:22}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Mode</span><span>{mode === 'solo' ? 'Simple et rapide' : 'Avec un ami'}</span></div>
@@ -5438,10 +5473,15 @@
 
               <aside className="fs-session-launch-side" style={{padding:30,borderLeft:'1px solid rgba(255,255,255,.07)',background:'rgba(255,255,255,.025)'}}>
                 <div style={{display:'grid',gap:14,position:'sticky',top:0}}>
-                  <div className="fs-session-launch-preview" style={{height:238,borderRadius:28,border:'1px solid ' + c1(.18),background:'radial-gradient(circle at 50% 38%,' + c1(.22) + ',transparent 58%),rgba(255,255,255,.035)',display:'grid',placeItems:'center',position:'relative',overflow:'hidden'}}>
-                    <div style={{position:'absolute',width:188,height:78,borderRadius:999,border:'1px solid ' + c1(.30),transform:'rotateX(68deg)',boxShadow:'0 0 42px ' + c1(.16)}} />
-                    <div style={{position:'absolute',width:160,height:160,borderRadius:'50%',background:'radial-gradient(circle,' + c1(.32) + ',transparent 70%)',filter:'blur(14px)'}} />
-                    <div style={{position:'relative',zIndex:1}}>{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:crystalShape, gradientId:null, colorProgress:0, progress:0, size:92, seed:crystalShape.charCodeAt(0)*191 }) : <div style={{width:82,height:112,clipPath:'polygon(50% 0,88% 30%,72% 100%,28% 100%,12% 30%)',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))'}} />}</div>
+                  <div className="fs-session-launch-preview" style={{height:264,borderRadius:30,border:'1px solid ' + c1(.22),background:'radial-gradient(circle at 50% 36%,' + c1(.28) + ',transparent 48%),radial-gradient(circle at 20% 80%,' + c2(.14) + ',transparent 42%),rgba(255,255,255,.035)',display:'grid',placeItems:'center',position:'relative',overflow:'hidden',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08),0 22px 58px rgba(0,0,0,.24)'}}>
+                    <div className="fs-launch-3d-scene">
+                      <div style={{position:'absolute',width:176,height:176,borderRadius:'50%',background:'radial-gradient(circle,' + c1(.38) + ',transparent 68%)',filter:'blur(14px)'}} />
+                      <div className="fs-launch-orbit o1" />
+                      <div className="fs-launch-orbit o2" />
+                      {[0,60,130,205,282].map((a,i) => <span key={i} className="fs-launch-shard-orbit" style={{'--a':a+'deg','--ia':(-a)+'deg','--r':(84 + (i%2)*22)+'px','--t':(9+i*1.2)+'s'}}><span className="fs-launch-shard" /></span>)}
+                      <div className="fs-launch-crystal-wrap"><div className="fs-launch-crystal-core">{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:crystalShape, gradientId:null, colorProgress:0, progress:0, size:112, seed:crystalShape.charCodeAt(0)*191 }) : <div style={{width:92,height:124,clipPath:'polygon(50% 0,88% 30%,72% 100%,28% 100%,12% 30%)',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))'}} />}</div></div>
+                      <div style={{position:'absolute',bottom:28,width:180,height:34,borderRadius:'50%',background:'radial-gradient(ellipse,' + c1(.30) + ',transparent 70%)',filter:'blur(8px)',transform:'rotateX(70deg)'}} />
+                    </div>
                   </div>
                   <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14}}>
                     <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span><span>couleur surprise</span></div>
