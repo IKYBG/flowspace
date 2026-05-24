@@ -4510,6 +4510,7 @@
       const [templateBusy, setTemplateBusy] = _uS9(false);
       const [confirmDeleteId, setConfirmDeleteId] = _uS9(null);
       const [pickerWidget, setPickerWidget] = _uS9(null);
+      const [widgetFilter, setWidgetFilter] = _uS9('essentials');
       const [drag, setDrag] = _uS9(null);
       const gridRef = _uR9(null);
       const movedRef = _uR9(false);
@@ -4535,6 +4536,13 @@
         { id: 'notes', label: 'Notes', name: 'Note rapide', short: 'Idees capturees vite', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: '✎', color: T.warm, C: window.NotesWidget, variants: [1, 2] },
       ];
       const TRAY = CATALOG.map(c => c.label);
+      const WIDGET_FILTERS = [
+        { id:'essentials', label:'Essentiels', match:['Clock','Tasks','Pomodoro','Notes'] },
+        { id:'focus', label:'Focus', match:['Pomodoro','Goal','Streak','Countdown'] },
+        { id:'media', label:'Media', match:['Spotify','Image','Links'] },
+        { id:'all', label:'Tous', match:TRAY },
+      ];
+      const filteredCatalog = CATALOG.filter(c => (WIDGET_FILTERS.find(f => f.id === widgetFilter) || WIDGET_FILTERS[0]).match.includes(c.label));
 
       const parseSpan = s => s.split('/').map(Number);
       const encodeTemplate = payload => {
@@ -4982,28 +4990,31 @@
             </div>
             <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
               <button onClick={() => setShowPicker(p => !p)}
-                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter un widget</button>
+                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter</button>
               <button onClick={() => { setShowPresets(true); setShowPicker(false); }}
                 style={{ background: showPresets ? `linear-gradient(135deg,${c1(0.18)},rgba(var(--theme-c2-rgb),0.10))` : 'linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.032))', border: `1px solid ${showPresets ? c1(0.38) : 'rgba(255,255,255,0.085)'}`, borderRadius: 12, padding: '9px 15px', color: showPresets ? T.c1 : T.text, fontSize: 12, fontWeight: 850, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s cubic-bezier(.16,1,.3,1)', boxShadow: showPresets ? `0 12px 30px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.10)` : 'inset 0 1px 0 rgba(255,255,255,0.06)' }}>Préréglage</button>
               {showPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: 12, zIndex: 9999, display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 9, width: 'min(430px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
-                  <div style={{ gridColumn: '1/-1', padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.c1 }}>Bibliothèque de widgets</span>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Choisis ce que tu veux voir sur ton dashboard. Tu pourras sélectionner un style avant de l'ajouter.</div>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: 14, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 9, width: 'min(390px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+                  <div style={{ padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.c1 }}>Bibliotheque guidee</span>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Commence par un besoin. Tu choisiras le style juste apres.</div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:11 }}>
+                      {WIDGET_FILTERS.map(f => <button key={f.id} type="button" onClick={() => setWidgetFilter(f.id)} style={{ height:28, borderRadius:999, border:`1px solid ${widgetFilter === f.id ? c1(0.34) : 'rgba(255,255,255,0.075)'}`, background:widgetFilter === f.id ? c1(0.13) : 'rgba(255,255,255,0.035)', color:widgetFilter === f.id ? T.c1 : T.muted, padding:'0 10px', fontSize:10.5, fontWeight:850, fontFamily:T.font, cursor:'pointer' }}>{f.label}</button>)}
+                    </div>
                   </div>
-                  {TRAY.map(name => {
+                  {filteredCatalog.map(cat => {
+                    const name = cat.label;
                     const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Spotify: { icon: '♪', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
                     const m = META[name] || { icon: '◇', c: T.c1 };
-                    const cat = CATALOG.find(c => c.label === name);
                     const friendly = cat || { name, short: name, desc: '', best: '', category: '', color: T.c1 };
                     return (
                       <button key={name} onClick={() => { setPickerWidget(name); setShowPicker(false); }}
-                        style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))', border: '1px solid rgba(255,255,255,0.065)', borderRadius: 16, padding: '14px 10px 12px', minHeight: 112, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s cubic-bezier(.16,1,.3,1)', textAlign: 'center', fontFamily: T.font, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055)' }}
+                        style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))', border: '1px solid rgba(255,255,255,0.065)', borderRadius: 16, padding: '12px', minHeight: 78, cursor: 'pointer', display: 'grid', gridTemplateColumns:'46px 1fr auto', alignItems: 'center', gap: 12, transition: 'all 0.18s cubic-bezier(.16,1,.3,1)', textAlign: 'left', fontFamily: T.font, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055)' }}
                         onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(180deg,${c1(0.13)},rgba(255,255,255,0.035))`; e.currentTarget.style.borderColor = `${c1(0.28)}`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.065)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
                         <span style={{ width: 44, height: 44, borderRadius: 16, background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', border: '1px solid rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, lineHeight: 1, color: '#070810', flexShrink: 0, boxShadow: `0 12px 30px ${c1(0.22)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{friendly.icon || m.icon}</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 900, color: T.text, lineHeight: 1, letterSpacing: '-0.015em', maxWidth: 124 }}>{friendly.name || name}</span>
-                        <span style={{ fontSize: 10.5, fontWeight: 700, color: T.muted, lineHeight: 1.18, maxWidth: 124 }}>{friendly.short || name}</span>
+                        <span style={{ minWidth:0 }}><span style={{ display:'block', fontSize: 13, fontWeight: 900, color: T.text, lineHeight: 1, letterSpacing: '-0.015em' }}>{friendly.name || name}</span><span style={{ display:'block', marginTop:5, fontSize: 10.5, fontWeight: 700, color: T.muted, lineHeight: 1.25 }}>{friendly.short || name}</span></span>
+                        <span style={{ color:T.muted, fontSize:16 }}>→</span>
                       </button>
                     );
                   })}
@@ -11151,38 +11162,86 @@
 
       const myEmailRef = _uRC(user?.email || '');
       _uEC(() => { myEmailRef.current = user?.email || ''; }, [user]);
+      _uEC(() => {
+        if (!user?.id || !window._fsSb) return;
+        const channel = window._fsSb.channel('lumenos-presence', { config: { presence: { key: user.id } } });
+        const publish = () => {
+          try {
+            const state = channel.presenceState?.() || {};
+            window._fsPresenceIds = new Set(Object.keys(state));
+            window.dispatchEvent(new CustomEvent('fs-presence-update', { detail: { ids: Array.from(window._fsPresenceIds) } }));
+          } catch(e) {}
+        };
+        channel.on('presence', { event: 'sync' }, publish);
+        channel.on('presence', { event: 'join' }, publish);
+        channel.on('presence', { event: 'leave' }, publish);
+        channel.subscribe(status => {
+          if (status === 'SUBSCRIBED') {
+            channel.track({ user_id: user.id, email: user.email || '', name: user.name || '', at: Date.now() });
+            publish();
+          }
+        });
+        window._fsPresenceChannel = channel;
+        return () => {
+          try { window._fsSb.removeChannel(channel); } catch(e) {}
+          if (window._fsPresenceChannel === channel) window._fsPresenceChannel = null;
+        };
+      }, [user?.id, user?.email, user?.name]);
 
       /* ── Supabase Realtime: session invites (Together mode) ── */
       _uEC(() => {
-        const onInvite = async (e) => {
-          const s = e.detail;
-          /* Fetch host info */
+        const activateSharedSession = async (s) => {
+          if (!s?.active) return;
           const { data: hostData } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle();
-          setActiveSession({
-            type: s.type, duration: s.duration, music: s.music, breaks: s.breaks,
+          const next = {
+            type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
             startTime: new Date(s.started_at).getTime(),
             broadcastId: s.id, isGuest: true,
             hostEmail: hostData?.email || '',
-            friendUser: { name: hostData?.name || '?', initial: (hostData?.name || '?')[0].toUpperCase(), color: '#4ade80' },
-          });
+            friendUser: { name: hostData?.name || hostData?.email?.split('@')[0] || '?', initial: (hostData?.name || hostData?.email || '?')[0].toUpperCase(), color: '#4ade80' },
+          };
+          setActiveSession(prev => prev?.broadcastId === next.broadcastId ? prev : next);
+          try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
           setRoutedScreen('dashboard', true);
         };
+        const onInvite = async (e) => { await activateSharedSession(e.detail); };
         const onEnd = (e) => {
           setActiveSession(a => {
             if (a && a.broadcastId === e.detail.id) {
               saveSessionRecord(buildSessionRecord(a, false, new Date().toISOString()));
+              try { localStorage.removeItem('fs_active_session'); } catch(_) {}
               return null;
             }
             return a;
           });
         };
+        const checkMissedSharedSession = async () => {
+          if (!user?.id || !window._fsSb) return;
+          try {
+            const { data } = await window._fsSb
+              .from('sessions')
+              .select('id, host_id, friend_id, type, duration, music, breaks, active, started_at')
+              .eq('friend_id', user.id)
+              .eq('active', true)
+              .order('started_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (data) await activateSharedSession(data);
+          } catch(e) {}
+        };
         window.addEventListener('fs-session-invite', onInvite);
         window.addEventListener('fs-session-end', onEnd);
+        checkMissedSharedSession();
+        const interval = setInterval(checkMissedSharedSession, 15000);
+        const onFocus = () => checkMissedSharedSession();
+        window.addEventListener('focus', onFocus);
         return () => {
           window.removeEventListener('fs-session-invite', onInvite);
           window.removeEventListener('fs-session-end', onEnd);
+          window.removeEventListener('focus', onFocus);
+          clearInterval(interval);
         };
-      }, []);
+      }, [user?.id]);
 
       /* ── Realtime: cross-device sync for widgets, theme, style ── */
       _uEC(() => {
@@ -11217,7 +11276,11 @@
               music: session.music, breaks: session.breaks, active: true,
               started_at: new Date(enriched.startTime).toISOString(),
             }).select('id').single();
-            if (data) setActiveSession(prev => ({ ...prev, broadcastId: data.id }));
+            if (data) setActiveSession(prev => {
+              const next = { ...prev, broadcastId: data.id };
+              try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
+              return next;
+            });
           } catch (e) { console.warn('[fs] session insert failed', e); addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' }); }
         }
       };
@@ -11257,14 +11320,7 @@
       const [bgThemeId, setBgThemeId] = _uSC(() => {
         try { return localStorage.getItem('fs_bgtheme') || 'cosmos'; } catch (e) { return 'cosmos'; }
       });
-      _uEC(() => {
-        let theme = (window.BG_THEMES || []).find(t => t.id === bgThemeId);
-        if (!theme && bgThemeId === 'custom' && window.buildCustomTheme) {
-          try {
-            const cb = JSON.parse(localStorage.getItem('fs_custom_bg') || '{}');
-            theme = window.buildCustomTheme(cb.c1 || '#a5b8ff', cb.c2 || '#c084fc');
-          } catch (e) { }
-        }
+      const applyThemeVars = theme => {
         if (!theme) return;
         const r = document.documentElement.style;
         r.setProperty('--bg-g1', `rgba(${theme.g1.rgb},${theme.g1.o})`);
@@ -11291,11 +11347,22 @@
           r.setProperty('--mineral-line-strong', `rgba(${theme.g1.rgb},0.16)`);
         }
         document.body.style.background = palette?.bgHex || theme.base;
+      };
+      _uEC(() => {
+        let theme = (window.BG_THEMES || []).find(t => t.id === bgThemeId);
+        if (!theme && bgThemeId === 'custom' && window.buildCustomTheme) {
+          try {
+            const cb = JSON.parse(localStorage.getItem('fs_custom_bg') || '{}');
+            theme = window.buildCustomTheme(cb.c1 || '#a5b8ff', cb.c2 || '#c084fc');
+          } catch (e) { }
+        }
+        applyThemeVars(theme);
       }, [bgThemeId]);
 
       const applyBgTheme = theme => {
         document.body.style.transition = 'background 1.1s cubic-bezier(0.4,0,0.2,1)';
         try { localStorage.setItem('fs_bgtheme', theme.id); } catch (e) { }
+        applyThemeVars(theme);
         setBgThemeId(theme.id);
       };
 
@@ -11998,6 +12065,9 @@
       const [hov, setHov] = React.useState(false);
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
+      const lastSeenMs = friend.updatedAt ? new Date(friend.updatedAt).getTime() : 0;
+      const online = !!friend.online || (!!lastSeenMs && Date.now() - lastSeenMs < 2 * 60 * 1000);
+      const statusLabel = online ? 'En ligne' : 'Hors ligne';
       return (
         <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${Math.min(index, 6) * 0.032}s` }}
           onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
@@ -12008,7 +12078,13 @@
             {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:13, fontWeight:700, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.name || friend.email.split('@')[0]}</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.name || friend.email.split('@')[0]}</div>
+              <span style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:5, height:18, borderRadius:99, padding:'0 7px', background:online?'rgba(74,222,128,0.12)':'rgba(255,255,255,0.045)', border:`1px solid ${online?'rgba(74,222,128,0.24)':'rgba(255,255,255,0.07)'}`, color:online?T.green:T.muted, fontSize:9, fontWeight:850 }}>
+                <i style={{ width:5, height:5, borderRadius:'50%', background:online?T.green:'rgba(255,255,255,0.34)', boxShadow:online?'0 0 10px rgba(74,222,128,0.7)':'none' }} />
+                {statusLabel}
+              </span>
+            </div>
             <div style={{ fontSize:11, color:T.muted, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.email}</div>
           </div>
           <div className="fs-friend-actions">
@@ -12050,6 +12126,7 @@
       const [status, setStatus] = React.useState('idle');
       const [msg, setMsg] = React.useState('');
       const [preview, setPreview] = React.useState(null);
+      const [presenceIds, setPresenceIds] = React.useState(() => new Set(window._fsPresenceIds || []));
       const inputRef = React.useRef(null);
 
       const normalizeFriend = f => {
@@ -12119,13 +12196,14 @@
           if (!allIds.length) return { ownList, reverseList };
           try {
             const { data: imgRows } = await window._fsSb
-              .from('user_data').select('user_id, images')
+              .from('user_data').select('user_id, images, updated_at')
               .in('user_id', allIds);
             if (!imgRows) return { ownList, reverseList };
             const photoMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null]));
+            const seenMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.updated_at || null]));
             return {
-              ownList: ownList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
-              reverseList: reverseList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null })),
+              ownList: ownList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null, updatedAt: seenMap[f.id] || f.updatedAt || null })),
+              reverseList: reverseList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null, updatedAt: seenMap[f.id] || f.updatedAt || null })),
             };
           } catch(e) {
             return { ownList, reverseList };
@@ -12217,6 +12295,11 @@
       React.useEffect(() => {
         if (open && inputRef.current) setTimeout(() => inputRef.current?.focus(), 200);
       }, [open]);
+      React.useEffect(() => {
+        const h = e => setPresenceIds(new Set(e.detail?.ids || window._fsPresenceIds || []));
+        window.addEventListener('fs-presence-update', h);
+        return () => window.removeEventListener('fs-presence-update', h);
+      }, []);
 
       const addFriend = async () => {
         const trimmed = email.trim();
@@ -12299,6 +12382,8 @@
         f.id !== selfId &&
         f.email.toLowerCase() !== selfEmail
       );
+      const presenceFriends = displayFriends.map(f => ({ ...f, online: presenceIds.has(f.id) }));
+      const onlineCount = presenceFriends.filter(f => f.online).length;
 
       const btnBg = { idle: T.c1, loading: c1(0.3), success: T.green, error: T.rose }[status];
 
@@ -12314,7 +12399,7 @@
                 <div>
                   <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:T.muted, marginBottom:6 }}>LumenOS</div>
                   <div style={{ fontFamily:T.display, fontWeight:800, fontSize:24, letterSpacing:'-0.04em', lineHeight:1 }}>Amis</div>
-                  {allFriends.length>0 && <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>{allFriends.length} connexion{allFriends.length>1?'s':''}</div>}
+                  {allFriends.length>0 && <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>{onlineCount} en ligne · {displayFriends.length} ami{displayFriends.length>1?'s':''}</div>}
                 </div>
                 <button onClick={onClose} style={{ width:34, height:34, borderRadius:'50%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', color:T.muted, fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.18s' }}
                   onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.1)';e.currentTarget.style.color=T.text;}}
@@ -12378,7 +12463,7 @@
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', color:T.muted, paddingLeft:4, marginBottom:4 }}>Tes amis</div>
-                  {displayFriends.map((f, i) => (
+                  {presenceFriends.map((f, i) => (
                     <FriendCard key={f.id} friend={f} index={i}
                       onPreview={()=>setPreview(f)}
                       onRemove={()=>removeFriend(f.id)}/>
