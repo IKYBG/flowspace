@@ -5334,7 +5334,6 @@
       const [advancedOpen, setAdvancedOpen] = _uSA(false);
       const allTasks = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || []; } catch(e) { return []; } }, []);
       const activeFocusTasks = allTasks.filter(t => !t.done).slice(0, 5);
-      const MUSIC = ['Ambient', 'Lo-fi', 'Classical', 'Nature', 'Silence'];
       const SHAPES = [
         { id:'diamond', name:'Diamant' }, { id:'shard', name:'Eclat' }, { id:'geode', name:'Geode' },
         { id:'prism', name:'Prisme' }, { id:'cluster', name:'Grappe' }, { id:'quartz', name:'Quartz' },
@@ -5342,12 +5341,6 @@
       const emailTyped = email.trim().length > 0;
       const emailValid = emailTyped && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
       const canLaunch = mode === 'solo' || emailValid;
-      const launchSteps = [
-        ['Demarrer', mode === 'solo' ? 'Solo' : 'Ensemble'],
-        ['Ton cristal', crystalShape],
-        ['Configurer', cfg.duration + ' min'],
-        ['Pret', canLaunch ? 'Go' : 'Email'],
-      ];
       const acol = mode === 'together' ? T.green : T.c1;
       const toggleFocusTask = id => setFocusTaskIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
@@ -5391,9 +5384,8 @@
 
       const modeCard = (id, title, desc) => {
         const sel = mode === id;
-        return <button type="button" onClick={() => setMode(id)} style={{textAlign:'left',borderRadius:24,padding:18,border:'1px solid ' + (sel ? c1(.36) : 'rgba(255,255,255,.075)'),background:sel ? 'linear-gradient(145deg,' + c1(.16) + ',' + c2(.08) + ')' : 'rgba(255,255,255,.035)',color:T.text,fontFamily:T.font,cursor:'pointer',boxShadow:sel ? '0 18px 42px ' + c1(.12) + ', inset 0 1px 0 rgba(255,255,255,.08)' : 'inset 0 1px 0 rgba(255,255,255,.035)',transform:sel?'translateY(-1px)':'none',transition:'all .2s cubic-bezier(.16,1,.3,1)'}}>
-          <div style={{fontSize:15,fontWeight:950,marginBottom:6}}>{title}</div>
-          <div style={{fontSize:11.5,lineHeight:1.48,color:T.muted}}>{desc}</div>
+        return <button type="button" onClick={() => setMode(id)} style={{height:50,textAlign:'center',borderRadius:17,padding:'0 16px',border:'1px solid ' + (sel ? c1(.38) : 'rgba(255,255,255,.075)'),background:sel ? 'linear-gradient(145deg,' + c1(.18) + ',' + c2(.08) + ')' : 'rgba(255,255,255,.035)',color:sel?T.c1:T.text,fontFamily:T.font,cursor:'pointer',boxShadow:sel ? '0 16px 34px ' + c1(.12) + ', inset 0 1px 0 rgba(255,255,255,.08)' : 'inset 0 1px 0 rgba(255,255,255,.035)',transform:sel?'translateY(-1px)':'none',transition:'all .2s cubic-bezier(.16,1,.3,1)',fontSize:13,fontWeight:950}}>
+          {title}
         </button>;
       };
       const pill = (active, label, onClick, tone = acol) => <button type="button" onClick={onClick} style={{height:36,padding:'0 13px',borderRadius:999,border:'1px solid ' + (active ? tone + '55' : 'rgba(255,255,255,.08)'),background:active ? tone + '18' : 'rgba(255,255,255,.04)',color:active ? tone : T.muted,fontFamily:T.font,fontSize:11,fontWeight:850,cursor:'pointer',transition:'all .16s'}}>{label}</button>;
@@ -5417,8 +5409,6 @@
             .fs-launch-blender-aura{position:absolute;left:50%;top:50%;width:230px;height:250px;border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.38),rgba(var(--theme-c2-rgb),.18) 44%,rgba(var(--theme-c1-rgb),.06) 68%,transparent 76%);filter:blur(18px) saturate(1.08);mix-blend-mode:screen;animation:fsLaunchBlenderAura 7s cubic-bezier(.4,0,.2,1) infinite;pointer-events:none}
             .fs-launch-3d-scene .fsBlenderCrystalCanvas{position:absolute;inset:-16%;width:132%;height:132%;display:block;z-index:3;pointer-events:none;filter:drop-shadow(0 28px 46px rgba(var(--theme-c1-rgb),.28)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.2))}
             .fs-launch-blender-floor{position:absolute;bottom:27px;width:188px;height:36px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.12) 48%,transparent 72%);filter:blur(8px);animation:fsLaunchBlenderFloor 4.4s ease-in-out infinite}
-            .fs-launch-step{position:relative;overflow:hidden}
-            .fs-launch-step:after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--theme-c1),transparent);transform-origin:center;animation:fsLaunchStepGlow 2.8s ease-in-out infinite}
             @media (max-width: 760px){
               .fs-session-launch-shell{border-radius:26px!important;max-height:calc(100vh - 22px)!important}
               .fs-session-launch-grid{grid-template-columns:1fr!important}
@@ -5427,7 +5417,6 @@
               .fs-session-launch-side{border-left:0!important;border-top:1px solid rgba(255,255,255,.07)!important;padding:18px!important}
               .fs-session-launch-preview{height:220px!important}
               .fs-session-launch-shapes{grid-template-columns:repeat(2,1fr)!important}
-              .fs-session-launch-rail{grid-template-columns:repeat(2,1fr)!important}
             }
           `}</style>
           <div className="fs-session-launch-shell" style={{width:'min(980px,calc(100vw - 28px))',maxHeight:'min(90vh,780px)',overflow:'hidden',borderRadius:36,border:'1px solid ' + c1(.24),background:'radial-gradient(circle at 14% 0%,' + c1(.24) + ',transparent 38%),radial-gradient(circle at 82% 12%,' + c2(.18) + ',transparent 42%),linear-gradient(145deg,rgba(10,12,24,.975),rgba(11,10,20,.925))',boxShadow:'0 54px 150px rgba(0,0,0,.74),0 0 100px ' + c1(.18) + ',inset 0 1px 0 rgba(255,255,255,.12)',fontFamily:T.font,color:T.text,animation:'scaleIn .28s cubic-bezier(.16,1,.3,1) both',position:'relative'}}>
@@ -5435,21 +5424,14 @@
             <div className="fs-session-launch-grid" style={{display:'grid',gridTemplateColumns:'minmax(0,1.03fr) minmax(330px,.82fr)',maxHeight:'min(90vh,760px)',overflow:'auto'}}>
               <main className="fs-session-launch-main" style={{padding:'30px 32px 32px',minWidth:0}}>
                 <div style={{display:'inline-flex',alignItems:'center',gap:10,height:34,padding:'0 12px 0 8px',borderRadius:999,background:'linear-gradient(135deg,' + c1(.16) + ',rgba(255,255,255,.045))',border:'1px solid ' + c1(.18),fontSize:9,fontWeight:950,letterSpacing:'.14em',textTransform:'uppercase',color:'rgba(248,246,252,.88)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'}}><span style={{width:20,height:20,borderRadius:8,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',boxShadow:'0 0 20px ' + c1(.52),display:'grid',placeItems:'center',color:'#06070d',fontWeight:950}}>L</span>Rituel LumenOS</div>
-                <div className="fs-session-launch-title" style={{fontFamily:T.display,fontWeight:950,fontSize:'clamp(33px,4.25vw,48px)',letterSpacing:0,lineHeight:1.01,marginTop:18}}>Prepare ton focus.</div>
-                <div style={{fontSize:13.5,lineHeight:1.72,color:T.muted,maxWidth:'60ch',marginTop:10}}>Une capsule de lancement rapide, marquee par ton theme. Choisis le rythme, calibre le cristal, puis pars sans friction.</div>
-
-                <div className="fs-session-launch-rail" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:8,marginTop:20}}>
-                  {launchSteps.map(([label,value],i) => <div key={label} className="fs-launch-step" style={{borderRadius:16,border:'1px solid ' + (i === 3 && canLaunch ? c1(.28) : 'rgba(255,255,255,.075)'),background:i === 3 && canLaunch ? 'linear-gradient(145deg,' + c1(.15) + ',' + c2(.07) + ')' : 'rgba(255,255,255,.035)',padding:'11px 12px 12px',boxShadow:'inset 0 1px 0 rgba(255,255,255,.045)'}}>
-                    <div style={{fontSize:9,fontWeight:950,letterSpacing:'.10em',textTransform:'uppercase',color:i === 3 && canLaunch ? T.c1 : T.muted}}>{label}</div>
-                    <div style={{fontSize:12,fontWeight:900,color:T.text,marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{value}</div>
-                  </div>)}
-                </div>
+                <div className="fs-session-launch-title" style={{fontFamily:T.display,fontWeight:950,fontSize:'clamp(33px,4.25vw,48px)',letterSpacing:0,lineHeight:1.01,marginTop:18}}>Lance ton focus.</div>
+                <div style={{fontSize:13.5,lineHeight:1.65,color:T.muted,maxWidth:'48ch',marginTop:10}}>Trois choix, puis tu pars. Le reste est deja pret.</div>
 
                 <section style={{marginTop:22}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Mode</span><span>{mode === 'solo' ? 'Simple et rapide' : 'Avec un ami'}</span></div>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10}}>
-                    {modeCard('solo','Solo','Session calme, cristal personnel, zero friction.')}
-                    {modeCard('together','Ensemble','Invite un ami et synchronise le focus.')}
+                    {modeCard('solo','Solo')}
+                    {modeCard('together','Ensemble')}
                   </div>
                   {mode === 'together' && <div style={{marginTop:12}}>
                     <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email de ton ami" autoFocus style={{width:'100%',height:44,borderRadius:15,border:'1px solid ' + (emailTyped && !emailValid ? 'rgba(251,113,133,.42)' : 'rgba(255,255,255,.10)'),background:'rgba(5,7,17,.44)',color:T.text,fontFamily:T.font,fontSize:13,outline:'none',padding:'0 13px',boxSizing:'border-box'}} />
@@ -5465,18 +5447,6 @@
                   </div>
                 </section>
 
-                <section style={{marginTop:22}}>
-                  <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Ambiance</span><span>{cfg.music}</span></div>
-                  <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,.045)'}}>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>{MUSIC.map(m => pill(cfg.music===m, m, ()=>setCfg(c=>({...c,music:m}))))}</div>
-                    <button type="button" onClick={()=>setCfg(c=>({...c,breaks:!c.breaks}))} style={{marginTop:12,width:'100%',height:40,borderRadius:15,border:'1px solid rgba(255,255,255,.08)',background:cfg.breaks?c1(.12):'rgba(255,255,255,.035)',color:cfg.breaks?T.c1:T.muted,fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer'}}>Pauses Pomodoro {cfg.breaks ? 'activees' : 'desactivees'}</button>
-                  </div>
-                </section>
-
-                <section style={{marginTop:22}}>
-                  <button type="button" onClick={()=>setAdvancedOpen(v=>!v)} style={{width:'100%',height:44,borderRadius:16,border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.035)',color:T.text,fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer'}}>Taches focus {focusTaskIds.length ? '- ' + focusTaskIds.length : ''}</button>
-                  {advancedOpen && <div style={{marginTop:10,border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:18,padding:12}}>{activeFocusTasks.length ? activeFocusTasks.map(t => <button key={t.id} type="button" onClick={()=>toggleFocusTask(t.id)} style={{width:'100%',display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',padding:'11px 0',border:'0',borderBottom:'1px solid rgba(255,255,255,.055)',background:'transparent',color:T.text,cursor:'pointer',fontFamily:T.font,fontSize:12}}><span style={{color:T.muted,textAlign:'left'}}>{t.text}</span><span style={{fontWeight:900,color:focusTaskIds.includes(t.id)?T.c1:T.muted}}>{focusTaskIds.includes(t.id)?'Ajoutee':'Ajouter'}</span></button>) : <div style={{fontSize:12,color:T.muted}}>Aucune tache active.</div>}</div>}
-                </section>
               </main>
 
               <aside className="fs-session-launch-side" style={{padding:30,borderLeft:'1px solid rgba(255,255,255,.07)',background:'rgba(255,255,255,.025)'}}>
@@ -5487,17 +5457,14 @@
                       <div className="fs-launch-orbit o1" />
                       <div className="fs-launch-orbit o2" />
                       {typeof BlenderCrystalScene === 'function'
-                        ? React.createElement(BlenderCrystalScene)
+                        ? React.createElement(BlenderCrystalScene, { shape: crystalShape, key: crystalShape })
                         : <div style={{width:92,height:124,clipPath:'polygon(50% 0,88% 30%,72% 100%,28% 100%,12% 30%)',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))'}} />}
                       <div className="fs-launch-blender-floor" />
                     </div>
                   </div>
                   <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14}}>
-                    <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span><span>couleur surprise</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span></div>
                     <div className="fs-session-launch-shapes" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:9}}>{SHAPES.map(s => <button key={s.id} type="button" onClick={()=>setCrystalShape(s.id)} style={{height:86,borderRadius:18,border:'1px solid ' + (crystalShape===s.id?c1(.34):'rgba(255,255,255,.075)'),background:crystalShape===s.id?c1(.13):'rgba(255,255,255,.035)',color:T.text,cursor:'pointer',fontFamily:T.font,fontSize:10,fontWeight:850,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:7}}>{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:s.id, gradientId:null, colorProgress:0, progress:0, size:34, seed:s.id.charCodeAt(0)*137 }) : null}<span>{s.name}</span></button>)}</div>
-                  </div>
-                  <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:'4px 14px'}}>
-                    {[[ 'Mode', mode === 'solo' ? 'Solo' : 'Ensemble' ],[ 'Duree', cfg.duration + ' min' ],[ 'Musique', cfg.music ],[ 'Cristal rare', '1 chance / 20' ]].map(([k,v]) => <div key={k} style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',padding:'12px 0',borderBottom:k==='Cristal rare'?'0':'1px solid rgba(255,255,255,.055)',fontSize:12}}><span style={{color:T.muted}}>{k}</span><span style={{fontWeight:900,color:T.text,textAlign:'right'}}>{v}</span></div>)}
                   </div>
                   <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Demarrer maintenant' : 'Ajoute un email valide'}</button>
                 </div>
@@ -9183,7 +9150,7 @@
     window.applyFontPreset = applyFontPreset;
     applyFontPreset((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (e) { return 'signature'; } })());
 
-    function BlenderCrystalScene() {
+    function BlenderCrystalScene({ shape = 'diamond' } = {}) {
       const canvasRef = React.useRef(null);
       React.useEffect(() => {
         const canvas = canvasRef.current;
@@ -9203,11 +9170,24 @@
         const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
         const norm = v => { const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
         const buildCrystal = () => {
+          const profile = ({
+            diamond: { sides:6, top:1.52, bottom:-1.52, upper:.58, lower:.50, uy:.72, ly:-.78, sx:1, sy:1, sz:1 },
+            shard:   { sides:5, top:1.72, bottom:-1.35, upper:.42, lower:.34, uy:.62, ly:-.72, sx:.72, sy:1.08, sz:.88 },
+            geode:   { sides:8, top:1.20, bottom:-1.18, upper:.72, lower:.64, uy:.48, ly:-.62, sx:1.10, sy:.86, sz:1.04 },
+            prism:   { sides:4, top:1.42, bottom:-1.42, upper:.58, lower:.58, uy:.72, ly:-.72, sx:.88, sy:1, sz:.88 },
+            cluster: { sides:7, top:1.34, bottom:-1.28, upper:.66, lower:.44, uy:.58, ly:-.66, sx:1.08, sy:.95, sz:.96 },
+            quartz:  { sides:6, top:1.76, bottom:-1.36, upper:.44, lower:.38, uy:.68, ly:-.74, sx:.78, sy:1.08, sz:.78 },
+          })[shape] || ({ sides:6, top:1.52, bottom:-1.52, upper:.58, lower:.50, uy:.72, ly:-.78, sx:1, sy:1, sz:1 });
           const data = [], top=[0,1.52,0], bottom=[0,-1.52,0], upper=[], lower=[];
-          for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI*2/6; upper.push([Math.cos(a)*.58,.72,Math.sin(a)*.58]); lower.push([Math.cos(a)*.50,-.78,Math.sin(a)*.50]); }
+          top[1] = profile.top; bottom[1] = profile.bottom;
+          for(let i=0;i<profile.sides;i++){
+            const a=Math.PI/profile.sides+i*Math.PI*2/profile.sides;
+            upper.push([Math.cos(a)*profile.upper*profile.sx,profile.uy,Math.sin(a)*profile.upper*profile.sz]);
+            lower.push([Math.cos(a)*profile.lower*profile.sx,profile.ly,Math.sin(a)*profile.lower*profile.sz]);
+          }
           const colors=[[.92,.92,.94],[.82,.84,.9],[.74,.78,.86],[.88,.82,.92],[.64,.66,.78],[.9,.9,.94]];
           const tri=(a,b,c,col)=>{ const n=norm(cross(sub(b,a),sub(c,a))); [a,b,c].forEach(p=>data.push(...p,...n,...col)); };
-          for(let i=0;i<6;i++){ const j=(i+1)%6,col=colors[i]; tri(top,upper[i],upper[j],col); tri(upper[i],lower[i],lower[j],col.map(v=>v*.82)); tri(upper[i],lower[j],upper[j],col.map(v=>Math.min(1,v*.96))); tri(bottom,lower[j],lower[i],col.map(v=>v*.68)); }
+          for(let i=0;i<profile.sides;i++){ const j=(i+1)%profile.sides,col=colors[i%colors.length]; tri(top,upper[i],upper[j],col); tri(upper[i],lower[i],lower[j],col.map(v=>v*.82)); tri(upper[i],lower[j],upper[j],col.map(v=>Math.min(1,v*.96))); tri(bottom,lower[j],lower[i],col.map(v=>v*.68)); }
           return new Float32Array(data);
         };
         const mesh=buildCrystal(), buffer=gl.createBuffer();
@@ -9241,7 +9221,7 @@
         const render=t=>{ if(document.hidden){ raf=requestAnimationFrame(render); return; } if(t-lastFrame<28){ raf=requestAnimationFrame(render); return; } lastFrame=t; if(t>nextThemeRead){ theme=readTheme(); nextThemeRead=t+600; } resize(); const time=t*.001; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform3f(loc.light,-2.6,3.6,3.8); gl.uniform3f(loc.eye,0,.1,5.4); gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]); gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]); const vp=mul(perspective(Math.PI/4,canvas.width/canvas.height,.1,100),lookAt([0,.12,5.25],[0,0,0],[0,1,0])); const bob=Math.sin(time*1.35)*.08; draw(mul(translate(0,bob,0),mul(rotY(time*.62),mul(rotX(-.13+Math.sin(time*.8)*.045),scale(.95,1,.95)))),vp,.86); for(let i=0;i<5;i++){ const a=time*(.36+i*.025)+i*Math.PI*2/5,r=1.34+(i%3)*.1,s=.115+(i%3)*.02; draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.7+i)*.32+bob*.45,Math.sin(a)*.66),mul(rotY(-time*.95+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72); } raf=requestAnimationFrame(render); };
         raf=requestAnimationFrame(render);
         return () => cancelAnimationFrame(raf);
-      }, []);
+      }, [shape]);
       return <canvas ref={canvasRef} className="fsBlenderCrystalCanvas" aria-hidden="true" />;
     }
 
