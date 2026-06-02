@@ -995,7 +995,9 @@
       var lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 4;
       var lowCpu = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4;
       var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (lowMemory || lowCpu || reduceMotion) document.documentElement.classList.add('fs-perf-lite');
+      var userPerfLite = false;
+      try { userPerfLite = !!(JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {}).perfLite; } catch (_) {}
+      if (lowMemory || lowCpu || reduceMotion || userPerfLite) document.documentElement.classList.add('fs-perf-lite');
     })();
   </script>
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
@@ -10599,12 +10601,20 @@
     }
 
     function SettingsScreen({ onNavigate, user, onUserUpdate }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [query, setQuery] = React.useState('');
       const [saved, setSaved] = React.useState(false);
       const [email, setEmail] = React.useState(user?.email || '');
       const [emailTouched, setEmailTouched] = React.useState(false);
-      const [darkMode, setDarkMode] = React.useState(true);
-      const [opts, setOpts] = React.useState({ deadline:true, summary:true, nudge:true, security:true });
+      const readSettingsPrefs = () => {
+        const fallback = { focusNudges:true, weeklyReview:true, deadlineReminders:true, perfLite:document.documentElement.classList.contains('fs-perf-lite'), defaultRoute:'dashboard', syncWarnings:true, autosave:true };
+        try { return { ...fallback, ...(JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {}) }; } catch (_) { return fallback; }
+      };
+      const [prefs, setPrefs] = React.useState(readSettingsPrefs);
+      const [darkMode, setDarkMode] = React.useState(() => {
+        try { return (localStorage.getItem('fs_settings_theme_mode') || 'dark') === 'dark'; } catch (_) { return true; }
+      });
+      const [syncing, setSyncing] = React.useState(false);
       const [installPrompt, setInstallPrompt] = React.useState(null);
       const [isInstalled, setIsInstalled] = React.useState(fsIsStandaloneDisplay);
       const fileRef = React.useRef(null);
@@ -10615,22 +10625,22 @@
       const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
       const emailOk = !emailTouched || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       const sections = [
-        ['profile','Profil','Nom, email, photo','01'],
-        ['notifications','Notifications','Rappels utiles','02'],
-        ['security','Securite','Sessions et alertes','03'],
-        ['appearance','Apparence','Theme et interface','04'],
-        ['billing','Facturation','Usage et limites','05'],
-        ['danger','Zone Danger','Actions sensibles','06'],
+        ['profile','Identite','Profil et app','01'],
+        ['workspace','Workspace','Demarrage et focus','02'],
+        ['interface','Interface','Theme et fluidite','03'],
+        ['data','Donnees','Export et sync','04'],
+        ['access','Acces','Session actuelle','05'],
       ];
       const searchable = [
-        ['profile','Modifier ton email de connexion'],
-        ['notifications','Recevoir un rappel 30 min avant chaque echeance'],
-        ['notifications','Recevoir un resume hebdomadaire'],
-        ['security','Voir les sessions actives'],
-        ['security','Recevoir une alerte de securite'],
-        ['appearance','Synchroniser le dark mode avec le theme'],
-        ['billing','Voir ton usage mensuel'],
-        ['danger','Supprimer le compte'],
+        ['profile','Changer la photo de profil'],
+        ['profile','Modifier email du compte'],
+        ['workspace','Choisir la page ouverte au demarrage'],
+        ['workspace','Activer les encouragements pendant une session'],
+        ['interface','Mode performance pour dashboard lourd'],
+        ['interface','Ouvrir les themes et widgets'],
+        ['data','Exporter une sauvegarde locale'],
+        ['data','Forcer une synchronisation Supabase'],
+        ['access','Voir la session actuelle'],
       ];
       const results = query.trim() ? searchable.filter(([_, t]) => t.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6) : [];
       const flashSave = () => {
@@ -10638,6 +10648,20 @@
         window.clearTimeout(window.__fsSettingsSavedTimer);
         window.__fsSettingsSavedTimer = window.setTimeout(() => setSaved(false), 2500);
       };
+      const updatePref = (key, value) => {
+        setPrefs(prev => ({ ...prev, [key]: value }));
+        flashSave();
+      };
+      React.useEffect(() => {
+        try { localStorage.setItem('fs_productivity_settings', JSON.stringify(prefs)); } catch (_) {}
+        try { localStorage.setItem('fs_settings_opts', JSON.stringify({ deadline:prefs.deadlineReminders, summary:prefs.weeklyReview, nudge:prefs.focusNudges, security:prefs.syncWarnings })); } catch (_) {}
+        try { localStorage.setItem('fs_focus_nudges', prefs.focusNudges ? '1' : '0'); } catch (_) {}
+        try { localStorage.setItem('fs_default_route', prefs.defaultRoute || 'dashboard'); } catch (_) {}
+        document.documentElement.classList.toggle('fs-perf-lite', !!prefs.perfLite);
+      }, [prefs]);
+      React.useEffect(() => {
+        try { localStorage.setItem('fs_settings_theme_mode', darkMode ? 'dark' : 'system'); } catch (_) {}
+      }, [darkMode]);
       React.useEffect(() => {
         const handler = e => { e.preventDefault(); setInstallPrompt(e); };
         window.addEventListener('beforeinstallprompt', handler);
@@ -10673,6 +10697,44 @@
         reader.readAsDataURL(file);
         e.target.value = '';
       };
+      const saveEmail = () => {
+        setEmailTouched(true);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+        const nextUser = { ...(user || {}), name: displayName, email: email.trim(), photo: profilePhoto };
+        try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (_) {}
+        onUserUpdate && onUserUpdate(nextUser);
+        try { window._fsFlushPush?.(true); } catch (_) {}
+        addToast({ message:'Profil mis a jour', type:'success', icon:'✓' });
+        flashSave();
+      };
+      const exportLocalData = () => {
+        const keys = ['fs_user','fs_tasks','fs_notes','fs_widgets','fs_bgtheme','fs_custom_bg','fs_widget_style','fs_font_preset','fs_note_map_style','fs_productivity_settings','fs_session_history_' + (user?.id || 'guest')];
+        const payload = { app:'LumenOS', exportedAt:new Date().toISOString(), user:user?.email || user?.id || 'local', data:{} };
+        keys.forEach(k => { try { const v = localStorage.getItem(k); if (v != null) payload.data[k] = v; } catch (_) {} });
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lumenos-backup-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 800);
+        addToast({ message:'Sauvegarde exportee', type:'success', icon:'↓' });
+        flashSave();
+      };
+      const repairSync = async () => {
+        setSyncing(true);
+        try {
+          await Promise.resolve(window._fsFlushPush?.(true));
+          addToast({ message:'Synchronisation relancee', type:'success', icon:'✓' });
+          flashSave();
+        } catch (_) {
+          addToast({ message:'Synchronisation indisponible pour le moment', type:'warning', icon:'!' });
+        } finally {
+          setSyncing(false);
+        }
+      };
       const scrollTo = id => refs.current[id]?.scrollIntoView({ behavior:'smooth', block:'start' });
       React.useEffect(() => {
         const onKey = e => {
@@ -10695,10 +10757,13 @@
           <Toggle value={value} onChange={set} />
         </div>
       );
-      const Card = ({ id, title, desc, danger, children }) => (
+      const ActionButton = ({ children, onClick, primary=false, danger=false, disabled=false }) => (
+        <button type="button" disabled={disabled} onClick={onClick} className={'fs-settings-action' + (primary ? ' is-primary' : '') + (danger ? ' is-danger' : '')}>{children}</button>
+      );
+      const Card = ({ id, kicker, title, desc, danger, children }) => (
         <section ref={el => refs.current[id] = el} className={'fs-settings-card' + (danger ? ' fs-settings-card-danger' : '')}>
           <div className="fs-settings-card-head">
-            <div><div className="fs-settings-card-title">{title}</div><div className="fs-settings-card-desc">{desc}</div></div>
+            <div>{kicker && <div className="fs-settings-card-kicker">{kicker}</div>}<div className="fs-settings-card-title">{title}</div><div className="fs-settings-card-desc">{desc}</div></div>
             {danger && <div className="fs-settings-danger-badge">!</div>}
           </div>
           {children}
@@ -10707,15 +10772,17 @@
       return (
         <div style={{width:'100%',height:'100%',overflow:'hidden',fontFamily:T.font,color:T.text}}>
           <style>{`
-            .fs-settings-grid{display:grid;grid-template-columns:292px minmax(0,1fr);height:100%;min-height:0;background:radial-gradient(ellipse 80% 48% at 68% -10%,rgba(var(--theme-c1-rgb),0.14),transparent 62%),radial-gradient(ellipse 60% 44% at 96% 92%,rgba(var(--theme-c2-rgb),0.09),transparent 60%)}
-            .fs-settings-sidebar{position:sticky;top:0;height:100%;overflow:auto;border-right:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.64),rgba(var(--mineral-bg-rgb),0.42));padding:26px 18px;box-shadow:inset -1px 0 0 rgba(255,255,255,0.025)}
+            .fs-settings-grid{display:grid;grid-template-columns:286px minmax(0,1fr);height:100%;min-height:0;background:radial-gradient(ellipse 78% 52% at 74% -12%,rgba(var(--theme-c1-rgb),0.15),transparent 62%),radial-gradient(ellipse 64% 46% at 98% 98%,rgba(var(--theme-c2-rgb),0.10),transparent 60%),linear-gradient(180deg,rgba(var(--mineral-bg-rgb),0.98),rgba(var(--mineral-surface-rgb),0.92))}
+            .fs-settings-sidebar{position:sticky;top:0;height:100%;overflow:auto;border-right:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.055),rgba(var(--mineral-bg-rgb),0.34));padding:24px 16px;box-shadow:inset -1px 0 0 rgba(255,255,255,0.035);backdrop-filter:blur(18px)}
             .fs-settings-main{min-width:0;overflow:auto;padding:30px 38px 48px;scrollbar-width:thin}
             .fs-settings-shell{max-width:1040px;margin:0 auto}
-            .fs-settings-nav-btn{width:100%;text-align:left;border:1px solid rgba(255,255,255,0.055);background:rgba(255,255,255,0.025);color:${T.muted};border-radius:18px;padding:13px 13px;cursor:pointer;font-family:${T.font};transition:transform .2s var(--mineral-ease),background .2s,border-color .2s,color .2s;display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center}
-            .fs-settings-nav-index{width:30px;height:30px;border-radius:11px;display:grid;place-items:center;background:rgba(var(--theme-c1-rgb),0.09);color:${T.c1};font-size:10px;font-weight:900}
+            .fs-settings-nav-btn{width:100%;text-align:left;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.028);color:${T.muted};border-radius:16px;padding:12px;cursor:pointer;font-family:${T.font};transition:transform .2s var(--mineral-ease),background .2s,border-color .2s,color .2s;display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center}
+            .fs-settings-nav-index{width:30px;height:30px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--theme-c2-rgb),0.08));color:${T.c1};font-size:10px;font-weight:900;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
             .fs-settings-nav-btn:hover{background:rgba(255,255,255,0.065);border-color:rgba(var(--theme-c1-rgb),0.22);color:${T.text};transform:translateY(-1px)}
-            .fs-settings-hero{position:relative;overflow:hidden;border-radius:30px;padding:28px;border:1px solid rgba(var(--theme-c1-rgb),0.16);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.15),rgba(var(--theme-c2-rgb),0.07) 42%,rgba(255,255,255,0.035));box-shadow:0 30px 90px rgba(0,0,0,0.30),0 14px 44px rgba(var(--theme-c1-rgb),0.10),inset 0 1px 0 rgba(255,255,255,0.10);margin-bottom:18px}
-            .fs-settings-hero:after{content:"";position:absolute;right:30px;bottom:-45px;width:190px;height:190px;border-radius:50%;border:1px solid rgba(var(--theme-c1-rgb),0.18);box-shadow:inset 0 0 48px rgba(var(--theme-c1-rgb),0.08);pointer-events:none}
+            .fs-settings-hero{position:relative;overflow:hidden;border-radius:32px;padding:30px;border:1px solid rgba(var(--theme-c1-rgb),0.18);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.16),rgba(var(--theme-c2-rgb),0.075) 42%,rgba(255,255,255,0.04));box-shadow:0 34px 100px rgba(0,0,0,0.32),0 16px 48px rgba(var(--theme-c1-rgb),0.11),inset 0 1px 0 rgba(255,255,255,0.11);margin-bottom:18px}
+            .fs-settings-hero:before{content:"";position:absolute;right:38px;top:28px;width:118px;height:118px;background:linear-gradient(145deg,rgba(255,255,255,0.24),rgba(var(--theme-c1-rgb),0.30),rgba(var(--theme-c2-rgb),0.14));clip-path:polygon(50% 0,82% 18%,100% 50%,78% 88%,50% 100%,20% 86%,0 50%,18% 18%);filter:drop-shadow(0 22px 34px rgba(var(--theme-c1-rgb),0.22));opacity:.82;animation:fsSettingsCrystal 5.8s ease-in-out infinite}
+            .fs-settings-hero:after{content:"";position:absolute;right:18px;bottom:-60px;width:230px;height:230px;border-radius:50%;border:1px solid rgba(var(--theme-c1-rgb),0.18);box-shadow:inset 0 0 58px rgba(var(--theme-c1-rgb),0.08),0 0 70px rgba(var(--theme-c1-rgb),0.08);pointer-events:none}
+            @keyframes fsSettingsCrystal{0%,100%{transform:translate3d(0,0,0) rotateX(0deg) rotateZ(0deg)}50%{transform:translate3d(0,-10px,0) rotateX(9deg) rotateZ(8deg)}}
             .fs-settings-save{height:36px;padding:0 12px;display:flex;align-items:center;gap:8px;border-radius:13px;border:1px solid rgba(var(--theme-c1-rgb),0.18);background:rgba(255,255,255,0.045);color:${T.muted};font-size:12px;font-weight:850;transition:all .24s var(--mineral-ease);white-space:nowrap}
             .fs-settings-save.is-saved{background:rgba(var(--theme-c1-rgb),0.14);color:${T.c1};box-shadow:0 12px 28px rgba(var(--theme-c1-rgb),0.12)}
             .fs-settings-field{height:44px;border-radius:15px;border:1px solid rgba(255,255,255,0.085);background:rgba(255,255,255,0.05);color:${T.text};font-family:${T.font};outline:none;padding:0 14px;box-sizing:border-box;box-shadow:inset 0 1px 0 rgba(255,255,255,0.035)}
@@ -10723,6 +10790,7 @@
             .fs-settings-card{scroll-margin-top:20px;border-radius:26px;border:1px solid rgba(255,255,255,0.075);background:linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.024));box-shadow:0 20px 62px rgba(0,0,0,0.23),inset 0 1px 0 rgba(255,255,255,0.065);padding:24px 26px;margin-bottom:16px}
             .fs-settings-card-danger{border-color:rgba(251,113,133,0.30);background:linear-gradient(180deg,rgba(251,113,133,0.085),rgba(255,255,255,0.026))}
             .fs-settings-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+            .fs-settings-card-kicker{font-size:10px;font-weight:920;letter-spacing:.15em;text-transform:uppercase;color:rgba(var(--theme-c1-rgb),0.92);margin-bottom:7px}
             .fs-settings-card-title{font-size:18px;font-weight:920;color:${T.text};letter-spacing:-0.01em}
             .fs-settings-card-danger .fs-settings-card-title{color:${T.rose}}
             .fs-settings-card-desc{font-size:12.5px;line-height:1.65;color:${T.muted};margin-top:5px;max-width:640px}
@@ -10733,30 +10801,39 @@
             .fs-settings-photo{width:100px;height:100px;border-radius:30px;border:1px solid rgba(var(--theme-c1-rgb),0.28);background:linear-gradient(145deg,rgba(255,255,255,0.13),rgba(var(--theme-c1-rgb),0.22),rgba(var(--theme-c2-rgb),0.12));color:${T.text};display:grid;place-items:center;overflow:hidden;cursor:pointer;font:900 30px ${T.display};box-shadow:0 24px 56px rgba(var(--theme-c1-rgb),0.16),inset 0 1px 0 rgba(255,255,255,0.14);transition:transform .22s var(--mineral-ease),box-shadow .22s}
             .fs-settings-photo:hover{transform:translateY(-2px);box-shadow:0 30px 66px rgba(var(--theme-c1-rgb),0.22),inset 0 1px 0 rgba(255,255,255,0.16)}
             .fs-settings-photo img{width:100%;height:100%;object-fit:cover;display:block}
+            .fs-settings-action{height:40px;border-radius:13px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.045);color:${T.muted};padding:0 14px;font-size:12px;font-weight:850;font-family:${T.font};cursor:pointer;transition:transform .18s var(--mineral-ease),background .18s,border-color .18s,color .18s,box-shadow .18s;white-space:nowrap}
+            .fs-settings-action:hover{transform:translateY(-1px);background:rgba(255,255,255,0.075);color:${T.text};border-color:rgba(var(--theme-c1-rgb),0.22);box-shadow:0 12px 28px rgba(0,0,0,0.16)}
+            .fs-settings-action:active{transform:scale(.985)}
+            .fs-settings-action.is-primary{border-color:rgba(var(--theme-c1-rgb),0.30);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.22),rgba(var(--theme-c2-rgb),0.12));color:${T.c1};box-shadow:0 14px 32px rgba(var(--theme-c1-rgb),0.12)}
+            .fs-settings-action.is-danger{border-color:rgba(251,113,133,0.32);background:rgba(251,113,133,0.09);color:${T.rose}}
+            .fs-settings-action:disabled{opacity:.55;cursor:wait;transform:none}
+            .fs-settings-pill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:10px;margin-top:12px}
+            .fs-settings-pill{height:42px;border-radius:14px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.035);color:${T.muted};font:850 12px ${T.font};cursor:pointer;transition:all .2s var(--mineral-ease)}
+            .fs-settings-pill.is-active{border-color:rgba(var(--theme-c1-rgb),0.32);background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.17),rgba(var(--theme-c2-rgb),0.09));color:${T.text};box-shadow:0 14px 34px rgba(var(--theme-c1-rgb),0.10)}
             @media(max-width:900px){.fs-settings-grid{display:block}.fs-settings-sidebar{position:relative;height:auto;padding:16px 14px;border-right:none;border-bottom:1px solid rgba(255,255,255,0.065)}.fs-settings-sidebar nav{display:flex;overflow-x:auto;gap:8px}.fs-settings-nav-btn{min-width:164px}.fs-settings-main{padding:18px 14px 104px}.fs-settings-hero{padding:22px;border-radius:24px}.fs-settings-card{padding:20px;border-radius:22px}.fs-settings-row{align-items:flex-start}.fs-settings-photo{width:86px;height:86px;border-radius:26px}}
           `}</style>
           <div className="fs-settings-grid">
             <aside className="fs-settings-sidebar">
               <button onClick={() => onNavigate('dashboard')} style={{height:38,borderRadius:13,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:T.muted,padding:'0 12px',fontSize:12,fontWeight:800,fontFamily:T.font,cursor:'pointer',marginBottom:22}}>Retour</button>
-              <div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.9)',marginBottom:10}}>Control center</div>
-              <div style={{fontFamily:T.display,fontSize:31,fontWeight:850,letterSpacing:'-0.04em',lineHeight:0.96,marginBottom:10}}>Settings</div>
-              <div style={{fontSize:12,lineHeight:1.65,color:T.muted,marginBottom:20}}>Une navigation courte, des labels humains, et un retour de sauvegarde visible.</div>
+              <div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.9)',marginBottom:10}}>LumenOS</div>
+              <div style={{fontFamily:T.display,fontSize:31,fontWeight:850,letterSpacing:'-0.04em',lineHeight:0.96,marginBottom:10}}>Centre de controle</div>
+              <div style={{fontSize:12,lineHeight:1.65,color:T.muted,marginBottom:20}}>Reglages courts, utiles, et synchronises avec ton espace de travail.</div>
               <nav style={{display:'grid',gap:9}}>{sections.map(([id,label,hint,idx]) => <button key={id} className="fs-settings-nav-btn" onClick={() => scrollTo(id)}><span className="fs-settings-nav-index">{idx}</span><span><div style={{fontSize:13,fontWeight:850,color:'inherit'}}>{label}</div><div style={{fontSize:11,color:T.faint,marginTop:3}}>{hint}</div></span></button>)}</nav>
             </aside>
             <main className="fs-settings-main">
               <div className="fs-settings-shell">
                 <div className="fs-settings-hero">
                 <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:20,alignItems:'start'}}>
-                  <div><div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.95)',marginBottom:10}}>LumenOS preferences</div><div style={{fontFamily:T.display,fontSize:'clamp(36px,4.5vw,60px)',fontWeight:850,letterSpacing:'-0.045em',lineHeight:0.96}}>Reglages clairs, sans friction.</div><div style={{maxWidth:620,fontSize:13,lineHeight:1.7,color:T.muted,marginTop:12}}>Tout ce qui concerne ton compte, tes rappels, ta securite et ton apparence dans une interface lisible.</div></div>
-                  <div className={'fs-settings-save' + (saved ? ' is-saved' : '')}>{saved ? 'Sauvegarde ✓' : 'Auto-save actif'}</div>
+                  <div><div style={{fontSize:10,fontWeight:900,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.95)',marginBottom:10}}>Workspace intelligence</div><div style={{fontFamily:T.display,fontSize:'clamp(36px,4.5vw,60px)',fontWeight:850,letterSpacing:'-0.045em',lineHeight:0.96}}>Ton espace, tes regles.</div><div style={{maxWidth:620,fontSize:13,lineHeight:1.7,color:T.muted,marginTop:12}}>Parametre ce qui compte vraiment : profil, demarrage, fluidite, sauvegarde et synchronisation.</div></div>
+                  <div className={'fs-settings-save' + (saved ? ' is-saved' : '')}>{saved ? 'Sauvegarde OK' : 'Auto-save actif'}</div>
                 </div>
                 <div style={{position:'relative',zIndex:2,marginTop:22}}>
-                <input id="fs-settings-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher un reglage...  Cmd/Ctrl + K" className="fs-settings-field" style={{width:'100%',height:56,paddingLeft:48,fontSize:14,borderRadius:18}} />
+                <input id="fs-settings-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Trouver un reglage, une action, une preference...  Cmd/Ctrl + K" className="fs-settings-field" style={{width:'100%',height:56,paddingLeft:48,fontSize:14,borderRadius:18}} />
                 <svg width={17} height={17} viewBox="0 0 16 16" fill="none" style={{position:'absolute',left:18,top:20,opacity:.45}}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
                 {results.length > 0 && <div style={{position:'absolute',left:0,right:0,top:64,zIndex:5,borderRadius:18,border:'1px solid rgba(255,255,255,0.08)',background:'rgba(var(--mineral-bg-rgb),0.96)',boxShadow:'0 24px 70px rgba(0,0,0,0.36)',padding:8,backdropFilter:'blur(18px)'}}>{results.map(([id,text]) => <button key={id+text} onClick={() => { scrollTo(id); setQuery(''); }} style={{width:'100%',textAlign:'left',border:'none',background:'transparent',color:T.text,padding:'11px 12px',borderRadius:12,cursor:'pointer',fontFamily:T.font,fontSize:12.5}}>{text}</button>)}</div>}
                 </div>
               </div>
-              <Card id="profile" title="Compte LumenOS" desc="Ton profil, ta photo et l'installation de l'app sont regroupes ici.">
+              <Card id="profile" kicker="Identite" title="Compte LumenOS" desc="Ton profil doit etre clair, portable et coherent dans le dashboard, les sessions partagees et la liste d'amis.">
                 <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handlePhotoFile} />
                 <div style={{display:'grid',gridTemplateColumns:'auto minmax(0,1fr)',gap:18,alignItems:'center',padding:'8px 0 18px'}}>
                   <button type="button" className="fs-settings-photo" onClick={() => fileRef.current && fileRef.current.click()} title="Changer la photo de profil">
@@ -10773,29 +10850,65 @@
                   <input className="fs-settings-field" value={displayName} readOnly />
                   <div><input className="fs-settings-field" value={email} onChange={e=>setEmail(e.target.value)} onBlur={() => setEmailTouched(true)} style={{width:'100%',borderColor:emailOk?'rgba(255,255,255,0.085)':'rgba(251,113,133,0.42)'}} />{!emailOk && <div style={{fontSize:11,color:T.rose,marginTop:7}}>Entre un email valide, par exemple alex@domain.com.</div>}</div>
                 </div>
+                <div style={{display:'flex',justifyContent:'flex-end',marginTop:12}}><ActionButton primary onClick={saveEmail}>Enregistrer le profil</ActionButton></div>
                 <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',borderTop:'1px solid rgba(255,255,255,0.055)',marginTop:16,paddingTop:16}}>
                   <div style={{minWidth:0}}><div style={{fontSize:14,fontWeight:850}}>Installer LumenOS</div><div style={{fontSize:12.5,color:T.muted,marginTop:4}}>{isInstalled ? 'LumenOS est deja installe sur cet appareil.' : 'Ajoute LumenOS a ton bureau pour ouvrir ton espace sans friction.'}</div></div>
-                  <button type="button" onClick={handleInstall} style={{height:40,borderRadius:13,border:'1px solid rgba(var(--theme-c1-rgb),0.28)',background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.18),rgba(var(--theme-c2-rgb),0.10))',color:T.c1,padding:'0 14px',fontWeight:850,fontFamily:T.font,cursor:'pointer',whiteSpace:'nowrap'}}>{isInstalled ? 'Installe' : 'Installer'}</button>
+                  <ActionButton primary onClick={handleInstall}>{isInstalled ? 'Deja installe' : 'Installer'}</ActionButton>
                 </div>
               </Card>
-              <Card id="notifications" title="Notifications" desc="Des rappels utiles, jamais du bruit gratuit.">
-                <Row title="Rappel avant echeance" desc="Recois un rappel 30 min avant chaque echeance importante." value={opts.deadline} set={v=>setOpts(o=>({...o,deadline:v}))} />
-                <Row title="Resume hebdomadaire" desc="Chaque lundi, vois ce qui a avance et ce qui merite ton attention." value={opts.summary} set={v=>setOpts(o=>({...o,summary:v}))} />
-                <Row title="Focus nudges" desc="Si tu changes d'onglet pendant une session, LumenOS t'encourage discretement." value={opts.nudge} set={v=>setOpts(o=>({...o,nudge:v}))} />
+              <Card id="workspace" kicker="Workspace" title="Demarrage et focus" desc="Les reglages qui evitent les clics repetitifs et gardent la session lisible.">
+                <Row title="Encouragement discret pendant une session" desc="Si tu changes d'onglet, une popup LumenOS peut te ramener au focus. Desactive-le si tu veux du silence total." value={prefs.focusNudges} set={v=>updatePref('focusNudges', v)} />
+                <Row title="Resume hebdomadaire local" desc="Garde l'option active pour preparer les vues de progression et les rappels de revision." value={prefs.weeklyReview} set={v=>updatePref('weeklyReview', v)} />
+                <Row title="Rappels d'echeance" desc="Priorise les taches avec date limite dans tes widgets et ta recherche." value={prefs.deadlineReminders} set={v=>updatePref('deadlineReminders', v)} />
+                <div style={{borderTop:'1px solid rgba(255,255,255,0.055)',paddingTop:16}}>
+                  <div className="fs-settings-row-title">Page d'ouverture</div>
+                  <div className="fs-settings-row-desc">Choisis l'ecran que LumenOS affiche quand aucun lien precis n'est ouvert.</div>
+                  <div className="fs-settings-pill-grid">
+                    {['dashboard','tasks','notes','cristaux'].map(route => <button key={route} className={'fs-settings-pill' + (prefs.defaultRoute === route ? ' is-active' : '')} onClick={() => updatePref('defaultRoute', route)}>{route === 'dashboard' ? 'Dashboard' : route === 'tasks' ? 'Taches' : route === 'notes' ? 'Notes' : 'Cristaux'}</button>)}
+                  </div>
+                </div>
               </Card>
-              <Card id="security" title="Securite" desc="Controle les acces actifs et les alertes sensibles.">
-                <Row title="Alertes de connexion" desc="Recois un message si une nouvelle session se connecte a ton compte." value={opts.security} set={v=>setOpts(o=>({...o,security:v}))} />
-                {['Windows - Paris - actif maintenant','Mobile Safari - il y a 2 h'].map((s,i)=><div key={s} style={{display:'flex',justifyContent:'space-between',gap:12,padding:'13px 0',borderTop:'1px solid rgba(255,255,255,0.055)',fontSize:12.5,color:T.muted}}><span>{s}</span><button onClick={flashSave} style={{border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.04)',color:i?T.rose:T.faint,borderRadius:10,padding:'6px 10px',cursor:'pointer',fontFamily:T.font,fontSize:11}}>{i?'Revoquer':'Actuelle'}</button></div>)}
+              <Card id="interface" kicker="Interface" title="Theme, fluidite et personnalisation" desc="Des raccourcis directs vers ce que les users changent le plus dans un dashboard de productivite.">
+                <Row title="Mode performance dashboard" desc="Reduit les animations couteuses pour garder les interactions fluides avec de gros widgets et GIFs." value={prefs.perfLite} set={v=>updatePref('perfLite', v)} />
+                <Row title="Mode sombre synchronise" desc="Garde une base sombre premium avec les couleurs de ton theme actif." value={darkMode} set={setDarkMode} />
+                <div style={{display:'flex',flexWrap:'wrap',gap:10,borderTop:'1px solid rgba(255,255,255,0.055)',paddingTop:16}}>
+                  <ActionButton primary onClick={() => onNavigate('fond')}>Changer le theme</ActionButton>
+                  <ActionButton onClick={() => onNavigate('variants')}>Bibliotheque widgets</ActionButton>
+                  <ActionButton onClick={() => onNavigate('fonts')}>Typographie</ActionButton>
+                </div>
               </Card>
-              <Card id="appearance" title="Apparence" desc="Dark mode complet, theme coherent, aucune surface oubliee.">
-                <Row title="Mode sombre synchronise" desc="Le dark mode suit ton theme actif sur dashboard, notes, focus et settings." value={darkMode} set={setDarkMode} />
-                <select className="fs-settings-field" value={darkMode ? 'dark' : 'system'} onChange={e=>{setDarkMode(e.target.value === 'dark'); flashSave();}} style={{width:'100%',marginTop:12}}><option value="dark">Dark premium</option><option value="system">Systeme</option></select>
+              <Card id="data" kicker="Donnees" title="Sauvegarde et synchronisation" desc="Actions utiles quand tu changes d'ordinateur, que Supabase est lent, ou que tu veux garder une copie locale.">
+                <Row title="Alertes de synchronisation" desc="Affiche un retour si une sauvegarde distante echoue ou prend trop de temps." value={prefs.syncWarnings} set={v=>updatePref('syncWarnings', v)} />
+                <div className="fs-settings-row">
+                  <div style={{minWidth:0}}><div className="fs-settings-row-title">Auto-save local actif</div><div className="fs-settings-row-desc">Taches, notes, widgets et preferences sont sauvegardes dans le navigateur pendant que la sync distante travaille.</div></div>
+                  <span style={{height:30,borderRadius:999,display:'inline-flex',alignItems:'center',padding:'0 11px',border:'1px solid rgba(var(--theme-c1-rgb),0.22)',background:'rgba(var(--theme-c1-rgb),0.10)',color:T.c1,fontSize:11,fontWeight:900}}>Actif</span>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,borderTop:'1px solid rgba(255,255,255,0.055)',paddingTop:16}}>
+                  <div style={{border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',borderRadius:18,padding:16}}>
+                    <div className="fs-settings-row-title">Export complet</div>
+                    <div className="fs-settings-row-desc">Telecharge une sauvegarde JSON de ton profil, notes, taches, widgets et preferences.</div>
+                    <div style={{marginTop:12}}><ActionButton primary onClick={exportLocalData}>Exporter</ActionButton></div>
+                  </div>
+                  <div style={{border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',borderRadius:18,padding:16}}>
+                    <div className="fs-settings-row-title">Reparer la sync</div>
+                    <div className="fs-settings-row-desc">Force l'envoi des donnees locales vers le compte connecte.</div>
+                    <div style={{marginTop:12}}><ActionButton onClick={repairSync} disabled={syncing}>{syncing ? 'Synchronisation...' : 'Relancer'}</ActionButton></div>
+                  </div>
+                </div>
               </Card>
-              <Card id="billing" title="Facturation" desc="Vois ton usage avant d'atteindre une limite surprise.">
-                <div style={{display:'grid',gridTemplateColumns:'120px 1fr',gap:20,alignItems:'center'}}><div style={{width:104,height:104,borderRadius:'50%',display:'grid',placeItems:'center',background:'conic-gradient(var(--theme-c1) 0 68%, rgba(255,255,255,0.08) 68% 100%)',boxShadow:'0 20px 48px rgba(var(--theme-c1-rgb),0.16)'}}><div style={{width:76,height:76,borderRadius:'50%',background:'var(--mineral-bg)',display:'grid',placeItems:'center',fontWeight:900}}>68%</div></div><div><div style={{fontSize:14,fontWeight:900}}>Usage mensuel</div><div style={{fontSize:12.5,color:T.muted,lineHeight:1.6,marginTop:6}}>68 sessions focus utilisees sur la limite actuelle. Spotify et Supabase sont detectes automatiquement.</div></div></div>
-              </Card>
-              <Card id="danger" title="Zone Danger" desc="Actions irreversibles. Accessibles, mais jamais au premier plan." danger>
-                <div style={{display:'flex',justifyContent:'space-between',gap:14,alignItems:'center',borderTop:'1px solid rgba(251,113,133,0.18)',paddingTop:16}}><div><div style={{fontSize:14,fontWeight:850}}>Supprimer le compte</div><div style={{fontSize:12.5,color:T.muted,marginTop:4}}>Efface les donnees locales et coupe les synchronisations liees au compte.</div></div><button onClick={flashSave} style={{height:40,borderRadius:13,border:'1px solid rgba(251,113,133,0.34)',background:'rgba(251,113,133,0.10)',color:T.rose,padding:'0 14px',fontWeight:850,fontFamily:T.font,cursor:'pointer'}}>Supprimer</button></div>
+              <Card id="access" kicker="Acces" title="Session actuelle" desc="Etat clair, sans fausses actions : LumenOS indique l'appareil courant et laisse la deconnexion dans le menu profil.">
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:12}}>
+                  <div style={{border:'1px solid rgba(var(--theme-c1-rgb),0.16)',background:'linear-gradient(135deg,rgba(var(--theme-c1-rgb),0.11),rgba(255,255,255,0.035))',borderRadius:18,padding:16}}>
+                    <div style={{fontSize:11,fontWeight:900,letterSpacing:'.12em',textTransform:'uppercase',color:T.c1}}>Connecte</div>
+                    <div style={{fontSize:13,fontWeight:850,marginTop:8}}>{displayEmail}</div>
+                    <div className="fs-settings-row-desc">Session active sur cet appareil.</div>
+                  </div>
+                  <div style={{border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.035)',borderRadius:18,padding:16}}>
+                    <div style={{fontSize:11,fontWeight:900,letterSpacing:'.12em',textTransform:'uppercase',color:T.muted}}>Statut sync</div>
+                    <div style={{fontSize:13,fontWeight:850,marginTop:8}}>{window._fsSyncReady ? 'Supabase actif' : 'Local-first'}</div>
+                    <div className="fs-settings-row-desc">Tes donnees restent accessibles localement meme si le reseau est lent.</div>
+                  </div>
+                </div>
               </Card>
               </div>
             </main>
@@ -10846,7 +10959,9 @@
       const readRouteScreen = () => {
         try {
           const raw = String(window.location.hash || '').replace(/^#\/?/, '').trim();
-          return APP_ROUTE_SCREENS.has(raw) ? raw : 'dashboard';
+          if (APP_ROUTE_SCREENS.has(raw)) return raw;
+          const preferred = localStorage.getItem('fs_default_route') || 'dashboard';
+          return APP_ROUTE_SCREENS.has(preferred) ? preferred : 'dashboard';
         } catch(e) { return 'dashboard'; }
       };
       const setRoutedScreen = (next, replace = false) => {
@@ -10911,6 +11026,11 @@
           return;
         }
         const queueNudge = () => {
+          try {
+            const prefs = JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {};
+            const legacy = JSON.parse(localStorage.getItem('fs_settings_opts') || '{}') || {};
+            if (prefs.focusNudges === false || legacy.nudge === false || localStorage.getItem('fs_focus_nudges') === '0') return;
+          } catch (_) {}
           const now = Date.now();
           if (now - focusNudgeLastAtRef.current < 12000) return;
           focusNudgeLastAtRef.current = now;
