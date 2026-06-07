@@ -12737,12 +12737,161 @@
         html.fs-perf-lite .fs-cave-crystal-tooltip {
           box-shadow:0 10px 28px rgba(0,0,0,0.48);
         }
+        .fs-crystal-cave {
+          background:
+            radial-gradient(ellipse at 50% 38%,rgba(var(--theme-c1-rgb),0.24),transparent 38%),
+            radial-gradient(ellipse at 18% 18%,rgba(var(--theme-c2-rgb),0.18),transparent 34%),
+            linear-gradient(180deg,#071227 0%,#0b1023 44%,#050813 100%) !important;
+          perspective:1100px;
+          touch-action:none;
+        }
+        .fs-crystal-cave::before {
+          background:
+            linear-gradient(120deg,transparent 0 20%,rgba(255,255,255,0.07) 27%,transparent 38%),
+            radial-gradient(circle at 18% 22%,rgba(255,255,255,0.13) 0 1px,transparent 2px),
+            radial-gradient(circle at 82% 20%,rgba(255,255,255,0.11) 0 1px,transparent 2px),
+            radial-gradient(circle at 66% 14%,rgba(255,255,255,0.10) 0 1px,transparent 2px),
+            linear-gradient(180deg,rgba(3,8,20,0.06),rgba(1,3,9,0.72)) !important;
+          z-index:1;
+        }
+        .fs-crystal-cave::after {
+          left:18%;right:18%;bottom:8%;height:16%;
+          background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0.44),transparent 70%) !important;
+          filter:blur(20px);z-index:2;
+        }
+        .fs-cave-svg,.fs-cave-rock-left,.fs-cave-rock-right,.fs-cave-ceiling,.fs-cave-floor,.fs-cave-mist,.fs-cave-crystals,.fs-cave-empty { display:none!important; }
+        .fs-island-viewport {
+          position:absolute;inset:0;z-index:6;overflow:hidden;cursor:grab;
+          touch-action:none;user-select:none;
+        }
+        .fs-island-viewport.is-dragging { cursor:grabbing; }
+        .fs-island-world {
+          position:absolute;left:50%;top:55%;width:min(860px,88vw);height:min(560px,70vh);
+          transform:translate(calc(-50% + var(--cam-x)), calc(-50% + var(--cam-y))) scale(var(--cam-z));
+          transform-origin:center 55%;
+          transition:transform .34s cubic-bezier(.16,1,.3,1);
+          will-change:transform;
+        }
+        .fs-island-skyline {
+          position:absolute;left:50%;top:14%;width:76%;height:30%;transform:translateX(-50%);
+          border-radius:999px;background:radial-gradient(ellipse at 50% 50%,rgba(var(--theme-c1-rgb),0.22),rgba(var(--theme-c2-rgb),0.08) 42%,transparent 74%);
+          filter:blur(18px);opacity:.86;pointer-events:none;
+        }
+        .fs-floating-island {
+          position:absolute;left:50%;top:48%;width:78%;height:44%;transform:translate(-50%,-50%) rotateX(58deg) rotateZ(-1deg);
+          border-radius:55% 45% 50% 50%;
+          background:
+            radial-gradient(ellipse at 46% 34%,rgba(197,247,207,.38),transparent 28%),
+            radial-gradient(ellipse at 68% 55%,rgba(93,64,39,.26),transparent 26%),
+            linear-gradient(145deg,#355f45 0%,#193527 48%,#0d1b18 100%);
+          border:1px solid rgba(215,255,227,.18);
+          box-shadow:inset 0 18px 38px rgba(255,255,255,.10),inset 0 -28px 58px rgba(0,0,0,.38),0 40px 92px rgba(0,0,0,.44);
+        }
+        .fs-floating-island::before {
+          content:"";position:absolute;inset:7% 8% 18%;border-radius:inherit;
+          background:
+            radial-gradient(ellipse at 25% 50%,rgba(123,212,139,.30),transparent 24%),
+            radial-gradient(ellipse at 55% 45%,rgba(206,231,176,.24),transparent 18%),
+            linear-gradient(90deg,rgba(255,255,255,.08),transparent 42%);
+          border:1px solid rgba(255,255,255,.08);
+        }
+        .fs-floating-island::after {
+          content:"";position:absolute;left:20%;right:18%;top:82%;height:92%;
+          clip-path:polygon(0 0,100% 0,76% 88%,48% 100%,18% 82%);
+          background:linear-gradient(180deg,#20321f 0%,#17201c 32%,#0a0d13 100%);
+          filter:drop-shadow(0 30px 34px rgba(0,0,0,.45));
+        }
+        .fs-island-rim {
+          position:absolute;left:18%;right:18%;top:54%;height:16%;border-radius:50%;
+          background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,0));
+          transform:rotateX(58deg);opacity:.52;pointer-events:none;
+        }
+        .fs-island-crystals {
+          position:absolute;left:50%;top:48%;width:78%;height:44%;transform:translate(-50%,-50%);
+          z-index:12;
+        }
+        .fs-island-empty {
+          position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);
+          display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;
+          padding:22px 24px;border-radius:22px;border:1px solid rgba(255,255,255,.11);
+          background:linear-gradient(180deg,rgba(8,12,28,.72),rgba(6,8,18,.54));
+          box-shadow:0 20px 56px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.08);
+          backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+        }
+        .fs-island-crystal {
+          --crystal-glow:rgba(103,232,249,0.65);
+          position:absolute;left:var(--x);top:var(--y);width:var(--node-size);height:calc(var(--node-size) * 1.28);
+          border:0;background:transparent;padding:0;cursor:pointer;overflow:visible;
+          transform:translate(-50%,-100%) scale(var(--depth));
+          transform-origin:center bottom;
+          transition:transform .22s cubic-bezier(.16,1,.3,1),filter .22s;
+          will-change:transform;
+        }
+        .fs-island-crystal:hover,.fs-island-crystal.is-selected {
+          transform:translate(-50%,-100%) scale(calc(var(--depth) * 1.12));
+          filter:drop-shadow(0 0 18px var(--crystal-glow)) drop-shadow(0 0 42px var(--crystal-glow));
+        }
+        .fs-island-crystal.is-gold { filter:drop-shadow(0 0 22px rgba(255,211,106,.78)); }
+        .fs-island-crystal-root {
+          position:absolute;left:50%;bottom:-10%;width:82%;height:24%;transform:translateX(-50%) rotateX(60deg);
+          border-radius:50%;
+          background:radial-gradient(ellipse at 50% 50%,var(--crystal-glow),rgba(18,13,8,.55) 48%,transparent 72%);
+          opacity:.72;filter:blur(1px);
+        }
+        .fs-island-crystal-soil {
+          position:absolute;left:50%;bottom:-2%;width:70%;height:20%;transform:translateX(-50%);
+          border-radius:50%;background:linear-gradient(180deg,#3b2b1f,#14100d);
+          border:1px solid rgba(255,255,255,.10);box-shadow:inset 0 2px 0 rgba(255,255,255,.08),0 8px 16px rgba(0,0,0,.42);
+        }
+        .fs-island-crystal-gem {
+          position:absolute;left:50%;bottom:3%;transform:translateX(-50%);
+          filter:drop-shadow(0 10px 16px rgba(0,0,0,.28)) drop-shadow(0 0 18px var(--crystal-glow));
+        }
+        .fs-island-gold-aura {
+          position:absolute;left:50%;bottom:8%;width:135%;height:112%;transform:translateX(-50%);
+          border-radius:50%;background:radial-gradient(circle,rgba(255,230,142,.38),rgba(245,158,11,.14) 48%,transparent 72%);
+          animation:crystalGoldAura 3.8s ease-in-out infinite;pointer-events:none;
+        }
+        .fs-island-hud {
+          position:absolute;left:24px;right:24px;bottom:22px;z-index:14;
+          display:flex;align-items:flex-end;justify-content:space-between;gap:14px;pointer-events:none;
+        }
+        .fs-island-control,.fs-island-detail {
+          pointer-events:all;border:1px solid rgba(255,255,255,.10);
+          background:linear-gradient(180deg,rgba(8,12,28,.78),rgba(6,8,18,.62));
+          backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+          box-shadow:0 20px 56px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.08);
+        }
+        .fs-island-control {
+          display:flex;align-items:center;gap:8px;padding:8px;border-radius:16px;
+        }
+        .fs-island-control button {
+          height:34px;min-width:34px;border-radius:12px;border:1px solid rgba(255,255,255,.09);
+          background:rgba(255,255,255,.045);color:#eef6ff;font:850 12px var(--font-body);
+          cursor:pointer;transition:transform .18s,background .18s,border-color .18s;
+        }
+        .fs-island-control button:hover { transform:translateY(-1px);background:rgba(255,255,255,.085);border-color:rgba(var(--theme-c1-rgb),.28); }
+        .fs-island-detail {
+          width:min(340px,calc(100vw - 28px));border-radius:22px;padding:16px;
+          transform:translateY(0);animation:crystalOverlayIn .28s cubic-bezier(.16,1,.3,1) both;
+        }
+        .fs-island-detail-empty { color:rgba(226,238,255,.62);font-size:12px;line-height:1.55;max-width:230px; }
+        html.fs-perf-lite .fs-island-skyline,
+        html.fs-perf-lite .fs-island-gold-aura,
+        html.fs-perf-lite .fs-island-crystal-gem svg * {
+          animation:none!important;
+        }
+        html.fs-perf-lite .fs-island-world { transition:none!important; }
         @media (max-width:760px) {
           .fs-cristaux-panel { inset:0;width:auto;border-radius:0; }
           .fs-cave-header { left:14px;right:14px;top:14px;align-items:flex-start; }
           .fs-cave-stats { display:none; }
           .fs-cave-title { max-width:calc(100% - 52px);padding:12px 13px; }
           .fs-cave-crystal { width:calc(var(--node-size) * 0.82);height:calc(var(--node-size) * 0.82); }
+          .fs-island-world { width:760px;height:480px;top:58%; }
+          .fs-island-hud { left:12px;right:12px;bottom:12px;align-items:stretch;flex-direction:column-reverse; }
+          .fs-island-control { width:max-content;max-width:100%; }
+          .fs-island-detail { width:auto; }
         }
         .crystal-mini-card {
           position:relative;
@@ -13089,6 +13238,8 @@
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
       const [sel, setSel] = React.useState(null);
+      const [camera, setCamera] = React.useState({ x: 0, y: 0, z: 1 });
+      const dragRef = React.useRef(null);
 
       React.useEffect(() => {
         if (!open) return;
@@ -13101,15 +13252,43 @@
         const d = new Date(iso);
         return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' });
       };
-      const caveSlots = [
-        { x:13, y:72, s:0.62 }, { x:21, y:64, s:0.54 }, { x:30, y:82, s:0.82 },
-        { x:43, y:70, s:0.58 }, { x:55, y:88, s:0.92 }, { x:65, y:68, s:0.6 },
-        { x:73, y:78, s:0.94 }, { x:86, y:73, s:0.72 }, { x:92, y:84, s:0.78 },
-        { x:8, y:86, s:0.64 }, { x:18, y:88, s:0.76 }, { x:34, y:54, s:0.44 },
-        { x:50, y:57, s:0.42 }, { x:61, y:54, s:0.44 }, { x:79, y:55, s:0.5 },
-        { x:88, y:47, s:0.42 }, { x:24, y:45, s:0.4 }, { x:74, y:44, s:0.42 },
+      const islandSlots = [
+        { x:18, y:56, s:0.78 }, { x:29, y:43, s:0.64 }, { x:41, y:60, s:0.92 },
+        { x:53, y:40, s:0.68 }, { x:64, y:57, s:0.96 }, { x:76, y:45, s:0.72 },
+        { x:84, y:62, s:0.86 }, { x:20, y:72, s:0.92 }, { x:35, y:76, s:1.08 },
+        { x:50, y:72, s:1.14 }, { x:66, y:76, s:1.04 }, { x:82, y:73, s:0.94 },
+        { x:33, y:29, s:0.52 }, { x:47, y:25, s:0.48 }, { x:61, y:29, s:0.52 },
+        { x:72, y:34, s:0.56 }, { x:25, y:34, s:0.56 }, { x:56, y:88, s:1.18 },
       ];
+      const caveSlots = islandSlots;
       const totalMinutes = crystals.reduce((n,c)=>n + (Number(c.duration) || 0), 0);
+      const clamp = (v,min,max) => Math.max(min, Math.min(max, v));
+      const selectedCrystal = crystals.find(c => c.id === sel);
+      const resetCamera = () => setCamera({ x:0, y:0, z:1 });
+      const focusCrystal = (id, slot) => {
+        setSel(id);
+        setCamera({
+          x: clamp((50 - slot.x) * 8, -260, 260),
+          y: clamp((52 - slot.y) * 5, -150, 160),
+          z: 1.55
+        });
+      };
+      const onViewPointerDown = e => {
+        if (e.target.closest?.('.fs-island-crystal,.fs-island-detail,.fs-island-control')) return;
+        dragRef.current = { x:e.clientX, y:e.clientY, cx:camera.x, cy:camera.y };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      };
+      const onViewPointerMove = e => {
+        const d = dragRef.current;
+        if (!d) return;
+        setCamera(c => ({ ...c, x:clamp(d.cx + e.clientX - d.x, -320, 320), y:clamp(d.cy + e.clientY - d.y, -190, 190) }));
+      };
+      const onViewPointerUp = () => { dragRef.current = null; };
+      const onViewWheel = e => {
+        e.preventDefault();
+        const next = clamp(camera.z + (e.deltaY > 0 ? -0.12 : 0.12), 0.72, 1.9);
+        setCamera(c => ({ ...c, z:next }));
+      };
 
       return (
         <>
@@ -13192,10 +13371,10 @@
 
               <div className="fs-cave-header">
                 <div className="fs-cave-title">
-                  <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:'rgba(161,232,255,0.72)', marginBottom:6 }}>focus archive</div>
-                  <div style={{ fontFamily:T.display, fontWeight:900, fontSize:26, letterSpacing:'-0.04em', lineHeight:1, color:'#f3f7ff', textShadow:'0 0 22px rgba(119,240,255,0.32)' }}>Grotte de focus</div>
+                  <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:'rgba(161,232,255,0.72)', marginBottom:6 }}>focus island</div>
+                  <div style={{ fontFamily:T.display, fontWeight:900, fontSize:26, letterSpacing:'-0.04em', lineHeight:1, color:'#f3f7ff', textShadow:'0 0 22px rgba(119,240,255,0.32)' }}>Ile de cristaux</div>
                   <div style={{ fontSize:11, color:'rgba(220,231,255,0.66)', marginTop:7 }}>
-                    {crystals.length > 0 ? `${crystals.length} trace${crystals.length>1?'s':''} de travail cristallisee${crystals.length>1?'s':''}` : 'Termine une session pour allumer la premiere gemme'}
+                    {crystals.length > 0 ? 'Drag, zoom, puis inspecte une session cristallisee.' : 'Termine une session pour planter le premier cristal.'}
                   </div>
                 </div>
                 <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
@@ -13224,7 +13403,124 @@
                 </div>
               </div>
 
-              {crystals.length === 0 ? (
+              <div
+                className={'fs-island-viewport' + (dragRef.current ? ' is-dragging' : '')}
+                onPointerDown={onViewPointerDown}
+                onPointerMove={onViewPointerMove}
+                onPointerUp={onViewPointerUp}
+                onPointerCancel={onViewPointerUp}
+                onWheel={onViewWheel}
+              >
+                <div className="fs-island-skyline" />
+                <div
+                  className="fs-island-world"
+                  style={{
+                    '--cam-x':`${camera.x}px`,
+                    '--cam-y':`${camera.y}px`,
+                    '--cam-z':camera.z
+                  }}
+                >
+                  <div className="fs-floating-island" />
+                  <div className="fs-island-rim" />
+                  <div className="fs-island-crystals">
+                    {crystals.length === 0 ? (
+                      <div className="fs-island-empty">
+                        <div style={{ opacity:0.52, animation:'float 4s ease-in-out infinite' }}>
+                          <CrystalGem progress={0.08} size={88}/>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:15, fontWeight:800, color:'#f3f7ff', marginBottom:8 }}>Ile vierge</div>
+                          <div style={{ fontSize:12, color:'rgba(220,231,255,0.66)', lineHeight:1.75 }}>Lance une session de focus<br/>pour planter le premier cristal.</div>
+                        </div>
+                      </div>
+                    ) : crystals.map((c, i) => {
+                      const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+                      const si  = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
+                      const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
+                      const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+                      const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
+                      const isSel = sel === c.id;
+                      const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
+                      const slotBase = islandSlots[i % islandSlots.length];
+                      const layer = Math.floor(i / islandSlots.length);
+                      const drift = ((layer % 5) - 2) * 2.4;
+                      const slot = { x:clamp(slotBase.x + drift, 12, 88), y:clamp(slotBase.y + layer * 2.2, 24, 91), s:Math.max(0.42, slotBase.s - layer * 0.08) };
+                      const depth = slot.s;
+                      const size = Math.round(54 * depth + 24);
+                      const z = Math.round(slot.y * 10 + i);
+                      return (
+                        <button key={c.id}
+                          className={'fs-island-crystal' + (isSel ? ' is-selected' : '') + (isGold ? ' is-gold' : '')}
+                          style={{
+                            '--x':`${slot.x}%`,
+                            '--y':`${slot.y}%`,
+                            '--depth':depth,
+                            '--node-size':`${size}px`,
+                            '--crystal-glow':glow,
+                            zIndex:z
+                          }}
+                          onClick={() => focusCrystal(c.id, slot)}
+                          title={`${pal.name} - ${c.duration || 0} min`}>
+                          {isGold && <span className="fs-island-gold-aura" />}
+                          <span className="fs-island-crystal-root"/>
+                          <span className="fs-island-crystal-soil"/>
+                          {isNew && (
+                            <span style={{ position:'absolute', top:'-10%', right:'-16%', zIndex:5, fontSize:7.5, fontWeight:900, letterSpacing:'0.1em',
+                              background:isGold?'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)':pal.a, color:'#07070d', borderRadius:99, padding:'3px 7px', textTransform:'uppercase', boxShadow:`0 0 18px ${glow}` }}>
+                              Nouveau
+                            </span>
+                          )}
+                          <span className="fs-island-crystal-gem">
+                            {c.crystalShape && window.ShapedCrystalGem
+                              ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold?'gold':c.crystalGradient, progress:0.9, size:size, seed:c.seed||c.id })
+                              : <CrystalGem progress={_cStateProgress(si)} size={size}/>
+                            }
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div className="fs-island-hud">
+                <div className="fs-island-control">
+                  <button type="button" onClick={() => setCamera(c => ({ ...c, z:clamp(c.z + 0.18, 0.72, 1.9) }))}>+</button>
+                  <button type="button" onClick={() => setCamera(c => ({ ...c, z:clamp(c.z - 0.18, 0.72, 1.9) }))}>-</button>
+                  <button type="button" onClick={resetCamera}>Reset</button>
+                  <span style={{fontSize:11,color:'rgba(226,238,255,.58)',padding:'0 6px'}}>Drag + molette</span>
+                </div>
+                {selectedCrystal ? (() => {
+                  const isGold = selectedCrystal.rarity === 'gold' || selectedCrystal.crystalGradient === 'gold' || selectedCrystal.palette === 'gold';
+                  const si = isGold ? 4 : Math.min(selectedCrystal.stateIdx ?? 3, 3);
+                  const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
+                  const shapeName = window.CRYSTAL_SHAPE_DEFS?.[selectedCrystal.crystalShape || 'diamond']?.name || 'Cristal';
+                  const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === selectedCrystal.crystalGradient);
+                  return (
+                    <div className="fs-island-detail">
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:10,fontWeight:900,letterSpacing:'.14em',textTransform:'uppercase',color:isGold?'#ffd36a':pal.b}}>{isGold?'Cristal rare':'Session cristallisee'}</div>
+                          <div style={{fontSize:18,fontWeight:920,color:'#f3f7ff',marginTop:4}}>{shapeName}</div>
+                        </div>
+                        <button type="button" onClick={() => setSel(null)} style={{width:32,height:32,borderRadius:12,border:'1px solid rgba(255,255,255,.10)',background:'rgba(255,255,255,.05)',color:'rgba(238,246,255,.74)',cursor:'pointer'}}>x</button>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+                        <div className="fs-cave-stat"><div style={{fontSize:14,fontWeight:900,color:pal.b}}>{selectedCrystal.duration || 0}</div><div style={{fontSize:8,color:'rgba(220,231,255,.55)',textTransform:'uppercase'}}>min</div></div>
+                        <div className="fs-cave-stat"><div style={{fontSize:14,fontWeight:900,color:'#e7b7ff'}}>{selectedCrystal.type || 'solo'}</div><div style={{fontSize:8,color:'rgba(220,231,255,.55)',textTransform:'uppercase'}}>mode</div></div>
+                        <div className="fs-cave-stat"><div style={{fontSize:14,fontWeight:900,color:isGold?'#ffd36a':pal.b}}>{isGold?'rare':(grad?.name || pal.name).split(' ')[0]}</div><div style={{fontSize:8,color:'rgba(220,231,255,.55)',textTransform:'uppercase'}}>aura</div></div>
+                      </div>
+                      <div style={{fontSize:11,color:'rgba(226,238,255,.66)',lineHeight:1.65,marginTop:12}}>
+                        Obtenu le {fmtDate(selectedCrystal.completedAt)}. Ce cristal represente une session de focus terminee et reste plante sur ton ile.
+                        {isGold && <span style={{display:'block',color:'#ffd36a',fontWeight:850,marginTop:5}}>Cristal dore : 1 chance sur 20.</span>}
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="fs-island-detail fs-island-detail-empty">Clique sur un cristal pour zoomer dessus et lire la session qui l'a cree.</div>
+                )}
+              </div>
+
+              {false && (crystals.length === 0 ? (
                 <div className="fs-cave-empty">
                   <div style={{ opacity:0.48, animation:'float 4s ease-in-out infinite' }}>
                     <CrystalGem progress={0.08} size={88}/>
@@ -13290,7 +13586,7 @@
                     );
                   })}
                 </div>
-              )}
+              ))}
             </div>
           </div>
         </>
