@@ -10642,22 +10642,14 @@
         ['amber', '#ffb36b', '255,179,107'],
       ];
       const DEFAULTS = {
-        // Apparence
         themeMode: 'dark', accent: 'indigo', glassDepth: 60, backdropBlur: 18, radius: 22,
         ambientGlow: true, reduceMotion: false,
-        // Dashboard
         showGreeting: true, showCrystal: true, showStreak: true, compactCards: false,
         autosaveLayout: true, widgetOpacity: 100,
-        // Sessions & cristaux
         sessionDuration: 45, autoStartFocus: false, smartBreaks: true,
         sessionCelebration: true, soundEffects: true, crystalRarity: true,
-        // Notifications
         dailyDigest: true, pushNotifications: false, reminderLevel: 'balanced', streakAlert: true,
-        // Intégrations
-        gcalEnabled: false, notionEnabled: false,
-        // Confidentialité
-        encryptedNotes: false, cloudBackups: true, weeklyExport: false,
-        // Navigation
+        cloudBackups: true,
         startPage: 'dashboard',
       };
       const readPrefs = () => {
@@ -10667,20 +10659,17 @@
 
       const [prefs, setPrefs] = React.useState(readPrefs);
       const [saved, setSaved] = React.useState(false);
-      const [active, setActive] = React.useState('profile');
+      const [advanced, setAdvanced] = React.useState(false);
       const [displayName, setDisplayName] = React.useState(user?.name || user?.username || 'Utilisateur');
       const [email] = React.useState(user?.email || '');
       const emailLocked = !!user?.email;
       const [spConnected, setSpConnected] = React.useState(() => !!safeGet('sp_access_token'));
       const [confirmWipe, setConfirmWipe] = React.useState(false);
       const fileRef = React.useRef(null);
-      const mainRef = React.useRef(null);
-      const refs = React.useRef({});
 
       const profilePhoto = user?.photo || user?.avatar || null;
       const initials = (displayName || email || 'L').trim().slice(0, 2).toUpperCase();
       const accentHex = (ACCENTS.find(a => a[0] === prefs.accent) || ACCENTS[0])[1];
-      const accentRgb = (ACCENTS.find(a => a[0] === prefs.accent) || ACCENTS[0])[2];
 
       const flashSave = () => {
         setSaved(true);
@@ -10689,7 +10678,6 @@
       };
       const set = (key, value) => setPrefs(prev => ({ ...prev, [key]: value }));
 
-      // Persist + apply appearance CSS variables globally
       React.useEffect(() => {
         try { localStorage.setItem('fs_productivity_settings', JSON.stringify(prefs)); } catch (_) {}
         try { localStorage.setItem('fs_default_route', prefs.startPage || 'dashboard'); } catch (_) {}
@@ -10705,32 +10693,14 @@
         root.classList.toggle('fs-reduce-motion', !!prefs.reduceMotion);
         root.classList.toggle('fs-ambient-glow', !!prefs.ambientGlow);
         root.classList.toggle('fs-compact-cards', !!prefs.compactCards);
-        root.setAttribute('data-theme-mode', prefs.themeMode);
       }, [prefs]);
 
-      // Spotify connection state
       React.useEffect(() => {
         const sync = () => setSpConnected(!!safeGet('sp_access_token'));
         window.addEventListener('sp_disconnected', sync);
         window.addEventListener('focus', sync);
         return () => { window.removeEventListener('sp_disconnected', sync); window.removeEventListener('focus', sync); };
       }, []);
-
-      // Scroll-spy: highlight active section in sidebar
-      React.useEffect(() => {
-        const el = mainRef.current;
-        if (!el || !('IntersectionObserver' in window)) return;
-        const obs = new IntersectionObserver(entries => {
-          entries.forEach(e => { if (e.isIntersecting) setActive(e.target.dataset.section); });
-        }, { root: el, rootMargin: '-45% 0px -50% 0px', threshold: 0 });
-        Object.values(refs.current).forEach(n => n && obs.observe(n));
-        return () => obs.disconnect();
-      }, []);
-
-      const scrollTo = id => {
-        setActive(id);
-        refs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
 
       const handlePhotoFile = e => {
         const file = e.target.files && e.target.files[0];
@@ -10747,7 +10717,6 @@
         reader.readAsDataURL(file);
         e.target.value = '';
       };
-
       const saveAll = () => {
         const nextUser = { ...(user || {}), name: displayName.trim() || 'Utilisateur', email: user?.email, photo: profilePhoto };
         try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (_) {}
@@ -10784,7 +10753,6 @@
         setTimeout(() => { try { window.location.reload(); } catch (_) { onNavigate('dashboard'); } }, 500);
       };
 
-      // Keyboard shortcuts (⌘S save, G→S handled at app level)
       React.useEffect(() => {
         const onKey = e => {
           const mod = e.metaKey || e.ctrlKey;
@@ -10794,41 +10762,33 @@
         return () => window.removeEventListener('keydown', onKey);
       });
 
-      const SECTIONS = [
-        ['profile', 'Profil', 'Identité & compte'],
-        ['appearance', 'Apparence', 'Thème, accent, verre'],
-        ['dashboard', 'Dashboard', 'Widgets & affichage'],
-        ['sessions', 'Sessions & Cristaux', 'Focus & récompenses'],
-        ['notifications', 'Notifications', 'Rappels & digest'],
-        ['integrations', 'Intégrations', 'Spotify, Calendar, Notion'],
-        ['privacy', 'Confidentialité', 'Données & export'],
-      ];
-
       // ---- Reusable controls ----
-      const Toggle = ({ value, onChange }) => (
-        <button type="button" role="switch" aria-checked={value} onClick={() => { onChange(!value); flashSave(); }} className={'fs-set-toggle' + (value ? ' on' : '')}>
+      const Toggle = ({ value, onChange, disabled }) => (
+        <button type="button" role="switch" aria-checked={value} disabled={disabled} onClick={() => { if (disabled) return; onChange(!value); flashSave(); }} className={'fs-set-toggle' + (value ? ' on' : '') + (disabled ? ' off' : '')}>
           <span className="fs-set-toggle-dot" />
         </button>
       );
-      const Row = ({ title, desc, k, last }) => (
+      const Soon = () => <span className="fs-set-soon">Bientôt</span>;
+      const Row = ({ title, desc, k, last, soon }) => (
         <div className="fs-set-row" style={last ? { borderBottom: 'none' } : null}>
           <div style={{ minWidth: 0 }}>
-            <div className="fs-set-row-t">{title}</div>
+            <div className="fs-set-row-t">{title}{soon && <Soon />}</div>
             {desc && <div className="fs-set-row-d">{desc}</div>}
           </div>
-          <Toggle value={!!prefs[k]} onChange={v => set(k, v)} />
+          <Toggle value={soon ? false : !!prefs[k]} onChange={v => set(k, v)} disabled={soon} />
         </div>
       );
-      const Segmented = ({ k, options }) => (
+      const Segmented = ({ k, options, soon }) => (
         <div className="fs-set-seg" role="tablist">
-          {options.map(([val, label]) => (
-            <button key={val} type="button" role="tab" aria-selected={prefs[k] === val} className={'fs-set-seg-btn' + (prefs[k] === val ? ' on' : '')} onClick={() => { set(k, val); flashSave(); }}>{label}</button>
-          ))}
+          {options.map(([val, label]) => {
+            const isSoon = soon && soon.includes(val);
+            return <button key={val} type="button" role="tab" disabled={isSoon} aria-selected={prefs[k] === val} className={'fs-set-seg-btn' + (prefs[k] === val ? ' on' : '') + (isSoon ? ' soon' : '')} onClick={() => { if (isSoon) return; set(k, val); flashSave(); }}>{label}{isSoon && ' ·'}</button>;
+          })}
         </div>
       );
-      const Slider = ({ k, min, max, step, fmt }) => (
+      const Slider = ({ k, min, max, fmt }) => (
         <div className="fs-set-slider-wrap">
-          <input type="range" className="fs-set-range" min={min} max={max} step={step || 1} value={prefs[k]}
+          <input type="range" className="fs-set-range" min={min} max={max} value={prefs[k]}
             onChange={e => set(k, Number(e.target.value))} onMouseUp={flashSave} onTouchEnd={flashSave}
             style={{ '--fill': ((prefs[k] - min) / (max - min) * 100) + '%' }} />
           <span className="fs-set-slider-val">{fmt ? fmt(prefs[k]) : prefs[k]}</span>
@@ -10840,12 +10800,18 @@
           {children}
         </div>
       );
-      const Card = ({ id, n, title, desc, danger, children }) => (
-        <section ref={el => refs.current[id] = el} data-section={id} className={'fs-set-card' + (danger ? ' danger' : '')}>
+      const Card = ({ title, desc, danger, children }) => (
+        <section className={'fs-set-card' + (danger ? ' danger' : '')}>
           <div className="fs-set-card-head">
-            <span className={'fs-set-card-n' + (danger ? ' danger' : '')}>{n}</span>
-            <div><div className="fs-set-card-title">{title}</div><div className="fs-set-card-desc">{desc}</div></div>
+            <div className="fs-set-card-title">{title}</div>
+            <div className="fs-set-card-desc">{desc}</div>
           </div>
+          {children}
+        </section>
+      );
+      const SubCard = ({ title, children }) => (
+        <section className="fs-set-sub">
+          <div className="fs-set-sub-title">{title}</div>
           {children}
         </section>
       );
@@ -10853,7 +10819,7 @@
       return (
         <div className="fs-set-root">
           <style>{`
-            .fs-set-root{display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;font-family:${T.font};color:${T.text};background:radial-gradient(ellipse 70% 50% at 78% -10%,rgba(var(--accent-rgb,143,220,255),0.13),transparent 60%),radial-gradient(ellipse 60% 44% at 4% 102%,rgba(var(--theme-c2-rgb),0.09),transparent 58%),linear-gradient(180deg,rgba(var(--mineral-bg-rgb),0.98),rgba(var(--mineral-surface-rgb),0.93))}
+            .fs-set-root{display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;font-family:${T.font};color:${T.text};background:radial-gradient(ellipse 70% 50% at 80% -12%,rgba(var(--accent-rgb,143,220,255),0.12),transparent 60%),radial-gradient(ellipse 60% 44% at 2% 104%,rgba(var(--theme-c2-rgb),0.08),transparent 58%),linear-gradient(180deg,rgba(var(--mineral-bg-rgb),0.98),rgba(var(--mineral-surface-rgb),0.93))}
             .fs-set-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 30px;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.012));backdrop-filter:blur(16px);flex-wrap:wrap}
             .fs-set-header-l{display:flex;align-items:center;gap:13px;min-width:0}
             .fs-set-h1{font-family:${T.display};font-size:25px;font-weight:850;letter-spacing:-0.035em}
@@ -10865,43 +10831,37 @@
             .fs-set-btn:hover{background:rgba(255,255,255,0.08);color:${T.text};transform:translateY(-1px)}
             .fs-set-btn.white{background:#f4f6fb;color:#0a0c14;border-color:#f4f6fb;box-shadow:0 12px 30px rgba(255,255,255,0.12)}
             .fs-set-btn.white:hover{background:#fff;color:#06080f}
-            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:240px minmax(0,1fr) 320px}
-            .fs-set-side{overflow:auto;padding:22px 14px;border-right:1px solid rgba(255,255,255,0.06);scrollbar-width:thin}
-            .fs-set-side-k{font-size:10px;font-weight:900;letter-spacing:0.16em;text-transform:uppercase;color:${T.muted};padding:0 10px;margin-bottom:11px}
-            .fs-set-nav{display:grid;gap:5px}
-            .fs-set-nav-btn{display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:center;text-align:left;width:100%;border:1px solid transparent;background:transparent;color:${T.muted};border-radius:13px;padding:10px;cursor:pointer;font-family:${T.font};transition:all .18s var(--mineral-ease)}
-            .fs-set-nav-btn:hover{background:rgba(255,255,255,0.05);color:${T.text}}
-            .fs-set-nav-btn.on{background:linear-gradient(135deg,rgba(var(--accent-rgb,143,220,255),0.16),rgba(var(--theme-c2-rgb),0.07));border-color:rgba(var(--accent-rgb,143,220,255),0.26);color:${T.text}}
-            .fs-set-nav-i{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-size:10px;font-weight:900;background:rgba(255,255,255,0.05);color:var(--accent,#8fdcff)}
-            .fs-set-nav-btn.on .fs-set-nav-i{background:rgba(var(--accent-rgb,143,220,255),0.20)}
-            .fs-set-nav-t{font-size:13px;font-weight:850;color:inherit;line-height:1.1}
-            .fs-set-nav-d{font-size:10.5px;color:${T.muted};margin-top:2px;opacity:.78}
-            .fs-set-main{overflow:auto;padding:26px 30px 80px;scrollbar-width:thin}
-            .fs-set-shell{max-width:720px;margin:0 auto;display:grid;gap:16px}
-            .fs-set-card{scroll-margin-top:18px;border-radius:24px;border:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02));box-shadow:0 18px 56px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.055);padding:24px}
+            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 320px}
+            .fs-set-main{overflow:auto;padding:30px 34px 90px;scrollbar-width:thin}
+            .fs-set-shell{max-width:660px;margin:0 auto;display:grid;gap:16px}
+            .fs-set-intro{margin:2px 0 4px}
+            .fs-set-intro-t{font-family:${T.display};font-size:20px;font-weight:850;letter-spacing:-0.02em}
+            .fs-set-intro-d{font-size:13px;color:${T.muted};margin-top:5px;line-height:1.55}
+            .fs-set-card{border-radius:24px;border:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02));box-shadow:0 18px 56px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.055);padding:24px}
             .fs-set-card.danger{border-color:rgba(255,107,138,0.28);background:linear-gradient(180deg,rgba(255,107,138,0.07),rgba(255,255,255,0.02))}
-            .fs-set-card-head{display:flex;gap:13px;align-items:center;margin-bottom:16px}
-            .fs-set-card-n{flex:none;width:32px;height:32px;border-radius:11px;display:grid;place-items:center;font:900 12px ${T.font};color:var(--accent,#8fdcff);background:linear-gradient(135deg,rgba(var(--accent-rgb,143,220,255),0.18),rgba(var(--theme-c2-rgb),0.08));box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-            .fs-set-card-n.danger{color:${T.rose};background:rgba(255,107,138,0.14)}
+            .fs-set-card-head{margin-bottom:14px}
             .fs-set-card-title{font-size:16.5px;font-weight:900;letter-spacing:-0.01em}
             .fs-set-card.danger .fs-set-card-title{color:${T.rose}}
             .fs-set-card-desc{font-size:12px;color:${T.muted};margin-top:3px;line-height:1.55}
             .fs-set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
-            .fs-set-row-t{font-size:13.5px;font-weight:800;color:${T.text}}
+            .fs-set-row-t{font-size:13.5px;font-weight:800;color:${T.text};display:flex;align-items:center;gap:8px}
             .fs-set-row-d{font-size:12px;color:${T.muted};margin-top:3px;line-height:1.5;max-width:380px}
             .fs-set-field{padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
             .fs-set-field:last-child{border-bottom:none}
             .fs-set-field-head{margin-bottom:11px}
+            .fs-set-soon{font-size:9.5px;font-weight:900;letter-spacing:0.06em;text-transform:uppercase;color:${T.warm};background:rgba(248,210,139,0.12);border:1px solid rgba(248,210,139,0.24);border-radius:999px;padding:2px 7px}
             .fs-set-toggle{width:48px;height:28px;flex:none;border-radius:999px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.06);padding:3px;cursor:pointer;transition:all .22s var(--mineral-ease)}
             .fs-set-toggle.on{border-color:rgba(var(--accent-rgb,143,220,255),0.45);background:linear-gradient(135deg,var(--accent,#8fdcff),var(--theme-c2));box-shadow:0 8px 22px rgba(var(--accent-rgb,143,220,255),0.22),inset 0 1px 0 rgba(255,255,255,0.3)}
+            .fs-set-toggle.off{opacity:.4;cursor:not-allowed}
             .fs-set-toggle-dot{display:block;width:20px;height:20px;border-radius:50%;background:rgba(248,246,252,0.85);transform:translateX(0);transition:transform .22s var(--mineral-ease);box-shadow:0 6px 14px rgba(0,0,0,0.28)}
             .fs-set-toggle.on .fs-set-toggle-dot{transform:translateX(20px);background:#071016}
             .fs-set-seg{display:inline-grid;grid-auto-flow:column;gap:4px;padding:4px;border-radius:13px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)}
             .fs-set-seg-btn{height:34px;padding:0 16px;border:none;background:transparent;color:${T.muted};border-radius:10px;font:800 12px ${T.font};cursor:pointer;transition:all .18s var(--mineral-ease)}
             .fs-set-seg-btn:hover{color:${T.text}}
             .fs-set-seg-btn.on{background:linear-gradient(135deg,rgba(var(--accent-rgb,143,220,255),0.20),rgba(var(--theme-c2-rgb),0.10));color:${T.text};box-shadow:inset 0 1px 0 rgba(255,255,255,0.10)}
-            .fs-set-dots{display:flex;gap:10px;flex-wrap:wrap}
-            .fs-set-dot{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid transparent;position:relative;transition:transform .18s var(--mineral-ease)}
+            .fs-set-seg-btn.soon{opacity:.4;cursor:not-allowed}
+            .fs-set-dots{display:flex;gap:12px;flex-wrap:wrap}
+            .fs-set-dot{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .18s var(--mineral-ease)}
             .fs-set-dot:hover{transform:scale(1.12)}
             .fs-set-dot.on{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.14),0 8px 20px rgba(0,0,0,0.3)}
             .fs-set-slider-wrap{display:flex;align-items:center;gap:14px}
@@ -10916,6 +10876,14 @@
             .fs-set-input:focus{border-color:rgba(var(--accent-rgb,143,220,255),0.46);background:rgba(var(--accent-rgb,143,220,255),0.05)}
             .fs-set-input:disabled{opacity:.6;cursor:not-allowed}
             .fs-set-lbl{font-size:10.5px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:${T.muted};margin-bottom:7px}
+            .fs-set-adv-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px 20px;border-radius:18px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:${T.text};font:850 13.5px ${T.font};cursor:pointer;transition:all .18s var(--mineral-ease)}
+            .fs-set-adv-btn:hover{background:rgba(255,255,255,0.06);border-color:rgba(var(--accent-rgb,143,220,255),0.2)}
+            .fs-set-adv-chev{transition:transform .25s var(--mineral-ease);color:${T.muted}}
+            .fs-set-adv-btn.open .fs-set-adv-chev{transform:rotate(90deg)}
+            .fs-set-adv-body{display:grid;gap:16px;animation:fsSetReveal .3s var(--mineral-ease)}
+            @keyframes fsSetReveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+            .fs-set-sub{border-radius:20px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.022);padding:18px 20px}
+            .fs-set-sub-title{font-size:11px;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent,#8fdcff);margin-bottom:6px}
             .fs-set-int{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
             .fs-set-int:last-child{border-bottom:none}
             .fs-set-int-l{display:flex;align-items:center;gap:12px;min-width:0}
@@ -10923,11 +10891,11 @@
             .fs-set-connect{height:34px;padding:0 14px;border-radius:11px;border:1px solid rgba(var(--accent-rgb,143,220,255),0.28);background:rgba(var(--accent-rgb,143,220,255),0.10);color:var(--accent,#8fdcff);font:850 11.5px ${T.font};cursor:pointer;white-space:nowrap;transition:all .18s var(--mineral-ease)}
             .fs-set-connect:hover{background:rgba(var(--accent-rgb,143,220,255),0.16)}
             .fs-set-connect.off{border-color:rgba(255,107,138,0.3);background:rgba(255,107,138,0.08);color:${T.rose}}
+            .fs-set-connect:disabled{opacity:.4;cursor:not-allowed;border-color:rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);color:${T.muted}}
             .fs-set-statusdot{width:8px;height:8px;border-radius:50%;flex:none;background:${T.green};box-shadow:0 0 10px ${T.green}}
             .fs-set-danger-btn{height:40px;padding:0 16px;border-radius:13px;border:1px solid rgba(255,107,138,0.34);background:rgba(255,107,138,0.10);color:${T.rose};font:850 12.5px ${T.font};cursor:pointer;transition:all .18s var(--mineral-ease)}
             .fs-set-danger-btn:hover{background:rgba(255,107,138,0.18)}
-            /* Preview panel */
-            .fs-set-preview{overflow:auto;padding:26px 22px;border-left:1px solid rgba(255,255,255,0.06);scrollbar-width:thin}
+            .fs-set-preview{overflow:auto;padding:30px 22px;border-left:1px solid rgba(255,255,255,0.06);scrollbar-width:thin}
             .fs-set-preview-inner{position:sticky;top:0;display:grid;gap:18px}
             .fs-set-prev-stage{perspective:1600px}
             .fs-set-prev-card{transform:perspective(1600px) rotateX(8deg) rotateY(-12deg);transform-style:preserve-3d;border-radius:22px;padding:20px;border:1px solid rgba(255,255,255,0.10);background:linear-gradient(160deg,rgba(255,255,255,calc(0.04 + var(--glass-opacity,0.6)*0.08)),rgba(var(--mineral-bg-rgb),0.5));box-shadow:0 30px 70px rgba(0,0,0,0.4),0 12px 30px rgba(var(--accent-rgb,143,220,255),0.12),inset 0 1px 0 rgba(255,255,255,0.10);transition:transform .3s var(--mineral-ease)}
@@ -10947,8 +10915,8 @@
             .fs-set-modal-bg{position:fixed;inset:0;z-index:999;display:grid;place-items:center;background:rgba(4,6,14,0.62);backdrop-filter:blur(8px);padding:20px}
             .fs-set-modal{width:min(420px,100%);border-radius:24px;border:1px solid rgba(255,107,138,0.28);background:linear-gradient(180deg,rgba(28,18,24,0.98),rgba(var(--mineral-bg-rgb),0.98));box-shadow:0 40px 100px rgba(0,0,0,0.6);padding:26px}
             .fs-reduce-motion *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
-            @media(max-width:1100px){.fs-set-body{grid-template-columns:200px minmax(0,1fr)}.fs-set-preview{display:none}}
-            @media(max-width:760px){.fs-set-body{display:block;overflow:auto}.fs-set-side{border-right:none;border-bottom:1px solid rgba(255,255,255,0.06);padding:14px}.fs-set-nav{grid-auto-flow:column;overflow-x:auto;grid-auto-columns:minmax(150px,1fr)}.fs-set-nav-d{display:none}.fs-set-main{overflow:visible;padding:18px 14px 80px}.fs-set-header{padding:16px}}
+            @media(max-width:1040px){.fs-set-body{grid-template-columns:minmax(0,1fr)}.fs-set-preview{display:none}}
+            @media(max-width:680px){.fs-set-main{padding:20px 16px 80px}.fs-set-header{padding:16px}}
           `}</style>
 
           <header className="fs-set-header">
@@ -10965,22 +10933,15 @@
           </header>
 
           <div className="fs-set-body">
-            <aside className="fs-set-side">
-              <div className="fs-set-side-k">Sections</div>
-              <nav className="fs-set-nav">
-                {SECTIONS.map(([id, label, hint], i) => (
-                  <button key={id} className={'fs-set-nav-btn' + (active === id ? ' on' : '')} onClick={() => scrollTo(id)}>
-                    <span className="fs-set-nav-i">{String(i + 1).padStart(2, '0')}</span>
-                    <span><span className="fs-set-nav-t">{label}</span><span className="fs-set-nav-d">{hint}</span></span>
-                  </button>
-                ))}
-              </nav>
-            </aside>
-
-            <main className="fs-set-main" ref={mainRef}>
+            <main className="fs-set-main">
               <div className="fs-set-shell">
-                {/* 1. PROFIL */}
-                <Card id="profile" n="01" title="Profil" desc="Ton identité dans LumenOS, le dashboard et les sessions partagées.">
+                <div className="fs-set-intro">
+                  <div className="fs-set-intro-t">L'essentiel d'abord</div>
+                  <div className="fs-set-intro-d">Ton profil et l'allure de LumenOS. Tout le reste est rangé dans les réglages avancés — tu n'en as pas besoin pour commencer.</div>
+                </div>
+
+                {/* PROFIL */}
+                <Card title="Profil" desc="Qui tu es dans LumenOS.">
                   <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoFile} />
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center', paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <button type="button" className="fs-set-photo" onClick={() => fileRef.current?.click()} title="Changer l'avatar">
@@ -10992,9 +10953,9 @@
                       <button type="button" onClick={() => fileRef.current?.click()} className="fs-set-connect" style={{ marginTop: 9 }}>Changer l'avatar</button>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 14, padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14, padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div>
-                      <div className="fs-set-lbl">Display name</div>
+                      <div className="fs-set-lbl">Nom affiché</div>
                       <input className="fs-set-input" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Ton nom" />
                     </div>
                     <div>
@@ -11002,109 +10963,120 @@
                       <input className="fs-set-input" value={email || ''} disabled={emailLocked} readOnly={emailLocked} placeholder="email@domaine.com" />
                     </div>
                   </div>
-                  <Field title="Page de démarrage" desc="L'écran ouvert quand aucun lien précis n'est ciblé.">
+                  <Field title="Page d'ouverture" desc="L'écran affiché au lancement de LumenOS.">
                     <Segmented k="startPage" options={[['dashboard', 'Dashboard'], ['tasks', 'Tasks'], ['session', 'Focus'], ['notes', 'Notes']]} />
                   </Field>
                 </Card>
 
-                {/* 2. APPARENCE */}
-                <Card id="appearance" n="02" title="Apparence" desc="Thème, couleur d'accent et profondeur du verre — appliqués en direct.">
-                  <Field title="Theme mode">
-                    <Segmented k="themeMode" options={[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']]} />
-                  </Field>
-                  <Field title="Accent color" desc="Définit la variable globale --accent.">
+                {/* APPARENCE (essentiel) */}
+                <Card title="Apparence" desc="Choisis ta couleur. Le reste s'adapte tout seul.">
+                  <Field title="Couleur d'accent" desc="Elle colore tout LumenOS, en direct.">
                     <div className="fs-set-dots">
                       {ACCENTS.map(([name, hex]) => (
                         <button key={name} type="button" aria-label={name} title={name} className={'fs-set-dot' + (prefs.accent === name ? ' on' : '')} style={{ background: hex }} onClick={() => { set('accent', name); flashSave(); }} />
                       ))}
                     </div>
                   </Field>
-                  <Field title="Glass depth"><Slider k="glassDepth" min={0} max={100} fmt={v => v + '%'} /></Field>
-                  <Field title="Backdrop blur"><Slider k="backdropBlur" min={0} max={40} fmt={v => v + 'px'} /></Field>
-                  <Field title="Corner radius"><Slider k="radius" min={8} max={32} fmt={v => v + 'px'} /></Field>
-                  <Row title="Ambient glow" desc="Halo lumineux sur les widgets actifs." k="ambientGlow" />
-                  <Row title="Reduce motion" desc="Désactive les animations (respecte aussi prefers-reduced-motion)." k="reduceMotion" last />
-                </Card>
-
-                {/* 3. DASHBOARD */}
-                <Card id="dashboard" n="03" title="Dashboard" desc="Ce qui s'affiche sur ton espace de travail.">
-                  <Row title="Daily greeting banner" desc="Bandeau de bienvenue en haut du dashboard." k="showGreeting" />
-                  <Row title="Crystal widget" desc="Affiche ou masque ton île de cristal." k="showCrystal" />
-                  <Row title="Streak module" desc="Compteur de séries de jours actifs." k="showStreak" />
-                  <Row title="Compact cards" desc="Réduit le padding des widgets." k="compactCards" />
-                  <Row title="Auto-save layout" desc="Sauvegarde position et taille des widgets automatiquement." k="autosaveLayout" />
-                  <Field title="Widget opacity" desc="Transparence globale des widgets (--widget-opacity)."><Slider k="widgetOpacity" min={20} max={100} fmt={v => v + '%'} /></Field>
-                </Card>
-
-                {/* 4. SESSIONS & CRISTAUX */}
-                <Card id="sessions" n="04" title="Sessions & Cristaux" desc="Tes sessions de focus et la forge de cristaux.">
-                  <Field title="Durée par défaut">
-                    <Segmented k="sessionDuration" options={[[25, '25 min'], [45, '45 min'], [60, '60 min'], [90, '90 min']]} />
+                  <Field title="Thème">
+                    <Segmented k="themeMode" options={[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']]} soon={['light', 'system']} />
                   </Field>
-                  <Row title="Auto-start focus" desc="Lance le mode focus dès le début d'une session." k="autoStartFocus" />
-                  <Row title="Smart breaks" desc="Pause suggérée selon la durée de session." k="smartBreaks" />
-                  <Row title="Session celebration" desc="Animation du cristal forgé à la fin." k="sessionCelebration" />
-                  <Row title="Sound effects" desc="Son lors de la forge d'un cristal." k="soundEffects" />
-                  <Row title="Crystal rarity display" desc="Affiche les raretés sur l'île de cristal." k="crystalRarity" last />
                 </Card>
 
-                {/* 5. NOTIFICATIONS */}
-                <Card id="notifications" n="05" title="Notifications" desc="Comment LumenOS te rappelle l'essentiel.">
-                  <Row title="Daily digest" desc="Résumé du jour à l'ouverture de l'app." k="dailyDigest" />
-                  <Row title="Push notifications" desc="Alertes système même app fermée." k="pushNotifications" />
-                  <Field title="Reminder level" desc="Intensité des rappels.">
-                    <Segmented k="reminderLevel" options={[['minimal', 'Minimal'], ['balanced', 'Balanced'], ['intense', 'Intense']]} />
-                  </Field>
-                  <Row title="Streak alert" desc="Prévient si tu risques de perdre ta série." k="streakAlert" last />
-                </Card>
+                {/* RÉGLAGES AVANCÉS (replié) */}
+                <button className={'fs-set-adv-btn' + (advanced ? ' open' : '')} onClick={() => setAdvanced(v => !v)} aria-expanded={advanced}>
+                  <span>Réglages avancés</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 11.5, color: T.muted, fontWeight: 700 }}>{advanced ? 'Masquer' : 'Personnalisation, sessions, données…'}</span>
+                    <svg className="fs-set-adv-chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                </button>
 
-                {/* 6. INTÉGRATIONS */}
-                <Card id="integrations" n="06" title="Intégrations" desc="Connecte tes outils à LumenOS.">
-                  <div className="fs-set-int">
-                    <div className="fs-set-int-l">
-                      <span className="fs-set-int-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1DB954"><circle cx="12" cy="12" r="11" /><path d="M7 10.5c3-0.8 6.5-0.6 9 1M7.5 13.5c2.4-0.6 5-0.4 7 0.9M8 16c1.8-0.4 3.7-0.3 5.2 0.6" stroke="#0a0c14" strokeWidth="1.3" fill="none" strokeLinecap="round" /></svg></span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="fs-set-row-t" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>Spotify {spConnected && <span className="fs-set-statusdot" />}</div>
-                        <div className="fs-set-row-d">{spConnected ? 'Connecté — lecture en cours visible dans le widget.' : 'Contrôle ta musique depuis le dashboard.'}</div>
-                      </div>
-                    </div>
-                    <button className={'fs-set-connect' + (spConnected ? ' off' : '')} onClick={toggleSpotify}>{spConnected ? 'Disconnect' : 'Connect'}</button>
-                  </div>
-                  <div className="fs-set-int">
-                    <div className="fs-set-int-l">
-                      <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="fs-set-row-t">Google Calendar</div>
-                        <div className="fs-set-row-d">Synchronise tes événements avec tes sessions.</div>
-                      </div>
-                    </div>
-                    <button className="fs-set-connect" onClick={() => { set('gcalEnabled', !prefs.gcalEnabled); flashSave(); addToast({ message: 'Google Calendar bientôt disponible', type: 'info', icon: '◷' }); }}>Connect</button>
-                  </div>
-                  <div className="fs-set-int">
-                    <div className="fs-set-int-l">
-                      <span className="fs-set-int-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="1.7"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" strokeLinecap="round" /></svg></span>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="fs-set-row-t">Notion import</div>
-                        <div className="fs-set-row-d">Importe tes pages et bases Notion en notes.</div>
-                      </div>
-                    </div>
-                    <button className="fs-set-connect" onClick={() => { set('notionEnabled', !prefs.notionEnabled); flashSave(); addToast({ message: 'Import Notion bientôt disponible', type: 'info', icon: '◷' }); }}>Import</button>
-                  </div>
-                </Card>
+                {advanced && (
+                  <div className="fs-set-adv-body">
+                    <SubCard title="Personnalisation fine">
+                      <Field title="Profondeur du verre"><Slider k="glassDepth" min={0} max={100} fmt={v => v + '%'} /></Field>
+                      <Field title="Flou d'arrière-plan"><Slider k="backdropBlur" min={0} max={40} fmt={v => v + 'px'} /></Field>
+                      <Field title="Arrondi des coins"><Slider k="radius" min={8} max={32} fmt={v => v + 'px'} /></Field>
+                      <Field title="Opacité des widgets"><Slider k="widgetOpacity" min={20} max={100} fmt={v => v + '%'} /></Field>
+                      <Row title="Halo ambiant" desc="Lueur autour des widgets actifs." k="ambientGlow" />
+                      <Row title="Réduire les animations" desc="Pour un espace calme et fluide." k="reduceMotion" last />
+                    </SubCard>
 
-                {/* 7. CONFIDENTIALITÉ & DONNÉES */}
-                <Card id="privacy" n="07" title="Confidentialité & Données" desc="Le contrôle complet de tes données LumenOS." danger>
-                  <Row title="Encrypted notes" desc="Chiffre tes notes avant la sauvegarde cloud." k="encryptedNotes" />
-                  <Row title="Cloud backups auto" desc="Sauvegarde automatique vers ton compte." k="cloudBackups" />
-                  <Row title="Weekly export" desc="Archive ZIP envoyée chaque semaine." k="weeklyExport" />
-                  <div className="fs-set-row" style={{ borderBottom: 'none' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="fs-set-row-t" style={{ color: T.rose }}>Delete all data</div>
-                      <div className="fs-set-row-d">Efface profil, notes, tâches, widgets et intégrations. Irréversible.</div>
-                    </div>
-                    <button className="fs-set-danger-btn" onClick={() => setConfirmWipe(true)}>Delete all data</button>
+                    <SubCard title="Dashboard">
+                      <Row title="Bandeau de bienvenue" k="showGreeting" />
+                      <Row title="Île de cristal visible" k="showCrystal" />
+                      <Row title="Module de série (streak)" k="showStreak" />
+                      <Row title="Cartes compactes" desc="Moins d'espace autour des widgets." k="compactCards" />
+                      <Row title="Sauvegarde auto de la disposition" k="autosaveLayout" last />
+                    </SubCard>
+
+                    <SubCard title="Sessions & Cristaux">
+                      <Field title="Durée par défaut">
+                        <Segmented k="sessionDuration" options={[[25, '25'], [45, '45'], [60, '60'], [90, '90 min']]} />
+                      </Field>
+                      <Row title="Démarrer le focus automatiquement" k="autoStartFocus" />
+                      <Row title="Pauses intelligentes" k="smartBreaks" />
+                      <Row title="Animation de cristal en fin de session" k="sessionCelebration" />
+                      <Row title="Effets sonores" desc="Son à la forge d'un cristal." k="soundEffects" />
+                      <Row title="Afficher les raretés sur l'île" k="crystalRarity" last />
+                    </SubCard>
+
+                    <SubCard title="Notifications">
+                      <Row title="Résumé du jour" k="dailyDigest" />
+                      <Row title="Notifications push" k="pushNotifications" soon />
+                      <Field title="Intensité des rappels">
+                        <Segmented k="reminderLevel" options={[['minimal', 'Minimal'], ['balanced', 'Équilibré'], ['intense', 'Intense']]} />
+                      </Field>
+                      <Row title="Alerte de série en danger" k="streakAlert" last />
+                    </SubCard>
+
+                    <SubCard title="Intégrations">
+                      <div className="fs-set-int">
+                        <div className="fs-set-int-l">
+                          <span className="fs-set-int-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1DB954"><circle cx="12" cy="12" r="11" /><path d="M7 10.5c3-0.8 6.5-0.6 9 1M7.5 13.5c2.4-0.6 5-0.4 7 0.9M8 16c1.8-0.4 3.7-0.3 5.2 0.6" stroke="#0a0c14" strokeWidth="1.3" fill="none" strokeLinecap="round" /></svg></span>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="fs-set-row-t">Spotify {spConnected && <span className="fs-set-statusdot" />}</div>
+                            <div className="fs-set-row-d">{spConnected ? 'Connecté.' : 'Ta musique depuis le dashboard.'}</div>
+                          </div>
+                        </div>
+                        <button className={'fs-set-connect' + (spConnected ? ' off' : '')} onClick={toggleSpotify}>{spConnected ? 'Déconnecter' : 'Connecter'}</button>
+                      </div>
+                      <div className="fs-set-int">
+                        <div className="fs-set-int-l">
+                          <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="fs-set-row-t">Google Calendar <Soon /></div>
+                            <div className="fs-set-row-d">Tes événements dans tes sessions.</div>
+                          </div>
+                        </div>
+                        <button className="fs-set-connect" disabled>Connecter</button>
+                      </div>
+                      <div className="fs-set-int">
+                        <div className="fs-set-int-l">
+                          <span className="fs-set-int-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="1.7"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" strokeLinecap="round" /></svg></span>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="fs-set-row-t">Notion <Soon /></div>
+                            <div className="fs-set-row-d">Importe tes pages en notes.</div>
+                          </div>
+                        </div>
+                        <button className="fs-set-connect" disabled>Importer</button>
+                      </div>
+                    </SubCard>
+
+                    <SubCard title="Données">
+                      <Row title="Sauvegardes cloud automatiques" k="cloudBackups" />
+                      <Row title="Notes chiffrées" k="encryptedNotes" soon />
+                      <Row title="Export hebdomadaire (ZIP)" k="weeklyExport" soon />
+                      <div className="fs-set-row" style={{ borderBottom: 'none' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="fs-set-row-t" style={{ color: T.rose }}>Supprimer toutes les données</div>
+                          <div className="fs-set-row-d">Efface profil, notes, tâches et widgets. Irréversible.</div>
+                        </div>
+                        <button className="fs-set-danger-btn" onClick={() => setConfirmWipe(true)}>Supprimer</button>
+                      </div>
+                    </SubCard>
                   </div>
-                </Card>
+                )}
               </div>
             </main>
 
@@ -11112,7 +11084,7 @@
               <div className="fs-set-preview-inner">
                 <div className="fs-set-prev-stage">
                   <div className="fs-set-prev-card">
-                    <div className="fs-set-lbl" style={{ marginBottom: 12 }}>Live preview</div>
+                    <div className="fs-set-lbl" style={{ marginBottom: 12 }}>Aperçu en direct</div>
                     <div className="fs-set-prev-mini">
                       <span className="fs-set-prev-orb" />
                       <div style={{ flex: 1, display: 'grid', gap: 6 }}>
@@ -11125,24 +11097,22 @@
                     </div>
                     <div className="fs-set-prev-meta">
                       <span className="fs-set-pchip"><span style={{ width: 11, height: 11, borderRadius: '50%', background: accentHex }} /> {prefs.accent}</span>
-                      <span className="fs-set-pchip">{prefs.themeMode} · {prefs.glassDepth}%</span>
+                      <span className="fs-set-pchip">Dark</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="fs-set-panel">
-                  <div className="fs-set-panel-k">Pro shortcuts</div>
-                  <div className="fs-set-kbd"><span>Command palette</span><kbd>⌘K</kbd></div>
-                  <div className="fs-set-kbd"><span>Go to settings</span><kbd>G → S</kbd></div>
-                  <div className="fs-set-kbd"><span>Toggle dashboard</span><kbd>⇧D</kbd></div>
-                  <div className="fs-set-kbd"><span>Focus session</span><kbd>⌥F</kbd></div>
+                  <div className="fs-set-panel-k">Raccourcis</div>
+                  <div className="fs-set-kbd"><span>Palette de commandes</span><kbd>⌘K</kbd></div>
+                  <div className="fs-set-kbd"><span>Aller aux réglages</span><kbd>G → S</kbd></div>
+                  <div className="fs-set-kbd"><span>Enregistrer</span><kbd>⌘S</kbd></div>
                 </div>
 
                 <div className="fs-set-panel">
-                  <div className="fs-set-panel-k">UX notes</div>
-                  <div className="fs-set-note">Les changements d'apparence s'appliquent instantanément, sans rechargement.</div>
-                  <div className="fs-set-note">« Save changes » pousse aussi tes données vers ton compte synchronisé.</div>
-                  <div className="fs-set-note">Active « Reduce motion » pour un espace calme et sans animation.</div>
+                  <div className="fs-set-panel-k">À savoir</div>
+                  <div className="fs-set-note">Tes changements s'appliquent tout de suite, sans rechargement.</div>
+                  <div className="fs-set-note">Pas besoin de tout régler : les valeurs par défaut sont déjà bonnes.</div>
                 </div>
               </div>
             </aside>
@@ -11153,7 +11123,7 @@
               <div className="fs-set-modal" onClick={e => e.stopPropagation()}>
                 <div className="fs-set-lbl" style={{ color: T.rose }}>Action irréversible</div>
                 <div style={{ fontFamily: T.display, fontSize: 22, fontWeight: 850, letterSpacing: '-0.03em', marginTop: 6 }}>Supprimer toutes les données ?</div>
-                <div style={{ fontSize: 13, lineHeight: 1.6, color: T.muted, marginTop: 10 }}>Profil, notes, tâches, widgets, préférences et intégrations seront effacés de cet appareil. Cette action ne peut pas être annulée.</div>
+                <div style={{ fontSize: 13, lineHeight: 1.6, color: T.muted, marginTop: 10 }}>Profil, notes, tâches, widgets et préférences seront effacés de cet appareil. Cette action ne peut pas être annulée.</div>
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22 }}>
                   <button className="fs-set-btn" onClick={() => setConfirmWipe(false)}>Annuler</button>
                   <button className="fs-set-danger-btn" onClick={wipeAll}>Tout supprimer</button>
