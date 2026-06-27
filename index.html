@@ -168,6 +168,38 @@
       }
     }
 
+    /* Cascade reveal for the widget picker — progressive, staggered entrance */
+    @keyframes fsCascadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.985);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* Skeleton shimmer while a live preview mounts in cascade */
+    @keyframes fsShimmer {
+      0% { background-position: -160% 0; }
+      100% { background-position: 160% 0; }
+    }
+
+    .fs-cascade-skeleton {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(100deg, rgba(255, 255, 255, 0.02) 30%, rgba(var(--theme-c1-rgb), 0.10) 50%, rgba(255, 255, 255, 0.02) 70%);
+      background-size: 220% 100%;
+      animation: fsShimmer 1.25s ease-in-out infinite;
+    }
+
+    .fs-reduce-motion .fs-cascade-skeleton {
+      animation: none;
+    }
+
     @keyframes widgetSettle {
       0% {
         transform: scale(1.04);
@@ -4500,6 +4532,40 @@
   <script type="text/babel">
     const { useState: _uS9, useRef: _uR9, useEffect: _uEff9 } = React;
 
+    /* Staggered cascade wrapper — reveals its child after index*step ms.
+       Animates the wrapper only, so inner hover transforms stay free. */
+    function CascadeItem({ index, step = 55, base = 0, children, style }) {
+      const reduce = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-reduce-motion');
+      return (
+        <div style={{
+          ...style,
+          animation: reduce ? 'none' : 'fsCascadeUp 0.5s cubic-bezier(0.16,1,0.3,1) both',
+          animationDelay: reduce ? '0ms' : (base + index * step) + 'ms',
+          willChange: 'opacity, transform',
+        }}>
+          {children}
+        </div>
+      );
+    }
+
+    /* Progressive live preview — mounts the heavy widget one-by-one in cascade,
+       showing a shimmer skeleton until its turn, so they never all render at once. */
+    function CascadePreview({ index, step = 95, base = 110, render, style }) {
+      const [mounted, setMounted] = React.useState(false);
+      React.useEffect(() => {
+        const reduce = document.documentElement.classList.contains('fs-reduce-motion');
+        const t = window.setTimeout(() => setMounted(true), reduce ? 0 : base + index * step);
+        return () => window.clearTimeout(t);
+      }, [index]);
+      return (
+        <div style={style}>
+          {mounted
+            ? <div style={{ width: '100%', height: '100%', animation: 'scaleIn 0.42s cubic-bezier(0.16,1,0.3,1) both' }}>{render()}</div>
+            : <div className="fs-cascade-skeleton" aria-hidden="true" />}
+        </div>
+      );
+    }
+
     function EditModeScreen({ onNavigate, widgets: initialWidgets, onSave }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [selected, setSelected] = _uS9(null);
@@ -5004,13 +5070,14 @@
                       {WIDGET_FILTERS.map(f => <button key={f.id} type="button" onClick={() => setWidgetFilter(f.id)} style={{ height:28, borderRadius:999, border:`1px solid ${widgetFilter === f.id ? c1(0.34) : 'rgba(255,255,255,0.075)'}`, background:widgetFilter === f.id ? c1(0.13) : 'rgba(255,255,255,0.035)', color:widgetFilter === f.id ? T.c1 : T.muted, padding:'0 10px', fontSize:10.5, fontWeight:850, fontFamily:T.font, cursor:'pointer' }}>{f.label}</button>)}
                     </div>
                   </div>
-                  {filteredCatalog.map(cat => {
+                  {filteredCatalog.map((cat, i) => {
                     const name = cat.label;
                     const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Spotify: { icon: '♪', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
                     const m = META[name] || { icon: '◇', c: T.c1 };
                     const friendly = cat || { name, short: name, desc: '', best: '', category: '', color: T.c1 };
                     return (
-                      <button key={name} onClick={() => { setPickerWidget(name); setShowPicker(false); }}
+                      <CascadeItem key={name} index={i} step={45} style={{ display: 'grid' }}>
+                      <button onClick={() => { setPickerWidget(name); setShowPicker(false); }}
                         style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))', border: '1px solid rgba(255,255,255,0.065)', borderRadius: 16, padding: '12px', minHeight: 78, cursor: 'pointer', display: 'grid', gridTemplateColumns:'46px 1fr auto', alignItems: 'center', gap: 12, transition: 'all 0.18s cubic-bezier(.16,1,.3,1)', textAlign: 'left', fontFamily: T.font, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.055)' }}
                         onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(180deg,${c1(0.13)},rgba(255,255,255,0.035))`; e.currentTarget.style.borderColor = `${c1(0.28)}`; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.026))'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.065)'; e.currentTarget.style.transform = 'translateY(0)'; }}>
@@ -5018,6 +5085,7 @@
                         <span style={{ minWidth:0 }}><span style={{ display:'block', fontSize: 13, fontWeight: 900, color: T.text, lineHeight: 1, letterSpacing: '-0.015em' }}>{friendly.name || name}</span><span style={{ display:'block', marginTop:5, fontSize: 10.5, fontWeight: 700, color: T.muted, lineHeight: 1.25 }}>{friendly.short || name}</span></span>
                         <span style={{ color:T.muted, fontSize:16 }}>→</span>
                       </button>
+                      </CascadeItem>
                     );
                   })}
                 </div>
@@ -5265,8 +5333,8 @@
                 {/* Variant grid */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px 32px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 22 }}>
-                    {cat.variants.map(v => (
-                      <div key={v} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {cat.variants.map((v, i) => (
+                      <CascadeItem key={v} index={i} step={70} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
                             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.muted }}>Style {v}</span>
@@ -5280,10 +5348,9 @@
                             Utiliser
                           </button>
                         </div>
-                        <div style={{ height: 170, borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }}>
-                          {React.createElement(cat.C, { variant: v, style: { height: '100%', minHeight: 'unset' } })}
-                        </div>
-                      </div>
+                        <CascadePreview index={i} style={{ height: 170, borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }}
+                          render={() => React.createElement(cat.C, { variant: v, style: { height: '100%', minHeight: 'unset' } })} />
+                      </CascadeItem>
                     ))}
                   </div>
                 </div>
