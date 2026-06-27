@@ -1,0 +1,28 @@
+name: Supabase keep-alive
+
+# Free-tier Supabase projects are paused after ~7 days without activity, which takes
+# down auth/data for everyone. This pings the REST endpoint on a schedule so the
+# project stays "active". The anon key below is the public client key (already shipped
+# in index.html) — safe to expose; it is protected by Row Level Security.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:          # allow manual run from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://qlukumjqgagrukbavtvg.supabase.co/rest/v1/" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsdWt1bWpxZ2FncnVrYmF2dHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMTk5NTEsImV4cCI6MjA5Mjc5NTk1MX0.fOgW1587adYgOUb2n3_0E-8XOYgOJNOI9b3bJ3VJRLs")
+          echo "Supabase REST responded with HTTP $STATUS"
+          # 200/401/404 all mean the project is awake and reachable; only a connection
+          # failure (000) indicates the project is paused or deleted.
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::Supabase unreachable (HTTP 000) — project is likely paused or deleted."
+            exit 1
+          fi

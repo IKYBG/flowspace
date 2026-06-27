@@ -62,6 +62,24 @@
       --font-mono: 'JetBrains Mono', 'Courier New', monospace;
     }
 
+    /* Keyboard / screen-reader focus visibility (a11y) — only on keyboard nav, not mouse */
+    :focus-visible {
+      outline: 2px solid var(--accent, var(--mineral-cyan));
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+    :focus:not(:focus-visible) { outline: none; }
+
+    /* App-wide reduce-motion: honored both via system setting and the Settings toggle */
+    html.fs-reduce-motion *,
+    html.fs-reduce-motion *::before,
+    html.fs-reduce-motion *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+
     html,
     body {
       width: 100%;
@@ -1027,16 +1045,43 @@
       var lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 4;
       var lowCpu = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4;
       var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var userPerfLite = false;
-      try { userPerfLite = !!(JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {}).perfLite; } catch (_) {}
+      var userPerfLite = false, userReduceMotion = false;
+      try {
+        var _p = JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {};
+        userPerfLite = !!_p.perfLite;
+        userReduceMotion = !!_p.reduceMotion;
+      } catch (_) {}
       if (lowMemory || lowCpu || reduceMotion || userPerfLite) document.documentElement.classList.add('fs-perf-lite');
+      if (reduceMotion || userReduceMotion) document.documentElement.classList.add('fs-reduce-motion');
     })();
+    /* Boot resilience: if a core CDN fails (network, firewall, ad-blocker), show a clear
+       message instead of a permanent black screen. Defined before the CDN <script> tags. */
+    window.fsCdnFail = function () {
+      if (window.__fsBooted || window.__fsCdnShown) return;
+      var render = function () {
+        var b = document.getElementById('fs-boot');
+        if (!b || window.__fsBooted) return;
+        window.__fsCdnShown = true;
+        b.innerHTML = '<div style="text-align:center;max-width:340px;padding:24px;font-family:system-ui,-apple-system,sans-serif">'
+          + '<div style="font-size:30px;margin-bottom:10px">&#9888;&#65039;</div>'
+          + '<div style="font-size:16px;font-weight:800;color:#f4f6fb">Impossible de charger LumenOS</div>'
+          + '<div style="font-size:13px;line-height:1.6;color:rgba(207,216,235,0.62);margin-top:10px">Une ressource n\'a pas pu se charger (r&eacute;seau, pare-feu ou bloqueur de pub). V&eacute;rifie ta connexion puis r&eacute;essaie.</div>'
+          + '<button onclick="location.reload()" style="margin-top:18px;height:40px;padding:0 18px;border-radius:12px;border:1px solid rgba(143,220,255,0.3);background:rgba(143,220,255,0.12);color:#8fdcff;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">R&eacute;essayer</button>'
+          + '</div>';
+      };
+      if (document.getElementById('fs-boot')) render();
+      else document.addEventListener('DOMContentLoaded', render);
+    };
+    /* Watchdog: if React still hasn't mounted after 20s, surface the same message. */
+    window.addEventListener('load', function () {
+      setTimeout(function () { if (!window.__fsBooted) window.fsCdnFail(); }, 20000);
+    });
   </script>
-  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" crossorigin></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin onerror="fsCdnFail()"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin onerror="fsCdnFail()"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" crossorigin onerror="fsCdnFail()"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" crossorigin onerror="fsCdnFail()"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin onerror="fsCdnFail()"></script>
   <script>
     /* ── Supabase client + full sync layer ─────────────────────────────────
        Auth + persistence for ALL user data: tasks, notes, widgets, theme,
@@ -2155,8 +2200,31 @@
       _fsPushTimer = setTimeout(_fsFlushPush, 800);
     }
 
+    /* Surface a clear warning when localStorage is full instead of losing data silently.
+       Many callers wrap setItem in catch(_){}, so we detect the quota error here and toast. */
+    function _fsNotifyQuota() {
+      if (window.__fsQuotaShown && Date.now() - window.__fsQuotaShown < 20000) return;
+      window.__fsQuotaShown = Date.now();
+      try {
+        var d = document.createElement('div');
+        d.setAttribute('role', 'alert');
+        d.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;max-width:380px;padding:13px 16px;border-radius:14px;border:1px solid rgba(255,179,107,0.34);background:rgba(28,20,10,0.97);color:#ffd9a8;font:600 12.5px system-ui,-apple-system,sans-serif;line-height:1.5;box-shadow:0 18px 50px rgba(0,0,0,0.5);backdrop-filter:blur(12px)';
+        d.textContent = 'Stockage local plein — certaines données n’ont pas pu être sauvegardées. Connecte-toi pour synchroniser, ou allège images/notes.';
+        document.body.appendChild(d);
+        setTimeout(function () { try { d.remove(); } catch (_) {} }, 6500);
+      } catch (_) {}
+    }
+    window._fsNotifyQuota = _fsNotifyQuota;
+
     Storage.prototype.setItem = function (key, value) {
-      _fsOrigSetItem.call(this, key, value);
+      try {
+        _fsOrigSetItem.call(this, key, value);
+      } catch (e) {
+        if (this === localStorage && e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014 || /quota/i.test(String(e && e.message)))) {
+          _fsNotifyQuota();
+        }
+        throw e;
+      }
       if (this === localStorage) _fsSchedulePushForKey(key);
     };
 
@@ -2279,7 +2347,16 @@
 </head>
 
 <body>
-  <div id="root"></div>
+  <style>
+    #fs-boot{position:fixed;inset:0;display:grid;place-items:center;background:#070810;z-index:1}
+    #fs-boot .fs-boot-ring{width:46px;height:46px;border-radius:50%;border:3px solid rgba(143,220,255,0.16);border-top-color:#8fdcff;margin:0 auto;animation:fsBootSpin .9s linear infinite}
+    #fs-boot .fs-boot-lbl{margin-top:18px;font:600 13px system-ui,-apple-system,sans-serif;color:rgba(207,216,235,0.58);letter-spacing:.01em}
+    @keyframes fsBootSpin{to{transform:rotate(360deg)}}
+    html.fs-reduce-motion #fs-boot .fs-boot-ring,@media (prefers-reduced-motion:reduce){#fs-boot .fs-boot-ring{animation:none}}
+  </style>
+  <div id="root">
+    <div id="fs-boot"><div style="text-align:center"><div class="fs-boot-ring"></div><div class="fs-boot-lbl">Chargement de LumenOS&hellip;</div></div></div>
+  </div>
 
   <script type="text/babel">
     const T = {
@@ -10819,6 +10896,26 @@
         addToast({ message: 'Toutes les données ont été supprimées', type: 'warning', icon: '!' });
         setTimeout(() => { try { window.location.reload(); } catch (_) { onNavigate('dashboard'); } }, 500);
       };
+      const exportData = () => {
+        try {
+          const payload = { app: 'LumenOS', exportedAt: new Date().toISOString(), user: user?.email || user?.id || 'local', data: {} };
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('fs_') && !k.startsWith('fs_img_')) {
+              try { payload.data[k] = localStorage.getItem(k); } catch (_) {}
+            }
+          }
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'lumenos-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 800);
+          addToast({ message: 'Sauvegarde exportée', type: 'success', icon: '↓' });
+        } catch (_) {
+          addToast({ message: "Export impossible pour le moment", type: 'warning', icon: '!' });
+        }
+      };
 
       React.useEffect(() => {
         const onKey = e => {
@@ -11132,6 +11229,13 @@
 
                     <SubCard title="Données">
                       <Row title="Sauvegardes cloud automatiques" k="cloudBackups" />
+                      <div className="fs-set-row">
+                        <div style={{ minWidth: 0 }}>
+                          <div className="fs-set-row-t">Exporter mes données</div>
+                          <div className="fs-set-row-d">Télécharge une sauvegarde JSON (profil, notes, tâches, widgets, préférences).</div>
+                        </div>
+                        <button className="fs-set-connect" onClick={exportData}>Exporter</button>
+                      </div>
                       <Row title="Notes chiffrées" k="encryptedNotes" soon />
                       <Row title="Export hebdomadaire (ZIP)" k="weeklyExport" soon />
                       <div className="fs-set-row" style={{ borderBottom: 'none' }}>
@@ -11899,6 +12003,7 @@
       );
     }
 
+    window.__fsBooted = true;
     ReactDOM.createRoot(document.getElementById('root')).render(<ToastProvider><App /></ToastProvider>);
   </script>
 
