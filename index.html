@@ -1053,6 +1053,9 @@
       } catch (_) {}
       if (lowMemory || lowCpu || reduceMotion || userPerfLite) document.documentElement.classList.add('fs-perf-lite');
       if (reduceMotion || userReduceMotion) document.documentElement.classList.add('fs-reduce-motion');
+      /* Password-recovery deep link (Supabase appends #...type=recovery). Flag it
+         before React mounts so the auth screen opens directly on the reset form. */
+      try { if (/type=recovery/i.test(window.location.hash || '')) window.__fsRecovery = true; } catch (_) {}
     })();
     /* Boot resilience: if a core CDN fails (network, firewall, ad-blocker), show a clear
        message instead of a permanent black screen. Defined before the CDN <script> tags. */
@@ -1492,6 +1495,18 @@
       }
     }
     window._fsClearLocalAppData = _fsClearLocalAppData;
+
+    /* The synced profile photo lives in fs_img_profile (pulled from remote.images
+       on login, kept locally between sessions). Reading it here lets the avatar
+       survive a slow/failed remote load or a logout→login round-trip. Only a real
+       data: image is returned, never an IndexedDB ref. */
+    function _fsLocalProfilePhoto() {
+      try {
+        const v = localStorage.getItem('fs_img_profile');
+        return (typeof v === 'string' && /^data:image\//i.test(v)) ? v : null;
+      } catch (_) { return null; }
+    }
+    window._fsLocalProfilePhoto = _fsLocalProfilePhoto;
 
     function _fsUserScopedSyncKey(key, userId = window._fsSbUser?.id) {
       return !!(userId && (
@@ -1968,19 +1983,28 @@
 
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
+      const sameLocalUser = _fsSameLocalUser(userId);
+      const previousLocalUserId = _fsCurrentLocalUserId();
+      const lastLogoutUserId = (() => { try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY); } catch (_) { return null; } })();
+      /* Who the leftover local cache actually belongs to: the live fs_user if set,
+         otherwise the last account that logged out (logout deliberately keeps app
+         data so the SAME user re-logging in is instant). */
+      const localOwnerId = previousLocalUserId || lastLogoutUserId;
+      const switchingUser = !sameLocalUser && !!localOwnerId && localOwnerId !== userId;
+      if (switchingUser) {
+        /* A different account is signing in on this device. Back up the previous
+           owner's data under THEIR key, then wipe local so it can never be shown
+           to — or pushed up into — this account. Runs even when the remote is
+           unreachable, so an outage can't expose the previous user's dashboard. */
+        try { _fsBackupLocalUserData(localOwnerId); } catch (_) { }
+        _fsClearLocalAppData(userId);
+      }
       if (_fsRemoteLoadFailed(remote)) {
         console.warn('[fs] remote sync unavailable; keeping local cache untouched');
         return { source: 'load-failed', remote: null };
       }
-      const sameLocalUser = _fsSameLocalUser(userId);
-      const previousLocalUserId = _fsCurrentLocalUserId();
-      const lastLogoutUserId = (() => { try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY); } catch (_) { return null; } })();
       const localBelongsToRequestedUser = previousLocalUserId === userId || lastLogoutUserId === userId;
-      const hasOrphanLocalData = !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
-      if (!sameLocalUser && previousLocalUserId && previousLocalUserId !== userId) {
-        try { _fsBackupLocalUserData(previousLocalUserId || lastLogoutUserId || undefined); } catch (_) { }
-        _fsClearLocalAppData(userId);
-      }
+      const hasOrphanLocalData = !switchingUser && !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
       if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
@@ -6983,7 +7007,18 @@
       const displayName = user?.name || 'LumenOS';
       const displayEmail = user?.email || 'Crystal Productivity Focus';
       const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
-      const profilePhoto = user?.photo || user?.avatar || null;
+      const readProfilePhoto = () => {
+        try { return user?.photo || user?.avatar || (window._fsLocalProfilePhoto ? window._fsLocalProfilePhoto() : localStorage.getItem('fs_img_profile')) || null; }
+        catch (_) { return user?.photo || user?.avatar || null; }
+      };
+      const [profilePhoto, setProfilePhoto] = React.useState(readProfilePhoto);
+      React.useEffect(() => {
+        setProfilePhoto(readProfilePhoto());
+        const sync = () => setProfilePhoto(readProfilePhoto());
+        window.addEventListener('storage', sync);
+        window.addEventListener('fs-remote-update', sync);
+        return () => { window.removeEventListener('storage', sync); window.removeEventListener('fs-remote-update', sync); };
+      }, [user?.photo, user?.avatar, user?.id]);
 
       React.useEffect(() => {
         const key = user?.id ? `fs_friends_${user.id}` : 'fs_friends';
@@ -6992,8 +7027,15 @@
         };
         sync();
         window.addEventListener('storage', sync);
-        const id = setInterval(sync, 1200);
-        return () => { window.removeEventListener('storage', sync); clearInterval(id); };
+        /* Visibility-aware poll: only ticks while the tab is in front, syncs once on
+           refocus. Stops draining battery in the background (PWA). */
+        let id = null;
+        const start = () => { if (!id) id = setInterval(sync, 2500); };
+        const stop = () => { if (id) { clearInterval(id); id = null; } };
+        const onVis = () => { if (document.visibilityState === 'visible') { sync(); start(); } else stop(); };
+        document.addEventListener('visibilitychange', onVis);
+        if (document.visibilityState === 'visible') start();
+        return () => { window.removeEventListener('storage', sync); document.removeEventListener('visibilitychange', onVis); stop(); };
       }, [user?.id]);
 
       React.useEffect(() => {
@@ -7016,11 +7058,18 @@
         sync();
         window.addEventListener('storage', sync);
         window.addEventListener('fs-remote-update', sync);
-        const id = setInterval(sync, 1200);
+        /* Visibility-aware poll (see friends effect above). */
+        let id = null;
+        const start = () => { if (!id) id = setInterval(sync, 2500); };
+        const stop = () => { if (id) { clearInterval(id); id = null; } };
+        const onVis = () => { if (document.visibilityState === 'visible') { sync(); start(); } else stop(); };
+        document.addEventListener('visibilitychange', onVis);
+        if (document.visibilityState === 'visible') start();
         return () => {
           window.removeEventListener('storage', sync);
           window.removeEventListener('fs-remote-update', sync);
-          clearInterval(id);
+          document.removeEventListener('visibilitychange', onVis);
+          stop();
         };
       }, []);
 
@@ -8906,7 +8955,7 @@
     }
 
     function AuthScreen({ onAuth }) {
-      const [mode, setMode] = _uSAuth('login');
+      const [mode, setMode] = _uSAuth(window.__fsRecovery ? 'recovery' : 'login');
       const [uname, setUname] = _uSAuth('');
       const [email, setEmail] = _uSAuth('');
       const [pass, setPass] = _uSAuth('');
@@ -8914,6 +8963,9 @@
       const [status, setStatus] = _uSAuth('idle');
       const [errMsg, setErrMsg] = _uSAuth('');
       const [shaking, setShaking] = _uSAuth(false);
+      const [infoMsg, setInfoMsg] = _uSAuth('');
+      const [awaitingConfirm, setAwaitingConfirm] = _uSAuth(false);
+      const [resetSent, setResetSent] = _uSAuth(false);
       const AUTH_RATE_KEY = 'fs_auth_attempts_v1';
       const readAuthAttempts = () => {
         try {
@@ -8966,7 +9018,8 @@
 
           if (!session) {
             setStatus('idle');
-            setErrMsg('Vérifiez votre email pour confirmer votre compte.');
+            setAwaitingConfirm(true);
+            setInfoMsg('Vérifie ton email pour confirmer ton compte, puis connecte-toi.');
             return;
           }
 
@@ -8985,7 +9038,7 @@
           const effectiveRemote = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
 
           const finalName = (effectiveRemote && effectiveRemote.name) || sbUser.user_metadata?.name || displayName;
-          const u = { name: finalName, email: trimmedEmail, id: sbUser.id, photo: remote?.images?.['fs_img_profile'] || null, ts: Date.now() };
+          const u = { name: finalName, email: trimmedEmail, id: sbUser.id, photo: remote?.images?.['fs_img_profile'] || window._fsLocalProfilePhoto?.() || null, ts: Date.now() };
           try { localStorage.setItem('fs_user', JSON.stringify(u)); } catch (e) { }
           clearAuthAttempts();
 
@@ -9016,19 +9069,93 @@
 
       const switchMode = () => {
         setMode(m => m === 'login' ? 'signup' : 'login');
-        setErrMsg(''); setStatus('idle'); setUname(''); setEmail(''); setPass('');
+        setErrMsg(''); setInfoMsg(''); setStatus('idle');
+        setAwaitingConfirm(false); setResetSent(false);
+        setUname(''); setEmail(''); setPass('');
+      };
+
+      const goMode = next => {
+        setMode(next);
+        setErrMsg(''); setInfoMsg(''); setStatus('idle');
+        setAwaitingConfirm(false); setResetSent(false);
       };
 
       const signInWithProvider = async provider => {
         if (busy) return;
-        setStatus('idle');
-        setErrMsg(provider === 'google' ? 'Connexion Google bientôt disponible' : 'OAuth bientôt disponible');
-        setShaking(true);
-        setTimeout(() => setShaking(false), 460);
+        if (provider !== 'google') {
+          setErrMsg('OAuth bientôt disponible'); setShaking(true); setTimeout(() => setShaking(false), 460); return;
+        }
+        setStatus('loading'); setErrMsg(''); setInfoMsg('');
+        try {
+          const { error } = await window._fsSb.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin }
+          });
+          if (error) throw error;
+          /* Succès : le navigateur redirige vers Google. */
+        } catch (e) {
+          setStatus('idle'); setShaking(true); setTimeout(() => setShaking(false), 460);
+          const m = String(e?.message || '');
+          if (/not enabled|Unsupported provider|provider/i.test(m))
+            setErrMsg('Connexion Google pas encore activée — utilise ton email pour le moment.');
+          else
+            setErrMsg('Connexion Google indisponible. Réessaie ou utilise ton email.');
+        }
       };
 
-      const showPasskeyHint = () => {
-        setErrMsg('Les passkeys arrivent bientôt. Connexion email ou Google disponible.');
+      const requestReset = async () => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+          setErrMsg('Adresse email invalide'); setShaking(true); setTimeout(() => setShaking(false), 460); return;
+        }
+        setStatus('loading'); setErrMsg(''); setInfoMsg('');
+        try {
+          const { error } = await window._fsSb.auth.resetPasswordForEmail(
+            email.trim().toLowerCase(),
+            { redirectTo: window.location.origin }
+          );
+          if (error) throw error;
+          setStatus('idle'); setResetSent(true);
+          setInfoMsg('Si un compte existe pour cet email, un lien de réinitialisation vient de partir. Pense à vérifier les spams.');
+        } catch (e) {
+          setStatus('idle'); setShaking(true); setTimeout(() => setShaking(false), 460);
+          setErrMsg('Envoi impossible pour le moment. Réessaie dans un instant.');
+        }
+      };
+
+      const updatePassword = async () => {
+        if (pass.length < 6) {
+          setErrMsg('Mot de passe min. 6 caractères'); setShaking(true); setTimeout(() => setShaking(false), 460); return;
+        }
+        setStatus('loading'); setErrMsg(''); setInfoMsg('');
+        try {
+          const { error } = await window._fsSb.auth.updateUser({ password: pass });
+          if (error) throw error;
+          setStatus('success');
+          try { window.__fsRecovery = false; history.replaceState(null, '', window.location.pathname); } catch (_) {}
+          setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 950);
+        } catch (e) {
+          setStatus('idle'); setShaking(true); setTimeout(() => setShaking(false), 460);
+          setErrMsg('Lien expiré ou invalide. Redemande un email de réinitialisation.');
+        }
+      };
+
+      const resendConfirmation = async () => {
+        if (busy) return;
+        setStatus('loading'); setErrMsg('');
+        try {
+          const { error } = await window._fsSb.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
+          setStatus('idle');
+          if (error) throw error;
+          setInfoMsg('Email renvoyé. Vérifie ta boîte de réception (et les spams).');
+        } catch (e) {
+          setStatus('idle'); setErrMsg("Impossible de renvoyer l'email pour le moment.");
+        }
+      };
+
+      const onPrimary = () => {
+        if (mode === 'forgot') return requestReset();
+        if (mode === 'recovery') return updatePassword();
+        return submit();
       };
 
       const busy = status === 'loading' || status === 'success';
@@ -9113,13 +9240,14 @@
               <div style={{position:'relative',zIndex:1}}>
               <div style={{marginBottom:22}}>
                 <div style={{fontFamily:"'Plus Jakarta Sans', 'Inter', sans-serif",fontSize:27,fontWeight:850,letterSpacing:0,lineHeight:1}}>
-                  {mode === 'login' ? 'Bon retour' : 'Créer ton espace'}
+                  {mode === 'login' ? 'Bon retour' : mode === 'signup' ? 'Créer ton espace' : mode === 'forgot' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
                 </div>
                 <div style={{fontSize:12,color:'rgba(248,246,252,.46)',marginTop:8,lineHeight:1.5}}>
-                  {mode === 'login' ? 'Connecte-toi pour retrouver ton dashboard.' : 'Lance ton cockpit de focus synchronisé.'}
+                  {mode === 'login' ? 'Connecte-toi pour retrouver ton dashboard.' : mode === 'signup' ? 'Lance ton cockpit de focus synchronisé.' : mode === 'forgot' ? "Entre ton email : on t'envoie un lien pour le réinitialiser." : 'Choisis un nouveau mot de passe pour ton compte.'}
                 </div>
               </div>
 
+              {(mode === 'login' || mode === 'signup') && (<>
               <button className="fs-auth-alt-btn" onClick={() => signInWithProvider('google')} disabled={busy} style={{width:'100%',marginBottom:14}}>
                 <svg width={17} height={17} viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.3 9.14 5.38 12 5.38z"/></svg>
                 Continuer avec Google
@@ -9127,6 +9255,7 @@
               <div style={{display:'flex',alignItems:'center',gap:10,margin:'0 0 16px',color:'rgba(248,246,252,.28)',fontSize:10,fontWeight:800,letterSpacing:0,textTransform:'uppercase'}}>
                 <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} /> Accès email <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} />
               </div>
+              </>)}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 13, marginBottom: 18 }}>
                 {mode === 'signup' && (
@@ -9135,14 +9264,17 @@
                     <input id="auth-username" className="fs-ai" type="text" placeholder="Alex" value={uname} onChange={e => setUname(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} disabled={busy} />
                   </div>
                 )}
+                {mode !== 'recovery' && (
                 <div>
                   <FL ch="Email" htmlFor="auth-email" required />
-                  <input id="auth-email" className="fs-ai" type="email" placeholder="alex@domain.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} disabled={busy} />
+                  <input id="auth-email" className="fs-ai" type="email" placeholder="alex@domain.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} />
                 </div>
+                )}
+                {mode !== 'forgot' && (
                 <div>
-                  <FL ch="Mot de passe" htmlFor="auth-password" required />
+                  <FL ch={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} htmlFor="auth-password" required />
                   <div style={{ position: 'relative' }}>
-                    <input id="auth-password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder="Mot de passe" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} disabled={busy} style={{ paddingRight: 48 }} />
+                    <input id="auth-password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} style={{ paddingRight: 48 }} />
                     <button onClick={() => setShowPw(v => !v)} disabled={busy}
                       style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,246,252,0.30)', padding: 4, display: 'flex', alignItems: 'center', transition: 'color 0.18s' }}
                       onMouseEnter={e => e.currentTarget.style.color = 'rgba(248,246,252,0.70)'}
@@ -9151,7 +9283,30 @@
                     </button>
                   </div>
                 </div>
+                )}
               </div>
+
+              {mode === 'login' && (
+                <div style={{ textAlign: 'right', marginTop: -4, marginBottom: 14 }}>
+                  <button onClick={() => goMode('forgot')} disabled={busy}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(230,190,255,0.85)', fontSize: 12, fontWeight: 700, fontFamily: T.font }}>
+                    Mot de passe oublié ?
+                  </button>
+                </div>
+              )}
+
+              {infoMsg && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 14px', borderRadius: 12, background: 'rgba(74,222,128,0.10)', border: '1px solid rgba(74,222,128,0.24)', marginBottom: 16 }}>
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M20 6 9 17l-5-5" /></svg>
+                  <span style={{ fontSize: 12, color: '#86efac', fontFamily: T.font, lineHeight: 1.45 }}>{infoMsg}</span>
+                </div>
+              )}
+
+              {awaitingConfirm && (
+                <button onClick={resendConfirmation} disabled={busy} className="fs-auth-alt-btn" style={{ width: '100%', marginBottom: 16, height: 42, fontSize: 12 }}>
+                  Renvoyer l'email de confirmation
+                </button>
+              )}
 
               {errMsg && (
                 <div className="fs-auth-err" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 14px', borderRadius: 12, background: 'rgba(251,113,133,0.1)', border: '1px solid rgba(251,113,133,0.22)', marginBottom: 16 }}>
@@ -9162,7 +9317,7 @@
                 </div>
               )}
 
-              <button onClick={submit} disabled={busy}
+              <button onClick={onPrimary} disabled={busy}
                 style={{
                   width: '100%', height: 54, borderRadius: 18, border: 'none',
                   cursor: busy ? 'default' : 'pointer', fontFamily: T.font, fontWeight: 900, fontSize: 14,
@@ -9190,22 +9345,29 @@
                     <path d="M5 12l5 5 9-9" />
                   </svg>
                 )}
-                {!busy && (mode === 'login' ? 'Entrer dans LumenOS' : 'Créer mon cockpit')}
-                {isOk && 'Bienvenue'}
+                {!busy && (mode === 'login' ? 'Entrer dans LumenOS' : mode === 'signup' ? 'Créer mon cockpit' : mode === 'forgot' ? 'Envoyer le lien' : 'Mettre à jour le mot de passe')}
+                {isOk && (mode === 'recovery' ? 'Mot de passe mis à jour' : 'Bienvenue')}
               </button>
 
-              <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(248,246,252,0.42)' }}>
-                {mode === 'login' ? 'Nouveau ici ?' : 'Déjà un compte ?'}{' '}
-                <button onClick={switchMode}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 850, fontFamily: T.font, fontSize: 13, opacity: 0.94, transition: 'opacity 0.18s' }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '0.94'}>
-                  {mode === 'login' ? 'Créer un compte' : 'Se connecter'}
-                </button>
-              </div>
-              <button className="fs-auth-alt-btn" onClick={showPasskeyHint} disabled={busy} style={{width:'100%',marginTop:12,height:38,fontSize:11,opacity:.72}}>
-                Accès passkey
-              </button>
+              {(mode === 'login' || mode === 'signup') && (
+                <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(248,246,252,0.42)' }}>
+                  {mode === 'login' ? 'Nouveau ici ?' : 'Déjà un compte ?'}{' '}
+                  <button onClick={switchMode}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 850, fontFamily: T.font, fontSize: 13, opacity: 0.94, transition: 'opacity 0.18s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.94'}>
+                    {mode === 'login' ? 'Créer un compte' : 'Se connecter'}
+                  </button>
+                </div>
+              )}
+              {(mode === 'forgot' || mode === 'recovery') && (
+                <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13 }}>
+                  <button onClick={() => goMode('login')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 800, fontFamily: T.font, fontSize: 13 }}>
+                    ← Retour à la connexion
+                  </button>
+                </div>
+              )}
               <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,marginTop:16,color:'rgba(248,246,252,0.30)',fontSize:10,lineHeight:1.4}}>
                 <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                 Connexion sécurisée. Données synchronisées.
@@ -10833,7 +10995,18 @@
       const [confirmWipe, setConfirmWipe] = React.useState(false);
       const fileRef = React.useRef(null);
 
-      const profilePhoto = user?.photo || user?.avatar || null;
+      const readProfilePhoto = () => {
+        try { return user?.photo || user?.avatar || (window._fsLocalProfilePhoto ? window._fsLocalProfilePhoto() : localStorage.getItem('fs_img_profile')) || null; }
+        catch (_) { return user?.photo || user?.avatar || null; }
+      };
+      const [profilePhoto, setProfilePhoto] = React.useState(readProfilePhoto);
+      React.useEffect(() => {
+        setProfilePhoto(readProfilePhoto());
+        const sync = () => setProfilePhoto(readProfilePhoto());
+        window.addEventListener('storage', sync);
+        window.addEventListener('fs-remote-update', sync);
+        return () => { window.removeEventListener('storage', sync); window.removeEventListener('fs-remote-update', sync); };
+      }, [user?.photo, user?.avatar, user?.id]);
       const initials = (displayName || email || 'L').trim().slice(0, 2).toUpperCase();
       const accentHex = (ACCENTS.find(a => a[0] === prefs.accent) || ACCENTS[0])[1];
 
@@ -11864,6 +12037,13 @@
       _uEC(() => {
         let mounted = true;
         (async () => {
+          /* Password-recovery deep link: keep the user on the auth screen so they
+             can set a new password, instead of silently logging them in. */
+          const isRecovery = (() => {
+            try { return /type=recovery/i.test(window.location.hash || '') || window.__fsRecovery === true; }
+            catch (_) { return false; }
+          })();
+          if (isRecovery) { window.__fsRecovery = true; if (mounted) setScreen('auth'); return; }
           try {
             const { data } = await (window._fsWithTimeout
               ? window._fsWithTimeout(window._fsSb.auth.getSession(), 6000, { data: { session: null } })
@@ -11885,7 +12065,7 @@
               const userMeta = session.user.user_metadata;
               if (syncResult.source === 'load-failed') {
                 const localSnapshot = window._fsSnapshotLocalData?.(session.user.id);
-                const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?', photo: localUser?.photo || null, ts: Date.now() };
+                const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?', photo: localUser?.photo || window._fsLocalProfilePhoto?.() || null, ts: Date.now() };
                 try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
                 setUser(authUser);
                 if (window._fsRemoteHasSavedData?.(localSnapshot)) {
@@ -11903,7 +12083,7 @@
               window._fsStartRealtime(session.user.id);
               window._fsStartSessionRealtime(session.user.id);
               const finalName = (remote && remote.name) || localUser?.name || userMeta?.name || userMeta?.full_name || userEmail?.split('@')[0] || '?';
-              const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || null, ts: Date.now() };
+              const authUser = { ...(localUser || {}), id: session.user.id, email: userEmail || localUser?.email || '', name: finalName, photo: remote?.images?.['fs_img_profile'] || localUser?.photo || window._fsLocalProfilePhoto?.() || null, ts: Date.now() };
               try { localStorage.setItem('fs_user', JSON.stringify(authUser)); } catch (_) { }
               setUser(authUser);
               if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local' || syncResult.source === 'local-dashboard' || syncResult.source === 'local-first-sync') {
@@ -11953,6 +12133,11 @@
           }
         })();
         const { data: sub } = window._fsSb.auth.onAuthStateChange((event, session) => {
+          if (event === 'PASSWORD_RECOVERY') {
+            window.__fsRecovery = true;
+            try { setScreen('auth'); } catch (_) {}
+            return;
+          }
           if (event === 'SIGNED_OUT') {
             window._fsSbUser = null;
             window._fsStopRealtime();
@@ -15505,16 +15690,39 @@
         fsSwRefreshing = true;
         window.location.reload();
       });
+
+      function fsShowUpdateBanner(worker) {
+        if (!worker || document.getElementById('fs-update-banner')) return;
+        var bar = document.createElement('div');
+        bar.id = 'fs-update-banner';
+        bar.setAttribute('role', 'status');
+        bar.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:12px;padding:11px 12px 11px 18px;border-radius:16px;background:rgba(12,14,26,0.94);border:1px solid rgba(143,220,255,0.22);box-shadow:0 18px 50px rgba(0,0,0,0.5);backdrop-filter:blur(14px);font-family:system-ui,-apple-system,sans-serif;color:#eaf0ff;font-size:13px;max-width:calc(100vw - 28px)';
+        var txt = document.createElement('span');
+        txt.textContent = 'Nouvelle version de LumenOS disponible.';
+        var btn = document.createElement('button');
+        btn.textContent = 'Recharger';
+        btn.style.cssText = 'border:none;cursor:pointer;padding:8px 14px;border-radius:11px;font-weight:800;font-size:12px;font-family:inherit;color:#07070d;background:linear-gradient(135deg,#8fdcff,#b891ff)';
+        btn.onclick = function () { btn.disabled = true; btn.textContent = '…'; try { worker.postMessage({ type: 'SKIP_WAITING' }); } catch (_) {} };
+        var later = document.createElement('button');
+        later.textContent = 'Plus tard';
+        later.setAttribute('aria-label', 'Ignorer la mise à jour');
+        later.style.cssText = 'border:none;cursor:pointer;padding:8px 8px;border-radius:11px;font-weight:700;font-size:12px;font-family:inherit;color:rgba(234,240,255,0.55);background:none';
+        later.onclick = function () { try { bar.remove(); } catch (_) {} };
+        bar.appendChild(txt); bar.appendChild(btn); bar.appendChild(later);
+        document.body.appendChild(bar);
+      }
+
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
           .then(reg => {
             try { reg.update(); } catch (_) {}
+            if (reg.waiting && navigator.serviceWorker.controller) fsShowUpdateBanner(reg.waiting);
             reg.addEventListener('updatefound', () => {
               const worker = reg.installing;
               if (!worker) return;
               worker.addEventListener('statechange', () => {
                 if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                  worker.postMessage({ type: 'SKIP_WAITING' });
+                  fsShowUpdateBanner(worker);
                 }
               });
             });

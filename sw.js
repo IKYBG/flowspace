@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumenos-v5';
+const CACHE_NAME = 'lumenos-v6';
 
 // Static assets to cache on install
 const PRECACHE = [
@@ -11,7 +11,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
   );
-  self.skipWaiting();
+  // No skipWaiting() here: let the new worker wait so the page can prompt the user
+  // ("Nouvelle version — Recharger") instead of reloading silently mid-task.
 });
 
 self.addEventListener('activate', (event) => {
