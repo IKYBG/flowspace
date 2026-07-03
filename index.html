@@ -5629,10 +5629,13 @@
                 </section>
 
                 <section style={{marginTop:22}}>
-                  <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Duree</span><span>{cfg.duration} min</span></div>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Duree</span><span>{cfg.duration < 1 ? Math.round(cfg.duration * 60) + ' sec' : cfg.duration + ' min'}</span></div>
                   <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,.045)'}}>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>{[25,50,90].map(d => pill(cfg.duration===d, d + ' min', ()=>setCfg(c=>({...c,duration:d}))))}</div>
-                    <input type="range" min="15" max="120" step="5" value={cfg.duration} onChange={e=>setCfg(c=>({...c,duration:+e.target.value}))} style={{width:'100%',accentColor:'var(--theme-c1)'}} />
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
+                      {pill(cfg.duration === 10/60, '10 sec (test)', ()=>setCfg(c=>({...c,duration:10/60})))}
+                      {[25,50,90].map(d => pill(cfg.duration===d, d + ' min', ()=>setCfg(c=>({...c,duration:d}))))}
+                    </div>
+                    <input type="range" min="15" max="120" step="5" value={cfg.duration < 15 ? 15 : cfg.duration} onChange={e=>setCfg(c=>({...c,duration:+e.target.value}))} style={{width:'100%',accentColor:'var(--theme-c1)'}} />
                   </div>
                 </section>
 
@@ -15542,8 +15545,9 @@
                   const si=isGold ? 4 : Math.min(c.stateIdx??3,3);
                   const pal=CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
                   const sz=36+Math.min((c.duration||25)/90,1)*24;
+                  const durLabel = (c.duration || 0) < 1 ? `${Math.round((c.duration || 0) * 60)}sec` : `${c.duration}min`;
                   return (
-                    <div key={c.id} title={`${pal.name} · ${c.duration}min · ${new Date(c.completedAt).toLocaleDateString('fr-FR')}`}
+                    <div key={c.id} title={`${pal.name} · ${durLabel} · ${new Date(c.completedAt).toLocaleDateString('fr-FR')}`}
                       style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'10px 6px',borderRadius:16,background:isGold?'linear-gradient(180deg,rgba(255,211,106,0.11),rgba(255,255,255,0.025))':'rgba(255,255,255,0.03)',border:`1px solid ${isGold?'rgba(255,211,106,0.28)':'rgba(255,255,255,0.06)'}`,transition:'all 0.22s',cursor:'pointer',animationDelay:`${i*0.04}s`,animation:'crystalCardIn 0.3s both',boxShadow:isGold?'0 0 32px rgba(255,202,75,0.14), inset 0 1px 0 rgba(255,255,255,0.08)':'none'}}
                       onMouseEnter={e=>{e.currentTarget.style.background=isGold?'linear-gradient(180deg,rgba(255,211,106,0.18),rgba(255,255,255,0.055))':'rgba(255,255,255,0.07)';e.currentTarget.style.transform='translateY(-3px)';}}
                       onMouseLeave={e=>{e.currentTarget.style.background=isGold?'linear-gradient(180deg,rgba(255,211,106,0.11),rgba(255,255,255,0.025))':'rgba(255,255,255,0.03)';e.currentTarget.style.transform='translateY(0)';}}>
