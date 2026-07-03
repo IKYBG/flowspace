@@ -13845,14 +13845,23 @@
     window.FocusCrystalOverlay = FocusCrystalOverlay;
 
     /* ── Mes Cristaux Panel ──────────────────────────────────────────────── */
-    /* ── Grotte aux cristaux — moteur 2.5D navigable ─────────────────────────
-       Canvas = roche procédurale en parallaxe (fond, colonnes, plafond/sol,
-       rais de lumière, poussière). Couche DOM monde = cristaux implantés
-       (socle rocheux + orientation selon la surface), déplaçables par drag
-       avec magnétisme sol/parois/plafond. Caméra: drag pour se déplacer,
-       molette/boutons pour zoomer, inertie. Hover (souris) ou tap (mobile)
-       → fiche de la session. Positions persistées dans fs_crystals_{uid}. */
-    const CAVE_W = 2600, CAVE_H = 620;
+    /* ── Grotte aux cristaux — chambre en perspective (v2) ───────────────────
+       Vue à un point de fuite : TOUS les cristaux sont visibles d'entrée,
+       étagés en profondeur (z). Se déplacer = travelling avant/arrière
+       (molette, glisser, boutons) — les cristaux lointains, voilés par la
+       brume, grossissent à l'approche. Rendu : canvas (couloir rocheux,
+       anneaux de profondeur, stalactites, brume, poussière, halos) +
+       couche DOM en vraie perspective CSS (perspective/translateZ, tri 3D
+       natif). Implantation : base du cristal clippée sous la surface et
+       masquée par des éclats de roche au premier plan — il est planté,
+       pas posé. Drag : glisser horizontalement = déplacer, verticalement =
+       enfoncer plus loin / ramener. Hover souris ou tap mobile → fiche de
+       session. Positions persistées dans fs_crystals_{uid} (cave v2). */
+    const CAVE_F = 860;          /* focale perspective (px) */
+    const CAVE_OY = 0.44;        /* point de fuite vertical (fraction) */
+    const CAVE_ZMAX = 1250;      /* profondeur max d'implantation */
+    const CAVE_CAM_MAX = 1000;   /* avancée max de la caméra */
+    const CAVE_FLOOR = 0.868, CAVE_CEIL = 0.125;
 
     function _caveRng(seed) {
       let t = (Math.floor(Math.abs(seed)) || 1) >>> 0;
@@ -13864,206 +13873,165 @@
       };
     }
 
-    const _CAVE_GEO = (() => {
+    /* décor fixe : stalactites/stalagmites/rochers répartis en profondeur */
+    const _CAVE_DECO = (() => {
       const rng = _caveRng(20260703);
-      const floor = [], ceil = [];
-      for (let x = 0; x <= CAVE_W + 65; x += 65) {
-        floor.push({ x, y: 506 + Math.sin(x * 0.0042) * 16 + rng() * 26 });
-        ceil.push({ x, y: 102 + Math.sin(x * 0.0031 + 2.1) * 18 + rng() * 30 });
-      }
-      const stalac = [];
-      for (let x = 150; x < CAVE_W - 150; x += 150 + rng() * 140) {
-        stalac.push({ x, w: 15 + rng() * 26, len: 40 + rng() * 112 });
-      }
-      const stalag = [];
-      for (let x = 210; x < CAVE_W - 210; x += 250 + rng() * 220) {
-        stalag.push({ x, w: 22 + rng() * 30, len: 28 + rng() * 66 });
-      }
-      const far = [];
-      for (let i = 0; i < 9; i++) far.push({ x: 60 + i * 310 + rng() * 130, r: 160 + rng() * 200 });
-      const mid = [];
-      for (let i = 0; i < 7; i++) mid.push({ x: 210 + i * 370 + rng() * 150, w: 40 + rng() * 66, drop: 150 + rng() * 130 });
-      const rays = [{ x: 480, w: 120 }, { x: 1330, w: 170 }, { x: 2130, w: 110 }];
-      return { floor, ceil, stalac, stalag, far, mid, rays };
+      const stalac = [], stalag = [], rocks = [];
+      for (let i = 0; i < 26; i++) stalac.push({ xf: 0.04 + rng() * 0.92, z: 40 + rng() * 1500, w: 10 + rng() * 26, len: 34 + rng() * 96 });
+      for (let i = 0; i < 16; i++) stalag.push({ xf: 0.05 + rng() * 0.9, z: 60 + rng() * 1500, w: 14 + rng() * 30, len: 22 + rng() * 62 });
+      for (let i = 0; i < 12; i++) rocks.push({ xf: rng() < 0.5 ? 0.02 + rng() * 0.13 : 0.85 + rng() * 0.13, z: 60 + rng() * 1400, r: 14 + rng() * 40 });
+      const rings = [90, 200, 330, 480, 650, 850, 1080, 1340];
+      return { stalac, stalag, rocks, rings };
     })();
 
-    function _caveSurfY(pts, x) {
-      const i = Math.max(0, Math.min(pts.length - 2, Math.floor(x / 65)));
-      const a = pts[i], b = pts[i + 1];
-      const t = Math.max(0, Math.min(1, (x - a.x) / 65));
-      return a.y + (b.y - a.y) * t;
-    }
-    function _caveSlope(pts, x) {
-      const i = Math.max(0, Math.min(pts.length - 2, Math.floor(x / 65)));
-      return Math.atan2(pts[i + 1].y - pts[i].y, 65) * 180 / Math.PI;
-    }
-    function _caveSnap(wx, wy) {
-      const x = Math.max(160, Math.min(CAVE_W - 160, wx));
-      const fy = _caveSurfY(_CAVE_GEO.floor, x);
-      const cy = _caveSurfY(_CAVE_GEO.ceil, x);
-      const cands = [
-        { surf: 'floor', x, y: fy, rot: _caveSlope(_CAVE_GEO.floor, x) * 0.55, d: Math.abs(wy - fy) },
-        { surf: 'ceil', x, y: cy, rot: 180 - _caveSlope(_CAVE_GEO.ceil, x) * 0.55, d: Math.abs(wy - cy) },
-        { surf: 'wallL', x: 132, y: Math.max(200, Math.min(450, wy)), rot: 82, d: Math.abs(wx - 132) },
-        { surf: 'wallR', x: CAVE_W - 132, y: Math.max(200, Math.min(450, wy)), rot: -82, d: Math.abs(wx - (CAVE_W - 132)) },
-      ];
-      cands.sort((a, b) => a.d - b.d);
-      return cands[0];
-    }
     function _caveDefaultSpot(c, i) {
       const seed = (Number(c.seed) || (typeof c.id === 'number' ? c.id : 7)) + i * 1319;
       const rng = _caveRng(seed % 2147483647);
-      const xf = rng(), roll = rng(), jit = rng();
-      const x = 210 + xf * (CAVE_W - 420);
-      if (roll < 0.2) { const s = _caveSnap(x, 0); return { ...s, rot: s.rot + (jit - 0.5) * 12 }; }
-      if (roll < 0.3) return _caveSnap(roll < 0.25 ? 0 : CAVE_W, 210 + jit * 230);
-      const s = _caveSnap(x, CAVE_H);
-      return { ...s, rot: s.rot + (jit - 0.5) * 16 };
+      const roll = rng(), a = 0.07 + rng() * 0.86, zr = rng(), jit = rng(), tj = rng();
+      const z = 70 + Math.pow(zr, 1.18) * (CAVE_ZMAX - 90);
+      if (roll < 0.16) return { surf: 'ceil', a, z, rot: 180 + (jit - 0.5) * 14, tj: tj * 2.4 };
+      if (roll < 0.27) return { surf: roll < 0.215 ? 'wallL' : 'wallR', a: 0.24 + a * 0.5, z, rot: (roll < 0.215 ? 82 : -82) + (jit - 0.5) * 10, tj: 0 };
+      return { surf: 'floor', a, z, rot: (jit - 0.5) * 17, tj: tj * 3 };
     }
     function _caveSpotOf(c, i) {
       const cv = c && c.cave;
-      if (cv && Number.isFinite(cv.x) && Number.isFinite(cv.y)) {
-        return { x: cv.x, y: cv.y, rot: Number.isFinite(cv.rot) ? cv.rot : 0, surf: cv.surf || 'floor' };
+      if (cv && cv.v === 2 && Number.isFinite(cv.a) && Number.isFinite(cv.z)) {
+        return { surf: cv.surf || 'floor', a: cv.a, z: cv.z, rot: Number.isFinite(cv.rot) ? cv.rot : 0, tj: Number.isFinite(cv.tj) ? cv.tj : 0 };
       }
       return _caveDefaultSpot(c, i);
     }
+    /* ancre écran (plan z=0) en fractions du viewport */
+    function _caveAnchor(spot) {
+      if (spot.surf === 'ceil') return { xf: spot.a, yf: CAVE_CEIL + (spot.tj || 0) / 100 };
+      if (spot.surf === 'wallL') return { xf: 0.045, yf: 0.26 + spot.a * 0.42 };
+      if (spot.surf === 'wallR') return { xf: 0.955, yf: 0.26 + spot.a * 0.42 };
+      return { xf: spot.a, yf: CAVE_FLOOR + (spot.tj || 0) / 100 };
+    }
 
-    function _caveDraw(ctx, w, h, cam, scale, camY, dust, t, glows, reduce) {
+    function _caveDraw(ctx, w, h, camZ, dust, t, glows, reduce) {
       ctx.clearRect(0, 0, w, h);
+      const ox = w * 0.5, oy = h * CAVE_OY;
+      const P = (x, y, z) => {
+        const k = CAVE_F / Math.max(60, CAVE_F + z - camZ);
+        return { x: ox + (x - ox) * k, y: oy + (y - oy) * k, k };
+      };
+      const fy = h * CAVE_FLOOR, cy = h * CAVE_CEIL;
+
+      /* fond + lueur du fond de grotte */
       let g = ctx.createLinearGradient(0, 0, 0, h);
       g.addColorStop(0, '#071430'); g.addColorStop(0.55, '#040d22'); g.addColorStop(1, '#02060f');
       ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      const X = (wx, p) => (wx - cam.x * p) * scale;
-      const Y = wy => (wy - camY) * scale;
+      const deepK = CAVE_F / Math.max(60, CAVE_F + 1650 - camZ);
+      const vg0 = ctx.createRadialGradient(ox, oy, 0, ox, oy, Math.max(60, h * 0.42 * deepK * 3));
+      vg0.addColorStop(0, 'rgba(64,205,235,0.20)');
+      vg0.addColorStop(0.45, 'rgba(28,120,175,0.10)');
+      vg0.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = vg0; ctx.fillRect(0, 0, w, h);
 
-      /* fond lointain */
-      ctx.fillStyle = '#081226';
-      for (const hp of _CAVE_GEO.far) {
-        const sx = X(hp.x, 0.22);
-        if (sx < -hp.r * scale || sx > w + hp.r * scale) continue;
-        ctx.beginPath(); ctx.arc(sx, Y(586), hp.r * scale, Math.PI, 0); ctx.fill();
+      /* tranches sol / plafond / parois, du fond vers l'avant */
+      const Z = _CAVE_DECO.rings.concat([1650]).sort((a, b) => b - a);
+      for (let i = 0; i < Z.length; i++) {
+        const z1 = Z[i], z0 = (i + 1 < Z.length) ? Z[i + 1] : Math.min(0, camZ - 80);
+        const depth = Math.max(0, (z0 + z1) / 2 - camZ);
+        const fade = Math.max(0, Math.min(1, 1 - depth / 1750));
+        const a1 = P(0, fy, z1), b1 = P(w, fy, z1), a0 = P(0, fy, z0), b0 = P(w, fy, z0);
+        /* sol */
+        ctx.fillStyle = 'rgba(' + Math.round(9 + 8 * fade) + ',' + Math.round(16 + 14 * fade) + ',' + Math.round(34 + 22 * fade) + ',1)';
+        ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(b1.x, b1.y); ctx.lineTo(b0.x, b0.y); ctx.lineTo(a0.x, a0.y); ctx.closePath(); ctx.fill();
+        /* plafond */
+        const c1p = P(0, cy, z1), d1 = P(w, cy, z1), c0p = P(0, cy, z0), d0 = P(w, cy, z0);
+        ctx.fillStyle = 'rgba(' + Math.round(8 + 7 * fade) + ',' + Math.round(15 + 12 * fade) + ',' + Math.round(32 + 20 * fade) + ',1)';
+        ctx.beginPath(); ctx.moveTo(c1p.x, c1p.y); ctx.lineTo(d1.x, d1.y); ctx.lineTo(d0.x, d0.y); ctx.lineTo(c0p.x, c0p.y); ctx.closePath(); ctx.fill();
+        /* parois */
+        ctx.fillStyle = 'rgba(' + Math.round(7 + 9 * fade) + ',' + Math.round(14 + 13 * fade) + ',' + Math.round(30 + 21 * fade) + ',1)';
+        ctx.beginPath(); ctx.moveTo(c1p.x, c1p.y); ctx.lineTo(a1.x, a1.y); ctx.lineTo(a0.x, a0.y); ctx.lineTo(c0p.x, c0p.y); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(b1.x, b1.y); ctx.lineTo(b0.x, b0.y); ctx.lineTo(d0.x, d0.y); ctx.closePath(); ctx.fill();
       }
 
-      /* rais de lumière */
-      const sway = reduce ? 0 : Math.sin(t * 0.00038) * 26;
+      /* anneaux de roche (repères de profondeur) */
+      for (const rz of _CAVE_DECO.rings) {
+        if (rz - camZ < 30) continue;
+        const tl = P(0, cy, rz), tr = P(w, cy, rz), br = P(w, fy, rz), bl = P(0, fy, rz);
+        const fade = Math.max(0.05, Math.min(0.34, 0.34 - (rz - camZ) / 1750 * 0.29));
+        ctx.strokeStyle = 'rgba(110,215,255,' + fade.toFixed(3) + ')';
+        ctx.lineWidth = Math.max(0.6, 1.7 * tl.k);
+        ctx.beginPath();
+        ctx.moveTo(tl.x, tl.y);
+        ctx.quadraticCurveTo(ox, tl.y - 26 * tl.k, tr.x, tr.y);
+        ctx.lineTo(br.x, br.y);
+        ctx.quadraticCurveTo(ox, br.y + 18 * br.k, bl.x, bl.y);
+        ctx.closePath(); ctx.stroke();
+      }
+
+      /* stalactites / stalagmites / rochers projetés */
+      for (const s of _CAVE_DECO.stalac) {
+        const rel = s.z - camZ; if (rel < 20) continue;
+        const p = P(s.xf * w, cy, s.z);
+        const fade = Math.max(0, Math.min(1, 1 - rel / 1700));
+        ctx.fillStyle = 'rgba(' + Math.round(7 + 8 * fade) + ',' + Math.round(16 + 12 * fade) + ',' + Math.round(36 + 18 * fade) + ',1)';
+        ctx.beginPath();
+        ctx.moveTo(p.x - s.w * p.k, p.y - 2);
+        ctx.quadraticCurveTo(p.x - s.w * 0.13 * p.k, p.y + s.len * 0.6 * p.k, p.x, p.y + s.len * p.k);
+        ctx.quadraticCurveTo(p.x + s.w * 0.13 * p.k, p.y + s.len * 0.6 * p.k, p.x + s.w * p.k, p.y - 2);
+        ctx.closePath(); ctx.fill();
+      }
+      for (const s of _CAVE_DECO.stalag) {
+        const rel = s.z - camZ; if (rel < 20) continue;
+        const p = P(s.xf * w, fy, s.z);
+        const fade = Math.max(0, Math.min(1, 1 - rel / 1700));
+        ctx.fillStyle = 'rgba(' + Math.round(9 + 9 * fade) + ',' + Math.round(18 + 13 * fade) + ',' + Math.round(40 + 18 * fade) + ',1)';
+        ctx.beginPath();
+        ctx.moveTo(p.x - s.w * p.k, p.y + 2);
+        ctx.quadraticCurveTo(p.x - s.w * 0.15 * p.k, p.y - s.len * 0.62 * p.k, p.x, p.y - s.len * p.k);
+        ctx.quadraticCurveTo(p.x + s.w * 0.15 * p.k, p.y - s.len * 0.62 * p.k, p.x + s.w * p.k, p.y + 2);
+        ctx.closePath(); ctx.fill();
+      }
+      for (const r of _CAVE_DECO.rocks) {
+        const rel = r.z - camZ; if (rel < 20) continue;
+        const p = P(r.xf * w, fy, r.z);
+        ctx.fillStyle = 'rgba(14,26,50,0.9)';
+        ctx.beginPath(); ctx.ellipse(p.x, p.y - r.r * 0.3 * p.k, r.r * p.k, r.r * 0.62 * p.k, 0, 0, 6.3); ctx.fill();
+      }
+
+      /* halos des cristaux (projetés) */
       ctx.globalCompositeOperation = 'lighter';
-      for (const r of _CAVE_GEO.rays) {
-        const sx = X(r.x, 0.82);
-        if (sx < -300 || sx > w + 300) continue;
-        const rg = ctx.createLinearGradient(sx, Y(90), sx + sway, Y(560));
-        rg.addColorStop(0, 'rgba(140,230,255,0.10)');
-        rg.addColorStop(0.6, 'rgba(120,220,255,0.045)');
-        rg.addColorStop(1, 'rgba(120,220,255,0)');
-        ctx.fillStyle = rg;
-        ctx.beginPath();
-        ctx.moveTo(sx - r.w * 0.18 * scale, Y(92));
-        ctx.lineTo(sx + r.w * 0.18 * scale, Y(92));
-        ctx.lineTo(sx + (r.w * 0.62 + sway) * scale, Y(552));
-        ctx.lineTo(sx - (r.w * 0.62 - sway) * scale, Y(552));
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.globalCompositeOperation = 'source-over';
-
-      /* colonnes intermédiaires */
-      ctx.fillStyle = '#060d1e';
-      for (const c of _CAVE_GEO.mid) {
-        const sx = X(c.x, 0.55), sw = c.w * scale;
-        if (sx < -sw * 2 || sx > w + sw * 2) continue;
-        ctx.beginPath();
-        ctx.moveTo(sx - sw * 0.7, Y(70));
-        ctx.quadraticCurveTo(sx - sw * 0.2, Y(70 + c.drop), sx - sw * 0.5, Y(600));
-        ctx.lineTo(sx + sw * 0.5, Y(600));
-        ctx.quadraticCurveTo(sx + sw * 0.2, Y(70 + c.drop), sx + sw * 0.7, Y(70));
-        ctx.closePath(); ctx.fill();
-      }
-
-      /* plafond premier plan */
-      g = ctx.createLinearGradient(0, Y(40), 0, Y(240));
-      g.addColorStop(0, '#0c1e3c'); g.addColorStop(1, '#050b1a');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(w + 4, -4);
-      const c0 = Math.max(0, Math.floor((cam.x - 80) / 65)), c1 = Math.min(_CAVE_GEO.ceil.length - 1, c0 + Math.ceil(w / scale / 65) + 3);
-      for (let i = c1; i >= c0; i--) ctx.lineTo(X(_CAVE_GEO.ceil[i].x, 1), Y(_CAVE_GEO.ceil[i].y));
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(110,220,255,0.13)'; ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      for (let i = c0; i <= c1; i++) { const p = _CAVE_GEO.ceil[i]; i === c0 ? ctx.moveTo(X(p.x, 1), Y(p.y)) : ctx.lineTo(X(p.x, 1), Y(p.y)); }
-      ctx.stroke();
-      ctx.fillStyle = '#071229';
-      for (const s of _CAVE_GEO.stalac) {
-        const sx = X(s.x, 1);
-        if (sx < -60 || sx > w + 60) continue;
-        const sy = _caveSurfY(_CAVE_GEO.ceil, s.x);
-        ctx.beginPath();
-        ctx.moveTo(sx - s.w * scale, Y(sy - 6));
-        ctx.quadraticCurveTo(sx - s.w * 0.14 * scale, Y(sy + s.len * 0.6), sx, Y(sy + s.len));
-        ctx.quadraticCurveTo(sx + s.w * 0.14 * scale, Y(sy + s.len * 0.6), sx + s.w * scale, Y(sy - 6));
-        ctx.closePath(); ctx.fill();
-      }
-
-      /* sol premier plan */
-      g = ctx.createLinearGradient(0, Y(430), 0, Y(640));
-      g.addColorStop(0, '#0d2140'); g.addColorStop(0.45, '#081428'); g.addColorStop(1, '#030711');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.moveTo(-4, h + 4); ctx.lineTo(-4, Y(_caveSurfY(_CAVE_GEO.floor, cam.x)));
-      for (let i = c0; i <= c1; i++) { const p = _CAVE_GEO.floor[i]; ctx.lineTo(X(p.x, 1), Y(p.y)); }
-      ctx.lineTo(w + 4, h + 4); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(140,235,255,0.16)'; ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      for (let i = c0; i <= c1; i++) { const p = _CAVE_GEO.floor[i]; i === c0 ? ctx.moveTo(X(p.x, 1), Y(p.y)) : ctx.lineTo(X(p.x, 1), Y(p.y)); }
-      ctx.stroke();
-      ctx.fillStyle = '#0a1830';
-      for (const s of _CAVE_GEO.stalag) {
-        const sx = X(s.x, 1);
-        if (sx < -60 || sx > w + 60) continue;
-        const sy = _caveSurfY(_CAVE_GEO.floor, s.x);
-        ctx.beginPath();
-        ctx.moveTo(sx - s.w * scale, Y(sy + 6));
-        ctx.quadraticCurveTo(sx - s.w * 0.16 * scale, Y(sy - s.len * 0.62), sx, Y(sy - s.len));
-        ctx.quadraticCurveTo(sx + s.w * 0.16 * scale, Y(sy - s.len * 0.62), sx + s.w * scale, Y(sy + 6));
-        ctx.closePath(); ctx.fill();
-      }
-
-      /* parois d'extrémités */
-      const wallGrad = (x0, x1) => { const wg = ctx.createLinearGradient(x0, 0, x1, 0); wg.addColorStop(0, '#0b1a34'); wg.addColorStop(1, 'rgba(6,12,26,0)'); return wg; };
-      const lw = X(96, 1);
-      if (lw > -10) { ctx.fillStyle = wallGrad(X(-40, 1), X(210, 1)); ctx.fillRect(X(-40, 1), 0, 250 * scale, h); }
-      const rw = X(CAVE_W - 96, 1);
-      if (rw < w + 10) { ctx.fillStyle = (() => { const wg = ctx.createLinearGradient(X(CAVE_W + 40, 1), 0, X(CAVE_W - 210, 1), 0); wg.addColorStop(0, '#0b1a34'); wg.addColorStop(1, 'rgba(6,12,26,0)'); return wg; })(); ctx.fillRect(X(CAVE_W - 250, 1), 0, 250 * scale, h); }
-
-      /* halos des cristaux */
-      ctx.globalCompositeOperation = 'lighter';
-      let drawn = 0;
       for (const gl of glows) {
-        const sx = X(gl.x, 1), sy = Y(gl.y);
-        if (sx < -160 || sx > w + 160 || drawn > 26) continue;
-        drawn++;
-        const rr = gl.r * scale;
-        const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
-        rg.addColorStop(0, gl.glow.replace(/[\d.]+\)$/, '0.26)'));
+        const rel = gl.z - camZ; if (rel < 10) continue;
+        const p = P(gl.xf * w, gl.yf * h, gl.z);
+        const rr = Math.max(8, gl.r * p.k);
+        const alpha = Math.max(0.05, 0.26 * Math.min(1, p.k * 1.4));
+        const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
+        rg.addColorStop(0, gl.glow.replace(/[\d.]+\)$/, alpha.toFixed(3) + ')'));
         rg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = rg;
-        ctx.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+        ctx.fillRect(p.x - rr, p.y - rr, rr * 2, rr * 2);
       }
       ctx.globalCompositeOperation = 'source-over';
 
-      /* poussière */
+      /* brume atmosphérique vers le fond */
+      const fog = ctx.createRadialGradient(ox, oy, 0, ox, oy, Math.max(80, h * 0.9 * Math.max(0.22, deepK * 4)));
+      fog.addColorStop(0, 'rgba(20,60,100,0.30)');
+      fog.addColorStop(0.5, 'rgba(10,28,55,0.12)');
+      fog.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = fog; ctx.fillRect(0, 0, w, h);
+
+      /* poussière en suspension */
       ctx.fillStyle = 'rgba(190,240,255,0.5)';
       for (const d of dust) {
         if (!reduce) {
-          d.y -= d.sp; d.x += Math.sin(t * 0.0006 + d.ph) * 0.22;
-          if (d.y < 130) { d.y = 500 + Math.random() * 60; d.x = cam.x + Math.random() * (w / scale); }
+          d.yf -= d.sp; d.xf += Math.sin(t * 0.0006 + d.ph) * 0.00016;
+          if (d.yf < 0.16) { d.yf = 0.78 + Math.random() * 0.1; d.xf = 0.04 + Math.random() * 0.92; }
         }
-        const sx = X(d.x, 0.85), sy = Y(d.y);
-        if (sx < -8 || sx > w + 8) continue;
-        ctx.globalAlpha = d.a;
-        ctx.beginPath(); ctx.arc(sx, sy, d.r, 0, 6.3); ctx.fill();
+        const rel = d.z - camZ; if (rel < 10) continue;
+        const p = P(d.xf * w, d.yf * h, d.z);
+        ctx.globalAlpha = d.a * Math.min(1, p.k * 1.5);
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.4, d.r * p.k), 0, 6.3); ctx.fill();
       }
       ctx.globalAlpha = 1;
 
       /* vignette */
-      const vg = ctx.createRadialGradient(w / 2, h * 0.52, h * 0.36, w / 2, h * 0.52, h * 0.95);
-      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(1,3,9,0.55)');
+      const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.38, w / 2, h * 0.5, h * 0.98);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(1,3,9,0.58)');
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
     }
 
@@ -14077,12 +14045,13 @@
       const canvasRef = React.useRef(null);
       const worldRef = React.useRef(null);
       const nodeRefs = React.useRef({});
-      const camRef = React.useRef({ x: 320, z: 1, vx: 0 });
+      const camRef = React.useRef({ z: 0, vz: 0 });
       const sizeRef = React.useRef({ w: 800, h: 560 });
       const panRef = React.useRef(null);
       const grabRef = React.useRef(null);
       const dustRef = React.useRef([]);
       const glowsRef = React.useRef([]);
+      const spotsRef = React.useRef({});
       const crystalsRef = React.useRef([]);
       const reduce = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-reduce-motion');
 
@@ -14096,27 +14065,48 @@
 
       React.useEffect(() => {
         crystalsRef.current = crystals;
+        const spots = {};
         glowsRef.current = crystals.map((c, i) => {
           const spot = _caveSpotOf(c, i);
+          spots[c.id] = spot;
+          const an = _caveAnchor(spot);
           const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
           const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
           const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
           const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
-          return { x: spot.x, y: spot.y, glow: isGold ? 'rgba(255,202,75,0.9)' : (grad?.glow || pal.glow), r: 92 + Math.min(Number(c.duration) || 25, 120) };
+          return { xf: an.xf, yf: an.yf, z: spot.z, glow: isGold ? 'rgba(255,202,75,0.9)' : (grad?.glow || pal.glow), r: 90 + Math.min(Number(c.duration) || 25, 120) };
         });
+        spotsRef.current = spots;
       }, [crystals]);
 
-      const fitScale = () => (sizeRef.current.h / CAVE_H) * camRef.current.z;
-      const camYOf = () => Math.max(0, (CAVE_H - sizeRef.current.h / fitScale()) / 2);
-      const clampCam = x => Math.max(0, Math.min(CAVE_W - sizeRef.current.w / fitScale(), x));
+      /* brume/atténuation par distance appliquée aux nœuds, par paliers */
+      const applyDepthStyles = () => {
+        const camZ = camRef.current.z;
+        Object.entries(nodeRefs.current).forEach(([id, node]) => {
+          if (!node) return;
+          const spot = spotsRef.current[id];
+          if (!spot) return;
+          const rel = spot.z - camZ;
+          const bucket = rel < 45 ? -1 : Math.min(9, Math.floor(rel / 170));
+          if (node.__fsBucket === bucket) return;
+          node.__fsBucket = bucket;
+          if (bucket === -1) {
+            node.style.opacity = '0';
+            node.style.pointerEvents = 'none';
+          } else {
+            const f = bucket / 9;
+            node.style.opacity = '1';
+            node.style.pointerEvents = '';
+            node.style.filter = 'brightness(' + (1 - f * 0.42).toFixed(2) + ') saturate(' + (1 - f * 0.30).toFixed(2) + ')' + (f > 0.42 ? ' blur(' + (f * 1.7).toFixed(1) + 'px)' : '');
+          }
+        });
+      };
 
+      const clampZ = z => Math.max(0, Math.min(CAVE_CAM_MAX, z));
       const applyCam = () => {
-        const s = fitScale();
-        const cy = camYOf();
-        camRef.current.x = clampCam(camRef.current.x);
-        if (worldRef.current) {
-          worldRef.current.style.transform = 'translate(' + (-camRef.current.x * s) + 'px,' + (-cy * s) + 'px) scale(' + s + ')';
-        }
+        camRef.current.z = clampZ(camRef.current.z);
+        if (worldRef.current) worldRef.current.style.transform = 'translateZ(' + camRef.current.z + 'px)';
+        applyDepthStyles();
       };
 
       React.useEffect(() => {
@@ -14139,25 +14129,26 @@
         const ro = new ResizeObserver(resize);
         ro.observe(view);
         const rng = _caveRng(97);
-        dustRef.current = Array.from({ length: reduce ? 0 : 34 }, () => ({
-          x: rng() * CAVE_W, y: 150 + rng() * 380, r: 0.7 + rng() * 1.7,
-          sp: 0.06 + rng() * 0.2, ph: rng() * 6.3, a: 0.08 + rng() * 0.26,
+        dustRef.current = Array.from({ length: reduce ? 0 : 36 }, () => ({
+          xf: 0.04 + rng() * 0.92, yf: 0.2 + rng() * 0.6, z: 60 + rng() * 1300,
+          r: 0.8 + rng() * 1.8, sp: 0.00012 + rng() * 0.00042, ph: rng() * 6.3, a: 0.1 + rng() * 0.3,
         }));
         let raf = 0;
-        /* rAF est déjà throttlé par le navigateur quand l'onglet est caché —
-           pas de garde document.hidden (elle empêchait le premier rendu). */
+        /* rAF est throttlé nativement quand l'onglet est caché */
         const loop = t => {
           raf = requestAnimationFrame(loop);
           const cam = camRef.current;
-          if (!panRef.current && Math.abs(cam.vx) > 0.04) {
-            cam.x = clampCam(cam.x + cam.vx); cam.vx *= 0.93; applyCam();
+          if (!panRef.current && Math.abs(cam.vz) > 0.05) {
+            cam.z = clampZ(cam.z + cam.vz); cam.vz *= 0.92; applyCam();
           }
           const ctx = canvas.getContext('2d');
-          if (ctx) _caveDraw(ctx, sizeRef.current.w, sizeRef.current.h, cam, fitScale(), camYOf(), dustRef.current, t, glowsRef.current, reduce);
+          if (ctx) _caveDraw(ctx, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, reduce);
         };
         loop(performance.now());
         return () => { cancelAnimationFrame(raf); ro.disconnect(); };
       }, [open]);
+
+      React.useEffect(() => { applyDepthStyles(); }, [crystals]);
 
       if (!open) return null;
 
@@ -14168,37 +14159,48 @@
       const durLabel = c => (Number(c.duration) || 0) < 1 ? Math.round((Number(c.duration) || 0) * 60) + ' sec' : (c.duration || 0) + ' min';
       const totalMinutes = Math.round(crystals.reduce((n, c) => n + (Number(c.duration) || 0), 0));
 
-      /* ── caméra: pan au drag + molette ── */
+      /* ── caméra : glisser / molette = avancer-reculer ── */
+      const dollyBy = dz => { camRef.current.vz = 0; camRef.current.z = clampZ(camRef.current.z + dz); applyCam(); };
       const onViewDown = e => {
         if (e.target.closest?.('.fs-cv-crystal,.fs-cv-hud,.fs-cv-detail,.fs-cv-header')) return;
-        camRef.current.vx = 0;
-        panRef.current = { px: e.clientX, cx: camRef.current.x, lx: e.clientX, lt: performance.now() };
+        camRef.current.vz = 0;
+        panRef.current = { py: e.clientY, cz: camRef.current.z, ly: e.clientY, lt: performance.now() };
         try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (err) { }
       };
       const onViewMove = e => {
         const p = panRef.current;
         if (p) {
-          const s = fitScale();
-          camRef.current.x = clampCam(p.cx - (e.clientX - p.px) / s);
+          camRef.current.z = clampZ(p.cz + (p.py - e.clientY) * 2.4);
           const now = performance.now(), dt = Math.max(1, now - p.lt);
-          camRef.current.vx = -(e.clientX - p.lx) / s / dt * 15;
-          p.lx = e.clientX; p.lt = now;
+          camRef.current.vz = (p.ly - e.clientY) * 2.4 / dt * 14;
+          p.ly = e.clientY; p.lt = now;
           applyCam();
           return;
         }
         const g = grabRef.current;
         if (g) {
-          const s = fitScale();
-          const wx = g.wx0 + (e.clientX - g.px) / s;
-          const wy = g.wy0 + (e.clientY - g.py) / s;
           if (!g.moved && Math.hypot(e.clientX - g.px, e.clientY - g.py) > 7) { g.moved = true; setDragId(g.id); }
           if (g.moved) {
-            g.wx = wx; g.wy = wy;
+            const { w, h } = sizeRef.current;
+            const spot = g.spot;
+            const k = CAVE_F / Math.max(60, CAVE_F + g.z - camRef.current.z);
+            if (spot.surf === 'wallL' || spot.surf === 'wallR') {
+              g.a = Math.max(0.02, Math.min(0.98, g.a0 + (e.clientY - g.py) / (h * 0.42) / k * 0.6));
+              g.z = Math.max(70, Math.min(CAVE_ZMAX, g.z0 - (e.clientX - g.px) * (spot.surf === 'wallL' ? -2.4 : 2.4) / k));
+            } else {
+              g.a = Math.max(0.04, Math.min(0.96, g.a0 + (e.clientX - g.px) / (w * k)));
+              g.z = Math.max(70, Math.min(CAVE_ZMAX, g.z0 - (e.clientY - g.py) * 2.6 / k));
+            }
             const node = nodeRefs.current[g.id];
             if (node) {
-              node.style.left = wx + 'px';
-              node.style.top = wy + 'px';
-              node.style.setProperty('--rot', '0deg');
+              const liveSpot = { ...spot, a: g.a, z: g.z };
+              const an = _caveAnchor(liveSpot);
+              node.style.left = (an.xf * 100) + '%';
+              node.style.top = (an.yf * 100) + '%';
+              node.style.transform = 'translate(-50%,-100%) translateZ(' + (-g.z) + 'px) rotate(' + spot.rot + 'deg)';
+              spotsRef.current[g.id] = liveSpot;
+              node.__fsBucket = undefined;
+              applyDepthStyles();
             }
           }
         }
@@ -14208,9 +14210,9 @@
         const g = grabRef.current;
         grabRef.current = null;
         if (g && g.moved) {
-          const spot = _caveSnap(g.wx, g.wy);
+          const spot = g.spot;
           const next = crystalsRef.current.map(c => c.id === g.id
-            ? { ...c, cave: { x: Math.round(spot.x), y: Math.round(spot.y), rot: Math.round(spot.rot * 10) / 10, surf: spot.surf } }
+            ? { ...c, cave: { v: 2, surf: spot.surf, a: Math.round(g.a * 1000) / 1000, z: Math.round(g.z), rot: Math.round(spot.rot * 10) / 10, tj: spot.tj || 0 } }
             : c);
           try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { }
           setCrystals(next);
@@ -14219,27 +14221,14 @@
       };
       const onViewWheel = e => {
         e.preventDefault();
-        const cam = camRef.current;
-        const s0 = fitScale();
-        cam.z = Math.max(1, Math.min(1.9, cam.z * (e.deltaY < 0 ? 1.09 : 0.92)));
-        const s1 = (sizeRef.current.h / CAVE_H) * cam.z;
-        cam.x = cam.x + sizeRef.current.w / 2 / s0 - sizeRef.current.w / 2 / s1;
-        applyCam();
-      };
-      const zoomBy = f => {
-        const cam = camRef.current;
-        const s0 = fitScale();
-        cam.z = Math.max(1, Math.min(1.9, cam.z * f));
-        const s1 = (sizeRef.current.h / CAVE_H) * cam.z;
-        cam.x = cam.x + sizeRef.current.w / 2 / s0 - sizeRef.current.w / 2 / s1;
-        applyCam();
+        dollyBy(e.deltaY < 0 ? 72 : -72);
       };
 
-      /* ── cristaux: drag pour déplacer, clic/hover pour la fiche ── */
+      /* ── cristaux : drag pour replanter, clic/hover pour la fiche ── */
       const onCrystalDown = (e, c, spot) => {
         e.stopPropagation();
-        camRef.current.vx = 0;
-        grabRef.current = { id: c.id, wx0: spot.x, wy0: spot.y, wx: spot.x, wy: spot.y, px: e.clientX, py: e.clientY, moved: false };
+        camRef.current.vz = 0;
+        grabRef.current = { id: c.id, spot, a0: spot.a, z0: spot.z, a: spot.a, z: spot.z, px: e.clientX, py: e.clientY, moved: false };
         try { viewRef.current?.setPointerCapture?.(e.pointerId); } catch (err) { }
       };
       const onCrystalUp = (e, c) => {
@@ -14268,20 +14257,24 @@
               .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#02060f;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
               .fs-cv-stage.is-panning{cursor:grabbing}
               .fs-cv-canvas{position:absolute;inset:0;display:block}
-              .fs-cv-world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;will-change:transform}
-              .fs-cv-crystal{position:absolute;background:none;border:0;padding:0;margin:0;cursor:grab;transform:translate(-50%,-100%) rotate(var(--rot,0deg));transform-origin:50% 100%;width:var(--sz);height:calc(var(--sz)*1.22);transition:filter .18s;-webkit-tap-highlight-color:transparent}
+              .fs-cv-3d{position:absolute;inset:0;perspective:${CAVE_F}px;perspective-origin:50% ${CAVE_OY * 100}%}
+              .fs-cv-world{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+              .fs-cv-crystal{position:absolute;background:none;border:0;padding:0;margin:0;cursor:grab;transform-origin:50% 100%;width:var(--sz);height:calc(var(--sz)*1.18);-webkit-tap-highlight-color:transparent}
               .fs-cv-crystal:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:4px;border-radius:10px}
-              .fs-cv-crystal.is-drag{cursor:grabbing;filter:brightness(1.32) drop-shadow(0 0 26px var(--glow));z-index:4000!important;transition:none}
-              .fs-cv-crystal.is-active{filter:brightness(1.24) drop-shadow(0 0 20px var(--glow))}
-              .fs-cv-gem{position:absolute;left:50%;bottom:calc(var(--sz)*0.1);transform:translateX(-50%);display:block;pointer-events:none;filter:drop-shadow(0 4px 14px rgba(0,0,0,.5))}
-              .fs-cv-socket{position:absolute;left:50%;bottom:calc(var(--sz)*-0.03);width:calc(var(--sz)*1.3);height:calc(var(--sz)*0.44);transform:translateX(-50%);pointer-events:none}
-              .fs-cv-socket::before{content:"";position:absolute;left:50%;bottom:calc(var(--sz)*0.02);width:calc(var(--sz)*1.16);height:calc(var(--sz)*0.3);transform:translateX(-50%);background:radial-gradient(ellipse at 50% 30%,var(--glow),transparent 70%);opacity:.5;filter:blur(6px)}
-              .fs-cv-socket i{position:absolute;bottom:0;background:linear-gradient(165deg,#22385c 0%,#0d1a30 62%,#060d1c 100%);box-shadow:inset 0 1px 0 rgba(160,220,255,.16)}
-              .fs-cv-socket i:nth-child(1){left:4%;width:34%;height:88%;clip-path:polygon(48% 0,100% 68%,82% 100%,0 100%,10% 42%)}
-              .fs-cv-socket i:nth-child(2){left:30%;width:40%;height:100%;clip-path:polygon(50% 0,96% 55%,84% 100%,16% 100%,7% 50%)}
-              .fs-cv-socket i:nth-child(3){right:4%;width:32%;height:80%;clip-path:polygon(52% 0,92% 46%,100% 100%,14% 100%,0 66%)}
-              .fs-cv-gold-aura{position:absolute;left:50%;bottom:0;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,26%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.42),rgba(255,190,64,.14) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
-              @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,26%) scale(.94)}50%{opacity:1;transform:translate(-50%,26%) scale(1.08)}}
+              .fs-cv-crystal.is-drag{cursor:grabbing;filter:brightness(1.3) drop-shadow(0 0 26px var(--glow))!important}
+              .fs-cv-crystal.is-active .fs-cv-gem{filter:brightness(1.26) drop-shadow(0 0 18px var(--glow))}
+              .fs-cv-glowpad{position:absolute;left:50%;bottom:calc(var(--sz)*-0.14);width:calc(var(--sz)*1.9);height:calc(var(--sz)*0.6);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse at 50% 50%,var(--glow),transparent 68%);opacity:.42;filter:blur(7px);pointer-events:none}
+              .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.045);width:calc(var(--sz)*1.14);height:calc(var(--sz)*0.2);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.62),transparent 70%);pointer-events:none}
+              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.45))}
+              .fs-cv-base{position:absolute;left:50%;bottom:calc(var(--sz)*-0.06);width:calc(var(--sz)*1.24);height:calc(var(--sz)*0.34);transform:translateX(-50%);pointer-events:none}
+              .fs-cv-base i{position:absolute;bottom:0;background:linear-gradient(168deg,#2a4066 0%,#101d34 58%,#070e1d 100%);box-shadow:inset 0 1px 0 rgba(170,225,255,.2)}
+              .fs-cv-base i:nth-child(1){left:2%;width:30%;height:74%;clip-path:polygon(44% 0,100% 58%,88% 100%,0 100%,8% 46%);transform:rotate(-5deg)}
+              .fs-cv-base i:nth-child(2){left:22%;width:34%;height:100%;clip-path:polygon(52% 0,100% 62%,86% 100%,12% 100%,0 52%)}
+              .fs-cv-base i:nth-child(3){left:47%;width:32%;height:88%;clip-path:polygon(46% 0,94% 50%,100% 100%,8% 100%,0 62%);transform:rotate(4deg)}
+              .fs-cv-base i:nth-child(4){right:0;width:24%;height:60%;clip-path:polygon(50% 0,100% 70%,88% 100%,4% 100%,0 58%);transform:rotate(9deg)}
+              .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(3,7,16,.9),transparent 72%)}
+              .fs-cv-gold-aura{position:absolute;left:50%;bottom:0;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,28%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
+              @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:8px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
               .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(2,7,18,.82),rgba(2,7,18,0))}
@@ -14290,7 +14283,7 @@
               .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:13px;border:1px solid rgba(140,220,255,.14);background:rgba(6,14,30,.66);backdrop-filter:blur(8px)}
               .fs-cv-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(8,16,32,.7);color:rgba(230,242,255,.85);font-size:16px;cursor:pointer}
               .fs-cv-hud{position:absolute;right:16px;bottom:16px;display:flex;gap:8px;z-index:70}
-              .fs-cv-hud button{width:38px;height:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(6,14,30,.78);color:#cfeaff;font-size:15px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px)}
+              .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(6,14,30,.78);color:#cfeaff;font-size:13px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
               .fs-cv-hud button:hover{background:rgba(16,32,58,.9)}
               .fs-cv-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:55;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:rgba(205,232,255,.55);background:rgba(4,10,24,.62);border:1px solid rgba(140,220,255,.1);border-radius:99px;padding:7px 14px;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
               .fs-cv-detail{position:absolute;left:16px;bottom:16px;z-index:80;width:min(300px,calc(100% - 90px));border-radius:20px;border:1px solid rgba(140,220,255,.18);background:rgba(5,11,26,.9);backdrop-filter:blur(14px);padding:15px 16px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:fsCvDetailIn .22s cubic-bezier(.2,.9,.3,1.2) both}
@@ -14314,43 +14307,53 @@
               onWheel={onViewWheel}
             >
               <canvas ref={canvasRef} className="fs-cv-canvas" aria-hidden="true" />
-              <div ref={worldRef} className="fs-cv-world">
-                {crystals.map((c, i) => {
-                  const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
-                  const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
-                  const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
-                  const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
-                  const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
-                  const spot = _caveSpotOf(c, i);
-                  const sz = Math.round(42 + Math.min(Number(c.duration) || 25, 120) / 120 * 46 + (isGold ? 8 : 0));
-                  const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
-                  return (
-                    <button
-                      key={c.id}
-                      ref={el => { nodeRefs.current[c.id] = el; }}
-                      className={'fs-cv-crystal' + (dragId === c.id ? ' is-drag' : '') + (activeId === c.id ? ' is-active' : '')}
-                      style={{ left: spot.x, top: spot.y, '--rot': spot.rot + 'deg', '--sz': sz + 'px', '--glow': glow, zIndex: 100 + Math.round(spot.y) }}
-                      aria-label={(activeInfo && activeId === c.id ? 'Cristal sélectionné, ' : '') + 'Cristal de session, ' + durLabel(c)}
-                      onPointerDown={e => onCrystalDown(e, c, spot)}
-                      onPointerUp={e => onCrystalUp(e, c)}
-                      onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(c.id); }}
-                      onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(h => h === c.id ? null : h); }}
-                    >
-                      {isGold && <span className="fs-cv-gold-aura" />}
-                      <span className="fs-cv-socket"><i /><i /><i /></span>
-                      <span className="fs-cv-gem">
-                        {c.crystalShape && window.ShapedCrystalGem
-                          ? React.createElement(window.ShapedCrystalGem, { shape: c.crystalShape, gradientId: isGold ? 'gold' : c.crystalGradient, progress: 0.9, size: sz, seed: c.seed || c.id })
-                          : <CrystalGem progress={_cStateProgress(si)} size={sz} />}
-                      </span>
-                      {isNew && (
-                        <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
-                          Nouveau
+              <div className="fs-cv-3d">
+                <div ref={worldRef} className="fs-cv-world">
+                  {crystals.map((c, i) => {
+                    const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+                    const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
+                    const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
+                    const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+                    const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
+                    const spot = _caveSpotOf(c, i);
+                    const an = _caveAnchor(spot);
+                    const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0));
+                    const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
+                    return (
+                      <button
+                        key={c.id}
+                        ref={el => { nodeRefs.current[c.id] = el; }}
+                        className={'fs-cv-crystal' + (dragId === c.id ? ' is-drag' : '') + (activeId === c.id ? ' is-active' : '')}
+                        style={{
+                          left: (an.xf * 100) + '%',
+                          top: (an.yf * 100) + '%',
+                          transform: 'translate(-50%,-100%) translateZ(' + (-spot.z) + 'px) rotate(' + spot.rot + 'deg)',
+                          '--sz': sz + 'px', '--glow': glow,
+                        }}
+                        aria-label={'Cristal de session, ' + durLabel(c)}
+                        onPointerDown={e => onCrystalDown(e, c, spot)}
+                        onPointerUp={e => onCrystalUp(e, c)}
+                        onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(c.id); }}
+                        onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(h => h === c.id ? null : h); }}
+                      >
+                        {isGold && <span className="fs-cv-gold-aura" />}
+                        <span className="fs-cv-glowpad" />
+                        <span className="fs-cv-shadow" />
+                        <span className="fs-cv-gem">
+                          {c.crystalShape && window.ShapedCrystalGem
+                            ? React.createElement(window.ShapedCrystalGem, { shape: c.crystalShape, gradientId: isGold ? 'gold' : c.crystalGradient, progress: 0.9, size: sz, seed: c.seed || c.id })
+                            : <CrystalGem progress={_cStateProgress(si)} size={sz} />}
                         </span>
-                      )}
-                    </button>
-                  );
-                })}
+                        <span className="fs-cv-base"><i /><i /><i /><i /></span>
+                        {isNew && (
+                          <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
+                            Nouveau
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="fs-cv-header">
@@ -14359,7 +14362,7 @@
                   <div style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
                   <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.66)', marginTop: 7, maxWidth: 340 }}>
                     {crystals.length > 0
-                      ? 'Glisse pour explorer. Attrape un cristal pour le replanter où tu veux.'
+                      ? 'Tout est là. Avance dans la grotte pour approcher les cristaux du fond.'
                       : 'Termine une session pour faire naître ton premier cristal.'}
                   </div>
                 </div>
@@ -14393,13 +14396,13 @@
               )}
 
               <div className="fs-cv-hud">
-                <button type="button" onClick={() => zoomBy(1.16)} aria-label="Zoomer">+</button>
-                <button type="button" onClick={() => zoomBy(0.86)} aria-label="Dézoomer">−</button>
-                <button type="button" style={{ width: 'auto', padding: '0 13px', fontSize: 11 }} onClick={() => { camRef.current.x = 320; camRef.current.z = 1; camRef.current.vx = 0; applyCam(); }}>Reset</button>
+                <button type="button" onClick={() => dollyBy(150)} aria-label="Avancer dans la grotte">▲ Avancer</button>
+                <button type="button" onClick={() => dollyBy(-150)} aria-label="Reculer">▼ Reculer</button>
+                <button type="button" onClick={() => { camRef.current.z = 0; camRef.current.vz = 0; applyCam(); }}>Reset</button>
               </div>
 
               {crystals.length > 0 && !active && (
-                <div className="fs-cv-hint">Glisse pour te déplacer · survole ou touche un cristal</div>
+                <div className="fs-cv-hint">Molette ou glisse pour avancer · attrape un cristal pour le replanter</div>
               )}
 
               {active && activeInfo && (
