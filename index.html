@@ -13845,23 +13845,25 @@
     window.FocusCrystalOverlay = FocusCrystalOverlay;
 
     /* ── Mes Cristaux Panel ──────────────────────────────────────────────── */
-    /* ── Grotte aux cristaux — chambre en perspective (v2) ───────────────────
-       Vue à un point de fuite : TOUS les cristaux sont visibles d'entrée,
-       étagés en profondeur (z). Se déplacer = travelling avant/arrière
-       (molette, glisser, boutons) — les cristaux lointains, voilés par la
-       brume, grossissent à l'approche. Rendu : canvas (couloir rocheux,
-       anneaux de profondeur, stalactites, brume, poussière, halos) +
-       couche DOM en vraie perspective CSS (perspective/translateZ, tri 3D
-       natif). Implantation : base du cristal clippée sous la surface et
-       masquée par des éclats de roche au premier plan — il est planté,
-       pas posé. Drag : glisser horizontalement = déplacer, verticalement =
-       enfoncer plus loin / ramener. Hover souris ou tap mobile → fiche de
-       session. Positions persistées dans fs_crystals_{uid} (cave v2). */
-    const CAVE_F = 860;          /* focale perspective (px) */
-    const CAVE_OY = 0.44;        /* point de fuite vertical (fraction) */
-    const CAVE_ZMAX = 1250;      /* profondeur max d'implantation */
-    const CAVE_CAM_MAX = 1000;   /* avancée max de la caméra */
+    /* ── Grotte aux cristaux — chambre organique (v3) ────────────────────────
+       Fini l'effet tunnel : la grotte est une chambre irrégulière rendue en
+       silhouettes rocheuses empilées (8 strates de profondeur), chacune avec
+       un contour bruité unique, un passage qui SERPENTE (dérive du centre par
+       strate) et des stalactites/stalagmites accrochées aux arêtes. Jeux de
+       lumière : les halos des cristaux sont dessinés ENTRE les strates →
+       la roche devant occulte la lumière de derrière (vraie profondeur), le
+       tout scintille doucement, le fond respire d'une lueur froide. Chauves-
+       souris en vol périodique (silhouettes battantes projetées en
+       perspective). Perf : formes pleines, ~160 sommets/frame, DPR max 1.5,
+       poussière/chauves-souris réduites en perf-lite, coupées en
+       reduce-motion. Cristaux : plantés (base clippée + éclats de roche au
+       premier plan), positions persistées (cave v2, inchangé). */
+    const CAVE_F = 860;
+    const CAVE_OY = 0.44;
+    const CAVE_ZMAX = 1250;
+    const CAVE_CAM_MAX = 1000;
     const CAVE_FLOOR = 0.868, CAVE_CEIL = 0.125;
+    const CAVE_RING_Z = [120, 260, 420, 610, 830, 1080, 1360, 1670];
 
     function _caveRng(seed) {
       let t = (Math.floor(Math.abs(seed)) || 1) >>> 0;
@@ -13873,24 +13875,38 @@
       };
     }
 
-    /* décor fixe : stalactites/stalagmites/rochers répartis en profondeur */
-    const _CAVE_DECO = (() => {
-      const rng = _caveRng(20260703);
-      const stalac = [], stalag = [], rocks = [];
-      for (let i = 0; i < 26; i++) stalac.push({ xf: 0.04 + rng() * 0.92, z: 40 + rng() * 1500, w: 10 + rng() * 26, len: 34 + rng() * 96 });
-      for (let i = 0; i < 16; i++) stalag.push({ xf: 0.05 + rng() * 0.9, z: 60 + rng() * 1500, w: 14 + rng() * 30, len: 22 + rng() * 62 });
-      for (let i = 0; i < 12; i++) rocks.push({ xf: rng() < 0.5 ? 0.02 + rng() * 0.13 : 0.85 + rng() * 0.13, z: 60 + rng() * 1400, r: 14 + rng() * 40 });
-      const rings = [90, 200, 330, 480, 650, 850, 1080, 1340];
-      return { stalac, stalag, rocks, rings };
-    })();
+    /* dérive du passage : la galerie tourne au lieu de filer droit */
+    function _caveWander(z) {
+      return { x: Math.sin(z * 0.0012 + 1.2) * 0.085, y: Math.cos(z * 0.0009 + 0.6) * 0.028 };
+    }
+
+    /* strates : contour bruité + concrétions accrochées aux arêtes */
+    const _CAVE_RINGS = CAVE_RING_Z.map((z, i) => {
+      const rng = _caveRng(4177 + i * 911);
+      const verts = [];
+      const VN = 20;
+      for (let v = 0; v < VN; v++) {
+        const ang = (v / VN) * Math.PI * 2 - Math.PI;
+        let nr = 0.84 + rng() * 0.34;
+        if (rng() < 0.14) nr += 0.22; /* éperon rocheux */
+        verts.push({ ang: ang + (rng() - 0.5) * 0.1, nr });
+      }
+      const stalac = [], stalag = [];
+      verts.forEach(vt => {
+        const s = Math.sin(vt.ang);
+        if (s < -0.35 && rng() < 0.6) stalac.push({ ang: vt.ang, nr: vt.nr, len: 26 + rng() * 92, w: 7 + rng() * 17 });
+        if (s > 0.45 && rng() < 0.42) stalag.push({ ang: vt.ang, nr: vt.nr, len: 18 + rng() * 58, w: 10 + rng() * 20 });
+      });
+      return { z, verts, stalac, stalag, shade: rng() * 0.12 };
+    });
 
     function _caveDefaultSpot(c, i) {
       const seed = (Number(c.seed) || (typeof c.id === 'number' ? c.id : 7)) + i * 1319;
       const rng = _caveRng(seed % 2147483647);
       const roll = rng(), a = 0.07 + rng() * 0.86, zr = rng(), jit = rng(), tj = rng();
       const z = 70 + Math.pow(zr, 1.18) * (CAVE_ZMAX - 90);
-      if (roll < 0.16) return { surf: 'ceil', a, z, rot: 180 + (jit - 0.5) * 14, tj: tj * 2.4 };
-      if (roll < 0.27) return { surf: roll < 0.215 ? 'wallL' : 'wallR', a: 0.24 + a * 0.5, z, rot: (roll < 0.215 ? 82 : -82) + (jit - 0.5) * 10, tj: 0 };
+      if (roll < 0.15) return { surf: 'ceil', a: 0.18 + a * 0.62, z: Math.max(220, z), rot: 180 + (jit - 0.5) * 14, tj: tj * 2.2 };
+      if (roll < 0.29) return { surf: roll < 0.22 ? 'wallL' : 'wallR', a: 0.2 + a * 0.55, z: Math.max(340, z), rot: (roll < 0.22 ? 78 : -78) + (jit - 0.5) * 12, tj: 0 };
       return { surf: 'floor', a, z, rot: (jit - 0.5) * 17, tj: tj * 3 };
     }
     function _caveSpotOf(c, i) {
@@ -13900,122 +13916,172 @@
       }
       return _caveDefaultSpot(c, i);
     }
-    /* ancre écran (plan z=0) en fractions du viewport */
+    /* ancre écran (plan z=0). Les parois suivent la dérive du passage. */
     function _caveAnchor(spot) {
-      if (spot.surf === 'ceil') return { xf: spot.a, yf: CAVE_CEIL + (spot.tj || 0) / 100 };
-      if (spot.surf === 'wallL') return { xf: 0.045, yf: 0.26 + spot.a * 0.42 };
-      if (spot.surf === 'wallR') return { xf: 0.955, yf: 0.26 + spot.a * 0.42 };
-      return { xf: spot.a, yf: CAVE_FLOOR + (spot.tj || 0) / 100 };
+      const wd = _caveWander(spot.z);
+      if (spot.surf === 'ceil') return { xf: spot.a + wd.x * 0.5, yf: CAVE_CEIL + (spot.tj || 0) / 100 + wd.y * 0.4 };
+      if (spot.surf === 'wallL') return { xf: -0.052 + wd.x, yf: 0.24 + spot.a * 0.44 };
+      if (spot.surf === 'wallR') return { xf: 1.052 + wd.x, yf: 0.24 + spot.a * 0.44 };
+      return { xf: spot.a + wd.x * 0.35, yf: CAVE_FLOOR + (spot.tj || 0) / 100 };
     }
 
-    function _caveDraw(ctx, w, h, camZ, dust, t, glows, reduce) {
+    /* sprites de halo pré-rendus : ~20 createRadialGradient/frame → drawImage */
+    const _caveSprites = {};
+    function _caveGlowSprite(color) {
+      let sp = _caveSprites[color];
+      if (!sp) {
+        sp = document.createElement('canvas');
+        sp.width = sp.height = 128;
+        const c = sp.getContext('2d');
+        const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+        g.addColorStop(0, color.replace(/[\d.]+\)$/, '1)'));
+        g.addColorStop(0.55, color.replace(/[\d.]+\)$/, '0.32)'));
+        g.addColorStop(1, color.replace(/[\d.]+\)$/, '0)'));
+        c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+        _caveSprites[color] = sp;
+      }
+      return sp;
+    }
+
+    function _caveBatWing(ctx, x, y, s, flap) {
+      const wspan = 13 * s, lift = flap * 5.4 * s;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x - wspan * 0.5, y - 4 * s - lift, x - wspan, y + 2 * s - lift * 1.5);
+      ctx.quadraticCurveTo(x - wspan * 0.52, y + 3.4 * s - lift * 0.4, x, y + 2.5 * s);
+      ctx.quadraticCurveTo(x + wspan * 0.52, y + 3.4 * s - lift * 0.4, x + wspan, y + 2 * s - lift * 1.5);
+      ctx.quadraticCurveTo(x + wspan * 0.5, y - 4 * s - lift, x, y);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, y + 1.1 * s, 2 * s, 2.9 * s, 0, 0, 6.3); ctx.fill();
+    }
+
+    function _caveDraw(ctx, w, h, camZ, dust, t, glows, bats, reduce) {
       ctx.clearRect(0, 0, w, h);
-      const ox = w * 0.5, oy = h * CAVE_OY;
-      const P = (x, y, z) => {
-        const k = CAVE_F / Math.max(60, CAVE_F + z - camZ);
-        return { x: ox + (x - ox) * k, y: oy + (y - oy) * k, k };
-      };
-      const fy = h * CAVE_FLOOR, cy = h * CAVE_CEIL;
+      const ox = w * 0.5, oy = h * CAVE_OY, oyc = h * 0.47;
+      const K = z => CAVE_F / Math.max(60, CAVE_F + z - camZ);
+      const RX = w * 0.585, RYU = h * 0.35, RYD = h * 0.40;
 
-      /* fond + lueur du fond de grotte */
+      /* fond : noir bleuté + respiration froide au bout de la galerie */
       let g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#071430'); g.addColorStop(0.55, '#040d22'); g.addColorStop(1, '#02060f');
+      g.addColorStop(0, '#04091a'); g.addColorStop(0.55, '#030713'); g.addColorStop(1, '#01040c');
       ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      const deepK = CAVE_F / Math.max(60, CAVE_F + 1650 - camZ);
-      const vg0 = ctx.createRadialGradient(ox, oy, 0, ox, oy, Math.max(60, h * 0.42 * deepK * 3));
-      vg0.addColorStop(0, 'rgba(64,205,235,0.20)');
-      vg0.addColorStop(0.45, 'rgba(28,120,175,0.10)');
-      vg0.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = vg0; ctx.fillRect(0, 0, w, h);
+      const kd = K(1900);
+      const breath = reduce ? 0.75 : 0.68 + Math.sin(t * 0.0005) * 0.14;
+      const wd = _caveWander(1900);
+      const dgx = ox + wd.x * w * kd * 8, dgy = oyc + wd.y * h * kd * 8;
+      const dgr = Math.max(50, h * 0.5 * kd * 3.4);
+      ctx.globalAlpha = 0.20 * breath;
+      ctx.drawImage(_caveGlowSprite('rgba(64,200,235,0.9)'), dgx - dgr, dgy - dgr, dgr * 2, dgr * 2);
+      ctx.globalAlpha = 1;
 
-      /* tranches sol / plafond / parois, du fond vers l'avant */
-      const Z = _CAVE_DECO.rings.concat([1650]).sort((a, b) => b - a);
-      for (let i = 0; i < Z.length; i++) {
-        const z1 = Z[i], z0 = (i + 1 < Z.length) ? Z[i + 1] : Math.min(0, camZ - 80);
-        const depth = Math.max(0, (z0 + z1) / 2 - camZ);
-        const fade = Math.max(0, Math.min(1, 1 - depth / 1750));
-        const a1 = P(0, fy, z1), b1 = P(w, fy, z1), a0 = P(0, fy, z0), b0 = P(w, fy, z0);
-        /* sol */
-        ctx.fillStyle = 'rgba(' + Math.round(9 + 8 * fade) + ',' + Math.round(16 + 14 * fade) + ',' + Math.round(34 + 22 * fade) + ',1)';
-        ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(b1.x, b1.y); ctx.lineTo(b0.x, b0.y); ctx.lineTo(a0.x, a0.y); ctx.closePath(); ctx.fill();
-        /* plafond */
-        const c1p = P(0, cy, z1), d1 = P(w, cy, z1), c0p = P(0, cy, z0), d0 = P(w, cy, z0);
-        ctx.fillStyle = 'rgba(' + Math.round(8 + 7 * fade) + ',' + Math.round(15 + 12 * fade) + ',' + Math.round(32 + 20 * fade) + ',1)';
-        ctx.beginPath(); ctx.moveTo(c1p.x, c1p.y); ctx.lineTo(d1.x, d1.y); ctx.lineTo(d0.x, d0.y); ctx.lineTo(c0p.x, c0p.y); ctx.closePath(); ctx.fill();
-        /* parois */
-        ctx.fillStyle = 'rgba(' + Math.round(7 + 9 * fade) + ',' + Math.round(14 + 13 * fade) + ',' + Math.round(30 + 21 * fade) + ',1)';
-        ctx.beginPath(); ctx.moveTo(c1p.x, c1p.y); ctx.lineTo(a1.x, a1.y); ctx.lineTo(a0.x, a0.y); ctx.lineTo(c0p.x, c0p.y); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(d1.x, d1.y); ctx.lineTo(b1.x, b1.y); ctx.lineTo(b0.x, b0.y); ctx.lineTo(d0.x, d0.y); ctx.closePath(); ctx.fill();
-      }
+      /* strates du fond vers l'avant, halos de cristaux intercalés (occlusion) */
+      const ringPt = (ring, vt, k, wx, wy) => {
+        const cs = Math.cos(vt.ang), sn = Math.sin(vt.ang);
+        const px = ox + wx * w + cs * RX * vt.nr;
+        const py = oyc + wy * h + sn * (sn > 0 ? RYD : RYU) * vt.nr;
+        return { x: ox + (px - ox) * k, y: oy + (py - oy) * k };
+      };
+      const drawGlow = gl => {
+        const k = K(gl.z);
+        const px2 = ox + (gl.xf * w - ox) * k, py2 = oy + (gl.yf * h - oy) * k;
+        const rr = Math.max(8, gl.r * k);
+        const tw = reduce ? 1 : 0.86 + 0.14 * Math.sin(t * 0.0042 + gl.ph);
+        const alpha = Math.max(0.05, 0.30 * Math.min(1, k * 1.4)) * tw;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(_caveGlowSprite(gl.glow), px2 - rr, py2 - rr, rr * 2, rr * 2);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      };
+      /* halos plus profonds que la strate la plus lointaine */
+      glows.forEach(gl => { if (gl.bucket === -2 && gl.z - camZ > 10) drawGlow(gl); });
 
-      /* anneaux de roche (repères de profondeur) */
-      for (const rz of _CAVE_DECO.rings) {
-        if (rz - camZ < 30) continue;
-        const tl = P(0, cy, rz), tr = P(w, cy, rz), br = P(w, fy, rz), bl = P(0, fy, rz);
-        const fade = Math.max(0.05, Math.min(0.34, 0.34 - (rz - camZ) / 1750 * 0.29));
-        ctx.strokeStyle = 'rgba(110,215,255,' + fade.toFixed(3) + ')';
-        ctx.lineWidth = Math.max(0.6, 1.7 * tl.k);
+      for (let i = _CAVE_RINGS.length - 1; i >= 0; i--) {
+        const ring = _CAVE_RINGS[i];
+        const rel = ring.z - camZ;
+        if (rel < 25) continue; /* strate dépassée par la caméra */
+        const k = K(ring.z);
+        const rwd = _caveWander(ring.z);
+        const fade = Math.max(0, Math.min(1, 1 - rel / 1850));
+        const rr2 = Math.round(7 + (17 - 7) * fade + ring.shade * 14);
+        const gg = Math.round(12 + (27 - 12) * fade + ring.shade * 16);
+        const bb = Math.round(26 + (52 - 26) * fade + ring.shade * 22);
+        /* mur percé du passage (evenodd) */
+        ctx.fillStyle = 'rgb(' + rr2 + ',' + gg + ',' + bb + ')';
         ctx.beginPath();
-        ctx.moveTo(tl.x, tl.y);
-        ctx.quadraticCurveTo(ox, tl.y - 26 * tl.k, tr.x, tr.y);
-        ctx.lineTo(br.x, br.y);
-        ctx.quadraticCurveTo(ox, br.y + 18 * br.k, bl.x, bl.y);
-        ctx.closePath(); ctx.stroke();
+        ctx.rect(-4, -4, w + 8, h + 8);
+        const pts = ring.verts.map(vt => ringPt(ring, vt, k, rwd.x, rwd.y));
+        ctx.moveTo((pts[0].x + pts[pts.length - 1].x) / 2, (pts[0].y + pts[pts.length - 1].y) / 2);
+        for (let v = 0; v < pts.length; v++) {
+          const a = pts[v], b = pts[(v + 1) % pts.length];
+          ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
+        }
+        ctx.closePath();
+        ctx.fill('evenodd');
+        /* arête éclairée par l'ambiance cristalline */
+        ctx.strokeStyle = 'rgba(120,215,255,' + Math.max(0.02, 0.11 - i * 0.012).toFixed(3) + ')';
+        ctx.lineWidth = Math.max(0.6, 1.5 * k);
+        ctx.stroke();
+        /* concrétions accrochées à cette strate */
+        ctx.fillStyle = 'rgb(' + Math.max(4, rr2 - 3) + ',' + Math.max(8, gg - 4) + ',' + Math.max(16, bb - 6) + ')';
+        for (const s of ring.stalac) {
+          const base = ringPt(ring, s, k, rwd.x, rwd.y);
+          ctx.beginPath();
+          ctx.moveTo(base.x - s.w * k, base.y - 2);
+          ctx.quadraticCurveTo(base.x - s.w * 0.14 * k, base.y + s.len * 0.6 * k, base.x, base.y + s.len * k);
+          ctx.quadraticCurveTo(base.x + s.w * 0.14 * k, base.y + s.len * 0.6 * k, base.x + s.w * k, base.y - 2);
+          ctx.closePath(); ctx.fill();
+        }
+        for (const s of ring.stalag) {
+          const base = ringPt(ring, s, k, rwd.x, rwd.y);
+          ctx.beginPath();
+          ctx.moveTo(base.x - s.w * k, base.y + 2);
+          ctx.quadraticCurveTo(base.x - s.w * 0.16 * k, base.y - s.len * 0.62 * k, base.x, base.y - s.len * k);
+          ctx.quadraticCurveTo(base.x + s.w * 0.16 * k, base.y - s.len * 0.62 * k, base.x + s.w * k, base.y + 2);
+          ctx.closePath(); ctx.fill();
+        }
+        /* lumière des cristaux situés devant cette strate (masquée par les suivantes) */
+        glows.forEach(gl => { if (gl.bucket === i && gl.z - camZ > 10) drawGlow(gl); });
       }
 
-      /* stalactites / stalagmites / rochers projetés */
-      for (const s of _CAVE_DECO.stalac) {
-        const rel = s.z - camZ; if (rel < 20) continue;
-        const p = P(s.xf * w, cy, s.z);
-        const fade = Math.max(0, Math.min(1, 1 - rel / 1700));
-        ctx.fillStyle = 'rgba(' + Math.round(7 + 8 * fade) + ',' + Math.round(16 + 12 * fade) + ',' + Math.round(36 + 18 * fade) + ',1)';
-        ctx.beginPath();
-        ctx.moveTo(p.x - s.w * p.k, p.y - 2);
-        ctx.quadraticCurveTo(p.x - s.w * 0.13 * p.k, p.y + s.len * 0.6 * p.k, p.x, p.y + s.len * p.k);
-        ctx.quadraticCurveTo(p.x + s.w * 0.13 * p.k, p.y + s.len * 0.6 * p.k, p.x + s.w * p.k, p.y - 2);
-        ctx.closePath(); ctx.fill();
-      }
-      for (const s of _CAVE_DECO.stalag) {
-        const rel = s.z - camZ; if (rel < 20) continue;
-        const p = P(s.xf * w, fy, s.z);
-        const fade = Math.max(0, Math.min(1, 1 - rel / 1700));
-        ctx.fillStyle = 'rgba(' + Math.round(9 + 9 * fade) + ',' + Math.round(18 + 13 * fade) + ',' + Math.round(40 + 18 * fade) + ',1)';
-        ctx.beginPath();
-        ctx.moveTo(p.x - s.w * p.k, p.y + 2);
-        ctx.quadraticCurveTo(p.x - s.w * 0.15 * p.k, p.y - s.len * 0.62 * p.k, p.x, p.y - s.len * p.k);
-        ctx.quadraticCurveTo(p.x + s.w * 0.15 * p.k, p.y - s.len * 0.62 * p.k, p.x + s.w * p.k, p.y + 2);
-        ctx.closePath(); ctx.fill();
-      }
-      for (const r of _CAVE_DECO.rocks) {
-        const rel = r.z - camZ; if (rel < 20) continue;
-        const p = P(r.xf * w, fy, r.z);
-        ctx.fillStyle = 'rgba(14,26,50,0.9)';
-        ctx.beginPath(); ctx.ellipse(p.x, p.y - r.r * 0.3 * p.k, r.r * p.k, r.r * 0.62 * p.k, 0, 0, 6.3); ctx.fill();
+      /* fissures sur la roche du premier plan */
+      ctx.strokeStyle = 'rgba(130,200,255,0.05)';
+      ctx.lineWidth = 1;
+      const crk = _caveRng(31);
+      for (let c = 0; c < 5; c++) {
+        const cxs = (c < 3 ? 0.02 + crk() * 0.1 : 0.86 + crk() * 0.1) * w;
+        let cys = (0.12 + crk() * 0.5) * h;
+        ctx.beginPath(); ctx.moveTo(cxs, cys);
+        for (let sgm = 0; sgm < 4; sgm++) { ctx.lineTo(cxs + (crk() - 0.5) * 40, cys += 18 + crk() * 30); }
+        ctx.stroke();
       }
 
-      /* halos des cristaux (projetés) */
-      ctx.globalCompositeOperation = 'lighter';
-      for (const gl of glows) {
-        const rel = gl.z - camZ; if (rel < 10) continue;
-        const p = P(gl.xf * w, gl.yf * h, gl.z);
-        const rr = Math.max(8, gl.r * p.k);
-        const alpha = Math.max(0.05, 0.26 * Math.min(1, p.k * 1.4));
-        const rg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
-        rg.addColorStop(0, gl.glow.replace(/[\d.]+\)$/, alpha.toFixed(3) + ')'));
-        rg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = rg;
-        ctx.fillRect(p.x - rr, p.y - rr, rr * 2, rr * 2);
+      /* chauves-souris (silhouettes battantes) */
+      if (bats.flocks.length) {
+        ctx.fillStyle = '#05080f';
+        for (const fl of bats.flocks) {
+          for (const m of fl.members) {
+            const prog = fl.prog + m.lag;
+            if (prog < 0 || prog > 1.16) continue;
+            const xf = fl.dir > 0 ? prog - 0.08 : 1.08 - prog;
+            const yf = fl.y0 + Math.sin(t * 0.0032 + m.ph) * 0.035 + m.dy;
+            const k = K(fl.z + m.dz);
+            const p = { x: ox + (xf * w - ox) * k, y: oy + (yf * h - oy) * k };
+            const flap = Math.sin(t * 0.016 + m.ph * 3);
+            ctx.globalAlpha = 0.86 * Math.min(1, k * 1.6);
+            _caveBatWing(ctx, p.x, p.y, Math.max(0.5, m.s * k * (w / 900)), flap);
+          }
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalCompositeOperation = 'source-over';
 
-      /* brume atmosphérique vers le fond */
-      const fog = ctx.createRadialGradient(ox, oy, 0, ox, oy, Math.max(80, h * 0.9 * Math.max(0.22, deepK * 4)));
-      fog.addColorStop(0, 'rgba(20,60,100,0.30)');
-      fog.addColorStop(0.5, 'rgba(10,28,55,0.12)');
-      fog.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = fog; ctx.fillRect(0, 0, w, h);
+      /* brume vers le fond */
+      const fr = Math.max(80, h * 0.9 * Math.max(0.22, kd * 4));
+      ctx.globalAlpha = 0.28;
+      ctx.drawImage(_caveGlowSprite('rgba(15,50,86,0.9)'), dgx - fr, dgy - fr, fr * 2, fr * 2);
+      ctx.globalAlpha = 1;
 
-      /* poussière en suspension */
+      /* poussière */
       ctx.fillStyle = 'rgba(190,240,255,0.5)';
       for (const d of dust) {
         if (!reduce) {
@@ -14023,15 +14089,16 @@
           if (d.yf < 0.16) { d.yf = 0.78 + Math.random() * 0.1; d.xf = 0.04 + Math.random() * 0.92; }
         }
         const rel = d.z - camZ; if (rel < 10) continue;
-        const p = P(d.xf * w, d.yf * h, d.z);
-        ctx.globalAlpha = d.a * Math.min(1, p.k * 1.5);
-        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.4, d.r * p.k), 0, 6.3); ctx.fill();
+        const k = K(d.z);
+        const p = { x: ox + (d.xf * w - ox) * k, y: oy + (d.yf * h - oy) * k };
+        ctx.globalAlpha = d.a * Math.min(1, k * 1.5);
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.4, d.r * k), 0, 6.3); ctx.fill();
       }
       ctx.globalAlpha = 1;
 
-      /* vignette */
-      const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.38, w / 2, h * 0.5, h * 0.98);
-      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(1,3,9,0.58)');
+      /* obscurité de grotte : vignette appuyée */
+      const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.34, w / 2, h * 0.5, h * 1.02);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,2,7,0.68)');
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
     }
 
@@ -14051,9 +14118,11 @@
       const grabRef = React.useRef(null);
       const dustRef = React.useRef([]);
       const glowsRef = React.useRef([]);
+      const batsRef = React.useRef({ next: 0, flocks: [] });
       const spotsRef = React.useRef({});
       const crystalsRef = React.useRef([]);
       const reduce = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-reduce-motion');
+      const perfLite = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-perf-lite');
 
       React.useEffect(() => {
         if (!open) return;
@@ -14074,12 +14143,18 @@
           const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
           const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
           const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
-          return { xf: an.xf, yf: an.yf, z: spot.z, glow: isGold ? 'rgba(255,202,75,0.9)' : (grad?.glow || pal.glow), r: 90 + Math.min(Number(c.duration) || 25, 120) };
+          let bucket = -2;
+          for (let r = 0; r < CAVE_RING_Z.length; r++) { if (CAVE_RING_Z[r] >= spot.z) { bucket = r; break; } }
+          return {
+            xf: an.xf, yf: an.yf, z: spot.z, bucket,
+            ph: ((Number(c.seed) || i * 37) % 628) / 100,
+            glow: isGold ? 'rgba(255,202,75,0.9)' : (grad?.glow || pal.glow),
+            r: 110 + Math.min(Number(c.duration) || 25, 120) * 1.1,
+          };
         });
         spotsRef.current = spots;
       }, [crystals]);
 
-      /* brume/atténuation par distance appliquée aux nœuds, par paliers */
       const applyDepthStyles = () => {
         const camZ = camRef.current.z;
         Object.entries(nodeRefs.current).forEach(([id, node]) => {
@@ -14097,12 +14172,23 @@
             const f = bucket / 9;
             node.style.opacity = '1';
             node.style.pointerEvents = '';
-            node.style.filter = 'brightness(' + (1 - f * 0.42).toFixed(2) + ') saturate(' + (1 - f * 0.30).toFixed(2) + ')' + (f > 0.42 ? ' blur(' + (f * 1.7).toFixed(1) + 'px)' : '');
+            node.style.filter = 'brightness(' + (1 - f * 0.46).toFixed(2) + ') saturate(' + (1 - f * 0.32).toFixed(2) + ')' + (f > 0.42 ? ' blur(' + (f * 1.7).toFixed(1) + 'px)' : '');
           }
         });
       };
 
       const clampZ = z => Math.max(0, Math.min(CAVE_CAM_MAX, z));
+      const spawnFlock = t => {
+        const rnd = Math.random;
+        batsRef.current.flocks.push({
+          z: 260 + rnd() * 720, dir: rnd() < 0.5 ? 1 : -1, y0: 0.28 + rnd() * 0.15,
+          prog: -0.02, speed: 0.00011 + rnd() * 0.00007, lastT: t,
+          members: Array.from({ length: perfLite ? 2 : 2 + Math.floor(rnd() * 3) }, () => ({
+            lag: -rnd() * 0.09, dy: (rnd() - 0.5) * 0.06, dz: (rnd() - 0.5) * 120,
+            ph: rnd() * 6.3, s: 0.8 + rnd() * 0.6,
+          })),
+        });
+      };
       const applyCam = () => {
         camRef.current.z = clampZ(camRef.current.z);
         if (worldRef.current) worldRef.current.style.transform = 'translateZ(' + camRef.current.z + 'px)';
@@ -14113,7 +14199,7 @@
         if (!open) return;
         const view = viewRef.current, canvas = canvasRef.current;
         if (!view || !canvas) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
         const resize = () => {
           const r = view.getBoundingClientRect();
           sizeRef.current = { w: r.width, h: r.height };
@@ -14129,20 +14215,28 @@
         const ro = new ResizeObserver(resize);
         ro.observe(view);
         const rng = _caveRng(97);
-        dustRef.current = Array.from({ length: reduce ? 0 : 36 }, () => ({
+        dustRef.current = Array.from({ length: reduce ? 0 : (perfLite ? 12 : 32) }, () => ({
           xf: 0.04 + rng() * 0.92, yf: 0.2 + rng() * 0.6, z: 60 + rng() * 1300,
           r: 0.8 + rng() * 1.8, sp: 0.00012 + rng() * 0.00042, ph: rng() * 6.3, a: 0.1 + rng() * 0.3,
         }));
+        batsRef.current = { next: performance.now() + 1600, flocks: [] };
         let raf = 0;
-        /* rAF est throttlé nativement quand l'onglet est caché */
         const loop = t => {
           raf = requestAnimationFrame(loop);
           const cam = camRef.current;
           if (!panRef.current && Math.abs(cam.vz) > 0.05) {
             cam.z = clampZ(cam.z + cam.vz); cam.vz *= 0.92; applyCam();
           }
+          /* vols de chauves-souris */
+          const bats = batsRef.current;
+          if (!reduce) {
+            if (t > bats.next) { spawnFlock(t); bats.next = t + 9000 + Math.random() * 15000; }
+            bats.flocks.forEach(fl => { fl.prog += (t - fl.lastT) * fl.speed; fl.lastT = t; });
+            bats.flocks = bats.flocks.filter(fl => fl.prog < 1.3);
+          }
+          canvas.__fsBats = bats.flocks.length;
           const ctx = canvas.getContext('2d');
-          if (ctx) _caveDraw(ctx, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, reduce);
+          if (ctx) _caveDraw(ctx, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, bats, reduce);
         };
         loop(performance.now());
         return () => { cancelAnimationFrame(raf); ro.disconnect(); };
@@ -14159,8 +14253,10 @@
       const durLabel = c => (Number(c.duration) || 0) < 1 ? Math.round((Number(c.duration) || 0) * 60) + ' sec' : (c.duration || 0) + ' min';
       const totalMinutes = Math.round(crystals.reduce((n, c) => n + (Number(c.duration) || 0), 0));
 
-      /* ── caméra : glisser / molette = avancer-reculer ── */
-      const dollyBy = dz => { camRef.current.vz = 0; camRef.current.z = clampZ(camRef.current.z + dz); applyCam(); };
+      const dollyBy = dz => {
+        camRef.current.vz = 0; camRef.current.z = clampZ(camRef.current.z + dz); applyCam();
+        if (!reduce && dz > 0 && Math.random() < 0.25) spawnFlock(performance.now());
+      };
       const onViewDown = e => {
         if (e.target.closest?.('.fs-cv-crystal,.fs-cv-hud,.fs-cv-detail,.fs-cv-header')) return;
         camRef.current.vz = 0;
@@ -14185,8 +14281,8 @@
             const spot = g.spot;
             const k = CAVE_F / Math.max(60, CAVE_F + g.z - camRef.current.z);
             if (spot.surf === 'wallL' || spot.surf === 'wallR') {
-              g.a = Math.max(0.02, Math.min(0.98, g.a0 + (e.clientY - g.py) / (h * 0.42) / k * 0.6));
-              g.z = Math.max(70, Math.min(CAVE_ZMAX, g.z0 - (e.clientX - g.px) * (spot.surf === 'wallL' ? -2.4 : 2.4) / k));
+              g.a = Math.max(0.02, Math.min(0.98, g.a0 + (e.clientY - g.py) / (h * 0.44) / k * 0.6));
+              g.z = Math.max(340, Math.min(CAVE_ZMAX, g.z0 - (e.clientX - g.px) * (spot.surf === 'wallL' ? -2.4 : 2.4) / k));
             } else {
               g.a = Math.max(0.04, Math.min(0.96, g.a0 + (e.clientX - g.px) / (w * k)));
               g.z = Math.max(70, Math.min(CAVE_ZMAX, g.z0 - (e.clientY - g.py) * 2.6 / k));
@@ -14224,7 +14320,6 @@
         dollyBy(e.deltaY < 0 ? 72 : -72);
       };
 
-      /* ── cristaux : drag pour replanter, clic/hover pour la fiche ── */
       const onCrystalDown = (e, c, spot) => {
         e.stopPropagation();
         camRef.current.vz = 0;
@@ -14254,7 +14349,7 @@
           {!embedded && <div className="fs-cristaux-backdrop" onClick={onClose} />}
           <div className={'fs-cristaux-panel' + (embedded ? ' embedded' : '')}>
             <style>{`
-              .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#02060f;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+              .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#01040c;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
               .fs-cv-stage.is-panning{cursor:grabbing}
               .fs-cv-canvas{position:absolute;inset:0;display:block}
               .fs-cv-3d{position:absolute;inset:0;perspective:${CAVE_F}px;perspective-origin:50% ${CAVE_OY * 100}%}
@@ -14263,30 +14358,32 @@
               .fs-cv-crystal:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:4px;border-radius:10px}
               .fs-cv-crystal.is-drag{cursor:grabbing;filter:brightness(1.3) drop-shadow(0 0 26px var(--glow))!important}
               .fs-cv-crystal.is-active .fs-cv-gem{filter:brightness(1.26) drop-shadow(0 0 18px var(--glow))}
-              .fs-cv-glowpad{position:absolute;left:50%;bottom:calc(var(--sz)*-0.14);width:calc(var(--sz)*1.9);height:calc(var(--sz)*0.6);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse at 50% 50%,var(--glow),transparent 68%);opacity:.42;filter:blur(7px);pointer-events:none}
-              .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.045);width:calc(var(--sz)*1.14);height:calc(var(--sz)*0.2);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.62),transparent 70%);pointer-events:none}
-              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.45))}
+              .fs-cv-glowpad{position:absolute;left:50%;bottom:calc(var(--sz)*-0.14);width:calc(var(--sz)*2.1);height:calc(var(--sz)*0.66);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse at 50% 50%,var(--glow),transparent 66%);opacity:.46;filter:blur(7px);pointer-events:none;animation:fsCvGlowBreath 4.4s ease-in-out infinite;animation-delay:var(--gd,0s)}
+              @keyframes fsCvGlowBreath{0%,100%{opacity:.36}50%{opacity:.56}}
+              html.fs-reduce-motion .fs-cv-glowpad{animation:none}
+              .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.045);width:calc(var(--sz)*1.14);height:calc(var(--sz)*0.2);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.66),transparent 70%);pointer-events:none}
+              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
               .fs-cv-base{position:absolute;left:50%;bottom:calc(var(--sz)*-0.06);width:calc(var(--sz)*1.24);height:calc(var(--sz)*0.34);transform:translateX(-50%);pointer-events:none}
               .fs-cv-base i{position:absolute;bottom:0;background:linear-gradient(168deg,#2a4066 0%,#101d34 58%,#070e1d 100%);box-shadow:inset 0 1px 0 rgba(170,225,255,.2)}
               .fs-cv-base i:nth-child(1){left:2%;width:30%;height:74%;clip-path:polygon(44% 0,100% 58%,88% 100%,0 100%,8% 46%);transform:rotate(-5deg)}
               .fs-cv-base i:nth-child(2){left:22%;width:34%;height:100%;clip-path:polygon(52% 0,100% 62%,86% 100%,12% 100%,0 52%)}
               .fs-cv-base i:nth-child(3){left:47%;width:32%;height:88%;clip-path:polygon(46% 0,94% 50%,100% 100%,8% 100%,0 62%);transform:rotate(4deg)}
               .fs-cv-base i:nth-child(4){right:0;width:24%;height:60%;clip-path:polygon(50% 0,100% 70%,88% 100%,4% 100%,0 58%);transform:rotate(9deg)}
-              .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(3,7,16,.9),transparent 72%)}
+              .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(2,5,12,.92),transparent 72%)}
               .fs-cv-gold-aura{position:absolute;left:50%;bottom:0;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,28%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:8px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
-              .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(2,7,18,.82),rgba(2,7,18,0))}
+              .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
               .fs-cv-header>*{pointer-events:auto}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-              .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:13px;border:1px solid rgba(140,220,255,.14);background:rgba(6,14,30,.66);backdrop-filter:blur(8px)}
+              .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:13px;border:1px solid rgba(140,220,255,.14);background:rgba(4,10,24,.7);backdrop-filter:blur(8px)}
               .fs-cv-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(8,16,32,.7);color:rgba(230,242,255,.85);font-size:16px;cursor:pointer}
               .fs-cv-hud{position:absolute;right:16px;bottom:16px;display:flex;gap:8px;z-index:70}
-              .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(6,14,30,.78);color:#cfeaff;font-size:13px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
-              .fs-cv-hud button:hover{background:rgba(16,32,58,.9)}
-              .fs-cv-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:55;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:rgba(205,232,255,.55);background:rgba(4,10,24,.62);border:1px solid rgba(140,220,255,.1);border-radius:99px;padding:7px 14px;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
-              .fs-cv-detail{position:absolute;left:16px;bottom:16px;z-index:80;width:min(300px,calc(100% - 90px));border-radius:20px;border:1px solid rgba(140,220,255,.18);background:rgba(5,11,26,.9);backdrop-filter:blur(14px);padding:15px 16px;box-shadow:0 24px 60px rgba(0,0,0,.5);animation:fsCvDetailIn .22s cubic-bezier(.2,.9,.3,1.2) both}
+              .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(4,10,24,.8);color:#cfeaff;font-size:13px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
+              .fs-cv-hud button:hover{background:rgba(14,28,52,.92)}
+              .fs-cv-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:55;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:rgba(205,232,255,.55);background:rgba(2,7,18,.66);border:1px solid rgba(140,220,255,.1);border-radius:99px;padding:7px 14px;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
+              .fs-cv-detail{position:absolute;left:16px;bottom:16px;z-index:80;width:min(300px,calc(100% - 90px));border-radius:20px;border:1px solid rgba(140,220,255,.18);background:rgba(3,8,20,.92);backdrop-filter:blur(14px);padding:15px 16px;box-shadow:0 24px 60px rgba(0,0,0,.55);animation:fsCvDetailIn .22s cubic-bezier(.2,.9,.3,1.2) both}
               @keyframes fsCvDetailIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
               html.fs-reduce-motion .fs-cv-detail{animation:none}
               .fs-cv-empty{position:absolute;inset:0;display:grid;place-items:center;z-index:50;pointer-events:none;text-align:center}
@@ -14329,6 +14426,7 @@
                           top: (an.yf * 100) + '%',
                           transform: 'translate(-50%,-100%) translateZ(' + (-spot.z) + 'px) rotate(' + spot.rot + 'deg)',
                           '--sz': sz + 'px', '--glow': glow,
+                          '--gd': (((Number(c.seed) || i * 41) % 44) / 10) + 's',
                         }}
                         aria-label={'Cristal de session, ' + durLabel(c)}
                         onPointerDown={e => onCrystalDown(e, c, spot)}
