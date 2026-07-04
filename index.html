@@ -3169,13 +3169,9 @@
   <script type="text/babel">
     const { useState: _uS6, useEffect: _uEff6 } = React;
 
-    const INIT_TASKS = [
-      { id: 1, text: 'Mettre à jour le portfolio', done: false, priority: 'high', tag: 'Task' },
-      { id: 2, text: 'Revoir le brief design', done: true, priority: 'high', tag: 'Task' },
-      { id: 3, text: 'Appel client à 15h00', done: false, priority: 'medium', tag: 'Task' },
-      { id: 4, text: 'Rédiger le récap hebdo', done: false, priority: 'low', tag: 'Task' },
-      { id: 5, text: 'Lire le chapitre 12', done: true, priority: 'low', tag: 'Task' },
-    ];
+    /* Pas de tâches de démo : un nouvel utilisateur démarre avec une liste vide
+       et un état d'accueil actionnable, pas des fausses tâches à supprimer. */
+    const INIT_TASKS = [];
     const PC = { high: T.rose, medium: T.warm, low: T.green };
 
     function TasksWidget({ variant = 1, style }) {
@@ -3198,7 +3194,7 @@
       const tog = id => setTasks(ts => ts.map(t => t.id === id ? { ...t, done: !t.done } : t));
       const add = () => { if (!draft.trim()) return; setTasks(ts => [...ts, { id: Date.now(), text: draft.trim(), done: false, priority: 'medium', tag: 'Task' }]); setDraft(''); };
       const done = tasks.filter(t => t.done).length;
-      const pct = done / tasks.length;
+      const pct = tasks.length ? done / tasks.length : 0;
       const orderedTasks = [...tasks].sort((a, b) => a.done - b.done);
       const _gFoc = () => { try { return JSON.parse(localStorage.getItem('fs_session_focus_tasks') || 'null'); } catch(e) { return null; } };
       const [focusIds, _setFoc] = _uS6(_gFoc);
@@ -3213,6 +3209,12 @@
               <div style={{ fontFamily: T.display, fontWeight: 700, fontSize: 12, color: T.c1 }}>{done}/{tasks.length}</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', paddingRight: 3 }}>
+              {displayTasks.length === 0 && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 4, padding: '8px 4px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Ta liste est prête</div>
+                  <div style={{ fontSize: 12, color: T.muted }}>Ajoute ta première tâche ci-dessous.</div>
+                </div>
+              )}
               {displayTasks.map(t => (
                 <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 8px', borderRadius: 10, cursor: 'pointer', minHeight: 34, flexShrink: 0 }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
@@ -7616,19 +7618,9 @@
   <script type="text/babel">
     const { useState: _uST, useEffect: _uEffT, useRef: _uRT } = React;
 
-    const INIT_TASKS = [
-      { id: 1, text: 'Concevoir la nouvelle mise en page du dashboard', priority: 'high', done: false, tag: 'Design' },
-      { id: 2, text: 'Rédiger la documentation API', priority: 'medium', done: false, tag: 'Dev' },
-      { id: 3, text: 'Réviser la pull request #42', priority: 'low', done: false, tag: 'Dev' },
-      { id: 4, text: 'Mettre en place le pipeline CI/CD', priority: 'medium', done: false, tag: 'Ops' },
-      { id: 5, text: 'Préparer les notes de sprint planning', priority: 'high', done: false, tag: 'PM' },
-      { id: 6, text: 'Mettre à jour la page de landing', priority: 'low', done: false, tag: 'Design' },
-      { id: 7, text: 'Corriger le bug de rafraîchissement du token', priority: 'high', done: false, tag: 'Dev' },
-      { id: 8, text: 'Ajouter le mode sombre à l\'app mobile', priority: 'medium', done: false, tag: 'Dev' },
-      { id: 9, text: 'Écrire les tests unitaires du module auth', priority: 'high', done: true, tag: 'Dev' },
-      { id: 10, text: 'Configurer les alertes de monitoring', priority: 'medium', done: true, tag: 'Ops' },
-      { id: 11, text: 'Intégrer le nouveau membre de l\'équipe', priority: 'low', done: true, tag: 'PM' },
-    ];
+    /* Pas de tâches de démo : liste vide + état d'accueil actionnable pour
+       un nouvel utilisateur (voir l'état vide plus bas). */
+    const INIT_TASKS = [];
 
     const PRI = {
       high: { label: 'Haute', color: '#fb7185', bg: 'rgba(251,113,133,0.14)' },
@@ -7973,8 +7965,13 @@
                   </svg>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(248,246,252,0.45)', marginBottom: 5 }}>Aucune tâche ici</div>
-                  <div style={{ fontSize: 12, color: T.muted }}>Utilisez le champ ci-dessus pour en ajouter une</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 5 }}>Commence ta première tâche</div>
+                  <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 14 }}>Note ce que tu veux accomplir aujourd'hui — une action à la fois.</div>
+                  <button type="button"
+                    onClick={() => { try { taskInputRef.current?.focus(); setComposerPulse(true); setTimeout(() => setComposerPulse(false), 900); } catch (e) {} }}
+                    style={{ border: 'none', borderRadius: 13, padding: '11px 20px', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color: '#07070d', fontSize: 13, fontWeight: 850, fontFamily: T.font, cursor: 'pointer', boxShadow: '0 12px 30px rgba(var(--theme-c1-rgb),0.26)' }}>
+                    + Ajouter une tâche
+                  </button>
                 </div>
               </div>
             )}
