@@ -10193,45 +10193,170 @@
     window.buildCustomTheme = buildCustomTheme;
 
     /* ── Fond (Background) Screen ────────────────────────────────────────────── */
-    function FondScreen({ onNavigate, bgThemeId, onApply }) {
+    /* ── ThemePicker : 3 presets + 1 custom, réutilisable ────────────────────
+       Extrait de FondScreen pour être rendu à l'identique dans Réglages →
+       Apparence. Applique le thème en direct via onApply (même handler que
+       l'écran Ambiance & Fond). showPreview affiche l'aperçu 140px (écran
+       Personnalisation) ; compact réduit les cartes (carte Réglages). */
+    function ThemePicker({ bgThemeId, onApply, showPreview = false, compact = false }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const KEPT = BG_THEMES.filter(t => ['ocean', 'sakura', 'crimson'].includes(t.id));
       const VALID_IDS = ['ocean', 'sakura', 'crimson', 'custom'];
       const initId = VALID_IDS.includes(bgThemeId) ? bgThemeId : null;
 
-      const [appliedId, setAppliedId] = _uPX(initId);
-      const [previewId, setPreviewId] = _uPX(initId || 'ocean');
-      const [customC1, setCustomC1] = _uPX(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c1 || '#a5b8ff'; } catch (e) { return '#a5b8ff'; } });
-      const [customC2, setCustomC2] = _uPX(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c2 || '#c084fc'; } catch (e) { return '#c084fc'; } });
-      const [customOpen, setCustomOpen] = _uPX(initId === 'custom');
-      const customRef = React.useRef(null);
+      const [appliedId, setAppliedId] = React.useState(initId);
+      const [previewId, setPreviewId] = React.useState(initId || 'ocean');
+      const [customC1, setCustomC1] = React.useState(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c1 || '#a5b8ff'; } catch (e) { return '#a5b8ff'; } });
+      const [customC2, setCustomC2] = React.useState(() => { try { return JSON.parse(localStorage.getItem('fs_custom_bg') || '{}').c2 || '#c084fc'; } catch (e) { return '#c084fc'; } });
+      const [customOpen, setCustomOpen] = React.useState(initId === 'custom');
+
+      /* rester en phase si le thème change ailleurs (autre écran, sync) */
+      React.useEffect(() => {
+        const v = VALID_IDS.includes(bgThemeId) ? bgThemeId : null;
+        setAppliedId(v);
+        setPreviewId(v || 'ocean');
+      }, [bgThemeId]);
 
       const customTheme = buildCustomTheme(customC1, customC2);
       const allThemes = [...KEPT, customTheme];
       const prev = allThemes.find(t => t.id === previewId) || KEPT[0];
+      const cardH = compact ? 52 : 68;
 
-      const saveCustom = (c1h, c2h) => { try { localStorage.setItem('fs_custom_bg', JSON.stringify({ c1: c1h, c2: c2h })); } catch (e) { } };
+      const saveCustom = (a, b) => { try { localStorage.setItem('fs_custom_bg', JSON.stringify({ c1: a, c2: b })); } catch (e) { } };
       const apply = t => { setAppliedId(t.id); setPreviewId(t.id); onApply(t); addToast({ message: `Thème ${t.name} appliqué`, type: 'success', icon: '✓' }); };
-
-      React.useEffect(() => {
-        if (!customOpen) return;
-        const close = e => { if (customRef.current && !customRef.current.contains(e.target)) setCustomOpen(false); };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-      }, [customOpen]);
-
-      const handleC1 = e => {
-        const v = e.target.value; setCustomC1(v); saveCustom(v, customC2);
-        if (appliedId === 'custom') onApply(buildCustomTheme(v, customC2));
-      };
-      const handleC2 = e => {
-        const v = e.target.value; setCustomC2(v); saveCustom(customC1, v);
-        if (appliedId === 'custom') onApply(buildCustomTheme(customC1, v));
-      };
+      const handleC1 = e => { const v = e.target.value; setCustomC1(v); saveCustom(v, customC2); if (appliedId === 'custom') onApply(buildCustomTheme(v, customC2)); };
+      const handleC2 = e => { const v = e.target.value; setCustomC2(v); saveCustom(customC1, v); if (appliedId === 'custom') onApply(buildCustomTheme(customC1, v)); };
 
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ position: 'relative' }}>
+          {showPreview && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Aperçu en direct</span>
+                <span style={{ fontSize: 11, color: T.muted }}>{prev.name} · {prev.desc}</span>
+              </div>
+              <div style={{ height: 140, borderRadius: 22, overflow: 'hidden', position: 'relative', background: prev.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
+                <div style={{ position: 'absolute', inset: 0, background: buildGrad(prev), transition: 'background 0.45s ease' }} />
+                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+                <div style={{ position: 'absolute', inset: 0, padding: '16px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 10 }}>{[0, 1, 2, 3].map(i => <div key={i} style={{ flex: 1, height: 34, borderRadius: 12, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)' }} />)}</div>
+                  <div style={{ display: 'flex', gap: 10 }}>{[0, 1, 2, 3, 4].map(i => <div key={i} style={{ flex: 1, height: 20, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.05)' }} />)}</div>
+                </div>
+              </div>
+            </div>
+          )}
 
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Thèmes</span>
+            <span style={{ fontSize: 11, color: T.muted }}>3 presets · 1 custom</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+            {KEPT.map(theme => {
+              const isActive = appliedId === theme.id;
+              const isPrev = previewId === theme.id;
+              return (
+                <div key={theme.id}
+                  onMouseEnter={() => setPreviewId(theme.id)}
+                  onMouseLeave={() => setPreviewId(appliedId || 'ocean')}
+                  onClick={() => { apply(theme); setCustomOpen(false); }}
+                  style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{
+                    height: cardH, borderRadius: 14, overflow: 'hidden', position: 'relative', background: theme.base,
+                    border: `2px solid ${isActive ? T.c1 : isPrev ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.07)'}`,
+                    transition: 'border-color 0.18s, box-shadow 0.22s, transform 0.18s',
+                    boxShadow: isActive ? `0 0 0 4px ${c1(0.157)}, 0 8px 28px rgba(0,0,0,0.5)` : isPrev ? '0 6px 18px rgba(0,0,0,0.45)' : '0 2px 8px rgba(0,0,0,0.22)',
+                    transform: isPrev && !isActive ? 'scale(1.03)' : 'scale(1)'
+                  }}>
+                    <div style={{ position: 'absolute', inset: 0, background: buildGrad(theme) }} />
+                    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
+                    {isActive && (
+                      <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: T.c1, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${c1(0.4)}` }}>
+                        <svg width={9} height={7} viewBox="0 0 10 8" fill="none"><path d="M1 3.5L4 7l5-6" stroke="#07070d" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ paddingLeft: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? T.c1 : T.text, transition: 'color 0.18s' }}>{theme.name}</div>
+                    <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{theme.desc}</div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {(() => {
+              const isActive = appliedId === 'custom';
+              const isPrev = previewId === 'custom';
+              return (
+                <div
+                  onMouseEnter={() => setPreviewId('custom')}
+                  onMouseLeave={() => setPreviewId(appliedId || 'ocean')}
+                  onClick={() => { apply(customTheme); setCustomOpen(o => !o); }}
+                  style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{
+                    height: cardH, borderRadius: 14, position: 'relative', background: '#07070d',
+                    border: `2px solid ${isActive ? T.c1 : isPrev ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.14)'}`,
+                    transition: 'border-color 0.18s, box-shadow 0.22s, transform 0.18s',
+                    boxShadow: isActive ? `0 0 0 4px ${c1(0.157)}, 0 8px 28px rgba(0,0,0,0.5)` : isPrev ? '0 6px 18px rgba(0,0,0,0.45)' : '0 2px 8px rgba(0,0,0,0.22)',
+                    transform: isPrev && !isActive ? 'scale(1.03)' : 'scale(1)',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ position: 'absolute', inset: 0, background: buildGrad(customTheme), transition: 'background 0.3s ease' }} />
+                    <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.28)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 9px', border: '1px solid rgba(255,255,255,0.14)' }}>
+                        <svg width={9} height={9} viewBox="0 0 9 9" fill="none"><path d="M4.5 1v7M1 4.5h7" stroke="rgba(255,255,255,0.75)" strokeWidth={1.5} strokeLinecap="round" /></svg>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.06em' }}>CUSTOM</span>
+                      </div>
+                    </div>
+                    {isActive && (
+                      <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: T.c1, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${c1(0.4)}` }}>
+                        <svg width={9} height={7} viewBox="0 0 10 8" fill="none"><path d="M1 3.5L4 7l5-6" stroke="#07070d" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ paddingLeft: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? T.c1 : T.text }}>Custom</div>
+                    <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>Personnalisé</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {customOpen && (
+            <div style={{ marginTop: 14, borderRadius: 18, background: 'rgba(8,8,20,0.6)', border: '1px solid rgba(255,255,255,0.08)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'scaleIn 0.22s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.c1, boxShadow: `0 0 7px ${T.c1}` }} />
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Gradient personnalisé</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { label: 'Couleur principale', val: customC1, handler: handleC1 },
+                  { label: 'Couleur secondaire', val: customC2, handler: handleC2 },
+                ].map(({ label, val, handler }) => (
+                  <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer', minWidth: 0 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 12, background: val, flexShrink: 0, position: 'relative', boxShadow: `0 3px 14px ${val}55, inset 0 1px 0 rgba(255,255,255,0.22)`, border: '1.5px solid rgba(255,255,255,0.16)' }}>
+                      <input type="color" value={val} onChange={handler} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 2, fontFamily: T.mono, letterSpacing: '0.06em' }}>{val.toUpperCase()}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    window.ThemePicker = ThemePicker;
+
+    /* ── Fond (Background) Screen ────────────────────────────────────────────── */
+    function FondScreen({ onNavigate, bgThemeId, onApply }) {
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Header */}
           <div style={{ padding: '22px 36px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
             <button onClick={() => onNavigate('perso')}
@@ -10246,150 +10371,15 @@
             </div>
           </div>
 
-          {/* Live preview */}
-          <div style={{ padding: '24px 36px 0', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Aperçu en direct</span>
-              <span style={{ fontSize: 11, color: T.muted }}>{prev.name} · {prev.desc}</span>
-            </div>
-            <div style={{ height: 140, borderRadius: 22, overflow: 'hidden', position: 'relative', background: prev.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
-              <div style={{ position: 'absolute', inset: 0, background: buildGrad(prev), transition: 'background 0.45s ease' }} />
-              <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-              <div style={{ position: 'absolute', inset: 0, padding: '16px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {[0, 1, 2, 3].map(i => <div key={i} style={{ flex: 1, height: 34, borderRadius: 12, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)' }} />)}
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {[0, 1, 2, 3, 4].map(i => <div key={i} style={{ flex: 1, height: 20, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.05)' }} />)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Grid + custom editor */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 36px 36px', position:'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Thèmes</span>
-              <span style={{ fontSize: 11, color: T.muted }}>3 presets · 1 custom</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-
-              {/* ── Preset themes ── */}
-              {KEPT.map(theme => {
-                const isActive = appliedId === theme.id;
-                const isPrev = previewId === theme.id;
-                return (
-                  <div key={theme.id}
-                    onMouseEnter={() => setPreviewId(theme.id)}
-                    onMouseLeave={() => setPreviewId(appliedId || 'ocean')}
-                    onClick={() => { apply(theme); setCustomOpen(false); }}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                    <div style={{
-                      height: 68, borderRadius: 14, overflow: 'hidden', position: 'relative', background: theme.base,
-                      border: `2px solid ${isActive ? T.c1 : isPrev ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.07)'}`,
-                      transition: 'border-color 0.18s, box-shadow 0.22s, transform 0.18s',
-                      boxShadow: isActive ? `0 0 0 4px ${c1(0.157)}, 0 8px 28px rgba(0,0,0,0.5)` : isPrev ? '0 6px 18px rgba(0,0,0,0.45)' : '0 2px 8px rgba(0,0,0,0.22)',
-                      transform: isPrev && !isActive ? 'scale(1.03)' : 'scale(1)'
-                    }}>
-                      <div style={{ position: 'absolute', inset: 0, background: buildGrad(theme) }} />
-                      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
-                      {isActive && (
-                        <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: T.c1, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${c1(0.4)}` }}>
-                          <svg width={9} height={7} viewBox="0 0 10 8" fill="none"><path d="M1 3.5L4 7l5-6" stroke="#07070d" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ paddingLeft: 1 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? T.c1 : T.text, transition: 'color 0.18s' }}>{theme.name}</div>
-                      <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{theme.desc}</div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* ── Custom (+) card ── */}
-              {(() => {
-                const isActive = appliedId === 'custom';
-                const isPrev = previewId === 'custom';
-                return (
-                  <div
-                    onMouseEnter={() => setPreviewId('custom')}
-                    onMouseLeave={() => setPreviewId(appliedId || 'ocean')}
-                    onClick={() => { apply(customTheme); setCustomOpen(o => !o); }}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                    <div style={{
-                      height: 68, borderRadius: 14, position: 'relative', background: '#07070d',
-                      border: `2px solid ${isActive ? T.c1 : isPrev ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.14)'}`,
-                      transition: 'border-color 0.18s, box-shadow 0.22s, transform 0.18s',
-                      boxShadow: isActive ? `0 0 0 4px ${c1(0.157)}, 0 8px 28px rgba(0,0,0,0.5)` : isPrev ? '0 6px 18px rgba(0,0,0,0.45)' : '0 2px 8px rgba(0,0,0,0.22)',
-                      transform: isPrev && !isActive ? 'scale(1.03)' : 'scale(1)',
-                      overflow: 'hidden'
-                    }}>
-                      {/* Gradient preview */}
-                      <div style={{ position: 'absolute', inset: 0, background: buildGrad(customTheme), transition: 'background 0.3s ease' }} />
-                      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize: '14px 14px' }} />
-                      {/* Centre + pill */}
-                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.28)', backdropFilter: 'blur(6px)', borderRadius: 99, padding: '4px 9px', border: '1px solid rgba(255,255,255,0.14)' }}>
-                          <svg width={9} height={9} viewBox="0 0 9 9" fill="none"><path d="M4.5 1v7M1 4.5h7" stroke="rgba(255,255,255,0.75)" strokeWidth={1.5} strokeLinecap="round" /></svg>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.75)', letterSpacing: '0.06em' }}>CUSTOM</span>
-                        </div>
-                      </div>
-                      {/* Checkmark */}
-                      {isActive && (
-                        <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: T.c1, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${c1(0.4)}` }}>
-                          <svg width={9} height={7} viewBox="0 0 10 8" fill="none"><path d="M1 3.5L4 7l5-6" stroke="#07070d" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ paddingLeft: 1 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? T.c1 : T.text }}>Custom</div>
-                      <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>Personnalisé</div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* ── Custom gradient editor ── */}
-            {customOpen && (
-              <div ref={customRef} style={{ position:'absolute', top:138, right:36, width:300, zIndex:40, borderRadius: 18, background: 'rgba(8,8,20,0.96)', border: '1px solid rgba(255,255,255,0.10)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, backdropFilter: 'blur(36px)', boxShadow:'0 24px 70px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.06)', animation: 'scaleIn 0.24s cubic-bezier(0.34,1.56,0.64,1) both' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ width: 4, height: 4, borderRadius: '50%', background: T.c1, boxShadow: `0 0 7px ${T.c1}` }} />
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Gradient personnalisé</span>
-                </div>
-                {[
-                  { label: 'Couleur principale', val: customC1, handler: handleC1 },
-                  { label: 'Couleur secondaire', val: customC2, handler: handleC2 },
-                ].map(({ label, val, handler }) => (
-                  <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12, background: val, flexShrink: 0, position: 'relative',
-                      boxShadow: `0 3px 14px ${val}55, inset 0 1px 0 rgba(255,255,255,0.22)`,
-                      border: '1.5px solid rgba(255,255,255,0.16)',
-                      transition: 'box-shadow 0.2s'
-                    }}>
-                      <input type="color" value={val} onChange={handler}
-                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{label}</div>
-                      <div style={{ fontSize: 10, color: T.muted, marginTop: 2, fontFamily: T.mono, letterSpacing: '0.06em' }}>{val.toUpperCase()}</div>
-                    </div>
-                    <svg width={13} height={13} viewBox="0 0 14 14" fill="none" style={{ color: T.muted, flexShrink: 0, opacity: 0.6 }}>
-                      <path d="M2 12L9 5l2-2 2 2-2 2-7 7H2v-2Z" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M9 5l2 2" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
-                    </svg>
-                  </label>
-                ))}
-              </div>
-            )}
+          {/* Sélecteur réutilisable (identique dans Réglages → Apparence) */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 36px 36px' }}>
+            <ThemePicker bgThemeId={bgThemeId} onApply={onApply} showPreview />
           </div>
         </div>
       );
     }
     window.FondScreen = FondScreen;
+
 
     function FontScreen({ onNavigate, fontId, onApply }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
@@ -10975,7 +10965,7 @@
       );
     }
 
-    function SettingsScreen({ onNavigate, user, onUserUpdate }) {
+    function SettingsScreen({ onNavigate, user, onUserUpdate, bgThemeId, onApply }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const safeGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 
@@ -11346,17 +11336,10 @@
                 </Card>
 
                 {/* APPARENCE (essentiel) */}
-                <Card title="Apparence" desc="Choisis ta couleur. Le reste s'adapte tout seul.">
-                  <Field title="Couleur d'accent" desc="Elle colore tout LumenOS, en direct.">
-                    <div className="fs-set-dots">
-                      {ACCENTS.map(([name, hex]) => (
-                        <button key={name} type="button" aria-label={name} title={name} className={'fs-set-dot' + (prefs.accent === name ? ' on' : '')} style={{ background: hex }} onClick={() => { set('accent', name); flashSave(); }} />
-                      ))}
-                    </div>
-                  </Field>
-                  <Field title="Thème">
-                    <Segmented k="themeMode" options={[['dark', 'Dark'], ['light', 'Light'], ['system', 'System']]} soon={['light', 'system']} />
-                  </Field>
+                <Card title="Apparence" desc="Choisis ton thème. Le reste s'adapte tout seul.">
+                  {window.ThemePicker
+                    ? React.createElement(window.ThemePicker, { bgThemeId, onApply })
+                    : <div style={{ fontSize: 12, color: T.muted }}>Thèmes indisponibles.</div>}
                 </Card>
 
                 {/* RÉGLAGES AVANCÉS (replié) */}
@@ -12208,7 +12191,7 @@
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
-                {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} />}
+                {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
