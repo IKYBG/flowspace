@@ -7256,7 +7256,7 @@
 
       const NAV = [
         {
-          target: 'dashboard', label: 'Tableau de bord', meta: 'Vue principale',
+          target: 'dashboard', label: 'Dashboard', meta: 'Vue principale',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10.5V20h14v-9.5" /></svg>,
         },
         {
@@ -7595,12 +7595,14 @@
 
           {/* ── Bottom navigation (mobile only) ── */}
           <nav className="fs-mobile-nav">
+            {/* Sous-ensemble strict de la nav desktop : mêmes noms, mêmes cibles,
+                même ordre (Personnalisation et Amis omis faute de place). */}
             {[
-              { target: 'dashboard', label: 'Accueil', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
+              { target: 'dashboard', label: 'Dashboard', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
+              { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
               { target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
-              { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
             ].map(item => (
               <button key={item.target}
                 className={'fs-mobile-nav-btn' + (screen === item.target ? ' active' : '')}
@@ -10734,7 +10736,7 @@
     const { useState: _uSC, useEffect: _uEC, useLayoutEffect: _uLE, useRef: _uRC } = React;
 
     const NAV_ITEMS = [
-      { id: 'dashboard', label: 'Tableau de bord' },
+      { id: 'dashboard', label: 'Dashboard' },
       { id: 'edit', label: 'Éditer' },
       { id: 'variants', label: 'Widgets' },
     ];
