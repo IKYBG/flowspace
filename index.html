@@ -2353,6 +2353,7 @@
         .subscribe();
       window._fsSessionChannel = ch;
       _fsStartInviteRealtime(userId);
+      _fsStartFriendReqRealtime(userId);
     }
     function _fsStopSessionRealtime() {
       if (window._fsSessionChannel) {
@@ -2360,6 +2361,7 @@
         window._fsSessionChannel = null;
       }
       _fsStopInviteRealtime();
+      _fsStopFriendReqRealtime();
     }
     window._fsStartSessionRealtime = _fsStartSessionRealtime;
     window._fsStopSessionRealtime = _fsStopSessionRealtime;
@@ -2418,6 +2420,94 @@
     window._fsStartInviteRealtime = _fsStartInviteRealtime;
     window._fsStopInviteRealtime = _fsStopInviteRealtime;
     window._fsSendToUser = _fsSendToUser;
+
+    /* ── Demandes d'ami (table friend_requests) ─────────────────────────────
+       Consenties et persistantes : A insère une ligne pending → B la voit
+       (badge « ! » sidebar + panneau) même s'il était hors ligne, puis
+       accepte/refuse (UPDATE). Realtime prévient les deux côtés. Si la table
+       n'existe pas encore côté Supabase, tout retombe proprement sur l'ajout
+       direct historique (aucune casse). */
+    function _fsStartFriendReqRealtime(userId) {
+      _fsStopFriendReqRealtime();
+      if (!userId) return;
+      const ch = _fsSb.channel('friendreq-sync')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: 'to_id=eq.' + userId },
+          p => window.dispatchEvent(new CustomEvent('fs-friend-request', { detail: p.new })))
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: 'from_id=eq.' + userId },
+          p => window.dispatchEvent(new CustomEvent('fs-friend-request-answer', { detail: p.new })))
+        .subscribe();
+      window._fsFriendReqChannel = ch;
+    }
+    function _fsStopFriendReqRealtime() {
+      if (window._fsFriendReqChannel) {
+        try { _fsSb.removeChannel(window._fsFriendReqChannel); } catch (e) { }
+        window._fsFriendReqChannel = null;
+      }
+    }
+    async function _fsFetchIncomingRequests(userId) {
+      if (!userId) return [];
+      const { data, error } = await _fsSb
+        .from('friend_requests')
+        .select('id, from_id, from_name, from_email, created_at')
+        .eq('to_id', userId).eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) { if (!_fsIsMissingTableErr(error)) console.warn('[fs] friend requests fetch failed', error); return []; }
+      return data || [];
+    }
+    /* → { sent:true } | { legacy:true } (table absente → ajout direct)
+         | { duplicate:true } | { error } */
+    async function _fsSendFriendRequest(me, target) {
+      const row = {
+        from_id: me.id, to_id: target.id,
+        from_name: me.name || (me.email || '').split('@')[0] || 'Un utilisateur',
+        from_email: (me.email || '').toLowerCase(),
+        to_name: target.name || null, to_email: (target.email || '').toLowerCase() || null,
+        status: 'pending',
+      };
+      let { error } = await _fsSb.from('friend_requests').insert(row);
+      if (error && error.code === '23505') {
+        /* déjà une demande (peut-être refusée) : on la remplace */
+        await _fsSb.from('friend_requests').delete().eq('from_id', me.id).eq('to_id', target.id);
+        ({ error } = await _fsSb.from('friend_requests').insert(row));
+        if (error && error.code === '23505') return { duplicate: true };
+      }
+      if (error) {
+        if (_fsIsMissingTableErr(error)) return { legacy: true };
+        console.warn('[fs] friend request send failed', error);
+        return { error };
+      }
+      return { sent: true };
+    }
+    async function _fsAnswerFriendRequest(id, accepted) {
+      const { error } = await _fsSb.from('friend_requests')
+        .update({ status: accepted ? 'accepted' : 'declined', responded_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) console.warn('[fs] friend request answer failed', error);
+      return !error;
+    }
+    /* Ajout local + sync d'un ami (utilisé à l'acceptation, des deux côtés) */
+    async function _fsAddFriendEntry(userId, entry) {
+      if (!userId || !entry?.id || !entry?.email) return;
+      const key = 'fs_friends_' + userId;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { }
+      if (!Array.isArray(list)) list = [];
+      if (list.some(f => f && f.id === entry.id)) return;
+      const name = entry.name || entry.email.split('@')[0];
+      list.push({ id: entry.id, name, email: String(entry.email).toLowerCase(),
+        initial: (name || '?')[0].toUpperCase(), color: '#4ade80', photo: entry.photo || null, addedAt: Date.now() });
+      try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) { }
+      try {
+        await _fsSb.from('user_data').update({ friends: list, updated_at: new Date().toISOString() }).eq('user_id', userId);
+      } catch (e) { }
+      window.dispatchEvent(new CustomEvent('fs-friends-changed'));
+    }
+    window._fsStartFriendReqRealtime = _fsStartFriendReqRealtime;
+    window._fsStopFriendReqRealtime = _fsStopFriendReqRealtime;
+    window._fsFetchIncomingRequests = _fsFetchIncomingRequests;
+    window._fsSendFriendRequest = _fsSendFriendRequest;
+    window._fsAnswerFriendRequest = _fsAnswerFriendRequest;
+    window._fsAddFriendEntry = _fsAddFriendEntry;
 
     /* ── Helper: look up a FlowSpace user by email ───────────────────────
        Repose sur la table publique `profiles_public` (annuaire email→user).
@@ -6687,6 +6777,26 @@
     }
     .fs-label { font-size: 13.5px; font-weight: 680; letter-spacing: -0.01em; color: inherit; overflow: hidden; text-overflow: ellipsis; }
     .fs-meta { font-size: 11px; color: var(--mineral-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+    /* Badge « ! » demandes d'ami — morphing organique (scale + rotation + blob) */
+    .fs-fr-bang {
+      position: absolute; top: -5px; right: -6px;
+      min-width: 17px; height: 17px; padding: 0 2px;
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 950; line-height: 1;
+      color: #07070d;
+      background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+      border-radius: 50%;
+      box-shadow: 0 0 14px rgba(var(--theme-c1-rgb), .72), inset 0 1px 0 rgba(255,255,255,.4);
+      animation: fsFrBang 2.4s cubic-bezier(.34,1.56,.64,1) infinite;
+    }
+    @keyframes fsFrBang {
+      0%, 100% { transform: scale(1) rotate(0deg); border-radius: 50%; }
+      10%      { transform: scale(1.28) rotate(-12deg); border-radius: 46% 54% 58% 42%; }
+      22%      { transform: scale(.96) rotate(9deg); border-radius: 58% 42% 46% 54%; }
+      34%      { transform: scale(1.12) rotate(-4deg); border-radius: 42% 58% 52% 48%; }
+      46%      { transform: scale(1) rotate(0deg); border-radius: 50%; }
+    }
+    html.fs-reduce-motion .fs-fr-bang { animation: none; }
     .fs-footer-card {
       position: relative;
       border-radius: 18px;
@@ -7291,6 +7401,46 @@
       const focusSubRef = React.useRef(null);
       const evoSubRef = React.useRef(null);
       const [friends, setFriendsCount] = React.useState(0);
+      const [frPending, setFrPending] = React.useState(0);
+
+      /* ── Demandes d'ami : compteur du badge « ! » + réponses à MES demandes ── */
+      React.useEffect(() => {
+        if (!user?.id) return;
+        let dead = false;
+        const load = async () => {
+          try {
+            const rows = await window._fsFetchIncomingRequests?.(user.id);
+            if (!dead && Array.isArray(rows)) setFrPending(rows.length);
+          } catch (e) { }
+        };
+        load();
+        const onIncoming = e => {
+          load();
+          const d = e.detail;
+          if (d?.from_name) addToast({ message: d.from_name + " t'a envoyé une demande d'ami", type: 'info', icon: '!', duration: 5200 });
+        };
+        const onAnswer = e => {
+          const d = e.detail;
+          if (d?.status === 'accepted' && d.to_id) {
+            window._fsAddFriendEntry?.(user.id, { id: d.to_id, name: d.to_name, email: d.to_email });
+            addToast({ message: (d.to_name || 'Ton ami') + ' a accepté ta demande !', type: 'success', icon: '✓' });
+          } else if (d?.status === 'declined') {
+            addToast({ message: (d.to_name || 'Ton ami') + ' a refusé ta demande', type: 'info', icon: 'i' });
+          }
+        };
+        const onRefresh = () => load();
+        window.addEventListener('fs-friend-request', onIncoming);
+        window.addEventListener('fs-friend-request-answer', onAnswer);
+        window.addEventListener('fs-friend-requests-refresh', onRefresh);
+        window.addEventListener('focus', onRefresh);
+        return () => {
+          dead = true;
+          window.removeEventListener('fs-friend-request', onIncoming);
+          window.removeEventListener('fs-friend-request-answer', onAnswer);
+          window.removeEventListener('fs-friend-requests-refresh', onRefresh);
+          window.removeEventListener('focus', onRefresh);
+        };
+      }, [user?.id]);
       const [crystalCount, setCrystalCount] = React.useState(0);
       const [activeTaskCount, setActiveTaskCount] = React.useState(0);
       const displayName = user?.name || 'LumenOS';
@@ -7647,7 +7797,9 @@
                       <path d="M2 20c0-4 3.1-7 7-7s7 3 7 7" />
                       <path d="M19 8v6M16 11h6" />
                     </svg>
-                    {friends > 0 && (
+                    {frPending > 0 ? (
+                      <span className="fs-fr-bang" aria-label={`${frPending} demande${frPending>1?'s':''} d'ami en attente`}>!</span>
+                    ) : friends > 0 && (
                       <span style={{ position:'absolute', top:-3, right:-4, minWidth:16, height:16, borderRadius:99, background:'var(--theme-c1)', color:'#07070d', fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', lineHeight:1, fontFamily:"'DM Sans',sans-serif", boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.55)' }}>
                         {friends}
                       </span>
@@ -7655,7 +7807,9 @@
                   </span>
                   <span className="fs-label-wrap">
                     <span className="fs-label">Amis</span>
-                    <span className="fs-meta">{friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}</span>
+                    <span className="fs-meta" style={frPending > 0 ? { color:'var(--theme-c1)', fontWeight:750 } : undefined}>
+                      {frPending > 0 ? `${frPending} demande${frPending>1?'s':''} reçue${frPending>1?'s':''}` : friends > 0 ? `${friends} connexion${friends>1?'s':''}` : 'Découvrir des gens'}
+                    </span>
                   </span>
                 </button>
 
@@ -11904,7 +12058,10 @@
         <div className="fs-entry-gate" aria-hidden="true">
           <style>{`
             .fs-entry-gate{position:fixed;inset:0;z-index:100000;pointer-events:none;overflow:hidden}
-            .fs-entry-veil{position:absolute;left:50%;top:46%;width:250vmax;height:250vmax;margin:-125vmax 0 0 -125vmax;border-radius:50%;
+            /* 150vmax suffit à couvrir n'importe quel écran (diagonale max
+               ≈ 148vmax depuis le centre). 250vmax créait une couche GPU
+               ~6000px sur mobile (dPR 3) → crash compositeur = écran gris. */
+            .fs-entry-veil{position:absolute;left:50%;top:46%;width:150vmax;height:150vmax;margin:-75vmax 0 0 -75vmax;border-radius:50%;
               /* base OPAQUE (l'écran suivant monte dessous et ne doit jamais
                  transparaître avant l'ouverture de l'iris) + teinte thème */
               background:
@@ -12504,7 +12661,11 @@
         }
         if (visualSource) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: visualSource }));
         const nextScreen = isNew ? 'onboarding' : readRouteScreen();
-        const reduceMotion = document.documentElement.classList.contains('fs-reduce-motion');
+        /* Gate sauté en reduce-motion (a11y) ET en perf-lite : sur les
+           téléphones modestes la séquence coûte plus qu'elle n'apporte,
+           et une couche composited plein écran y est risquée. */
+        const reduceMotion = document.documentElement.classList.contains('fs-reduce-motion')
+          || document.documentElement.classList.contains('fs-perf-lite');
         if (reduceMotion) {
           setScreen(nextScreen);
         } else {
@@ -13163,7 +13324,48 @@
       const [msg, setMsg] = React.useState('');
       const [preview, setPreview] = React.useState(null);
       const [presenceIds, setPresenceIds] = React.useState(() => new Set(window._fsPresenceIds || []));
+      const [requests, setRequests] = React.useState([]);
       const inputRef = React.useRef(null);
+
+      /* ── Demandes d'ami reçues (pending) ── */
+      React.useEffect(() => {
+        if (!open || !user?.id) return;
+        let dead = false;
+        const load = async () => {
+          try {
+            const rows = await window._fsFetchIncomingRequests?.(user.id);
+            if (!dead && Array.isArray(rows)) setRequests(rows);
+          } catch (e) { }
+        };
+        load();
+        const onReq = () => load();
+        window.addEventListener('fs-friend-request', onReq);
+        return () => { dead = true; window.removeEventListener('fs-friend-request', onReq); };
+      }, [open, user?.id]);
+
+      /* Recharge la liste locale quand un ajout externe survient (acceptation) */
+      React.useEffect(() => {
+        const h = () => {
+          try {
+            const next = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            if (Array.isArray(next)) setFriends(prev => uniqueFriends([...prev, ...next]));
+          } catch (e) { }
+        };
+        window.addEventListener('fs-friends-changed', h);
+        return () => window.removeEventListener('fs-friends-changed', h);
+      }, [storageKey]);
+
+      const answerRequest = async (req, accepted) => {
+        setRequests(rs => rs.filter(r => r.id !== req.id));
+        const ok = await window._fsAnswerFriendRequest?.(req.id, accepted);
+        if (accepted && ok) {
+          await window._fsAddFriendEntry?.(user.id, { id: req.from_id, name: req.from_name, email: req.from_email });
+          addToast({ message: req.from_name + ' fait maintenant partie de tes amis', type: 'success', icon: '✓' });
+        } else if (!accepted) {
+          addToast({ message: 'Demande refusée', type: 'info', icon: 'i' });
+        }
+        window.dispatchEvent(new CustomEvent('fs-friend-requests-refresh'));
+      };
 
       const normalizeFriend = f => {
         if (!f?.id || !f?.email) return null;
@@ -13363,6 +13565,31 @@
         const existing = uniqueFriends([...friends, ...reverseFriends]);
         if (existing.some(f=>f.id===found.id)) { setStatus('error'); setMsg('Already in your friends'); addToast({ message: 'Cet ami est deja dans ta liste', type: 'info', icon: 'i' }); setTimeout(()=>setStatus('idle'),2600); return; }
 
+        /* ── Demande d'ami consentie (si la table friend_requests existe) ──
+           L'autre personne reçoit un « ! » et accepte ou refuse. Repli :
+           table absente → ajout direct historique ci-dessous. */
+        const meProfile = { id: myId, name: user?.name || window._fsSbUser?.user_metadata?.name || (user?.email || '').split('@')[0], email: user?.email || window._fsSbUser?.email || '' };
+        const reqResult = await (window._fsSendFriendRequest ? window._fsSendFriendRequest(meProfile, found) : { legacy: true });
+        if (reqResult.sent) {
+          setStatus('success'); setMsg('Demande envoyée');
+          setEmail(''); setPreview(null);
+          addToast({ message: 'Demande envoyée à ' + found.name + ' — en attente de sa réponse', type: 'success', icon: '→', duration: 4800 });
+          setTimeout(() => setStatus('idle'), 2600);
+          return;
+        }
+        if (reqResult.duplicate) {
+          setStatus('error'); setMsg('Demande déjà envoyée');
+          addToast({ message: 'Demande déjà en attente chez ' + found.name, type: 'info', icon: 'i' });
+          setTimeout(() => setStatus('idle'), 2600);
+          return;
+        }
+        if (reqResult.error) {
+          setStatus('error'); setMsg('Envoi impossible');
+          addToast({ message: "Impossible d'envoyer la demande pour le moment", type: 'warning', icon: '!' });
+          setTimeout(() => setStatus('idle'), 2600);
+          return;
+        }
+
         const friendEntry = normalizeFriend({ ...found, addedAt: Date.now() });
         const nextFriends = uniqueFriends([...friends, friendEntry]);
         setFriends(nextFriends);
@@ -13497,6 +13724,38 @@
 
             {/* Friends list */}
             <div style={{ flex:1, overflowY:'auto', padding:'12px 16px 24px' }}>
+              {/* ── Demandes d'ami reçues ── */}
+              {requests.length > 0 && (
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:7, paddingLeft:4, marginBottom:2 }}>
+                    <span className="fs-fr-bang" style={{ position:'static' }} aria-hidden="true">!</span>
+                    <span style={{ fontSize:9, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:T.c1 }}>
+                      Demande{requests.length>1?'s':''} reçue{requests.length>1?'s':''}
+                    </span>
+                  </div>
+                  {requests.map(req => (
+                    <div key={req.id} style={{ display:'flex', alignItems:'center', gap:11, padding:'11px 12px', borderRadius:16,
+                      border:`1px solid ${c1(0.26)}`, background:`linear-gradient(150deg,${c1(0.10)},rgba(255,255,255,0.025))`,
+                      boxShadow:'inset 0 1px 0 rgba(255,255,255,.07)' }}>
+                      <span style={{ width:34, height:34, borderRadius:12, flexShrink:0, display:'grid', placeItems:'center', fontSize:14, fontWeight:900, color:'#07070d', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))' }}>
+                        {((req.from_name || req.from_email || '?')[0] || '?').toUpperCase()}
+                      </span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12.5, fontWeight:850, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{req.from_name || req.from_email}</div>
+                        <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>souhaite devenir ton ami</div>
+                      </div>
+                      <button type="button" onClick={()=>answerRequest(req, true)} aria-label={`Accepter ${req.from_name}`}
+                        style={{ width:32, height:32, borderRadius:11, border:0, cursor:'pointer', display:'grid', placeItems:'center', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', boxShadow:`0 8px 20px ${c1(0.24)}` }}>
+                        <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-6.5" stroke="#07070d" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
+                      <button type="button" onClick={()=>answerRequest(req, false)} aria-label={`Refuser ${req.from_name}`}
+                        style={{ width:32, height:32, borderRadius:11, cursor:'pointer', display:'grid', placeItems:'center', background:'rgba(251,113,133,0.10)', border:'1px solid rgba(251,113,133,0.26)' }}>
+                        <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="#fb7185" strokeWidth={1.8} strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {displayFriends.length===0 ? (
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'80%', gap:16, padding:'20px 0' }}>
                   <div style={{ width:70, height:70, borderRadius:'50%', background:c1(0.07), border:`1px solid ${c1(0.15)}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
