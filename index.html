@@ -1769,7 +1769,9 @@
         if (knownRemote) {
           const { error } = await _fsSb.from('user_data').update(profile).eq('user_id', userId);
           if (error) console.warn('[fs] profile update failed', error);
-          await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).catch(() => null);
+          await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+            .then(r => { if (r?.error) console.warn('[fs] profiles_public write failed (friend directory) —', r.error.message || r.error); })
+            .catch(() => null);
           return;
         }
         if (!window._fsSyncReady && !window._fsHydratedSavedData) return;
@@ -2417,35 +2419,52 @@
     window._fsStopInviteRealtime = _fsStopInviteRealtime;
     window._fsSendToUser = _fsSendToUser;
 
-    /* ── Helper: look up a FlowSpace user by email ─────────────────────── */
+    /* ── Helper: look up a FlowSpace user by email ───────────────────────
+       Repose sur la table publique `profiles_public` (annuaire email→user).
+       Si cette table est absente ou illisible (RLS), la recherche d'amis
+       est structurellement impossible → on lève DIRECTORY_UNAVAILABLE pour
+       que l'UI distingue « annuaire indisponible » de « aucun compte ». */
+    function _fsIsMissingTableErr(err) {
+      if (!err) return false;
+      const m = String(err.message || '');
+      return err.code === 'PGRST205' || err.code === '42P01' ||
+        /schema cache|does not exist|could not find the table|relation .* does not exist/i.test(m);
+    }
+    function _fsMapProfileRow(data, trimmed) {
+      return { id: data.user_id, name: data.name || trimmed.split('@')[0], email: data.email,
+               photo: data.photo || null,
+               initial: (data.name || trimmed || '?')[0].toUpperCase(),
+               color: '#4ade80', updatedAt: data.updated_at };
+    }
     async function _fsLookupUserByEmail(email) {
-      try {
-        const trimmed = _fsSafeEmail(email);
-        if (!trimmed) return null;
-        const publicResult = await _fsSb
-          .from('profiles_public')
-          .select('user_id, name, email, photo, updated_at')
-          .ilike('email', trimmed)
-          .maybeSingle();
-        if (!publicResult.error && publicResult.data) {
-          const data = publicResult.data;
-          return { id: data.user_id, name: data.name || trimmed.split('@')[0], email: data.email,
-                   photo: data.photo || null,
-                   initial: (data.name || '?')[0].toUpperCase(),
-                   color: '#4ade80', updatedAt: data.updated_at };
-        }
-        const { data, error } = await _fsSb
-          .from('user_data')
-          .select('user_id, name, email, photo, updated_at')
-          .ilike('email', trimmed)
-          .maybeSingle();
-        if (error) { console.warn('[fs] email lookup error:', error); return null; }
-        if (!data) { console.warn('[fs] no user found for email:', trimmed); return null; }
-        return { id: data.user_id, name: data.name || trimmed.split('@')[0], email: data.email,
-                 photo: data.photo || null,
-                 initial: (data.name || '?')[0].toUpperCase(),
-                 color: '#4ade80', updatedAt: data.updated_at };
-      } catch (e) { console.warn('[fs] email lookup threw:', e); return null; }
+      const trimmed = _fsSafeEmail(email);
+      if (!trimmed) return null;
+      /* 1) Annuaire public */
+      const pub = await _fsSb
+        .from('profiles_public')
+        .select('user_id, name, email, photo, updated_at')
+        .ilike('email', trimmed)
+        .maybeSingle();
+      if (pub.data) { window._fsFriendDirectoryReady = true; return _fsMapProfileRow(pub.data, trimmed); }
+      if (_fsIsMissingTableErr(pub.error)) {
+        window._fsFriendDirectoryReady = false;
+        console.warn('[fs] friend directory unavailable: table "profiles_public" is missing in Supabase. Create it (see project setup) so email lookup can work.', pub.error);
+        const err = new Error('directory-unavailable'); err.code = 'DIRECTORY_UNAVAILABLE'; throw err;
+      }
+      if (!pub.error) window._fsFriendDirectoryReady = true;
+      /* 2) Repli user_data (ne renvoie que si une policy le permet) */
+      const { data, error } = await _fsSb
+        .from('user_data')
+        .select('user_id, name, email, photo, updated_at')
+        .ilike('email', trimmed)
+        .maybeSingle();
+      if (error) {
+        if (_fsIsMissingTableErr(error)) { const e2 = new Error('directory-unavailable'); e2.code = 'DIRECTORY_UNAVAILABLE'; throw e2; }
+        console.warn('[fs] email lookup error:', error);
+        return null;
+      }
+      if (!data) { console.warn('[fs] no user found for email:', trimmed); return null; }
+      return _fsMapProfileRow(data, trimmed);
     }
     window._fsLookupUserByEmail = _fsLookupUserByEmail;
   </script>
@@ -13322,8 +13341,23 @@
         const trimmed = email.trim();
         if (!trimmed || !trimmed.includes('@')) return;
         setStatus('loading');
-        const found = await window._fsLookupUserByEmail(trimmed);
-        if (!found) { setStatus('error'); setMsg('No LumenOS account found'); addToast({ message: 'Aucun compte LumenOS trouve', type: 'error', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
+        let found;
+        try {
+          found = await window._fsLookupUserByEmail(trimmed);
+        } catch (e) {
+          if (e && e.code === 'DIRECTORY_UNAVAILABLE') {
+            setStatus('error');
+            setMsg('Annuaire indisponible');
+            addToast({ message: "La recherche d'amis n'est pas encore activée sur ce serveur. Réessaie plus tard.", type: 'warning', icon: '!', duration: 5200 });
+            setTimeout(() => setStatus('idle'), 2600);
+            return;
+          }
+          setStatus('error'); setMsg('Recherche impossible');
+          addToast({ message: 'Recherche impossible pour le moment', type: 'warning', icon: '!' });
+          setTimeout(() => setStatus('idle'), 2600);
+          return;
+        }
+        if (!found) { setStatus('error'); setMsg('Aucun compte trouvé'); addToast({ message: "Aucun compte LumenOS pour cet email. La personne doit s'être connectée au moins une fois.", type: 'error', icon: '!', duration: 5000 }); setTimeout(()=>setStatus('idle'),2600); return; }
         const myId = user?.id || window._fsSbUser?.id;
         if (found.id === myId) { setStatus('error'); setMsg("That's your own account!"); addToast({ message: 'Tu ne peux pas ajouter ton propre compte', type: 'warning', icon: '!' }); setTimeout(()=>setStatus('idle'),2600); return; }
         const existing = uniqueFriends([...friends, ...reverseFriends]);
