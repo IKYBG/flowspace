@@ -2265,12 +2265,20 @@
         }
         throw e;
       }
-      if (this === localStorage) _fsSchedulePushForKey(key);
+      if (this === localStorage) {
+        _fsSchedulePushForKey(key);
+        /* Signal in-page : permet aux composants (sidebar, badges) de réagir
+           aux écritures au lieu de sonder localStorage en boucle. */
+        try { window.dispatchEvent(new CustomEvent('fs-store', { detail: { key } })); } catch (e) { }
+      }
     };
 
     Storage.prototype.removeItem = function (key) {
       _fsOrigRemoveItem.call(this, key);
-      if (this === localStorage) _fsSchedulePushForKey(key);
+      if (this === localStorage) {
+        _fsSchedulePushForKey(key);
+        try { window.dispatchEvent(new CustomEvent('fs-store', { detail: { key } })); } catch (e) { }
+      }
     };
 
     /* Flush pending writes when the tab is closing */
@@ -2342,15 +2350,72 @@
         })
         .subscribe();
       window._fsSessionChannel = ch;
+      _fsStartInviteRealtime(userId);
     }
     function _fsStopSessionRealtime() {
       if (window._fsSessionChannel) {
         _fsSb.removeChannel(window._fsSessionChannel);
         window._fsSessionChannel = null;
       }
+      _fsStopInviteRealtime();
     }
     window._fsStartSessionRealtime = _fsStartSessionRealtime;
     window._fsStopSessionRealtime = _fsStopSessionRealtime;
+
+    /* ── Realtime broadcast : invitations de session entre amis ──────────────
+       Chaque utilisateur écoute son canal `fs-inv-{userId}` (broadcast pur,
+       aucune table nécessaire). L'hôte y envoie `session-invite`, l'ami
+       répond `invite-response` (accepted/declined) sur le canal de l'hôte,
+       l'hôte peut envoyer `invite-cancel`. Le lancement réel passe ensuite
+       par la table `sessions` existante (INSERT par ami accepté → son client
+       rejoint automatiquement). Limite assumée : l'ami doit être en ligne
+       pour recevoir l'invitation — c'est un lobby temps réel. */
+    function _fsStartInviteRealtime(userId) {
+      _fsStopInviteRealtime();
+      if (!userId) return;
+      const ch = _fsSb.channel('fs-inv-' + userId, { config: { broadcast: { self: false } } })
+        .on('broadcast', { event: 'session-invite' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-live-invite', { detail: payload }));
+        })
+        .on('broadcast', { event: 'invite-response' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-invite-response', { detail: payload }));
+        })
+        .on('broadcast', { event: 'invite-cancel' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-invite-cancel', { detail: payload }));
+        })
+        .subscribe();
+      window._fsInviteChannel = ch;
+    }
+    function _fsStopInviteRealtime() {
+      if (window._fsInviteChannel) {
+        try { _fsSb.removeChannel(window._fsInviteChannel); } catch (e) { }
+        window._fsInviteChannel = null;
+      }
+    }
+    /* Envoi one-shot sur le canal d'invitation d'un autre utilisateur :
+       on s'abonne au topic cible, on émet, on nettoie. */
+    function _fsSendToUser(targetUserId, event, payload) {
+      return new Promise(resolve => {
+        if (!targetUserId || !_fsSb) { resolve(false); return; }
+        let done = false;
+        const target = _fsSb.channel('fs-inv-' + targetUserId);
+        const cleanup = () => { setTimeout(() => { try { _fsSb.removeChannel(target); } catch (e) { } }, 500); };
+        const to = setTimeout(() => { if (!done) { done = true; cleanup(); resolve(false); } }, 6000);
+        target.subscribe(async status => {
+          if (status === 'SUBSCRIBED' && !done) {
+            done = true; clearTimeout(to);
+            try {
+              await target.send({ type: 'broadcast', event, payload });
+              resolve(true);
+            } catch (e) { resolve(false); }
+            cleanup();
+          }
+        });
+      });
+    }
+    window._fsStartInviteRealtime = _fsStartInviteRealtime;
+    window._fsStopInviteRealtime = _fsStopInviteRealtime;
+    window._fsSendToUser = _fsSendToUser;
 
     /* ── Helper: look up a FlowSpace user by email ─────────────────────── */
     async function _fsLookupUserByEmail(email) {
@@ -2917,7 +2982,8 @@
           }
         }
         poll();
-        const iv = setInterval(poll, 3000);
+        /* Onglet caché : on saute l'appel réseau Spotify (batterie + quota). */
+        const iv = setInterval(() => { if (!document.hidden) poll(); }, 3000);
         const onVisible = () => { if (!document.hidden) poll(); };
         document.addEventListener('visibilitychange', onVisible);
         window.addEventListener('focus', poll);
@@ -4311,7 +4377,7 @@
       const [mounted, setMounted] = _uS8(false);
       _uE8(() => {
         setSecs(0);
-        const id = setInterval(() => setSecs(Math.floor((Date.now() - session.startTime) / 1000)), 500);
+        const id = setInterval(() => setSecs(Math.floor((Date.now() - session.startTime) / 1000)), 1000);
         return () => clearInterval(id);
       }, [session.startTime]);
       _uE8(() => { requestAnimationFrame(() => setMounted(true)); }, []);
@@ -5539,6 +5605,76 @@
       const [crystalShape, setCrystalShape] = _uSA('diamond');
       const [focusTaskIds, setFocusTaskIds] = _uSA([]);
       const [advancedOpen, setAdvancedOpen] = _uSA(false);
+      /* ── Mode Ensemble : sélection dans la liste d'amis + salle d'attente ── */
+      const me = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; } }, []);
+      const [friends] = _uSA(() => {
+        try {
+          const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
+          const raw = JSON.parse(localStorage.getItem(u?.id ? 'fs_friends_' + u.id : 'fs_friends') || '[]');
+          return Array.isArray(raw) ? raw.filter(f => f && f.id && f.email) : [];
+        } catch (e) { return []; }
+      });
+      const [selIds, setSelIds] = _uSA([]);
+      const [lobby, setLobby] = _uSA(null); /* { inviteId, items:[{friend,status}] } */
+      const [byEmail, setByEmail] = _uSA(false);
+      const [presenceIds, setPresenceIds] = _uSA(() => new Set(window._fsPresenceIds || []));
+      const lobbyRef = React.useRef(null);
+      lobbyRef.current = lobby;
+
+      React.useEffect(() => {
+        const h = e => setPresenceIds(new Set(e.detail?.ids || window._fsPresenceIds || []));
+        window.addEventListener('fs-presence-update', h);
+        return () => window.removeEventListener('fs-presence-update', h);
+      }, []);
+
+      /* Réponses des amis (accepté / refusé) pendant le lobby */
+      React.useEffect(() => {
+        const h = e => {
+          const p = e.detail;
+          setLobby(l => {
+            if (!l || !p || p.inviteId !== l.inviteId) return l;
+            return {
+              ...l,
+              items: l.items.map(it => it.friend.id === p.friend?.id
+                ? { ...it, status: p.status === 'accepted' ? 'accepted' : 'declined' }
+                : it),
+            };
+          });
+        };
+        window.addEventListener('fs-invite-response', h);
+        return () => window.removeEventListener('fs-invite-response', h);
+      }, []);
+
+      /* Fermeture du lanceur pendant un lobby → annule les invitations en attente */
+      React.useEffect(() => () => {
+        const l = lobbyRef.current;
+        if (l) l.items.forEach(it => {
+          if (it.status === 'pending') window._fsSendToUser?.(it.friend.id, 'invite-cancel', { inviteId: l.inviteId });
+        });
+      }, []);
+
+      const toggleFriend = id => setSelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+      const sendInvites = () => {
+        const chosen = friends.filter(f => selIds.includes(f.id));
+        if (!chosen.length) return;
+        const inviteId = 'inv-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+        setLobby({ inviteId, items: chosen.map(f => ({ friend: f, status: 'pending' })) });
+        chosen.forEach(f => {
+          window._fsSendToUser?.(f.id, 'session-invite', {
+            inviteId,
+            host: { id: me?.id, name: me?.name || 'Un ami', email: me?.email || '' },
+            duration: cfg.duration, music: cfg.music, sentAt: Date.now(),
+          });
+        });
+      };
+      const cancelLobby = () => {
+        const l = lobbyRef.current;
+        if (l) l.items.forEach(it => {
+          if (it.status === 'pending') window._fsSendToUser?.(it.friend.id, 'invite-cancel', { inviteId: l.inviteId });
+        });
+        setLobby(null);
+      };
+      const acceptedItems = lobby ? lobby.items.filter(i => i.status === 'accepted') : [];
       const allTasks = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || []; } catch(e) { return []; } }, []);
       const activeFocusTasks = allTasks.filter(t => !t.done).slice(0, 5);
       const SHAPES = [
@@ -5547,7 +5683,7 @@
       ];
       const emailTyped = email.trim().length > 0;
       const emailValid = emailTyped && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-      const canLaunch = mode === 'solo' || emailValid;
+      const canLaunch = mode === 'solo' || (byEmail ? emailValid : acceptedItems.length > 0);
       const acol = mode === 'together' ? T.green : T.c1;
       const toggleFocusTask = id => setFocusTaskIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
@@ -5570,14 +5706,34 @@
 
       const launch = () => {
         if (!canLaunch) return;
-        const friendUserForLaunch = emailUser || (mode === 'together' ? { email: email.trim(), name: email.trim().split('@')[0], initial: email.trim()[0].toUpperCase(), color: '#a5b8ff' } : null);
         const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
         const isGoldCrystal = Math.random() < 0.05;
+        /* Ensemble : amis acceptés du lobby (chemin principal) ou email (repli) */
+        const acc = acceptedItems.map(i => i.friend);
+        let friendUser = null, friendId = null, friendIds = null, friendEmail = null;
+        if (mode === 'together') {
+          if (!byEmail && acc.length) {
+            friendId = acc[0].id;
+            friendIds = acc.map(f => f.id);
+            friendEmail = acc[0].email;
+            friendUser = {
+              name: acc.length > 1 ? acc[0].name + ' +' + (acc.length - 1) : acc[0].name,
+              initial: acc[0].initial || (acc[0].name || '?')[0].toUpperCase(),
+              color: acc[0].color || '#4ade80',
+            };
+          } else {
+            friendUser = emailUser || { email: email.trim(), name: email.trim().split('@')[0], initial: (email.trim()[0] || '?').toUpperCase(), color: '#a5b8ff' };
+            friendId = emailUser?.id || null;
+            friendEmail = email.trim();
+          }
+        }
         onLaunch({
           type: mode,
-          friendEmail: mode === 'together' ? email.trim() : null,
-          friendUser: mode === 'together' ? friendUserForLaunch : null,
-          friendId: emailUser?.id || null,
+          friendEmail,
+          friendUser,
+          friendId,
+          friendIds,
+          friendUsers: mode === 'together' && acc.length ? acc : null,
           duration: cfg.duration,
           music: cfg.music,
           breaks: cfg.breaks,
@@ -5641,8 +5797,98 @@
                     {modeCard('together','Ensemble')}
                   </div>
                   {mode === 'together' && <div style={{marginTop:12}}>
-                    <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email de ton ami" autoFocus style={{width:'100%',height:44,borderRadius:15,border:'1px solid ' + (emailTyped && !emailValid ? 'rgba(251,113,133,.42)' : 'rgba(255,255,255,.10)'),background:'rgba(5,7,17,.44)',color:T.text,fontFamily:T.font,fontSize:13,outline:'none',padding:'0 13px',boxSizing:'border-box'}} />
-                    <div style={{marginTop:8,fontSize:11,color:emailTyped && !emailValid ? T.rose : T.muted}}>{emailLooking ? 'Recherche du profil...' : emailTyped && !emailValid ? 'Adresse email invalide.' : emailValid ? (emailUser ? 'Profil trouve: ' + emailUser.name : 'Invitation prete, profil local si non trouve.') : 'Un email suffit, pas de menu cache.'}</div>
+
+                    {/* ── Choix des amis ── */}
+                    {!byEmail && !lobby && (friends.length > 0 ? (
+                      <>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,maxHeight:172,overflowY:'auto',paddingRight:2}}>
+                          {friends.map(f => {
+                            const sel = selIds.includes(f.id);
+                            const online = presenceIds.has(f.id);
+                            return (
+                              <button key={f.id} type="button" onClick={() => toggleFriend(f.id)}
+                                style={{display:'flex',alignItems:'center',gap:9,padding:'9px 11px',borderRadius:15,textAlign:'left',cursor:'pointer',fontFamily:T.font,
+                                  border:'1px solid ' + (sel ? c1(.42) : 'rgba(255,255,255,.09)'),
+                                  background:sel ? 'linear-gradient(145deg,' + c1(.17) + ',' + c2(.07) + ')' : 'rgba(255,255,255,.035)',
+                                  boxShadow:sel ? 'inset 0 1px 0 rgba(255,255,255,.10), 0 10px 26px ' + c1(.10) : 'inset 0 1px 0 rgba(255,255,255,.04)',
+                                  transition:'all .16s cubic-bezier(.16,1,.3,1)'}}>
+                                <span style={{position:'relative',width:30,height:30,borderRadius:11,flexShrink:0,display:'grid',placeItems:'center',fontSize:12,fontWeight:900,color:'#07070d',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))'}}>
+                                  {(f.initial || (f.name || '?')[0] || '?').toUpperCase()}
+                                  <span style={{position:'absolute',right:-2,bottom:-2,width:9,height:9,borderRadius:'50%',border:'2px solid #0b0c18',background:online ? T.green : 'rgba(255,255,255,.22)'}} />
+                                </span>
+                                <span style={{minWidth:0,flex:1}}>
+                                  <span style={{display:'block',fontSize:12,fontWeight:850,color:sel ? T.c1 : T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{f.name}</span>
+                                  <span style={{display:'block',fontSize:9.5,color:T.muted,marginTop:1}}>{online ? 'En ligne' : 'Hors ligne'}</span>
+                                </span>
+                                {sel && <svg width={13} height={13} viewBox="0 0 14 14" fill="none" style={{flexShrink:0}}><circle cx={7} cy={7} r={6.2} fill="var(--theme-c1)"/><path d="M4.4 7l1.9 1.9 3.4-3.6" stroke="#07070d" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:10,marginTop:10}}>
+                          <button type="button" disabled={!selIds.length} onClick={sendInvites}
+                            style={{flex:1,height:42,border:0,borderRadius:14,fontFamily:T.font,fontSize:12.5,fontWeight:950,cursor:selIds.length?'pointer':'not-allowed',
+                              background:selIds.length ? 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))' : 'rgba(255,255,255,.06)',
+                              color:selIds.length ? '#07070d' : T.muted,opacity:selIds.length?1:.7,
+                              boxShadow:selIds.length ? '0 14px 34px ' + c1(.22) + ', inset 0 1px 0 rgba(255,255,255,.4)' : 'none',transition:'all .18s'}}>
+                            Inviter {selIds.length > 0 ? '(' + selIds.length + ')' : ''}
+                          </button>
+                          <button type="button" onClick={() => setByEmail(true)} style={{background:'none',border:'none',cursor:'pointer',color:T.muted,fontSize:11,fontWeight:750,fontFamily:T.font,textDecoration:'underline',textUnderlineOffset:3}}>ou par email</button>
+                        </div>
+                        <div style={{marginTop:8,fontSize:10.5,color:T.muted}}>Tes amis reçoivent l'invitation en direct sur leur dashboard.</div>
+                      </>
+                    ) : (
+                      <div style={{borderRadius:16,border:'1px dashed rgba(255,255,255,.14)',background:'rgba(255,255,255,.03)',padding:'16px 15px'}}>
+                        <div style={{fontSize:12.5,fontWeight:850,color:T.text}}>Ta liste d'amis est vide</div>
+                        <div style={{fontSize:11,color:T.muted,marginTop:5,lineHeight:1.6}}>Ajoute des amis depuis la barre latérale (icône Amis) pour les inviter en un clic — ou invite par email.</div>
+                        <button type="button" onClick={() => setByEmail(true)} style={{marginTop:10,height:36,padding:'0 14px',borderRadius:12,border:'1px solid ' + c1(.32),background:c1(.12),color:T.c1,fontFamily:T.font,fontSize:11.5,fontWeight:850,cursor:'pointer'}}>Inviter par email</button>
+                      </div>
+                    ))}
+
+                    {/* ── Repli : invitation par email (comportement historique) ── */}
+                    {byEmail && !lobby && (
+                      <>
+                        <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email de ton ami" autoFocus style={{width:'100%',height:44,borderRadius:15,border:'1px solid ' + (emailTyped && !emailValid ? 'rgba(251,113,133,.42)' : 'rgba(255,255,255,.10)'),background:'rgba(5,7,17,.44)',color:T.text,fontFamily:T.font,fontSize:13,outline:'none',padding:'0 13px',boxSizing:'border-box'}} />
+                        <div style={{marginTop:8,display:'flex',justifyContent:'space-between',gap:10,fontSize:11}}>
+                          <span style={{color:emailTyped && !emailValid ? T.rose : T.muted}}>{emailLooking ? 'Recherche du profil...' : emailTyped && !emailValid ? 'Adresse email invalide.' : emailValid ? (emailUser ? 'Profil trouve: ' + emailUser.name : 'Invitation prete, profil local si non trouve.') : 'La session démarre directement chez ton ami.'}</span>
+                          {friends.length > 0 && <button type="button" onClick={() => setByEmail(false)} style={{background:'none',border:'none',cursor:'pointer',color:T.c1,fontSize:11,fontWeight:800,fontFamily:T.font,whiteSpace:'nowrap'}}>Mes amis</button>}
+                        </div>
+                      </>
+                    )}
+
+                    {/* ── Salle d'attente : qui a rejoint, qui a refusé ── */}
+                    {lobby && (
+                      <div style={{borderRadius:18,border:'1px solid ' + c1(.22),background:'linear-gradient(160deg,' + c1(.08) + ',rgba(255,255,255,.025))',padding:'13px 14px',boxShadow:'inset 0 1px 0 rgba(255,255,255,.06)'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                          <span style={{fontSize:10,fontWeight:900,letterSpacing:'.12em',textTransform:'uppercase',color:T.c1}}>Salle d'attente</span>
+                          <span style={{fontSize:10.5,color:T.muted}}>{acceptedItems.length}/{lobby.items.length} prêt{acceptedItems.length > 1 ? 's' : ''}</span>
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:7,maxHeight:150,overflowY:'auto'}}>
+                          {lobby.items.map(({ friend: f, status }) => (
+                            <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 9px',borderRadius:12,background:'rgba(5,7,17,.38)',border:'1px solid rgba(255,255,255,.06)'}}>
+                              <span style={{width:26,height:26,borderRadius:9,flexShrink:0,display:'grid',placeItems:'center',fontSize:11,fontWeight:900,color:'#07070d',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',opacity:status==='declined'?.45:1}}>{(f.initial || (f.name || '?')[0] || '?').toUpperCase()}</span>
+                              <span style={{flex:1,minWidth:0,fontSize:12,fontWeight:800,color:status==='declined'?T.muted:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',textDecoration:status==='declined'?'line-through':'none'}}>{f.name}</span>
+                              {status === 'pending' && (
+                                <span style={{display:'flex',alignItems:'center',gap:6,fontSize:10,fontWeight:850,color:T.warm}}>
+                                  <span style={{width:6,height:6,borderRadius:'50%',background:T.warm,animation:'fsLaunchStepGlow 1.2s ease-in-out infinite'}} />En attente
+                                </span>
+                              )}
+                              {status === 'accepted' && (
+                                <span style={{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:900,color:T.c1}}>
+                                  <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-6.5" stroke="var(--theme-c1)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>A rejoint
+                                </span>
+                              )}
+                              {status === 'declined' && (
+                                <span style={{display:'flex',alignItems:'center',gap:5,fontSize:10,fontWeight:900,color:T.rose}}>
+                                  <svg width={10} height={10} viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke={T.rose} strokeWidth={1.8} strokeLinecap="round"/></svg>A refusé
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" onClick={cancelLobby} style={{marginTop:10,background:'none',border:'none',cursor:'pointer',color:T.muted,fontSize:10.5,fontWeight:750,fontFamily:T.font,textDecoration:'underline',textUnderlineOffset:3,padding:0}}>Modifier la sélection</button>
+                      </div>
+                    )}
                   </div>}
                 </section>
 
@@ -5676,7 +5922,7 @@
                     <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span></div>
                     <div className="fs-session-launch-shapes" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:9}}>{SHAPES.map(s => <button key={s.id} type="button" onClick={()=>setCrystalShape(s.id)} style={{height:86,borderRadius:18,border:'1px solid ' + (crystalShape===s.id?c1(.34):'rgba(255,255,255,.075)'),background:crystalShape===s.id?c1(.13):'rgba(255,255,255,.035)',color:T.text,cursor:'pointer',fontFamily:T.font,fontSize:10,fontWeight:850,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:7}}>{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:s.id, gradientId:null, colorProgress:0, progress:0, size:34, seed:s.id.charCodeAt(0)*137 }) : null}<span>{s.name}</span></button>)}</div>
                   </div>
-                  <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Demarrer maintenant' : 'Ajoute un email valide'}</button>
+                  <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Demarrer maintenant' : (mode === 'together' && lobby) ? 'En attente de tes amis…' : (mode === 'together' && !byEmail) ? 'Sélectionne et invite tes amis' : 'Ajoute un email valide'}</button>
                 </div>
               </aside>
             </div>
@@ -7051,15 +7297,17 @@
         };
         sync();
         window.addEventListener('storage', sync);
-        /* Visibility-aware poll: only ticks while the tab is in front, syncs once on
-           refocus. Stops draining battery in the background (PWA). */
+        /* Réactif aux écritures locales (fs-store) — plus de sondage rapide.
+           Un poll lent (10s) reste en filet de sécurité, onglet visible only. */
+        const onStore = e => { if (e.detail?.key === key) sync(); };
+        window.addEventListener('fs-store', onStore);
         let id = null;
-        const start = () => { if (!id) id = setInterval(sync, 2500); };
+        const start = () => { if (!id) id = setInterval(sync, 10000); };
         const stop = () => { if (id) { clearInterval(id); id = null; } };
         const onVis = () => { if (document.visibilityState === 'visible') { sync(); start(); } else stop(); };
         document.addEventListener('visibilitychange', onVis);
         if (document.visibilityState === 'visible') start();
-        return () => { window.removeEventListener('storage', sync); document.removeEventListener('visibilitychange', onVis); stop(); };
+        return () => { window.removeEventListener('storage', sync); window.removeEventListener('fs-store', onStore); document.removeEventListener('visibilitychange', onVis); stop(); };
       }, [user?.id]);
 
       React.useEffect(() => {
@@ -7082,9 +7330,11 @@
         sync();
         window.addEventListener('storage', sync);
         window.addEventListener('fs-remote-update', sync);
-        /* Visibility-aware poll (see friends effect above). */
+        /* Réactif aux écritures locales (fs-store), poll lent en filet. */
+        const onStore = e => { if (e.detail?.key === 'fs_tasks') sync(); };
+        window.addEventListener('fs-store', onStore);
         let id = null;
-        const start = () => { if (!id) id = setInterval(sync, 2500); };
+        const start = () => { if (!id) id = setInterval(sync, 10000); };
         const stop = () => { if (id) { clearInterval(id); id = null; } };
         const onVis = () => { if (document.visibilityState === 'visible') { sync(); start(); } else stop(); };
         document.addEventListener('visibilitychange', onVis);
@@ -7092,6 +7342,7 @@
         return () => {
           window.removeEventListener('storage', sync);
           window.removeEventListener('fs-remote-update', sync);
+          window.removeEventListener('fs-store', onStore);
           document.removeEventListener('visibilitychange', onVis);
           stop();
         };
@@ -9237,7 +9488,7 @@
                   <div className="fs-auth-product-card">
                     <div className="fs-auth-product-glow" />
                     <div className="fs-auth-product-shot">
-                      <img src="bg.png" alt="" aria-hidden="true" />
+                      <img src="bg.png" alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
                       <div className="fs-auth-product-rail" />
                     </div>
                   </div>
@@ -11562,6 +11813,61 @@
       }
     }
 
+    /* ── FsInviteStack — invitations de session reçues (dashboard) ─────────
+       Cartes empilées en haut à droite : badge « ! » pulsant, hôte, durée,
+       Rejoindre / Refuser. Thème via var(--theme-*). */
+    function FsInviteStack({ invites, onRespond }) {
+      return (
+        <div className="fs-inv-stack" role="region" aria-label="Invitations de session">
+          <style>{`
+            .fs-inv-stack{position:fixed;top:78px;right:18px;z-index:6000;display:flex;flex-direction:column;gap:10px;width:min(330px,calc(100vw - 24px))}
+            @media (max-width:768px){.fs-inv-stack{top:66px;right:12px;left:12px;width:auto}}
+            .fs-inv-card{position:relative;border-radius:20px;overflow:hidden;
+              border:1px solid rgba(var(--theme-c1-rgb),.30);
+              background:linear-gradient(155deg,rgba(var(--theme-c1-rgb),.13),rgba(var(--mineral-surface-rgb),.94) 46%);
+              box-shadow:0 22px 54px rgba(0,0,0,.5), 0 0 44px rgba(var(--theme-c1-rgb),.10), inset 0 1px 0 rgba(255,255,255,.09);
+              backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+              animation:fsInvIn .38s cubic-bezier(.2,1.1,.3,1) both}
+            @keyframes fsInvIn{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:none}}
+            html.fs-reduce-motion .fs-inv-card{animation:none}
+            .fs-inv-bang{position:absolute;top:-5px;left:-5px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));color:#07070d;font-weight:950;font-size:13px;
+              box-shadow:0 0 18px rgba(var(--theme-c1-rgb),.65);animation:fsInvBang 1.6s ease-in-out infinite}
+            @keyframes fsInvBang{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+            html.fs-reduce-motion .fs-inv-bang{animation:none}
+          `}</style>
+          {invites.map(inv => (
+            <div key={inv.inviteId} className="fs-inv-card">
+              <div style={{ position: 'relative', padding: '14px 15px 13px' }}>
+                <span className="fs-inv-bang" aria-hidden="true">!</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <span style={{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 950, color: '#07070d', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.35)' }}>
+                    {((inv.host?.name || '?')[0] || '?').toUpperCase()}
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inv.host?.name || 'Un ami'}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                      t'invite à une session focus · {(Number(inv.duration) || 0) < 1 ? Math.round((Number(inv.duration) || 0) * 60) + ' sec' : (inv.duration || 25) + ' min'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button type="button" onClick={() => onRespond(inv, true)}
+                    style={{ flex: 1, height: 38, border: 0, borderRadius: 12, fontFamily: T.font, fontSize: 12, fontWeight: 950, cursor: 'pointer', color: '#07070d', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', boxShadow: '0 10px 26px rgba(var(--theme-c1-rgb),.24), inset 0 1px 0 rgba(255,255,255,.4)' }}>
+                    Rejoindre
+                  </button>
+                  <button type="button" onClick={() => onRespond(inv, false)}
+                    style={{ flex: 1, height: 38, borderRadius: 12, fontFamily: T.font, fontSize: 12, fontWeight: 850, cursor: 'pointer', color: T.muted, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.10)' }}>
+                    Refuser
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     /* ── FsEntryGate — séquence d'entrée signature LumenOS ─────────────────
        Jouée à la connexion : un voile sombre couvre l'écran, le cristal de
        marque s'allume (pop → flash), des anneaux d'onde et des étincelles
@@ -11642,6 +11948,7 @@
       const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
       const [screen, setScreen] = _uSC('boot');
       const [entryFx, setEntryFx] = _uSC(false);
+      const [liveInvites, setLiveInvites] = _uSC([]);
       const readRouteScreen = () => {
         try {
           const raw = String(window.location.hash || '').replace(/^#\/?/, '').trim();
@@ -11799,6 +12106,13 @@
       _uEC(() => { myEmailRef.current = user?.email || ''; }, [user]);
       _uEC(() => {
         if (!user?.id || !window._fsSb) return;
+        /* supabase-js réutilise l'instance d'un topic existant : si un canal
+           presence traîne (re-render, session précédente), rattacher des
+           callbacks après subscribe() jette une erreur. On purge d'abord. */
+        try {
+          const stale = (window._fsSb.getChannels?.() || []).find(c => c.topic === 'realtime:lumenos-presence');
+          if (stale) window._fsSb.removeChannel(stale);
+        } catch (e) { }
         const channel = window._fsSb.channel('lumenos-presence', { config: { presence: { key: user.id } } });
         const publish = () => {
           try {
@@ -11822,6 +12136,38 @@
           if (window._fsPresenceChannel === channel) window._fsPresenceChannel = null;
         };
       }, [user?.id, user?.email, user?.name]);
+
+      /* ── Invitations de session en direct (broadcast entre amis) ── */
+      _uEC(() => {
+        if (!user?.id) return;
+        const onLive = e => {
+          const p = e.detail;
+          if (!p || !p.inviteId || p.host?.id === user.id) return;
+          setLiveInvites(l => l.some(x => x.inviteId === p.inviteId) ? l : [...l.slice(-2), p]);
+        };
+        const onCancel = e => {
+          const id = e.detail?.inviteId;
+          if (id) setLiveInvites(l => l.filter(x => x.inviteId !== id));
+        };
+        window.addEventListener('fs-live-invite', onLive);
+        window.addEventListener('fs-invite-cancel', onCancel);
+        return () => {
+          window.removeEventListener('fs-live-invite', onLive);
+          window.removeEventListener('fs-invite-cancel', onCancel);
+        };
+      }, [user?.id]);
+
+      const respondInvite = (inv, accepted) => {
+        setLiveInvites(l => l.filter(x => x.inviteId !== inv.inviteId));
+        try {
+          window._fsSendToUser?.(inv.host.id, 'invite-response', {
+            inviteId: inv.inviteId,
+            status: accepted ? 'accepted' : 'declined',
+            friend: { id: user?.id, name: user?.name || '', email: user?.email || '' },
+          });
+        } catch (e) { }
+        if (accepted) addToast({ message: 'Invitation acceptée — la session démarrera dès que ' + (inv.host?.name || 'ton ami') + ' la lance.', type: 'success', icon: '✓', duration: 5200 });
+      };
 
       /* ── Supabase Realtime: session invites (Together mode) ── */
       _uEC(() => {
@@ -11902,21 +12248,29 @@
         } catch(e) {}
         setShowSession(false);
         setRoutedScreen('dashboard', true);
-        /* Insert into Supabase sessions table for cross-device Together */
-        if (session.type === 'together' && session.friendId) {
-          try {
-            const { data } = await window._fsSb.from('sessions').insert({
-              host_id: window._fsSbUser?.id, friend_id: session.friendId,
-              type: 'together', duration: session.duration,
-              music: session.music, breaks: session.breaks, active: true,
-              started_at: new Date(enriched.startTime).toISOString(),
-            }).select('id').single();
-            if (data) setActiveSession(prev => {
-              const next = { ...prev, broadcastId: data.id };
-              try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
-              return next;
-            });
-          } catch (e) { console.warn('[fs] session insert failed', e); addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' }); }
+        /* Insert into Supabase sessions table for cross-device Together.
+           Multi-amis : une ligne par ami accepté — chaque client abonné
+           (friend_id=eq.moi) rejoint automatiquement à l'INSERT. */
+        if (session.type === 'together' && (session.friendIds?.length || session.friendId)) {
+          const targets = (session.friendIds && session.friendIds.length ? session.friendIds : [session.friendId]).filter(Boolean);
+          const ids = [];
+          for (const fid of targets) {
+            try {
+              const { data } = await window._fsSb.from('sessions').insert({
+                host_id: window._fsSbUser?.id, friend_id: fid,
+                type: 'together', duration: session.duration,
+                music: session.music, breaks: session.breaks, active: true,
+                started_at: new Date(enriched.startTime).toISOString(),
+              }).select('id').single();
+              if (data) ids.push(data.id);
+            } catch (e) { console.warn('[fs] session insert failed', e); }
+          }
+          if (!ids.length) addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' });
+          else setActiveSession(prev => {
+            const next = { ...prev, broadcastId: ids[0], broadcastIds: ids };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
+            return next;
+          });
         }
       };
 
@@ -11942,9 +12296,10 @@
             });
           }
         }
-        if (activeSession?.type === 'together' && activeSession.broadcastId) {
+        if (activeSession?.type === 'together' && (activeSession.broadcastIds?.length || activeSession.broadcastId)) {
           try {
-            await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).eq('id', activeSession.broadcastId);
+            const endIds = (activeSession.broadcastIds && activeSession.broadcastIds.length ? activeSession.broadcastIds : [activeSession.broadcastId]).filter(Boolean);
+            await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).in('id', endIds);
           } catch (e) { console.warn('[fs] session end failed', e); addToast({ message: 'Fin de session non synchronisée', type: 'warning', icon: '!' }); }
         }
         saveSessionRecord(buildSessionRecord(activeSession, hasCrystalData, new Date().toISOString()));
@@ -12273,6 +12628,7 @@
       return (
         <>
           {entryFx && <FsEntryGate onDone={() => setEntryFx(false)} />}
+          {isApp && liveInvites.length > 0 && <FsInviteStack invites={liveInvites} onRespond={respondInvite} />}
           {screen === 'auth' && (
             <div key="auth" className="fs-auth-wrap" style={{ width: '100%', height: '100%', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <AuthScreen onAuth={handleAuth} />
@@ -12293,7 +12649,9 @@
             </div>
           )}
           {isApp && (
-            <div key={screen} className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
+            /* Pas de key={screen} ici : ça remontait TOUTE la coque (Sidebar,
+               intervals, effets) à chaque navigation — coût majeur de fluidité. */
+            <div className="fs-app-shell" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, height: '100%', padding: 28, boxSizing: 'border-box', animation: 'scaleIn 0.35s cubic-bezier(0.4,0,0.2,1) both' }}>
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
@@ -14666,7 +15024,7 @@
 
       _uE8(() => {
         setSecs(0);
-        const id = setInterval(() => setSecs(Math.floor((Date.now() - session.startTime) / 1000)), 500);
+        const id = setInterval(() => setSecs(Math.floor((Date.now() - session.startTime) / 1000)), 1000);
         return () => clearInterval(id);
       }, [session.startTime]);
 
