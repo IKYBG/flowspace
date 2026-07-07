@@ -6276,7 +6276,7 @@
       const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
       const TABS = [
         { id:'focus', label:'Focus', meta:'Démarrer' },
-        { id:'cristaux', label:'Mes cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
+        { id:'cristaux', label:'Cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
       ];
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
@@ -6736,6 +6736,18 @@
       border-color: rgba(var(--theme-c1-rgb),0.22);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
     }
+    /* Élément de nav verrouillé (déverrouillage progressif) */
+    .fs-nav-locked { opacity: 0.5; cursor: not-allowed; }
+    .fs-nav-locked:hover { background: transparent !important; color: rgba(182,189,205,0.72) !important; }
+    .fs-nav-locked .fs-icon { opacity: 0.7; }
+    .fs-nav-locked .fs-meta { color: var(--theme-c1) !important; }
+    .fs-lock-morph { display: inline-block; animation: fsLockMorph 2.4s ease-in-out infinite; transform-origin: center; }
+    @keyframes fsLockMorph {
+      0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 3px rgba(var(--theme-c1-rgb),0.35)); }
+      40% { transform: scale(1.18) rotate(-7deg); }
+      70% { transform: scale(0.96) rotate(5deg); filter: drop-shadow(0 0 8px rgba(var(--theme-c1-rgb),0.6)); }
+    }
+    html.fs-reduce-motion .fs-lock-morph { animation: none; }
     .fs-nav-caret {
       position: relative;
       z-index: 1;
@@ -7443,6 +7455,17 @@
       }, [user?.id]);
       const [crystalCount, setCrystalCount] = React.useState(0);
       const [activeTaskCount, setActiveTaskCount] = React.useState(0);
+      /* Déverrouillage progressif : 0 = nouveau, 1 = 1re session, 2 = confirmé.
+         Recalculé quand le nombre de cristaux change. */
+      const unlockStage = React.useMemo(() => window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2, [user?.id, crystalCount]);
+      const prevStageRef = React.useRef(unlockStage);
+      React.useEffect(() => {
+        if (unlockStage > prevStageRef.current) {
+          if (unlockStage === 1) addToast({ message: 'Évolution débloquée ✦ Suis ta régularité et ta progression.', type: 'success', icon: '✦', duration: 5200 });
+          else if (unlockStage === 2) addToast({ message: 'Quêtes & Boutique débloquées ✦', type: 'success', icon: '✦', duration: 5200 });
+        }
+        prevStageRef.current = unlockStage;
+      }, [unlockStage]);
       const displayName = user?.name || 'LumenOS';
       const displayEmail = user?.email || 'Crystal Productivity Focus';
       const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
@@ -7774,7 +7797,7 @@
                       <button className={'fs-nav-subitem' + (screen === 'session' ? ' active' : '')}
                         onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('session'); }}>Sessions</button>
                       <button className={'fs-nav-subitem' + (screen === 'cristaux' ? ' active' : '')}
-                        onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('cristaux'); }}>Mes cristaux</button>
+                        onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('cristaux'); }}>Cristaux</button>
                     </div>
                   </div>
                 </div>
@@ -7814,6 +7837,7 @@
                 </button>
 
 
+                {unlockStage >= 1 ? (
                 <div className="fs-nav-cluster">
                   <button aria-expanded={evolutionMenuOpen} className={'fs-nav-item fs-nav-parent' + (['evolution','progression'].includes(screen) ? ' active' : '')}
                     onClick={openEvolutionMenu}>
@@ -7824,19 +7848,34 @@
                     </span>
                     <span className="fs-label-wrap">
                       <span className="fs-label">Évolution</span>
-                      <span className="fs-meta">Quêtes, boutique, progression</span>
+                      <span className="fs-meta">{unlockStage >= 2 ? 'Quêtes, boutique, progression' : 'Régularité & progression'}</span>
                     </span>
                     <span className={'fs-nav-caret' + (evolutionMenuOpen ? ' open' : '')}>⌄</span>
                   </button>
                   <div className={'fs-nav-submenu' + (evolutionMenuOpen ? ' open' : '')} ref={evoSubRef}>
                     <div className="fs-nav-submenu-inner">
                       <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'streaks' ? ' active' : '')} onClick={() => goEvolutionTab('streaks')}>Régularité</button>
-                      <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'quests' ? ' active' : '')} onClick={() => goEvolutionTab('quests')}>Quêtes</button>
-                      <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'store' ? ' active' : '')} onClick={() => goEvolutionTab('store')}>Boutique</button>
-                      <button className={'fs-nav-subitem' + (screen === 'progression' ? ' active' : '')} onClick={() => goEvolutionTab('progression')}>Progression</button>
+                      {unlockStage >= 2 && <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'quests' ? ' active' : '')} onClick={() => goEvolutionTab('quests')}>Quêtes</button>}
+                      {unlockStage >= 2 && <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'store' ? ' active' : '')} onClick={() => goEvolutionTab('store')}>Boutique</button>}
+                      <button className={'fs-nav-subitem' + (screen === 'progression' ? ' active' : '')} onClick={() => goEvolutionTab('progression')}>Vue d'ensemble</button>
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <button type="button" className="fs-nav-item fs-nav-locked" disabled
+                    title="Termine ta première session focus pour débloquer l'Évolution"
+                    aria-label="Évolution — verrouillé, termine ta première session pour débloquer">
+                    <span className="fs-icon-wrap">
+                      <svg className="fs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+                      </svg>
+                    </span>
+                    <span className="fs-label-wrap">
+                      <span className="fs-label">Évolution</span>
+                      <span className="fs-meta"><span className="fs-lock-morph" aria-hidden="true">🔒</span> Termine ta 1<sup>re</sup> session</span>
+                    </span>
+                  </button>
+                )}
                 </div>
 
                 {!isInstalled && !installDismissed && (
@@ -8040,7 +8079,8 @@
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
-              { target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
+              /* Évolution masqué tant que la 1re session n'est pas terminée */
+              ...(unlockStage >= 1 ? [{ target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> }] : []),
             ].map(item => (
               <button key={item.target}
                 className={'fs-mobile-nav-btn' + (screen === item.target ? ' active' : '')}
@@ -16030,6 +16070,25 @@
   const XP_TH = [0,100,250,500,1000,2000,3500,5500,8500,13000,20000];
   window._gLevel  = xp => { for (let i=XP_TH.length-1;i>=0;i--) if(xp>=XP_TH[i]) return i+1; return 1; };
   window._gLvlPct = xp => { const l=window._gLevel(xp),ci=l-1,curr=XP_TH[ci]||0,nxt=XP_TH[ci+1]||curr*1.5; return (xp-curr)/(nxt-curr); };
+  /* Déverrouillage progressif de la gamification pour les nouveaux venus.
+     Palier 0 (0 session) → seulement l'essentiel. 1 (≥1 cristal) → Évolution
+     + badges Série/Niveau. 2 (≥3 cristaux) → Quêtes + Boutique.
+     Monotone (les cristaux ne diminuent jamais) et « fail-open » (tout ouvert
+     en cas d'erreur). Les utilisateurs déjà engagés (XP/FP acquis) démarrent
+     directement au palier 2 pour ne rien leur retirer. */
+  window._fsUnlockStage = function (userId) {
+    try {
+      const ckey = userId ? 'fs_crystals_' + userId : 'fs_crystals';
+      const n = JSON.parse(localStorage.getItem(ckey) || '[]').length;
+      if (n >= 3) return 2;
+      let stage = n >= 1 ? 1 : 0;
+      try {
+        const g = JSON.parse(localStorage.getItem(userId ? 'fs_gamif_' + userId : 'fs_gamif') || '{}');
+        if ((g.xp || 0) > 50 || (g.fp || 0) > 0) return 2;
+      } catch (e) {}
+      return stage;
+    } catch (e) { return 2; }
+  };
   window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
   window._gMul    = (d,w) => w>=1?3.0:d>=7?2.0:d>=3?1.5:1.0;
@@ -16668,12 +16727,20 @@
     const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
     const totalMin = Object.values(g.heatmap||{}).reduce((a,b)=>a+b,0);
 
+    /* Déverrouillage progressif : Quêtes + Boutique au palier 2 seulement.
+       "Progression" renommé "Vue d'ensemble" (le concept parent est Évolution). */
+    const stage = window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2;
     const TABS = [
       { id:'streaks',     label:'Régularité', meta:`${streaks.daily||0} jour${(streaks.daily||0)>1?'s':''}` },
-      { id:'quests',      label:'Quêtes', meta:`${pending} en cours` },
-      { id:'store',       label:'Boutique', meta:`${fp.toLocaleString('fr')} FP` },
-      { id:'progression', label:'Progression', meta:`Niv. ${lvl}` },
+      ...(stage >= 2 ? [
+        { id:'quests', label:'Quêtes', meta:`${pending} en cours` },
+        { id:'store',  label:'Boutique', meta:`${fp.toLocaleString('fr')} FP` },
+      ] : []),
+      { id:'progression', label:"Vue d'ensemble", meta:`Niv. ${lvl}` },
     ];
+    /* Si l'onglet courant est verrouillé (accès direct par hash), on retombe
+       sur un onglet visible. */
+    React.useEffect(() => { if (!TABS.some(t => t.id === tab)) setTab('streaks'); }, [stage, tab]);
 
     return (
       <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
@@ -16732,6 +16799,9 @@
     const lvl = window._gLevel(xp);
     const pending = [...(quests.daily||[]),...(quests.weekly||[])].filter(q=>!q.completed).length;
     const mul = window._gMul(streaks.daily||0, streaks.weekly||0);
+    /* Déverrouillage progressif : rien avant la 1re session, quêtes au palier 2 */
+    const stage = window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2;
+    if (stage < 1) return null;
 
     return (
       <div className="fs-gamif-mini" style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -16751,8 +16821,8 @@
           <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><polygon points="7,1 8.5,5 13,5.5 9.5,8.5 10.5,13 7,10.5 3.5,13 4.5,8.5 1,5.5 5.5,5" stroke="#a5b8ff" strokeWidth={1} fill="rgba(165,184,255,0.2)"/></svg>
           <span style={{fontFamily:T.mono,fontWeight:800,fontSize:11,color:'#a5b8ff'}}>Niv.{lvl}</span>
         </div>
-        {/* Quest badge — masqué sur mobile (voir .fs-gamif-quest), déjà accessible depuis Évolution */}
-        {pending>0&&(
+        {/* Quest badge — palier 2 seulement, masqué sur mobile (.fs-gamif-quest) */}
+        {stage>=2 && pending>0&&(
           <button className="fs-gamif-chip fs-gamif-quest" onClick={onOpenQuests} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:12,background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',cursor:'pointer',transition:'all 0.18s'}}
             onMouseEnter={e=>e.currentTarget.style.background='rgba(74,222,128,0.15)'}
             onMouseLeave={e=>e.currentTarget.style.background='rgba(74,222,128,0.08)'}>
