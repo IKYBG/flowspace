@@ -5479,11 +5479,11 @@
 
       return (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', userSelect: drag ? 'none' : 'auto', cursor: drag?.type === 'move' ? 'grabbing' : drag?.type === 'resize' ? `${drag.corner}-resize` : 'auto', position: 'relative' }}>
-          <div style={{ padding: '18px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0, gap: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, maxWidth: 360, overflow: 'hidden' }}>
+          <div style={{ padding: isMobile ? '14px 14px 12px' : '18px 32px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0, gap: isMobile ? 12 : 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, maxWidth: isMobile ? 'none' : 360, overflow: 'hidden' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 17, letterSpacing: '-0.03em' }}>Personnaliser le dashboard</span>
+                  <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: isMobile ? 16 : 17, letterSpacing: '-0.03em' }}>Personnaliser le dashboard</span>
                   <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.c1, background: c1(0.09), border: `1px solid ${c1(0.18)}`, borderRadius: 99, padding: '4px 8px' }}>{widgets.length} widgets</span>
                 </div>
                 <div style={{ display: 'none' }}>
@@ -5491,14 +5491,14 @@
                   <span>2. Choisir un style</span><span style={{ opacity: .35 }}>•</span>
                   <span>3. Glisser ou redimensionner</span>
                 </div>
-                <div style={{ marginTop: 6, color: T.muted, fontSize: 11 }}>Ajouter · choisir · déplacer</div>
+                <div style={{ marginTop: 6, color: T.muted, fontSize: 11 }}>{isMobile ? 'Réordonne, personnalise, ajoute' : 'Ajouter · choisir · déplacer'}</div>
               </div>
               <div style={{ display: 'none' }}>
                 <span style={{ fontFamily: T.display, fontWeight: 700, fontSize: 14 }}>Mode Édition</span>
               </div>
-              <span style={{ fontSize: 12, color: T.muted }}>Cliquer pour sélectionner · glisser les coins pour redimensionner</span>
+              {!isMobile && <span style={{ fontSize: 12, color: T.muted }}>Cliquer pour sélectionner · glisser les coins pour redimensionner</span>}
             </div>
-            <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+            <div style={{ display: 'flex', gap: 8, position: 'relative', ...(isMobile ? { justifyContent: 'flex-end' } : {}) }}>
               <button onClick={() => setShowPicker(p => !p)}
                 style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s' }}>+ Ajouter</button>
               <button onClick={() => { setShowPresets(true); setShowPicker(false); }}
