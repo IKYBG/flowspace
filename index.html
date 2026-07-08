@@ -6048,7 +6048,10 @@
       ];
       const emailTyped = email.trim().length > 0;
       const emailValid = emailTyped && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-      const canLaunch = mode === 'solo' || (byEmail ? emailValid : acceptedItems.length > 0);
+      /* On peut lancer dès qu'un ami est SÉLECTIONNÉ (plus besoin d'attendre
+         qu'il accepte un broadcast éphémère). L'invitation est désormais
+         persistée en base (table sessions) → l'ami la reçoit même hors ligne. */
+      const canLaunch = mode === 'solo' || (byEmail ? emailValid : selIds.length > 0);
       const acol = mode === 'together' ? T.green : T.c1;
       const toggleFocusTask = id => setFocusTaskIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
@@ -6073,8 +6076,11 @@
         if (!canLaunch) return;
         const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
         const isGoldCrystal = Math.random() < 0.05;
-        /* Ensemble : amis acceptés du lobby (chemin principal) ou email (repli) */
-        const acc = acceptedItems.map(i => i.friend);
+        /* Ensemble : amis SÉLECTIONNÉS (chemin principal, persisté en base) ou
+           email (repli). Plus de dépendance au lobby broadcast : chaque ami
+           choisi reçoit l'invitation via la table sessions (temps réel s'il est
+           en ligne, sinon à sa prochaine ouverture). */
+        const acc = friends.filter(f => selIds.includes(f.id));
         let friendUser = null, friendId = null, friendIds = null, friendEmail = null;
         if (mode === 'together') {
           if (!byEmail && acc.length) {
@@ -6191,16 +6197,12 @@
                           })}
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:10,marginTop:10}}>
-                          <button type="button" disabled={!selIds.length} onClick={sendInvites}
-                            style={{flex:1,height:42,border:0,borderRadius:14,fontFamily:T.font,fontSize:12.5,fontWeight:950,cursor:selIds.length?'pointer':'not-allowed',
-                              background:selIds.length ? 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))' : 'rgba(255,255,255,.06)',
-                              color:selIds.length ? '#07070d' : T.muted,opacity:selIds.length?1:.7,
-                              boxShadow:selIds.length ? '0 14px 34px ' + c1(.22) + ', inset 0 1px 0 rgba(255,255,255,.4)' : 'none',transition:'all .18s'}}>
-                            Inviter {selIds.length > 0 ? '(' + selIds.length + ')' : ''}
-                          </button>
+                          <span style={{flex:1,fontSize:11,color:selIds.length ? T.c1 : T.muted,fontWeight:800}}>
+                            {selIds.length ? selIds.length + ' ami' + (selIds.length>1?'s':'') + ' sélectionné' + (selIds.length>1?'s':'') + ' · lance ci-dessous' : 'Choisis qui inviter'}
+                          </span>
                           <button type="button" onClick={() => setByEmail(true)} style={{background:'none',border:'none',cursor:'pointer',color:T.muted,fontSize:11,fontWeight:750,fontFamily:T.font,textDecoration:'underline',textUnderlineOffset:3}}>ou par email</button>
                         </div>
-                        <div style={{marginTop:8,fontSize:10.5,color:T.muted}}>Tes amis reçoivent l'invitation en direct sur leur dashboard.</div>
+                        <div style={{marginTop:8,fontSize:10.5,color:T.muted}}>Chaque ami reçoit une demande à rejoindre — en direct s'il est en ligne, sinon à sa prochaine ouverture.</div>
                       </>
                     ) : (
                       <div style={{borderRadius:16,border:'1px dashed rgba(255,255,255,.14)',background:'rgba(255,255,255,.03)',padding:'16px 15px'}}>
@@ -12638,36 +12640,85 @@
         };
       }, [user?.id]);
 
+      /* Garde locale : sessions déjà rejointes / refusées, pour ne pas re-proposer
+         indéfiniment la même invitation au polling. */
+      const _fsSessionGuard = (key, id, add) => {
+        try {
+          const set = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
+          if (add) { set.add(id); localStorage.setItem(key, JSON.stringify([...set].slice(-60))); return true; }
+          return set.has(id);
+        } catch (_) { return false; }
+      };
+
+      /* Rejoindre effectivement une session partagée (l'ami accepte). */
+      const joinSharedSession = async (s) => {
+        if (!s?.active || !s.id) return;
+        let hostData = null;
+        try { ({ data: hostData } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle()); } catch (_) {}
+        const next = {
+          type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
+          startTime: new Date(s.started_at).getTime(),
+          broadcastId: s.id, isGuest: true,
+          hostEmail: hostData?.email || '',
+          friendUser: { name: hostData?.name || hostData?.email?.split('@')[0] || '?', initial: (hostData?.name || hostData?.email || '?')[0].toUpperCase(), color: '#4ade80' },
+        };
+        window._fsActiveBroadcastId = s.id;
+        _fsSessionGuard('fs_joined_sessions', s.id, true);
+        setActiveSession(prev => prev?.broadcastId === next.broadcastId ? prev : next);
+        try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
+        setRoutedScreen('dashboard', true);
+      };
+
+      /* Présenter une invitation reçue (depuis la table sessions) comme une CARTE
+         Rejoindre / Refuser — au lieu d'un auto-join silencieux. Alimentée par le
+         temps réel (instantané) ET par le polling (persistant : l'ami la voit à
+         sa prochaine ouverture même s'il était hors ligne). */
+      const presentSessionInvite = async (s) => {
+        if (!s?.active || !s.id || s.host_id === user?.id) return;
+        if (window._fsActiveBroadcastId === s.id) return;
+        if (_fsSessionGuard('fs_joined_sessions', s.id) || _fsSessionGuard('fs_declined_sessions', s.id)) return;
+        let hostName = 'Un ami';
+        try {
+          const { data } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle();
+          hostName = data?.name || data?.email?.split('@')[0] || 'Un ami';
+        } catch (_) {}
+        const card = {
+          inviteId: 'sess-' + s.id,
+          host: { id: s.host_id, name: hostName },
+          duration: s.duration, music: s.music, sessionRow: s,
+          sentAt: Date.parse(s.started_at) || Date.now(),
+        };
+        /* Dédup par hôte : la carte "base de données" (avec sessionRow, donc
+           réellement rejoignable) remplace toute carte broadcast du même hôte. */
+        setLiveInvites(l => {
+          if (l.some(x => x.inviteId === card.inviteId)) return l;
+          return [...l.filter(x => x.host?.id !== s.host_id), card].slice(-3);
+        });
+      };
+
       const respondInvite = (inv, accepted) => {
         setLiveInvites(l => l.filter(x => x.inviteId !== inv.inviteId));
+        /* Notifie l'hôte (best-effort, pour un éventuel affichage live). */
         try {
-          window._fsSendToUser?.(inv.host.id, 'invite-response', {
+          if (inv.host?.id) window._fsSendToUser?.(inv.host.id, 'invite-response', {
             inviteId: inv.inviteId,
             status: accepted ? 'accepted' : 'declined',
             friend: { id: user?.id, name: user?.name || '', email: user?.email || '' },
           });
         } catch (e) { }
-        if (accepted) addToast({ message: 'Invitation acceptée — la session démarrera dès que ' + (inv.host?.name || 'ton ami') + ' la lance.', type: 'success', icon: '✓', duration: 5200 });
+        if (inv.sessionRow) {
+          if (accepted) { joinSharedSession(inv.sessionRow); }
+          else { _fsSessionGuard('fs_declined_sessions', inv.sessionRow.id, true); }
+        } else if (accepted) {
+          addToast({ message: 'Invitation acceptée — la session démarrera dès que ' + (inv.host?.name || 'ton ami') + ' la lance.', type: 'success', icon: '✓', duration: 5200 });
+        }
       };
 
       /* ── Supabase Realtime: session invites (Together mode) ── */
       _uEC(() => {
-        const activateSharedSession = async (s) => {
-          if (!s?.active) return;
-          const { data: hostData } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle();
-          const next = {
-            type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
-            startTime: new Date(s.started_at).getTime(),
-            broadcastId: s.id, isGuest: true,
-            hostEmail: hostData?.email || '',
-            friendUser: { name: hostData?.name || hostData?.email?.split('@')[0] || '?', initial: (hostData?.name || hostData?.email || '?')[0].toUpperCase(), color: '#4ade80' },
-          };
-          setActiveSession(prev => prev?.broadcastId === next.broadcastId ? prev : next);
-          try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
-          setRoutedScreen('dashboard', true);
-        };
-        const onInvite = async (e) => { await activateSharedSession(e.detail); };
+        const onInvite = async (e) => { await presentSessionInvite(e.detail); };
         const onEnd = (e) => {
+          if (window._fsActiveBroadcastId === e.detail?.id) window._fsActiveBroadcastId = null;
           setActiveSession(a => {
             if (a && a.broadcastId === e.detail.id) {
               saveSessionRecord(buildSessionRecord(a, false, new Date().toISOString()));
@@ -12676,7 +12727,11 @@
             }
             return a;
           });
+          /* Retire la carte d'invitation si l'hôte a terminé avant qu'on rejoigne. */
+          setLiveInvites(l => l.filter(x => x.sessionRow?.id !== e.detail?.id));
         };
+        /* Récupère les invitations en attente (persistant) : realtime raté / hors
+           ligne → on les retrouve à l'ouverture, au focus et toutes les 15 s. */
         const checkMissedSharedSession = async () => {
           if (!user?.id || !window._fsSb) return;
           try {
@@ -12686,9 +12741,8 @@
               .eq('friend_id', user.id)
               .eq('active', true)
               .order('started_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (data) await activateSharedSession(data);
+              .limit(5);
+            (data || []).forEach(row => { presentSessionInvite(row); });
           } catch(e) {}
         };
         window.addEventListener('fs-session-invite', onInvite);
