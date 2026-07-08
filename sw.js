@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumenos-v7';
+const CACHE_NAME = 'lumenos-v8';
 
 // Static assets to cache on install
 const PRECACHE = [

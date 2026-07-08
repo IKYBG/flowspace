@@ -299,6 +299,28 @@
       -webkit-backdrop-filter: none !important;
     }
 
+    /* ── Durcissement mobile anti-écran-noir (perf-lite, forcé sur mobile) ──
+       Cause racine de l'écran noir au login sur téléphone : iOS Safari (et
+       certains Chrome mobiles) rendent NOIR — au lieu du contenu — quand on
+       empile, sur beaucoup de couches, backdrop-filter + content-visibility
+       :auto + contain:paint + translateZ(0). Les cartes widgets du dashboard
+       cumulent précisément ces propriétés. On neutralise donc ces pièges de
+       compositing sur tout appareil mobile (où perf-lite est maintenant
+       toujours actif), en gardant le rendu visuellement identique.        */
+    html.fs-perf-lite,
+    html.fs-perf-lite *,
+    html.fs-perf-lite *::before,
+    html.fs-perf-lite *::after {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    html.fs-perf-lite .fs-dashboard-widget-in,
+    html.fs-perf-lite .fs-dashboard-widget-wait,
+    html.fs-perf-lite [data-cr-widget] {
+      content-visibility: visible !important;
+      contain: none !important;
+    }
+
     /* Mineral OS: opinionated premium layer */
     .fs-app-main {
       background:
@@ -1025,6 +1047,9 @@
     @media (prefers-reduced-motion: reduce) {
       .cr-overlay { display: none; }
     }
+    /* Mobile/perf-lite : jamais d'overlay opaque plein écran (#07070d) — une
+       couche composited de plus au montage du dashboard, à risque sur mobile. */
+    html.fs-perf-lite .cr-overlay { display: none !important; }
 
     /* ── EditMode mobile: make the grid scrollable ── */
     @media (max-width: 768px) {
@@ -1070,13 +1095,28 @@
       var lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 4;
       var lowCpu = navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4;
       var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      /* Détection mobile/tactile pour forcer perf-lite. CRITIQUE : lowMemory et
+         lowCpu ne suffisent PAS à couvrir les téléphones. iOS Safari n'expose
+         pas navigator.deviceMemory (API Chrome-only) et un iPhone récent
+         rapporte hardwareConcurrency = 6 (> 4) → il n'était PAS classé
+         perf-lite et exécutait le chemin lourd complet (backdrop-filters,
+         grandes ombres, couches composited plein écran) qui sature le
+         compositeur de Safari mobile → écran noir à la connexion. On force
+         donc perf-lite sur tout mobile/tactile, quel que soit le CPU/RAM. */
+      var mobileDevice = false;
+      try {
+        mobileDevice = !!(window.matchMedia && (
+          window.matchMedia('(max-width: 768px)').matches ||
+          window.matchMedia('(hover: none) and (pointer: coarse)').matches
+        ));
+      } catch (_) {}
       var userPerfLite = false, userReduceMotion = false;
       try {
         var _p = JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {};
         userPerfLite = !!_p.perfLite;
         userReduceMotion = !!_p.reduceMotion;
       } catch (_) {}
-      if (lowMemory || lowCpu || reduceMotion || userPerfLite) document.documentElement.classList.add('fs-perf-lite');
+      if (lowMemory || lowCpu || reduceMotion || userPerfLite || mobileDevice) document.documentElement.classList.add('fs-perf-lite');
       if (reduceMotion || userReduceMotion) document.documentElement.classList.add('fs-reduce-motion');
       /* Password-recovery deep link (Supabase appends #...type=recovery). Flag it
          before React mounts so the auth screen opens directly on the reset form. */
@@ -11169,7 +11209,10 @@
       const haloRef = React.useRef(null);
 
       React.useEffect(() => {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onComplete(); return; }
+        /* Sur mobile/perf-lite on saute entièrement le reveal : son overlay
+           opaque plein écran est une couche composited risquée au montage. */
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            || document.documentElement.classList.contains('fs-perf-lite')) { window._crShown = true; onComplete(); return; }
         if (window._crShown) { onComplete(); return; }
 
         const overlay = overlayRef.current;
