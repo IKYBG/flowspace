@@ -12338,6 +12338,10 @@
               100%{opacity:0;transform:translateX(-50%) translateY(-8px)}
             }
             html.fs-reduce-motion .fs-entry-gate{display:none}
+            /* Garde défensive : jamais de voile opaque plein écran sur mobile
+               (cause d'écran noir au login — cf. handleAuth). */
+            html.fs-perf-lite .fs-entry-gate{display:none}
+            @media (max-width:768px){.fs-entry-gate{display:none}}
           `}</style>
           <div className="fs-entry-veil" />
           <div className="fs-entry-halo" />
@@ -12894,12 +12898,23 @@
         }
         if (visualSource) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: visualSource }));
         const nextScreen = isNew ? 'onboarding' : readRouteScreen();
-        /* Gate sauté en reduce-motion (a11y) ET en perf-lite : sur les
-           téléphones modestes la séquence coûte plus qu'elle n'apporte,
-           et une couche composited plein écran y est risquée. */
-        const reduceMotion = document.documentElement.classList.contains('fs-reduce-motion')
-          || document.documentElement.classList.contains('fs-perf-lite');
-        if (reduceMotion) {
+        /* Gate sauté en reduce-motion (a11y), en perf-lite ET sur tout mobile.
+           Le voile du gate est un cercle OPAQUE de 150vmax : une couche
+           composited géante qui fait crasher le compositeur de beaucoup de
+           GPU mobiles → écran noir figé à la connexion. perf-lite ne suffit
+           pas à couvrir tous les téléphones (iOS Safari n'expose pas
+           navigator.deviceMemory, donc un iPhone récent n'est pas détecté
+           comme perf-lite et jouait quand même le gate). On le réserve donc
+           au desktop, où la séquence est sûre — elle reste purement déco. */
+        const skipGate = (() => {
+          try {
+            if (window.matchMedia('(max-width: 768px)').matches) return true;
+            if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return true;
+          } catch (_) {}
+          return document.documentElement.classList.contains('fs-reduce-motion')
+            || document.documentElement.classList.contains('fs-perf-lite');
+        })();
+        if (skipGate) {
           setScreen(nextScreen);
         } else {
           /* Séquence d'entrée : le gate couvre l'écran d'auth pendant que le
