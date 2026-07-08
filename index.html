@@ -585,6 +585,15 @@
       .fs-dash-addwidget-btn { width: 40px !important; height: 40px !important; padding: 0 !important; justify-content: center !important; }
       .fs-dash-addwidget-label { display: none !important; }
       .fs-dash-start-btn { padding: 10px 13px !important; gap: 6px !important; }
+      /* Mode édition : le picker de widgets devient une feuille pleine largeur
+         (ancré right:0 sur le header, il débordait de l'écran). */
+      .fs-edit-picker-sheet {
+        position: fixed !important;
+        left: 12px !important; right: 12px !important;
+        top: max(64px, env(safe-area-inset-top, 0px)) !important;
+        width: auto !important;
+        max-height: calc(100dvh - 170px) !important;
+      }
       .fs-dashboard-grid {
         display: flex !important; flex-direction: column !important;
         overflow-y: auto !important; overflow-x: hidden !important;
@@ -3994,58 +4003,89 @@
     const { useState: _uSI, useRef: _uRI, useEffect: _uEI } = React;
 
     // ── Image Crop Modal ─────────────────────────────────────────────────
+    /* ── ImageCropModal v2 — ajustement photo premium ─────────────────────
+       Corrige les bugs de redimensionnement de la v1 : le zoom minimum est
+       maintenant la « couverture » exacte du cadre (calculée par image et
+       par rotation) au lieu d'un 0.5 codé en dur — impossible de dézoomer
+       sous le cadre (fini les bandes vides dans le résultat). Ajouts :
+       slider de zoom (100% = couverture), boutons −/+, rotation 90°,
+       recentrer, double-clic pour réinitialiser, grille visible seulement
+       pendant la manipulation, cadre borné à l'écran (mobile-safe). */
     function ImageCropModal({ src, aspectRatio, borderRadius, onConfirm, onCancel }) {
-      const FRAME_W = Math.min(340, window.innerWidth - 48);
-      const FRAME_H = Math.round(FRAME_W / aspectRatio);
+      /* Cadre borné en largeur ET hauteur (les widgets très hauts débordaient l'écran) */
+      const maxW = Math.min(360, window.innerWidth - 40);
+      const maxH = Math.max(180, window.innerHeight - 336);
+      let FRAME_W = maxW, FRAME_H = Math.round(FRAME_W / aspectRatio);
+      if (FRAME_H > maxH) { FRAME_H = maxH; FRAME_W = Math.round(FRAME_H * aspectRatio); }
+
+      const [workSrc, setWorkSrc] = _uSI(src);        /* source (pré-tournée si rotation) */
+      const [rot, setRot] = _uSI(0);
       const [offset, setOffset] = _uSI({ x: 0, y: 0 });
       const [scale, setScale] = _uSI(1);
+      const [minScale, setMinScale] = _uSI(1);
       const [ready, setReady] = _uSI(false);
+      const [active, setActive] = _uSI(false);        /* manipulation en cours → grille visible */
       const imgRef = _uRI(null);
       const dragRef = _uRI(null);
       const pinchRef = _uRI(null);
+      const natRef = _uRI({ w: 1, h: 1 });
+      const MAXR = 5;                                  /* zoom max = 5× la couverture */
+
+      const centerFor = (s) => ({ x: (FRAME_W - natRef.current.w * s) / 2, y: (FRAME_H - natRef.current.h * s) / 2 });
 
       _uEI(() => {
+        setReady(false);
         const img = new window.Image();
         img.onload = () => {
-          const s = Math.max(FRAME_W / img.naturalWidth, FRAME_H / img.naturalHeight);
-          setScale(s);
-          setOffset({ x: (FRAME_W - img.naturalWidth * s) / 2, y: (FRAME_H - img.naturalHeight * s) / 2 });
+          natRef.current = { w: img.naturalWidth, h: img.naturalHeight };
+          /* Zoom minimum = l'image couvre exactement le cadre. C'est LE fix
+             du bug : plus jamais de zone vide, quel que soit le format. */
+          const cover = Math.max(FRAME_W / img.naturalWidth, FRAME_H / img.naturalHeight);
+          setMinScale(cover);
+          setScale(cover);
+          setOffset(centerFor(cover));
           setReady(true);
         };
-        img.src = src;
-      }, [src]);
+        img.src = workSrc;
+      }, [workSrc]);
 
       const clampOffset = (ox, oy, sc) => {
-        const img = imgRef.current;
-        if (!img) return { x: ox, y: oy };
-        const dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
+        const dw = natRef.current.w * sc, dh = natRef.current.h * sc;
         return {
           x: Math.min(0, Math.max(FRAME_W - dw, ox)),
           y: Math.min(0, Math.max(FRAME_H - dh, oy)),
         };
       };
+      /* Zoom autour d'un point fixe (le centre du geste), pas du coin 0,0 */
+      const zoomTo = (nextScale, px = FRAME_W / 2, py = FRAME_H / 2) => {
+        setScale(s => {
+          const ns = Math.max(minScale, Math.min(minScale * MAXR, nextScale));
+          setOffset(o => clampOffset(px - (px - o.x) * (ns / s), py - (py - o.y) * (ns / s), ns));
+          return ns;
+        });
+      };
 
-      const startDrag = (clientX, clientY) => { dragRef.current = { sx: clientX - offset.x, sy: clientY - offset.y }; };
+      const startDrag = (clientX, clientY) => { setActive(true); dragRef.current = { sx: clientX - offset.x, sy: clientY - offset.y }; };
       const moveDrag = (clientX, clientY) => {
         if (!dragRef.current) return;
-        const nx = clientX - dragRef.current.sx, ny = clientY - dragRef.current.sy;
-        setOffset(o => clampOffset(nx, ny, scale));
+        setOffset(clampOffset(clientX - dragRef.current.sx, clientY - dragRef.current.sy, scale));
       };
-      const endDrag = () => { dragRef.current = null; };
+      const endDrag = () => { dragRef.current = null; pinchRef.current = null; setActive(false); };
 
-      const handleMouseDown = e => { e.preventDefault(); startDrag(e.clientX, e.clientY); };
-      const handleMouseMove = e => { if (dragRef.current) moveDrag(e.clientX, e.clientY); };
-      const handleMouseUp = () => endDrag();
+      const frameRef = _uRI(null);
+      const localPoint = (clientX, clientY) => {
+        const r = frameRef.current ? frameRef.current.getBoundingClientRect() : { left: 0, top: 0 };
+        return { x: clientX - r.left, y: clientY - r.top };
+      };
 
       const handleTouchStart = e => {
-        if (e.touches.length === 1) {
-          startDrag(e.touches[0].clientX, e.touches[0].clientY);
-        } else if (e.touches.length === 2) {
+        if (e.touches.length === 1) startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        else if (e.touches.length === 2) {
+          setActive(true);
+          dragRef.current = null;
           pinchRef.current = {
             dist: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY),
             scale,
-            cx: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-            cy: (e.touches[0].clientY + e.touches[1].clientY) / 2,
           };
         }
       };
@@ -4053,83 +4093,144 @@
         e.preventDefault();
         if (e.touches.length === 2 && pinchRef.current) {
           const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-          const newScale = Math.max(0.5, Math.min(4, pinchRef.current.scale * (d / pinchRef.current.dist)));
-          setScale(newScale);
-          setOffset(o => clampOffset(o.x, o.y, newScale));
+          const mid = localPoint((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2);
+          zoomTo(pinchRef.current.scale * (d / pinchRef.current.dist), mid.x, mid.y);
         } else if (e.touches.length === 1 && dragRef.current) {
           moveDrag(e.touches[0].clientX, e.touches[0].clientY);
         }
       };
-      const handleTouchEnd = () => { dragRef.current = null; pinchRef.current = null; };
 
       const handleWheel = e => {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.92 : 1.08;
-        setScale(s => { const ns = Math.max(0.5, Math.min(4, s * delta)); setOffset(o => clampOffset(o.x, o.y, ns)); return ns; });
+        const p = localPoint(e.clientX, e.clientY);
+        zoomTo(scale * (e.deltaY > 0 ? 0.92 : 1.08), p.x, p.y);
+      };
+
+      const recenter = () => { setScale(minScale); setOffset(centerFor(minScale)); };
+
+      /* Rotation 90° : on pré-tourne la source dans un canvas, puis toute la
+         logique (drag/zoom/clamp/export) travaille sur l'image tournée. */
+      const rotate90 = () => {
+        const img = imgRef.current;
+        if (!img) return;
+        const c = document.createElement('canvas');
+        c.width = img.naturalHeight; c.height = img.naturalWidth;
+        const ctx = c.getContext('2d');
+        ctx.translate(c.width / 2, c.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+        setRot(r => (r + 90) % 360);
+        setWorkSrc(c.toDataURL('image/png'));
       };
 
       const handleConfirm = () => {
         const img = imgRef.current;
         if (!img) return;
-        const outW = 1200, outH = Math.round(1200 / aspectRatio);
+        const outW = 1200, outH = Math.round(1200 / (FRAME_W / FRAME_H));
         const canvas = document.createElement('canvas');
         canvas.width = outW; canvas.height = outH;
         const ctx = canvas.getContext('2d');
-        const srcX = -offset.x / scale, srcY = -offset.y / scale;
-        const srcW = FRAME_W / scale, srcH = FRAME_H / scale;
-        ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, -offset.x / scale, -offset.y / scale, FRAME_W / scale, FRAME_H / scale, 0, 0, outW, outH);
         onConfirm(canvas.toDataURL('image/jpeg', 0.93));
       };
 
-      const br = borderRadius || 16;
+      const br = Math.min(borderRadius || 16, 24);
+      const zoomPct = Math.round((scale / minScale) * 100);
+      const ctl = { width: 42, height: 42, borderRadius: 13, border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.05)', color: T.text, cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: T.font, flexShrink: 0 };
 
       return (
-        <div style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(7,8,16,0.97)',backdropFilter:'blur(28px)',WebkitBackdropFilter:'blur(28px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:T.font,padding:'24px 20px',boxSizing:'border-box',gap:20}}>
+        <div style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(var(--mineral-bg-rgb),0.96)',backdropFilter:'blur(26px)',WebkitBackdropFilter:'blur(26px)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:T.font,padding:'20px 16px calc(20px + env(safe-area-inset-bottom, 0px))',boxSizing:'border-box',gap:16,animation:'scaleIn 0.22s cubic-bezier(0.2,0.9,0.3,1) both'}}>
+          <style>{`
+            .fs-crop-slider{appearance:none;-webkit-appearance:none;flex:1;height:4px;border-radius:99px;outline:none;cursor:pointer;
+              background:linear-gradient(90deg,var(--theme-c1) var(--fill,0%),rgba(255,255,255,0.10) var(--fill,0%))}
+            .fs-crop-slider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+              background:#fff;border:none;box-shadow:0 2px 10px rgba(0,0,0,0.5),0 0 0 2px rgba(255,255,255,0.14),0 0 16px rgba(var(--theme-c1-rgb),0.45);cursor:pointer}
+            .fs-crop-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:none;
+              box-shadow:0 2px 10px rgba(0,0,0,0.5),0 0 16px rgba(var(--theme-c1-rgb),0.45);cursor:pointer}
+          `}</style>
+
           {/* Header */}
-          <div style={{width:'100%',maxWidth:FRAME_W,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <div>
-              <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:4}}>Recadrer</div>
-              <div style={{fontFamily:T.display,fontSize:22,fontWeight:850,color:T.text,letterSpacing:'-0.03em'}}>Ajuster la photo</div>
+          <div style={{width:'100%',maxWidth:Math.max(FRAME_W, 300),display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.14em',textTransform:'uppercase',color:T.muted,marginBottom:4}}>Widget photo</div>
+              <div style={{fontFamily:T.display,fontSize:21,fontWeight:850,color:T.text,letterSpacing:'-0.03em'}}>Ajuster la photo</div>
             </div>
-            <button onClick={onCancel} style={{width:36,height:36,borderRadius:12,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:T.muted,cursor:'pointer',display:'grid',placeItems:'center'}}>
+            <button onClick={onCancel} aria-label="Fermer" style={{...ctl,width:38,height:38,color:T.muted}}>
               <svg width={12} height={12} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"/></svg>
             </button>
           </div>
 
-          {/* Crop frame */}
+          {/* Cadre de recadrage (forme réelle du widget) */}
           <div
-            style={{width:FRAME_W,height:FRAME_H,borderRadius:br,overflow:'hidden',position:'relative',cursor:'grab',userSelect:'none',border:'1.5px solid rgba(var(--theme-c1-rgb),0.3)',boxShadow:'0 0 0 4px rgba(var(--theme-c1-rgb),0.06), 0 24px 60px rgba(0,0,0,0.5)',touchAction:'none'}}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            ref={frameRef}
+            onDoubleClick={recenter}
+            style={{width:FRAME_W,height:FRAME_H,borderRadius:br,overflow:'hidden',position:'relative',cursor:dragRef.current?'grabbing':'grab',userSelect:'none',
+              border:'1.5px solid rgba(var(--theme-c1-rgb),0.34)',
+              boxShadow:'0 0 0 5px rgba(var(--theme-c1-rgb),0.07), 0 26px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.10)',
+              touchAction:'none',background:'rgba(0,0,0,0.4)'}}
+            onMouseDown={e => { e.preventDefault(); startDrag(e.clientX, e.clientY); }}
+            onMouseMove={e => { if (dragRef.current) moveDrag(e.clientX, e.clientY); }}
+            onMouseUp={endDrag}
+            onMouseLeave={endDrag}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onTouchEnd={endDrag}
             onWheel={handleWheel}
           >
             {ready && (
-              <img ref={imgRef} src={src} draggable={false}
-                style={{position:'absolute',left:0,top:0,transform:`translate(${offset.x}px,${offset.y}px) scale(${scale})`,transformOrigin:'0 0',userSelect:'none',WebkitUserDrag:'none',pointerEvents:'none',maxWidth:'none'}}
+              <img ref={imgRef} src={workSrc} draggable={false} alt=""
+                style={{position:'absolute',left:0,top:0,transform:`translate(${offset.x}px,${offset.y}px) scale(${scale})`,transformOrigin:'0 0',userSelect:'none',WebkitUserDrag:'none',pointerEvents:'none',maxWidth:'none',willChange:'transform'}}
               />
             )}
-            {/* Rule-of-thirds grid */}
-            <div style={{position:'absolute',inset:0,pointerEvents:'none',backgroundImage:'linear-gradient(rgba(255,255,255,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.06) 1px,transparent 1px)',backgroundSize:`${FRAME_W/3}px ${FRAME_H/3}px`}} />
-            {/* Corner brackets */}
+            {!ready && (
+              <div style={{position:'absolute',inset:0,display:'grid',placeItems:'center',color:T.muted,fontSize:12}}>Chargement…</div>
+            )}
+            {/* Grille des tiers — visible seulement pendant la manipulation */}
+            <div style={{position:'absolute',inset:0,pointerEvents:'none',opacity:active?1:0,transition:'opacity 0.25s',
+              backgroundImage:'linear-gradient(rgba(255,255,255,0.14) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.14) 1px,transparent 1px)',
+              backgroundSize:`${FRAME_W/3}px ${FRAME_H/3}px`}} />
             {[{t:0,l:0,bt:'borderTop',bl:'borderLeft'},{t:0,r:0,bt:'borderTop',bl:'borderRight'},{b:0,l:0,bt:'borderBottom',bl:'borderLeft'},{b:0,r:0,bt:'borderBottom',bl:'borderRight'}].map((c,i)=>(
-              <div key={i} style={{position:'absolute',width:20,height:20,...(c.t!==undefined?{top:0}:{}),...(c.b!==undefined?{bottom:0}:{}),...(c.l!==undefined?{left:0}:{}),...(c.r!==undefined?{right:0}:{}),[c.bt]:'2.5px solid var(--theme-c1)',[c.bl]:'2.5px solid var(--theme-c1)',pointerEvents:'none'}} />
+              <div key={i} style={{position:'absolute',width:18,height:18,...(c.t!==undefined?{top:0}:{}),...(c.b!==undefined?{bottom:0}:{}),...(c.l!==undefined?{left:0}:{}),...(c.r!==undefined?{right:0}:{}),[c.bt]:'2.5px solid var(--theme-c1)',[c.bl]:'2.5px solid var(--theme-c1)',pointerEvents:'none',opacity:0.9}} />
             ))}
           </div>
 
-          {/* Hint */}
-          <div style={{fontSize:11,color:T.muted,textAlign:'center',lineHeight:1.5}}>
-            Glisse pour repositionner · Pince ou molette pour zoomer
+          {/* Zoom : − slider + avec % (100% = image qui couvre le cadre) */}
+          <div style={{width:'100%',maxWidth:Math.max(FRAME_W, 300),display:'flex',alignItems:'center',gap:12}}>
+            <button onClick={() => zoomTo(scale * 0.88)} aria-label="Dézoomer" style={ctl}>
+              <svg width={14} height={14} viewBox="0 0 14 14" fill="none"><path d="M2.5 7h9" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg>
+            </button>
+            <input type="range" className="fs-crop-slider" min={100} max={500} value={Math.min(500, zoomPct)}
+              style={{'--fill': `${((Math.min(500, zoomPct) - 100) / 4)}%`}}
+              onPointerDown={() => setActive(true)} onPointerUp={() => setActive(false)}
+              onChange={e => zoomTo(minScale * (Number(e.target.value) / 100))} />
+            <button onClick={() => zoomTo(scale * 1.14)} aria-label="Zoomer" style={ctl}>
+              <svg width={14} height={14} viewBox="0 0 14 14" fill="none"><path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth={2} strokeLinecap="round"/></svg>
+            </button>
+            <span style={{fontFamily:T.mono,fontSize:11.5,fontWeight:800,color:T.c1,width:44,textAlign:'right',flexShrink:0}}>{zoomPct}%</span>
+          </div>
+
+          {/* Outils : rotation + recentrer */}
+          <div style={{width:'100%',maxWidth:Math.max(FRAME_W, 300),display:'flex',gap:8}}>
+            <button onClick={rotate90} style={{...ctl,width:'auto',flex:1,height:40,display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontSize:12,fontWeight:750,color:T.muted}}>
+              <svg width={13} height={13} viewBox="0 0 16 16" fill="none"><path d="M13.5 6.5A6 6 0 1 0 14 9" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/><path d="M14 3v3.5h-3.5" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Pivoter
+            </button>
+            <button onClick={recenter} style={{...ctl,width:'auto',flex:1,height:40,display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontSize:12,fontWeight:750,color:T.muted}}>
+              <svg width={13} height={13} viewBox="0 0 16 16" fill="none"><rect x={2.5} y={2.5} width={11} height={11} rx={2.5} stroke="currentColor" strokeWidth={1.6}/><circle cx={8} cy={8} r={1.6} fill="currentColor"/></svg>
+              Recentrer
+            </button>
+          </div>
+
+          {/* Astuce contextuelle */}
+          <div style={{fontSize:10.5,color:T.muted,textAlign:'center',lineHeight:1.5,opacity:0.8}}>
+            Glisse pour cadrer · double-clic pour réinitialiser
           </div>
 
           {/* Actions */}
-          <div style={{display:'flex',gap:10,width:'100%',maxWidth:FRAME_W}}>
+          <div style={{display:'flex',gap:10,width:'100%',maxWidth:Math.max(FRAME_W, 300)}}>
             <button onClick={onCancel} style={{flex:1,height:48,borderRadius:14,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.045)',color:T.muted,fontFamily:T.font,fontSize:13,fontWeight:700,cursor:'pointer'}}>Annuler</button>
-            <button onClick={handleConfirm} style={{flex:2,height:48,borderRadius:14,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontFamily:T.font,fontSize:13,fontWeight:900,cursor:'pointer',boxShadow:'0 12px 30px rgba(var(--theme-c1-rgb),0.28)'}}>Appliquer</button>
+            <button onClick={handleConfirm} disabled={!ready} style={{flex:2,height:48,borderRadius:14,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontFamily:T.font,fontSize:13,fontWeight:900,cursor:ready?'pointer':'default',opacity:ready?1:0.6,boxShadow:'0 12px 30px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.36)'}}>Appliquer</button>
           </div>
         </div>
       );
@@ -4224,8 +4325,11 @@
       const getAspectRatio = () => {
         if (containerRef.current) {
           const { offsetWidth: w, offsetHeight: h } = containerRef.current;
-          if (w > 0 && h > 0) return w / h;
+          /* > 40px : ignore les montages cachés/dégénérés (liste d'édition mobile) */
+          if (w > 40 && h > 40) return w / h;
         }
+        /* Repli : forme réelle du widget sur mobile (pleine largeur × 168px) */
+        if (window.innerWidth <= 768) return Math.max(1, (window.innerWidth - 24) / 168);
         return 16 / 9;
       };
 
@@ -4309,14 +4413,18 @@
             )}
             <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
           </div>
-          {cropSrc && (
+          {/* Portal vers <body> : le Shell/la grille utilisent contain/overflow
+              hidden qui écrasaient le modal position:fixed rendu à l'intérieur
+              (le « bug d'ajustement » historique). */}
+          {cropSrc && ReactDOM.createPortal(
             <ImageCropModal
               src={cropSrc}
               aspectRatio={getAspectRatio()}
               borderRadius={getBorderRadius()}
               onConfirm={applyImage}
               onCancel={() => setCropSrc(null)}
-            />
+            />,
+            document.body
           )}
         </Shell>
       );
@@ -4876,6 +4984,32 @@
       const [widgets, setWidgets] = _uS9(initialWidgets);
       const [showPicker, setShowPicker] = _uS9(false);
       const [showPresets, setShowPresets] = _uS9(false);
+      /* Mobile : la grille 12 colonnes est illisible (~94px par widget) et le
+         drag/resize aux coins est inutilisable au doigt. Sur ≤768px on édite
+         en LISTE — cohérent avec le dashboard mobile qui affiche les widgets
+         en colonne : réordonner ↑↓, changer le style, la photo, supprimer. */
+      const [isMobile, setIsMobile] = _uS9(() => window.matchMedia('(max-width: 768px)').matches);
+      _uEff9(() => {
+        const mq = window.matchMedia('(max-width: 768px)');
+        const h = e => setIsMobile(e.matches);
+        if (mq.addEventListener) mq.addEventListener('change', h); else mq.addListener(h);
+        return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else mq.removeListener(h); };
+      }, []);
+      const moveWidgetOrder = (idx, dir) => setWidgets(ws => {
+        const j = idx + dir;
+        if (j < 0 || j >= ws.length) return ws;
+        const next = [...ws];
+        const t = next[idx]; next[idx] = next[j]; next[j] = t;
+        return next;
+      });
+      const removeWidgetMobile = id => {
+        const removed = widgets.find(x => x.id === id);
+        setWidgets(ws => ws.filter(x => x.id !== id));
+        if (removed) {
+          const nice = (CATALOG.find(c => c.label === removed.label)?.name) || removed.label;
+          addToast({ message: `${nice} retiré`, type: 'success', icon: '🗑', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
+        }
+      };
       /* Opened from the dashboard "+ Widget" button → jump straight into the picker. */
       _uEff9(() => {
         if (window.__fsOpenPicker) { setShowPicker(true); try { window.__fsOpenPicker = false; } catch (e) {} }
@@ -5370,7 +5504,7 @@
               <button onClick={() => { setShowPresets(true); setShowPicker(false); }}
                 style={{ background: showPresets ? `linear-gradient(135deg,${c1(0.18)},rgba(var(--theme-c2-rgb),0.10))` : 'linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.032))', border: `1px solid ${showPresets ? c1(0.38) : 'rgba(255,255,255,0.085)'}`, borderRadius: 12, padding: '9px 15px', color: showPresets ? T.c1 : T.text, fontSize: 12, fontWeight: 850, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.2s cubic-bezier(.16,1,.3,1)', boxShadow: showPresets ? `0 12px 30px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.10)` : 'inset 0 1px 0 rgba(255,255,255,0.06)' }}>Préréglage</button>
               {showPicker && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: 14, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 9, width: 'min(390px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+                <div className="fs-edit-picker-sheet" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: 14, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 9, width: 'min(390px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
                   <div style={{ padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
                     <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.c1 }}>Bibliotheque guidee</span>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Commence par un besoin. Tu choisiras le style juste apres.</div>
@@ -5406,7 +5540,7 @@
               <button onClick={() => { onSave(widgets); addToast({ message: 'Dashboard personnalisé enregistré', type: 'success', icon: '✓' }); onNavigate('dashboard'); }} style={{ background: T.c1, border: 'none', borderRadius: 10, padding: '8px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Terminé</button>
             </div>
           </div>
-          <div style={{ flex: 1, padding: '16px 32px', position: 'relative', overflow: 'hidden' }}>
+          {!isMobile && <div style={{ flex: 1, padding: '16px 32px', position: 'relative', overflow: 'hidden' }}>
             {showPicker && <div onClick={() => setShowPicker(false)} style={{ position: 'absolute', inset: 0, zIndex: 100 }} />}
             {false && !selected && !drag && !showPicker && !pickerWidget && (
               <div style={{ position:'absolute', left:32, top:16, zIndex:60, width:300, borderRadius:18, padding:'14px 16px', background:'rgba(8,8,20,0.72)', border:'1px solid rgba(255,255,255,0.08)', backdropFilter:'blur(28px)', boxShadow:'0 18px 48px rgba(0,0,0,0.38)' }}>
@@ -5513,7 +5647,64 @@
                 );
               })}
             </div>
-          </div>
+          </div>}
+
+          {/* ── Éditeur mobile : liste réordonnable ───────────────────────── */}
+          {isMobile && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 110px', WebkitOverflowScrolling: 'touch', position: 'relative' }}>
+              {showPicker && <div onClick={() => setShowPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 100 }} />}
+              <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.6, padding: '2px 4px 12px' }}>
+                L'ordre de cette liste est l'ordre d'affichage sur ton téléphone. Utilise ↑ ↓ pour réorganiser.
+              </div>
+              {widgets.length === 0 && (
+                <div style={{ borderRadius: 18, border: '1px dashed rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.03)', padding: '22px 16px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, fontWeight: 850, color: T.text }}>Dashboard vide</div>
+                  <div style={{ fontSize: 11.5, color: T.muted, marginTop: 6 }}>Touche « + Ajouter » en haut pour choisir tes widgets.</div>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {widgets.map((w, idx) => {
+                  const cat = CATALOG.find(c => c.label === w.label);
+                  const btn = { width: 40, height: 40, borderRadius: 12, border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.05)', color: T.muted, cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: T.font, flexShrink: 0, fontSize: 15 };
+                  return (
+                    <div key={w.id} style={{ borderRadius: 18, border: '1px solid rgba(255,255,255,0.075)', background: 'linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.022))', padding: '12px 12px 11px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                        <span style={{ width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 17, color: '#070810', background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', boxShadow: `0 10px 24px ${c1(0.18)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{cat?.icon || '◇'}</span>
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 900, color: T.text, letterSpacing: '-0.015em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat?.name || w.label}</span>
+                          <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: T.muted, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat?.short || ''}</span>
+                        </span>
+                        <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 800, color: T.muted, flexShrink: 0 }}>{idx + 1}/{widgets.length}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
+                        <button aria-label="Monter" disabled={idx === 0} onClick={() => moveWidgetOrder(idx, -1)} style={{ ...btn, opacity: idx === 0 ? 0.35 : 1 }}>
+                          <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M7 11V3M3.5 6.5 7 3l3.5 3.5" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        <button aria-label="Descendre" disabled={idx === widgets.length - 1} onClick={() => moveWidgetOrder(idx, 1)} style={{ ...btn, opacity: idx === widgets.length - 1 ? 0.35 : 1 }}>
+                          <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3.5 7.5 7 11l3.5-3.5" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        {w.label.toLowerCase() === 'image' && (
+                          <button onClick={() => window[`fs_img_trigger_${w.id}`]?.()} style={{ ...btn, width: 'auto', padding: '0 13px', fontSize: 11.5, fontWeight: 800 }}>Photo</button>
+                        )}
+                        <button onClick={() => { setPickerWidget(w.label); setShowPicker(false); }} style={{ ...btn, width: 'auto', padding: '0 13px', fontSize: 11.5, fontWeight: 800 }}>Styles</button>
+                        <span style={{ flex: 1 }} />
+                        <button aria-label="Supprimer" onClick={() => removeWidgetMobile(w.id)} style={{ ...btn, color: T.rose, borderColor: 'rgba(251,113,133,0.28)', background: 'rgba(251,113,133,0.08)' }}>
+                          <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M2.5 3.5h9M5.5 3V2h3v1M3.5 3.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                      </div>
+                      {/* Widget image : le composant reste monté (invisible) pour exposer
+                          son input file + le déclencheur fs_img_trigger_. */}
+                      {w.label.toLowerCase() === 'image' && (
+                        <div style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', left: -9999 }} aria-hidden="true">
+                          {window.WIDGET_COMPONENTS?.image ? window.WIDGET_COMPONENTS.image(w.variant || 1, w.id, { performanceMode: 'edit' }) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {false && <div style={{ borderTop: '1px solid rgba(255,255,255,0.055)', padding: '16px 32px', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0, overflowX: 'auto', background:'linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.18),rgba(var(--mineral-bg-rgb),0.34))', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)' }}>
             <div style={{ flexShrink:0, marginRight:6, minWidth:92 }}>
               <div style={{ fontSize:9, fontWeight:850, letterSpacing:'0.13em', textTransform:'uppercase', color:T.muted }}>Ajouter</div>
@@ -10739,7 +10930,7 @@
             <span style={{ fontSize: 11, color: T.muted }}>3 presets · 1 custom</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          <div className="fs-tp-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
             {KEPT.map(theme => {
               const isActive = appliedId === theme.id;
               const isPrev = previewId === theme.id;
@@ -10897,7 +11088,7 @@
             </div>
           </div>
 
-          <div style={{ flex: 1, overflow: 'auto', padding: '30px 36px 36px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18, alignItems: 'stretch' }}>
+          <div style={{ flex: 1, overflow: 'auto', padding: '30px 36px 36px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 18, alignItems: 'stretch' }}>
             <div style={{ borderRadius: 28, padding: 30, minHeight: 0, position: 'relative', overflow: 'hidden', background: 'linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.022))', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 24px 70px rgba(0,0,0,0.32)' }}>
               <div style={{ position: 'absolute', inset: -80, background: `radial-gradient(circle at 20% 12%, ${preview?.c1 || T.c1}24, transparent 34%), radial-gradient(circle at 82% 78%, ${preview?.c2 || T.c2}18, transparent 38%)`, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -10932,7 +11123,7 @@
                 <div style={{ fontSize: 12, color: T.muted }}>{active?.name || 'Signature'} actif</div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(230px,100%),1fr))', gap: 12 }}>
                 {presets.map(preset => {
                   const selected = activeId === preset.id;
                   const hot = hovered === preset.id;
@@ -11688,7 +11879,8 @@
             .fs-set-btn.white:hover{background:#fff;color:#06080f}
             .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 320px}
             .fs-set-main{overflow:auto;padding:30px 34px 90px;scrollbar-width:thin}
-            .fs-set-shell{max-width:660px;margin:0 auto;display:grid;gap:16px}
+            .fs-set-shell{max-width:660px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+            .fs-set-shell>*{min-width:0}
             .fs-set-intro{margin:2px 0 4px}
             .fs-set-intro-t{font-family:${T.display};font-size:20px;font-weight:850;letter-spacing:-0.02em}
             .fs-set-intro-d{font-size:13px;color:${T.muted};margin-top:5px;line-height:1.55}
@@ -11772,6 +11964,7 @@
             .fs-reduce-motion *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
             @media(max-width:1040px){.fs-set-body{grid-template-columns:minmax(0,1fr)}.fs-set-preview{display:none}}
             @media(max-width:680px){.fs-set-main{padding:20px 16px 80px}.fs-set-header{padding:16px}}
+            @media(max-width:480px){.fs-tp-grid{grid-template-columns:repeat(2,1fr)!important}}
           `}</style>
 
           <header className="fs-set-header">
