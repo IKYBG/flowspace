@@ -1,0 +1,26 @@
+/* Fondations extraites du <style> monolithique — variables de thème.
+   Migrées à l'identique pour que les composants portés gardent le même rendu. */
+:root {
+  --mineral-bg: #070810;
+  --mineral-bg-rgb: 7, 8, 16;
+  --mineral-surface: #10131f;
+  --mineral-text: #f4f6fb;
+  --mineral-muted: rgba(207, 216, 235, 0.66);
+  --mineral-cyan: #8fdcff;
+  --mineral-orchid: #b891ff;
+  --theme-c1: #8fdcff;
+  --theme-c1-rgb: 143, 220, 255;
+  --theme-c2: #b891ff;
+  --theme-c2-rgb: 184, 145, 255;
+  --font-body: 'Inter', 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Sora', 'Syne', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--mineral-bg);
+  color: var(--mineral-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+#root { min-height: 100dvh; }
