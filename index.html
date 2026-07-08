@@ -2621,6 +2621,25 @@
     <div id="fs-boot"><div style="text-align:center"><div class="fs-boot-ring"></div><div class="fs-boot-lbl">Chargement de LumenOS&hellip;</div></div></div>
   </div>
 
+  <script>
+    /* ── Diagnostic hardcore mobile : si l'app craque, affiche l'erreur visiblerement ── */
+    window.__fsDiag = { steps: [], errors: [] };
+    window.__fsDiagLog = (step, detail) => {
+      console.log('[fs-diag]', step, detail);
+      window.__fsDiag.steps.push({ step, detail, t: Date.now() });
+      if (window.__fsDiag.steps.length > 50) window.__fsDiag.steps.shift();
+    };
+    window.__fsDiagError = (err) => {
+      const msg = (err && err.message) || String(err);
+      console.error('[fs-diag-error]', msg, err);
+      window.__fsDiag.errors.push({ msg, stack: (err && err.stack) || '', t: Date.now() });
+      console.error('[fs-diag-summary]', JSON.stringify({ steps: window.__fsDiag.steps.length, errors: window.__fsDiag.errors.length, lastMsg: msg }));
+    };
+    window.addEventListener('error', e => window.__fsDiagError(e.error || e.message));
+    window.addEventListener('unhandledrejection', e => window.__fsDiagError(e.reason));
+    window.__fsDiagLog('boot', 'diagnostic loaded');
+  </script>
+
   <script type="text/babel">
     const T = {
       accent: '#8fdcff', warm: '#f8d28b', green: '#7af6a4',
@@ -12919,6 +12938,7 @@
       }, [user?.id]);
 
       const handleAuth = (authUser, isNew, remote) => {
+        window.__fsDiagLog('handleAuth', { userId: authUser?.id, isNew });
         const visualSource = remote || (authUser?.id && window._fsSnapshotLocalData ? window._fsSnapshotLocalData(authUser.id) : null);
         if (visualSource && visualSource.widgets) setWidgets(visualSource.widgets);
         else setWidgets(DEFAULT_WIDGETS);
@@ -12958,14 +12978,16 @@
             || document.documentElement.classList.contains('fs-perf-lite');
         })();
         if (skipGate) {
+          window.__fsDiagLog('setScreen', nextScreen);
           setScreen(nextScreen);
         } else {
           /* Séquence d'entrée : le gate couvre l'écran d'auth pendant que le
              cristal s'allume, puis le dashboard monte juste avant l'ouverture
              de l'iris pour que sa cascade de widgets soit visible au reveal. */
           setEntryFx(true);
-          setTimeout(() => setScreen(nextScreen), 460);
+          setTimeout(() => { window.__fsDiagLog('setScreen', nextScreen); setScreen(nextScreen); }, 460);
         }
+        window.__fsDiagLog('handleAuth-done', 'ok');
       };
 
       /* Validate the persisted session at startup. If there's a stale fs_user
@@ -12974,6 +12996,7 @@
          expose its user to the sync layer so saves start replicating. */
       _uEC(() => {
         let mounted = true;
+        window.__fsDiagLog('sessionCheck-start', 'validating persisted session');
         (async () => {
           /* Password-recovery deep link: keep the user on the auth screen so they
              can set a new password, instead of silently logging them in. */
@@ -13044,6 +13067,7 @@
                 applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
               }
               const introPending = localStorage.getItem('fs_intro_pending') === '1' && !(remote && remote.onboarded);
+              window.__fsDiagLog('sessionCheck-success', { screen: introPending ? 'onboarding' : 'dashboard', userId: authUser?.id });
               setScreen(introPending ? 'onboarding' : readRouteScreen());
               /* ── Eagerly sync email into user_data so friend lookup works ── */
               try {
@@ -13066,6 +13090,8 @@
               setScreen('auth');
             }
           } catch (e) {
+            window.__fsDiagLog('sessionCheck-catch', e?.message || String(e));
+            window.__fsDiagError(e);
             console.warn('[fs] session check failed', e);
             if (mounted) setScreen('auth');
           }
@@ -13152,8 +13178,17 @@
       );
     }
 
-    window.__fsBooted = true;
-    ReactDOM.createRoot(document.getElementById('root')).render(<ToastProvider><App /></ToastProvider>);
+    window.__fsDiagLog('react-mount', 'mounting App');
+    try {
+      window.__fsBooted = true;
+      const root = document.getElementById('root');
+      if (!root) throw new Error('root element not found');
+      window.__fsDiagLog('react-create-root', 'creating root');
+      ReactDOM.createRoot(root).render(<ToastProvider><App /></ToastProvider>);
+      window.__fsDiagLog('react-render-done', 'app rendered');
+    } catch (renderErr) {
+      window.__fsDiagError(renderErr);
+    }
   </script>
 
   <script type="text/babel">
