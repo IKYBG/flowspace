@@ -605,10 +605,15 @@
       .fs-dh-sep { display: none !important; }
       /* Le header-right (gamif + widget + éditer + démarrer) est trop large
          pour un écran de téléphone une fois assemblé — il débordait et
-         écrasait le logo à gauche. On compacte chaque élément. */
-      .fs-dashboard-header-right { gap: 6px !important; }
-      .fs-gamif-mini { gap: 5px !important; }
-      .fs-gamif-chip { padding: 5px 8px !important; gap: 4px !important; }
+         écrasait le logo à gauche. On compacte chaque élément, on masque le
+         wordmark « LumenOS » (l'icône cristal suffit) et on interdit tout
+         chevauchement : la rangée de droite peut rétrécir mais jamais
+         recouvrir la gauche. */
+      .fs-dh-wordmark { display: none !important; }
+      .fs-dashboard-header-left { flex-shrink: 0 !important; gap: 10px !important; }
+      .fs-dashboard-header-right { gap: 6px !important; min-width: 0 !important; flex-shrink: 1 !important; overflow: hidden !important; }
+      .fs-gamif-mini { gap: 5px !important; flex-shrink: 1 !important; min-width: 0 !important; }
+      .fs-gamif-chip { padding: 5px 8px !important; gap: 4px !important; flex-shrink: 0 !important; }
       .fs-gamif-quest { display: none !important; }
       .fs-dash-addwidget-btn { width: 40px !important; height: 40px !important; padding: 0 !important; justify-content: center !important; }
       .fs-dash-addwidget-label { display: none !important; }
@@ -622,6 +627,15 @@
         width: auto !important;
         max-height: calc(100dvh - 170px) !important;
       }
+      /* Mode édition mobile : modales compactées à l'écran du téléphone.
+         Préréglages : alignée en haut + scrollable (elle était centrée sans
+         scroll → contenu coupé, boutons inatteignables). */
+      .fs-edit-presets-overlay { padding: 12px !important; place-items: start center !important; }
+      /* Choix de style : header, onglets et grille compactés. */
+      .fs-edit-vp-head { padding: 12px 14px !important; flex-wrap: wrap !important; gap: 10px !important; }
+      .fs-edit-vp-tabs { padding: 10px 14px 0 !important; }
+      .fs-edit-vp-body { padding: 16px 14px 90px !important; }
+      .fs-edit-vp-body > div { grid-template-columns: 1fr !important; gap: 16px !important; }
       .fs-dashboard-grid {
         display: flex !important; flex-direction: column !important;
         overflow-y: auto !important; overflow-x: hidden !important;
@@ -4951,11 +4965,11 @@
                 <SessionBarPremium session={session} user={user} onEnd={onEndSession} focusNudgeOpen={focusNudgeOpen} embedded />
               ) : (
                 <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 9, background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.38), 0 10px 28px rgba(var(--theme-c1-rgb),0.18)' }}>
                   <div style={{ width: 9, height: 13, clipPath:'polygon(50% 0, 90% 28%, 72% 100%, 28% 100%, 10% 28%)', background: '#070810' }} />
                 </div>
-                <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 15, letterSpacing: '-0.025em' }}>LumenOS</span>
+                <span className="fs-dh-wordmark" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 15, letterSpacing: '-0.025em' }}>LumenOS</span>
               </div>
               <div className="fs-dh-sep" style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.08)' }} />
               <span className="fs-dh-greeting" style={{ fontSize: 13, color: T.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{greeting}{user?.name ? `, ${user.name}` : ''} · ton espace de focus cristallin</span>
@@ -5791,8 +5805,8 @@
           </div>}
           {/* ── Variant-picker overlay ─────────────────────────────────────── */}
           {showPresets && (
-            <div onMouseDown={e => e.stopPropagation()} style={{ position:'absolute', inset:0, zIndex:650, display:'grid', placeItems:'center', padding:24, background:'rgba(5,6,14,0.76)', backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', animation:'scaleIn .18s cubic-bezier(.16,1,.3,1) both' }}>
-              <div style={{ width:'min(880px,100%)', borderRadius:28, border:'1px solid rgba(255,255,255,0.10)', background:'linear-gradient(145deg,rgba(var(--mineral-surface-rgb),0.96),rgba(var(--mineral-bg-rgb),0.94))', boxShadow:'0 34px 100px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.09)', overflow:'hidden' }}>
+            <div className="fs-edit-presets-overlay" onMouseDown={e => e.stopPropagation()} style={{ position:'absolute', inset:0, zIndex:650, display:'grid', placeItems:'center', padding:24, overflowY:'auto', WebkitOverflowScrolling:'touch', background:'rgba(5,6,14,0.76)', backdropFilter:'blur(28px)', WebkitBackdropFilter:'blur(28px)', animation:'scaleIn .18s cubic-bezier(.16,1,.3,1) both' }}>
+              <div style={{ width:'min(880px,100%)', maxHeight:'100%', overflowY:'auto', WebkitOverflowScrolling:'touch', borderRadius:28, border:'1px solid rgba(255,255,255,0.10)', background:'linear-gradient(145deg,rgba(var(--mineral-surface-rgb),0.96),rgba(var(--mineral-bg-rgb),0.94))', boxShadow:'0 34px 100px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.09)' }}>
                 <div style={{ padding:'22px 26px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:18, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
                   <div>
                     <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.14em', textTransform:'uppercase', color:T.c1 }}>Préréglages dashboard</div>
@@ -5872,7 +5886,7 @@
             return (
               <div style={{ position: 'absolute', inset: 0, zIndex: 600, display: 'flex', flexDirection: 'column', background: 'rgba(7,7,13,0.97)', backdropFilter: 'blur(40px)', animation: 'scaleIn 0.18s cubic-bezier(0.4,0,0.2,1) both' }}>
                 {/* Header */}
-                <div style={{ padding: '18px 32px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+                <div className="fs-edit-vp-head" style={{ padding: '18px 32px', display: 'flex', alignItems: 'center', gap: 16, borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
                   <button onClick={() => { setPickerWidget(null); setShowPicker(true); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '6px 13px', color: T.muted, fontSize: 12, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
@@ -5888,7 +5902,7 @@
                   </div>
                 </div>
                 {/* Category tab strip */}
-                <div style={{ padding: '12px 32px 0', display: 'flex', gap: 9, overflowX: 'auto', flexShrink: 0 }}>
+                <div className="fs-edit-vp-tabs" style={{ padding: '12px 32px 0', display: 'flex', gap: 9, overflowX: 'auto', flexShrink: 0 }}>
                   {CATALOG.map(c => (
                     <button key={c.id} onClick={() => setPickerWidget(c.label)}
                       style={{ width:118, minHeight:84, background: cat.id === c.id ? `linear-gradient(180deg,${c1(0.14)},rgba(255,255,255,0.035))` : 'rgba(255,255,255,0.028)', border: `1px solid ${cat.id === c.id ? c1(0.34) : 'rgba(255,255,255,0.07)'}`, borderRadius:18, padding:'9px 8px', cursor:'pointer', color: cat.id === c.id ? T.text : T.muted, fontSize:11, fontWeight:760, fontFamily:T.font, transition:'all .2s cubic-bezier(.16,1,.3,1)', flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6, textAlign:'center' }}>
@@ -5900,7 +5914,7 @@
                 </div>
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '12px 0 0' }} />
                 {/* Variant grid */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px 32px' }}>
+                <div className="fs-edit-vp-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px 32px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 22 }}>
                     {cat.variants.map((v, i) => (
                       <CascadeItem key={v} index={i} step={70} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -11714,7 +11728,110 @@
       );
     }
 
-    function SettingsScreen({ onNavigate, user, onUserUpdate, bgThemeId, onApply }) {
+    /* ── Évaluation quotidienne de productivité ──────────────────────────────
+       Une fois par jour, au dashboard, une carte discrète (bas droite, thémée)
+       demande « Évalue ta productivité d'hier » : rouge / jaune / vert.
+       Les notes sont stockées par utilisateur (fs_prod_ratings_{uid}) et
+       colorent la Carte d'activité 365 jours (ProgressScreen). */
+    const PROD_RATING_META = {
+      red:    { c: '#fb7185', label: 'Peu' },
+      yellow: { c: '#fbbf24', label: 'Moyen' },
+      green:  { c: '#4ade80', label: 'Productif' },
+    };
+    window.PROD_RATING_META = PROD_RATING_META;
+    window._fsProdKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    window._fsProdRatings = uid => { try { return JSON.parse(localStorage.getItem(`fs_prod_ratings_${uid || 'guest'}`) || '{}') || {}; } catch (e) { return {}; } };
+    window._fsProdRate = (uid, dateKey, val) => {
+      try {
+        const map = window._fsProdRatings(uid);
+        map[dateKey] = val;
+        localStorage.setItem(`fs_prod_ratings_${uid || 'guest'}`, JSON.stringify(map));
+        window.dispatchEvent(new CustomEvent('fs-prod-rating-update'));
+      } catch (e) { }
+    };
+
+    function ProdRatingPrompt({ user }) {
+      const uid = user?.id;
+      const now = new Date();
+      const yd = new Date(); yd.setDate(yd.getDate() - 1);
+      const yKey = window._fsProdKey(yd);
+      const todayKey = window._fsProdKey(now);
+      const [state, setState] = _uSC(() => {
+        try {
+          if (!uid) return 'hidden';
+          if (localStorage.getItem('fs_prod_prompt_seen') === todayKey) return 'hidden';
+          if (window._fsProdRatings(uid)[yKey]) return 'hidden';
+        } catch (e) { }
+        return 'pending';
+      });
+      const [picked, setPicked] = _uSC(null);
+      _uEC(() => {
+        if (state !== 'pending') return;
+        const t = setTimeout(() => setState('shown'), 1600);
+        return () => clearTimeout(t);
+      }, [state]);
+      if (state === 'hidden' || state === 'pending') return null;
+      const markSeen = () => { try { localStorage.setItem('fs_prod_prompt_seen', todayKey); } catch (e) { } };
+      const dismiss = () => { markSeen(); setState('closing'); setTimeout(() => setState('hidden'), 480); };
+      const rate = val => {
+        if (picked) return;
+        setPicked(val);
+        window._fsProdRate(uid, yKey, val);
+        markSeen();
+        setTimeout(() => setState('closing'), 860);
+        setTimeout(() => setState('hidden'), 1340);
+      };
+      const ydLabel = yd.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+      return (
+        <div className="fs-prod-prompt" role="status" aria-live="polite" style={{ animation: `${state === 'closing' ? 'fsProdOut .46s' : 'fsProdIn .58s'} cubic-bezier(.22,1.2,.32,1) both` }}>
+          <style>{`
+            .fs-prod-prompt{position:fixed;right:18px;bottom:18px;z-index:5200;width:min(320px,calc(100vw - 24px))}
+            @media (max-width:768px){.fs-prod-prompt{right:12px;left:auto;bottom:calc(78px + env(safe-area-inset-bottom,0px))}}
+            @keyframes fsProdIn{from{opacity:0;transform:translateY(22px) scale(.9);filter:blur(12px)}55%{filter:blur(0)}to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+            @keyframes fsProdOut{from{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}to{opacity:0;transform:translateY(16px) scale(.93);filter:blur(9px)}}
+            @keyframes fsProdBlob{0%,100%{border-radius:46% 54% 52% 48%/48% 46% 54% 52%}50%{border-radius:54% 46% 48% 52%/52% 54% 46% 48%}}
+            .fs-prod-dot{position:relative;flex:1;height:44px;border:none;cursor:pointer;display:grid;place-items:center;
+              animation:fsProdBlob 4.2s ease-in-out infinite;
+              transition:transform .34s cubic-bezier(.34,1.56,.64,1),opacity .3s,filter .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.30)}
+            .fs-prod-dot:hover{transform:translateY(-3px) scale(1.05)}
+            .fs-prod-dot.on{transform:scale(1.12);animation-duration:1.6s}
+            .fs-prod-dot.off{opacity:.22;filter:saturate(.4);transform:scale(.92)}
+            .fs-prod-dot span{font-size:9.5px;font-weight:900;letter-spacing:.02em;color:rgba(7,8,16,.82)}
+            html.fs-reduce-motion .fs-prod-prompt,html.fs-reduce-motion .fs-prod-dot{animation:none!important}
+          `}</style>
+          <div style={{ position: 'relative', borderRadius: 22, padding: '15px 15px 14px', overflow: 'hidden',
+            background: 'linear-gradient(150deg, rgba(var(--mineral-surface-rgb),0.94), rgba(var(--theme-c1-rgb),0.10))',
+            border: '1px solid rgba(var(--theme-c1-rgb),0.22)',
+            boxShadow: '0 22px 60px rgba(0,0,0,0.44), 0 0 38px rgba(var(--theme-c1-rgb),0.12), inset 0 1px 0 rgba(255,255,255,0.09)',
+            backdropFilter: 'blur(26px) saturate(1.15)', WebkitBackdropFilter: 'blur(26px) saturate(1.15)' }}>
+            <button type="button" onClick={dismiss} aria-label="Plus tard" title="Plus tard"
+              style={{ position: 'absolute', top: 10, right: 10, width: 24, height: 24, borderRadius: 9, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.045)', color: 'rgba(244,246,251,0.62)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+              <svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M2.2 2.2l6.6 6.6M8.8 2.2L2.2 8.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+            </button>
+            <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(var(--theme-c1-rgb),0.92)' }}>Carte d'activité</div>
+            <div style={{ marginTop: 5, fontSize: 13.5, fontWeight: 800, letterSpacing: '-0.015em', color: 'var(--mineral-text)' }}>Évalue ta productivité d'hier</div>
+            <div style={{ marginTop: 3, fontSize: 11, color: 'rgba(244,246,251,0.55)', textTransform: 'capitalize' }}>{ydLabel}</div>
+            <div style={{ display: 'flex', gap: 9, marginTop: 12 }}>
+              {['red', 'yellow', 'green'].map(val => {
+                const m = PROD_RATING_META[val];
+                const cls = 'fs-prod-dot' + (picked ? (picked === val ? ' on' : ' off') : '');
+                return (
+                  <button key={val} type="button" className={cls} onClick={() => rate(val)} aria-label={m.label}
+                    style={{ background: `linear-gradient(145deg, ${m.c}, ${m.c}cc)`, boxShadow: `0 10px 26px ${m.c}44, inset 0 1px 0 rgba(255,255,255,.34)` }}>
+                    {picked === val
+                      ? <svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M2.6 7.4l3 3 5.8-6.4" stroke="rgba(7,8,16,.85)" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : <span>{m.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.ProdRatingPrompt = ProdRatingPrompt;
+
+    function SettingsScreen({ onNavigate, user, onUserUpdate, bgThemeId, onApply, onLogout }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const safeGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 
@@ -11947,7 +12064,7 @@
             .fs-set-btn:hover{background:rgba(255,255,255,0.08);color:${T.text};transform:translateY(-1px)}
             .fs-set-btn.white{background:#f4f6fb;color:#0a0c14;border-color:#f4f6fb;box-shadow:0 12px 30px rgba(255,255,255,0.12)}
             .fs-set-btn.white:hover{background:#fff;color:#06080f}
-            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 320px}
+            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr)}
             .fs-set-main{overflow:auto;padding:30px 34px 90px;scrollbar-width:thin}
             .fs-set-shell{max-width:660px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
             .fs-set-shell>*{min-width:0}
@@ -12046,7 +12163,6 @@
             <div className="fs-set-header-r">
               <span className={'fs-set-saved' + (saved ? ' show' : '')}>Enregistré ✓</span>
               <button className="fs-set-btn" onClick={resetAll}>Reset</button>
-              <button className="fs-set-btn white" onClick={saveAll}>Save changes</button>
             </div>
           </header>
 
@@ -12074,7 +12190,7 @@
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 14, padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div>
                       <div className="fs-set-lbl">Nom affiché</div>
-                      <input className="fs-set-input" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Ton nom" />
+                      <input className="fs-set-input" value={displayName} onChange={e => setDisplayName(e.target.value)} onBlur={() => { if ((displayName.trim() || 'Utilisateur') !== (user?.name || '')) saveAll(); }} placeholder="Ton nom" />
                     </div>
                     <div>
                       <div className="fs-set-lbl">Email{emailLocked ? ' · Supabase' : ''}</div>
@@ -12084,6 +12200,13 @@
                   <Field title="Page d'ouverture" desc="L'écran affiché au lancement de LumenOS.">
                     <Segmented k="startPage" options={[['dashboard', 'Dashboard'], ['tasks', 'Tasks'], ['session', 'Focus'], ['notes', 'Notes']]} />
                   </Field>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="fs-set-row-t">Session</div>
+                      <div className="fs-set-row-d">Tes données restent sauvegardées et synchronisées.</div>
+                    </div>
+                    <button className="fs-set-danger-btn" onClick={() => onLogout && onLogout()} style={{ flexShrink: 0 }}>Se déconnecter</button>
+                  </div>
                 </Card>
 
                 {/* APPARENCE (essentiel) */}
@@ -12198,42 +12321,6 @@
               </div>
             </main>
 
-            <aside className="fs-set-preview">
-              <div className="fs-set-preview-inner">
-                <div className="fs-set-prev-stage">
-                  <div className="fs-set-prev-card">
-                    <div className="fs-set-lbl" style={{ marginBottom: 12 }}>Aperçu en direct</div>
-                    <div className="fs-set-prev-mini">
-                      <span className="fs-set-prev-orb" />
-                      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
-                        <div className="fs-set-prev-bar" style={{ width: '70%' }} />
-                        <div className="fs-set-prev-bar" style={{ width: '45%', opacity: .6 }} />
-                      </div>
-                    </div>
-                    <div className="fs-set-prev-mini" style={{ height: 40 }}>
-                      <div className="fs-set-prev-bar" style={{ width: '85%' }} />
-                    </div>
-                    <div className="fs-set-prev-meta">
-                      <span className="fs-set-pchip"><span style={{ width: 11, height: 11, borderRadius: '50%', background: accentHex }} /> {prefs.accent}</span>
-                      <span className="fs-set-pchip">Dark</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="fs-set-panel">
-                  <div className="fs-set-panel-k">Raccourcis</div>
-                  <div className="fs-set-kbd"><span>Palette de commandes</span><kbd>⌘K</kbd></div>
-                  <div className="fs-set-kbd"><span>Aller aux réglages</span><kbd>G → S</kbd></div>
-                  <div className="fs-set-kbd"><span>Enregistrer</span><kbd>⌘S</kbd></div>
-                </div>
-
-                <div className="fs-set-panel">
-                  <div className="fs-set-panel-k">À savoir</div>
-                  <div className="fs-set-note">Tes changements s'appliquent tout de suite, sans rechargement.</div>
-                  <div className="fs-set-note">Pas besoin de tout régler : les valeurs par défaut sont déjà bonnes.</div>
-                </div>
-              </div>
-            </aside>
           </div>
 
           {confirmWipe && (
@@ -12439,6 +12526,18 @@
           const preferred = localStorage.getItem('fs_default_route') || 'dashboard';
           return APP_ROUTE_SCREENS.has(preferred) ? preferred : 'dashboard';
         } catch(e) { return 'dashboard'; }
+      };
+      /* Écran d'OUVERTURE (login / restauration de session) : la préférence
+         « Page d'ouverture » des settings prime sur le hash résiduel de la
+         navigation précédente (#dashboard, #notes…) — sinon le réglage ne
+         s'appliquait jamais. Le hash reste prioritaire uniquement pour la
+         navigation en cours de session (readRouteScreen). */
+      const readStartScreen = () => {
+        try {
+          const preferred = localStorage.getItem('fs_default_route') || 'dashboard';
+          if (APP_ROUTE_SCREENS.has(preferred)) return preferred;
+        } catch(e) {}
+        return readRouteScreen();
       };
       const setRoutedScreen = (next, replace = false) => {
         if (APP_ROUTE_SCREENS.has(next)) {
@@ -13020,7 +13119,7 @@
           window._fsStartSessionRealtime(authUser.id);
         }
         if (visualSource) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: visualSource }));
-        const nextScreen = isNew ? 'onboarding' : readRouteScreen();
+        const nextScreen = isNew ? 'onboarding' : readStartScreen();
         /* Gate sauté en reduce-motion (a11y), en perf-lite ET sur tout mobile.
            Le voile du gate est un cercle OPAQUE de 150vmax : une couche
            composited géante qui fait crasher le compositeur de beaucoup de
@@ -13095,7 +13194,7 @@
                   if (localSnapshot.widget_style) applySyncedWidgetStyle(localSnapshot.widget_style);
                   setSyncEpoch(n => n + 1);
                 }
-                setScreen(readRouteScreen());
+                setScreen(readStartScreen());
                 window._fsRetryRemoteHydration?.(session.user.id);
                 return;
               }
@@ -13128,7 +13227,7 @@
               }
               const introPending = localStorage.getItem('fs_intro_pending') === '1' && !(remote && remote.onboarded);
               window.__fsDiagLog('sessionCheck-success', { screen: introPending ? 'onboarding' : 'dashboard', userId: authUser?.id });
-              setScreen(introPending ? 'onboarding' : readRouteScreen());
+              setScreen(introPending ? 'onboarding' : readStartScreen());
               /* ── Eagerly sync email into user_data so friend lookup works ── */
               try {
                 const userEmail = session.user.email?.toLowerCase();
@@ -13218,7 +13317,7 @@
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
-                {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
+                {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} onLogout={handleLogout} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
@@ -13233,6 +13332,7 @@
           {showSession && <SessionModal onClose={() => setShowSession(false)} onLaunch={handleLaunch} />}
           {isApp && showReveal && <CrystalReveal onComplete={() => { setShowReveal(false); setDashboardReady(true); }} />}
           {isApp && focusNudge && <FocusNudgePopup nudge={focusNudge} onClose={() => setFocusNudge(null)} />}
+          {isApp && screen === 'dashboard' && !activeSession && user?.id && window.ProdRatingPrompt && React.createElement(window.ProdRatingPrompt, { user, key: user.id })}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
         </>
       );
@@ -16940,12 +17040,14 @@
   /* ─────────────────────────────────────────────────────────────
      4. PROGRESS SCREEN  (Heatmap · FP Chart · Vault)
   ───────────────────────────────────────────────────────────── */
-  function FocusHeatmap({ heatmap={} }) {
+  function FocusHeatmap({ heatmap={}, ratings={} }) {
+    const RATING_C = (window.PROD_RATING_META) || { red:{c:'#fb7185'}, yellow:{c:'#fbbf24'}, green:{c:'#4ade80'} };
+    const todayK = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
     const days = [];
     for (let i=364; i>=0; i--) {
       const d = new Date(); d.setDate(d.getDate()-i);
       const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      days.push({ k, min: heatmap[k]||0 });
+      days.push({ k, min: heatmap[k]||0, rating: ratings[k]||null });
     }
     const maxMin = Math.max(...days.map(d=>d.min), 1);
     const getCol = min => {
@@ -16956,26 +17058,44 @@
       if (t < 0.75) return `rgba(165,128,255,${0.65+t*0.4})`;
       return `rgba(255,255,255,${0.75+t*0.25})`;
     };
+    /* La note quotidienne (rouge/jaune/vert) prime sur l'intensité focus :
+       en un regard, jours productifs vs jours creux. */
+    const cellCol = day => day.rating && RATING_C[day.rating] ? RATING_C[day.rating].c : getCol(day.min);
+    const RATING_LABEL = { red:'peu productif', yellow:'moyen', green:'productif' };
     const weeks = [];
     for (let i=0; i<days.length; i+=7) weeks.push(days.slice(i,i+7));
-    const months=['J','F','M','A','M','J','J','A','S','O','N','D'];
     return (
       <div style={{overflowX:'auto',paddingBottom:6}}>
         <div style={{display:'flex',gap:3,minWidth:'fit-content'}}>
           {weeks.map((wk,wi)=>(
             <div key={wi} style={{display:'flex',flexDirection:'column',gap:3}}>
               {wk.map((day,di)=>(
-                <div key={di} className="heat-cell" title={`${day.k} · ${day.min} min`} style={{background:getCol(day.min)}}/>
+                <div key={di} className="heat-cell"
+                  title={`${day.k}${day.rating ? ' · ' + RATING_LABEL[day.rating] : ''}${day.min ? ' · ' + day.min + ' min focus' : ''}`}
+                  style={{background:cellCol(day), boxShadow: day.rating ? `0 0 6px ${RATING_C[day.rating].c}66` : undefined,
+                    outline: day.k === todayK ? '1.5px solid var(--theme-c1)' : undefined, outlineOffset: day.k === todayK ? 1 : undefined}}/>
               ))}
             </div>
           ))}
         </div>
-        <div style={{display:'flex',gap:6,marginTop:10,alignItems:'center'}}>
-          <span style={{fontSize:9,color:T.muted}}>Moins</span>
-          {[0,0.25,0.5,0.75,1].map((t,i)=>(
-            <div key={i} style={{width:11,height:11,borderRadius:3,background:getCol(t*maxMin||0)}}/>
-          ))}
-          <span style={{fontSize:9,color:T.muted}}>Plus</span>
+        <div style={{display:'flex',gap:12,marginTop:10,alignItems:'center',flexWrap:'wrap'}}>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <span style={{fontSize:9,color:T.muted}}>Focus · moins</span>
+            {[0,0.25,0.5,0.75,1].map((t,i)=>(
+              <div key={i} style={{width:11,height:11,borderRadius:3,background:getCol(t*maxMin||0)}}/>
+            ))}
+            <span style={{fontSize:9,color:T.muted}}>plus</span>
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <span style={{fontSize:9,color:T.muted}}>Productivité</span>
+            {['red','yellow','green'].map(r=>(
+              <div key={r} title={RATING_LABEL[r]} style={{width:11,height:11,borderRadius:3,background:RATING_C[r].c,boxShadow:`0 0 6px ${RATING_C[r].c}55`}}/>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <div style={{width:11,height:11,borderRadius:3,background:'rgba(255,255,255,0.05)',outline:'1.5px solid var(--theme-c1)',outlineOffset:1}}/>
+            <span style={{fontSize:9,color:T.muted}}>Aujourd'hui</span>
+          </div>
         </div>
       </div>
     );
@@ -17011,9 +17131,17 @@
     const [g] = useGamif(user?.id);
     const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
     const { heatmap={}, fpmap={}, fp=0, xp=0 } = g;
+    /* Notes de productivité quotidiennes (rouge/jaune/vert) — colorent la carte */
+    const [ratings, setRatings] = React.useState(() => window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
+    React.useEffect(() => {
+      const sync = () => setRatings(window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
+      sync();
+      window.addEventListener('fs-prod-rating-update', sync);
+      return () => window.removeEventListener('fs-prod-rating-update', sync);
+    }, [user?.id]);
     const totalMin = Object.values(heatmap).reduce((a,b)=>a+b,0);
     const totalFP  = Object.values(fpmap).reduce((a,b)=>a+b,0);
-    const hasActivity = crystals.length > 0 || totalMin > 0;
+    const hasActivity = crystals.length > 0 || totalMin > 0 || Object.keys(ratings).length > 0;
     const goSession = () => { if (onNavigate) onNavigate('session'); else { try { location.hash = '#session'; } catch (e) {} } };
 
     return (
@@ -17063,11 +17191,16 @@
 
           {/* Heatmap */}
           <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',marginBottom:20}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,gap:10,flexWrap:'wrap'}}>
               <div style={{fontSize:13,fontWeight:700,color:T.text}}>Carte d'activité</div>
-              <div style={{fontSize:10,color:T.muted}}>365 derniers jours</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:10,fontWeight:800,color:'var(--theme-c1)',background:'rgba(var(--theme-c1-rgb),0.10)',border:'1px solid rgba(var(--theme-c1-rgb),0.22)',borderRadius:99,padding:'3px 9px',textTransform:'capitalize'}}>
+                  {new Date().toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}
+                </span>
+                <span style={{fontSize:10,color:T.muted}}>365 derniers jours</span>
+              </div>
             </div>
-            <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={heatmap}/></div>
+            <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={heatmap} ratings={ratings}/></div>
           </div>
 
           {/* Weekly FP chart */}
