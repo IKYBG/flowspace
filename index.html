@@ -2464,6 +2464,12 @@
           if (payload.eventType === 'UPDATE' && !payload.new.active) {
             window.dispatchEvent(new CustomEvent('fs-session-end', { detail: payload.new }));
           }
+          /* L'hôte a réellement démarré (started_at mis à jour à la sortie de la
+             salle d'attente) : les invités déjà dans la session resynchronisent
+             leur chrono sur la nouvelle heure de départ. */
+          if (payload.eventType === 'UPDATE' && payload.new.active) {
+            window.dispatchEvent(new CustomEvent('fs-session-sync', { detail: payload.new }));
+          }
         })
         .subscribe();
       window._fsSessionChannel = ch;
@@ -2501,6 +2507,9 @@
         })
         .on('broadcast', { event: 'invite-cancel' }, ({ payload }) => {
           window.dispatchEvent(new CustomEvent('fs-invite-cancel', { detail: payload }));
+        })
+        .on('broadcast', { event: 'session-left' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-session-left', { detail: payload }));
         })
         .subscribe();
       window._fsInviteChannel = ch;
@@ -4918,7 +4927,12 @@
       const partnerInitial = partnerName ? partnerName[0].toUpperCase() : '?';
       const partnerColor = session.friendUser?.color || '#4ade80';
       const col = session.type === 'solo' ? T.c1 : T.green;
-      const isTogether = session.type === 'together';
+      /* Tous les invités ont quitté → la barre repasse en affichage solo. */
+      const _allLeft = !session.isGuest && Array.isArray(session.leftIds) && session.leftIds.length > 0
+        && (Array.isArray(session.friendUsers) && session.friendUsers.length
+          ? session.friendUsers.every(f => session.leftIds.includes(f.id))
+          : true);
+      const isTogether = session.type === 'together' && !_allLeft;
       const R = 10;
       const circ = 2 * Math.PI * R;
 
@@ -13044,12 +13058,20 @@
       /* Rejoindre effectivement une session partagée (l'ami accepte). */
       const joinSharedSession = async (s) => {
         if (!s?.active || !s.id) return;
+        /* Relit la ligne fraîche : si l'hôte a patienté en salle d'attente,
+           started_at a été mis à jour au vrai départ — le chrono reste juste. */
+        try {
+          const { data: fresh } = await window._fsSb.from('sessions')
+            .select('id, host_id, type, duration, music, breaks, active, started_at')
+            .eq('id', s.id).maybeSingle();
+          if (fresh) { if (!fresh.active) return; s = fresh; }
+        } catch (_) {}
         let hostData = null;
         try { ({ data: hostData } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle()); } catch (_) {}
         const next = {
           type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
           startTime: new Date(s.started_at).getTime(),
-          broadcastId: s.id, isGuest: true,
+          broadcastId: s.id, isGuest: true, hostId: s.host_id,
           hostEmail: hostData?.email || '',
           friendUser: { name: hostData?.name || hostData?.email?.split('@')[0] || '?', initial: (hostData?.name || hostData?.email || '?')[0].toUpperCase(), color: '#4ade80' },
         };
@@ -13163,21 +13185,56 @@
         return () => window.removeEventListener('fs-remote-update', handler);
       }, []);
 
-      const handleLaunch = async (session) => {
-        const enriched = { ...session, broadcastId: `${Date.now()}`, hostEmail: user?.email || '', userId: user?.id || null, startTime: Date.now() };
-        setActiveSession(enriched);
-        try { localStorage.setItem('fs_active_session', JSON.stringify(enriched)); } catch(e) {}
+      /* ── Salle d'attente des sessions partagées ─────────────────────────────
+         Ensemble ne démarre plus instantanément : les invitations partent
+         (table sessions), l'hôte patiente dans une salle d'attente, et la
+         session ne se lance qu'à la première acceptation (ou manuellement). */
+      const [pendingSession, setPendingSession] = _uSC(null);
+      const pendingRef = React.useRef(null);
+      _uEC(() => { pendingRef.current = pendingSession; }, [pendingSession]);
+      const activeSessionRef = React.useRef(null);
+      _uEC(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+
+      const _applyFocusTasks = (session) => {
         try {
           if (session.focusTaskIds?.length > 0) localStorage.setItem('fs_session_focus_tasks', JSON.stringify(session.focusTaskIds));
           else localStorage.removeItem('fs_session_focus_tasks');
           window.dispatchEvent(new CustomEvent('fs-focus-tasks-update'));
         } catch(e) {}
-        setShowSession(false);
-        setRoutedScreen('dashboard', true);
-        /* Insert into Supabase sessions table for cross-device Together.
-           Multi-amis : une ligne par ami accepté — chaque client abonné
-           (friend_id=eq.moi) rejoint automatiquement à l'INSERT. */
+      };
+      const _activateSession = (session, extra = {}) => {
+        const enriched = { ...session, broadcastId: `${Date.now()}`, hostEmail: user?.email || '', userId: user?.id || null, startTime: Date.now(), ...extra };
+        setActiveSession(enriched);
+        try { localStorage.setItem('fs_active_session', JSON.stringify(enriched)); } catch(e) {}
+        _applyFocusTasks(session);
+        return enriched;
+      };
+
+      const startPendingSession = async (pend = null) => {
+        const p = pend || pendingRef.current;
+        if (!p) return;
+        setPendingSession(null);
+        const enriched = _activateSession(p.cfg, { broadcastId: p.ids[0], broadcastIds: p.ids });
+        /* Recale started_at sur le vrai départ : les invités (déjà dedans via
+           fs-session-sync, ou en retard via re-lecture de la ligne) restent
+           synchronisés avec le chrono de l'hôte. */
+        try { await window._fsSb.from('sessions').update({ started_at: new Date(enriched.startTime).toISOString() }).in('id', p.ids); } catch (e) {}
+      };
+      const startPendingRef = React.useRef(null);
+      _uEC(() => { startPendingRef.current = startPendingSession; });
+
+      const cancelPendingSession = async () => {
+        const p = pendingRef.current;
+        setPendingSession(null);
+        if (!p) return;
+        try { await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).in('id', p.ids); } catch (e) {}
+        addToast({ message: 'Invitation annulée', type: 'info', icon: '✕', duration: 3200 });
+      };
+
+      const handleLaunch = async (session) => {
         if (session.type === 'together' && (session.friendIds?.length || session.friendId)) {
+          setShowSession(false);
+          setRoutedScreen('dashboard', true);
           const targets = (session.friendIds && session.friendIds.length ? session.friendIds : [session.friendId]).filter(Boolean);
           const ids = [];
           for (const fid of targets) {
@@ -13186,19 +13243,98 @@
                 host_id: window._fsSbUser?.id, friend_id: fid,
                 type: 'together', duration: session.duration,
                 music: session.music, breaks: session.breaks, active: true,
-                started_at: new Date(enriched.startTime).toISOString(),
+                started_at: new Date().toISOString(),
               }).select('id').single();
               if (data) ids.push(data.id);
             } catch (e) { console.warn('[fs] session insert failed', e); }
           }
-          if (!ids.length) addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' });
-          else setActiveSession(prev => {
-            const next = { ...prev, broadcastId: ids[0], broadcastIds: ids };
-            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
+          if (!ids.length) {
+            /* Pas de sync possible : démarrage direct comme avant. */
+            addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' });
+            _activateSession(session);
+            return;
+          }
+          const invited = (Array.isArray(session.friendUsers) && session.friendUsers.length
+            ? session.friendUsers
+            : [{ id: session.friendId, name: session.friendUser?.name || '?', initial: session.friendUser?.initial, color: session.friendUser?.color }]
+          ).filter(f => f && f.id).map(f => ({ id: f.id, name: f.name || '?', initial: f.initial || (f.name || '?')[0].toUpperCase(), color: f.color || '#4ade80' }));
+          setPendingSession({ cfg: session, ids, invited, joined: [], declined: [], createdAt: Date.now() });
+          return;
+        }
+        _activateSession(session);
+        setShowSession(false);
+        setRoutedScreen('dashboard', true);
+      };
+
+      /* Réponses des amis pendant la salle d'attente : premier accepté → départ. */
+      _uEC(() => {
+        const onResp = (e) => {
+          const p = e.detail;
+          if (!p?.friend?.id) return;
+          const pend = pendingRef.current;
+          if (!pend || !pend.invited.some(f => f.id === p.friend.id)) return;
+          if (p.status === 'accepted') {
+            setPendingSession(prev => {
+              if (!prev || prev.joined.includes(p.friend.id)) return prev;
+              return { ...prev, joined: [...prev.joined, p.friend.id] };
+            });
+            /* Petit temps pour voir le ✓ apparaître, puis lancement. */
+            setTimeout(() => {
+              const cur = pendingRef.current;
+              if (cur && cur.joined.length > 0) startPendingRef.current?.(cur);
+            }, 1100);
+          } else if (p.status === 'declined') {
+            setPendingSession(prev => prev && !prev.declined.includes(p.friend.id)
+              ? { ...prev, declined: [...prev.declined, p.friend.id] }
+              : prev);
+          }
+        };
+        window.addEventListener('fs-invite-response', onResp);
+        return () => window.removeEventListener('fs-invite-response', onResp);
+      }, []);
+
+      /* Invité : resynchronise le chrono quand l'hôte démarre pour de vrai.
+         Hôte : un invité quitte → avatar retiré de la top bar (animé) + toast. */
+      _uEC(() => {
+        const onSync = (e) => {
+          const row = e.detail;
+          if (!row?.id || !row.started_at) return;
+          setActiveSession(a => {
+            if (!a || !a.isGuest || a.broadcastId !== row.id) return a;
+            const t = new Date(row.started_at).getTime();
+            if (!t || Math.abs(t - a.startTime) < 1500) return a;
+            const next = { ...a, startTime: t };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(_) {}
             return next;
           });
-        }
-      };
+        };
+        const onLeft = (e) => {
+          const p = e.detail;
+          if (!p?.friend?.id) return;
+          const a = activeSessionRef.current;
+          if (!a || a.isGuest || a.type !== 'together') return;
+          const ids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
+          if (p.sessionId && !ids.includes(p.sessionId)) return;
+          if ((a.leftIds || []).includes(p.friend.id)) return;
+          addToast({ message: `${p.friend.name || 'Ton ami'} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
+          setActiveSession(cur => {
+            if (!cur) return cur;
+            const next = { ...cur, leftIds: [...(cur.leftIds || []), p.friend.id] };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(_) {}
+            return next;
+          });
+          /* Clôt la ligne de cet invité (best-effort). */
+          if (p.sessionId) {
+            try { window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).eq('id', p.sessionId).then(() => {}); } catch(_) {}
+          }
+        };
+        window.addEventListener('fs-session-sync', onSync);
+        window.addEventListener('fs-session-left', onLeft);
+        return () => {
+          window.removeEventListener('fs-session-sync', onSync);
+          window.removeEventListener('fs-session-left', onLeft);
+        };
+      }, []);
 
       const handleEndSession = async (crystalData = null) => {
         const hasCrystalData = crystalData
@@ -13221,6 +13357,15 @@
               addToast({ message: msg, type: 'success', duration: 4000 });
             });
           }
+        }
+        /* Invité qui quitte → prévient l'hôte (sa top bar retire l'avatar). */
+        if (activeSession?.isGuest && activeSession.hostId) {
+          try {
+            window._fsSendToUser?.(activeSession.hostId, 'session-left', {
+              sessionId: activeSession.broadcastId,
+              friend: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || '?' },
+            });
+          } catch (e) {}
         }
         if (activeSession?.type === 'together' && (activeSession.broadcastIds?.length || activeSession.broadcastId)) {
           try {
@@ -13637,6 +13782,7 @@
           {isApp && showReveal && <CrystalReveal onComplete={() => { setShowReveal(false); setDashboardReady(true); }} />}
           {isApp && focusNudge && <FocusNudgePopup nudge={focusNudge} onClose={() => setFocusNudge(null)} />}
           {isApp && screen === 'dashboard' && !activeSession && user?.id && window.ProdRatingPrompt && React.createElement(window.ProdRatingPrompt, { user, key: user.id })}
+          {isApp && pendingSession && !activeSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: pendingSession, user, onStart: () => startPendingSession(), onCancel: cancelPendingSession })}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
         </>
       );
@@ -16156,6 +16302,118 @@
       );
     }
 
+    /* ── Salle d'attente de session partagée ─────────────────────────────────
+       L'hôte patiente ici pendant que les invitations sont en route : avatars
+       avec anneau pulsant, ✓ vert à l'acceptation (départ auto ~1 s après),
+       ✕ si refus, et actions « Démarrer sans attendre » / « Annuler ». */
+    function SessionWaitRoom({ pending, user, onStart, onCancel }) {
+      const joined = pending.joined || [];
+      const declined = pending.declined || [];
+      const allDeclined = pending.invited.length > 0 && pending.invited.every(f => declined.includes(f.id));
+      const anyJoined = joined.length > 0;
+      const [elapsed, setElapsed] = React.useState(() => Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000)));
+      React.useEffect(() => { const id = setInterval(() => setElapsed(Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000))), 1000); return () => clearInterval(id); }, [pending.createdAt]);
+      const names = pending.invited.map(f => f.name).join(', ');
+      const title = anyJoined ? 'C’est parti !' : allDeclined ? 'Invitation refusée' : 'En attente de tes amis';
+      const subtitle = anyJoined
+        ? 'Ton ami a rejoint — lancement de la session…'
+        : allDeclined
+          ? 'Tu peux quand même te lancer en solo, ou annuler.'
+          : `Invitation envoyée à ${names}. La session démarrera dès qu’un ami accepte.`;
+      return (
+        <div className="fs-wait-veil" role="dialog" aria-label="Salle d'attente de session partagée">
+          <style>{`
+            .fs-wait-veil{position:fixed;inset:0;z-index:5300;display:grid;place-items:center;padding:20px;
+              background:rgba(4,5,10,0.55);backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);
+              animation:fsWaitVeilIn .4s ease both}
+            @keyframes fsWaitVeilIn{from{opacity:0}to{opacity:1}}
+            .fs-wait-card{position:relative;width:min(420px,100%);border-radius:24px;padding:28px 28px 24px;overflow:hidden;
+              background:linear-gradient(170deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-surface-rgb),0.90));
+              border:1px solid rgba(255,255,255,0.10);
+              box-shadow:0 32px 90px rgba(0,0,0,0.55), 0 0 60px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.09);
+              animation:fsWaitCardIn .6s cubic-bezier(.22,1.28,.36,1) both}
+            @keyframes fsWaitCardIn{from{opacity:0;transform:translateY(24px) scale(.95);filter:blur(8px)}to{opacity:1;transform:none;filter:blur(0)}}
+            .fs-wait-card::before{content:'';position:absolute;inset:0;pointer-events:none;
+              background:radial-gradient(120% 80% at 50% 0%, rgba(var(--theme-c1-rgb),0.10), transparent 55%)}
+            .fs-wait-eyebrow{display:flex;align-items:center;gap:7px;font-size:9.5px;font-weight:800;letter-spacing:0.14em;
+              text-transform:uppercase;color:rgba(var(--theme-c1-rgb),0.95)}
+            .fs-wait-dot{width:6px;height:6px;border-radius:50%;background:var(--theme-c1);box-shadow:0 0 10px rgba(var(--theme-c1-rgb),0.8);
+              animation:fsWaitPulse 1.4s ease-in-out infinite}
+            @keyframes fsWaitPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+            .fs-wait-title{margin-top:10px;font-family:var(--font-display);font-size:22px;font-weight:850;letter-spacing:-0.03em;color:var(--mineral-text)}
+            .fs-wait-sub{margin-top:6px;font-size:12.5px;line-height:1.55;color:rgba(244,246,251,0.55)}
+            .fs-wait-row{display:flex;justify-content:center;gap:18px;margin:22px 0 6px}
+            .fs-wait-friend{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:64px}
+            .fs-wait-av{position:relative;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+              font-family:var(--font-display);font-weight:900;font-size:17px;color:#071018;
+              border:2px solid rgba(var(--mineral-bg-rgb),.9);transition:filter .4s,opacity .4s}
+            .fs-wait-ring{position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(var(--theme-c1-rgb),0.55);
+              border-top-color:transparent;animation:fsWaitSpin 1.15s linear infinite}
+            @keyframes fsWaitSpin{to{transform:rotate(360deg)}}
+            .fs-wait-badge{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+              border:2px solid rgba(var(--mineral-bg-rgb),.95);animation:fsWaitPop .45s cubic-bezier(.34,1.56,.64,1) both}
+            @keyframes fsWaitPop{from{transform:scale(0)}to{transform:scale(1)}}
+            .fs-wait-friend.off .fs-wait-av{filter:saturate(.25);opacity:.4}
+            .fs-wait-name{font-size:11px;font-weight:700;color:rgba(244,246,251,0.7);max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .fs-wait-meta{display:flex;justify-content:center;gap:14px;margin-top:12px;font-size:11px;color:rgba(244,246,251,0.45)}
+            .fs-wait-actions{display:flex;gap:10px;margin-top:20px}
+            .fs-wait-btn{flex:1;height:44px;border-radius:13px;font:800 12.5px var(--font-body);cursor:pointer;
+              transition:transform .18s var(--mineral-ease),background .2s,box-shadow .2s}
+            .fs-wait-btn:active{transform:scale(.97)}
+            .fs-wait-btn.go{border:none;color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+              box-shadow:0 14px 32px rgba(var(--theme-c1-rgb),0.25)}
+            .fs-wait-btn.go:hover{box-shadow:0 16px 40px rgba(var(--theme-c1-rgb),0.35)}
+            .fs-wait-btn.ghost{border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.045);color:rgba(244,246,251,0.75)}
+            .fs-wait-btn.ghost:hover{background:rgba(255,107,138,0.09);border-color:rgba(255,107,138,0.28);color:#ff8fa6}
+            html.fs-reduce-motion .fs-wait-veil,html.fs-reduce-motion .fs-wait-card,html.fs-reduce-motion .fs-wait-ring,
+            html.fs-reduce-motion .fs-wait-dot,html.fs-reduce-motion .fs-wait-badge{animation:none!important}
+          `}</style>
+          <div className="fs-wait-card">
+            <div className="fs-wait-eyebrow"><span className="fs-wait-dot" />Session partagée</div>
+            <div className="fs-wait-title">{title}</div>
+            <div className="fs-wait-sub">{subtitle}</div>
+            <div className="fs-wait-row">
+              {pending.invited.map(f => {
+                const ok = joined.includes(f.id);
+                const no = declined.includes(f.id);
+                return (
+                  <div key={f.id} className={'fs-wait-friend' + (no ? ' off' : '')}>
+                    <div className="fs-wait-av" style={{ background: `linear-gradient(145deg, ${f.color}, ${f.color}bb)` }}>
+                      {!ok && !no && <span className="fs-wait-ring" />}
+                      {f.initial}
+                      {ok && (
+                        <span className="fs-wait-badge" style={{ background: '#4ade80' }}>
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.4 2.4L9.5 3.6" stroke="#071018" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </span>
+                      )}
+                      {no && (
+                        <span className="fs-wait-badge" style={{ background: 'rgba(255,107,138,0.95)' }}>
+                          <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="#071018" strokeWidth="2" strokeLinecap="round"/></svg>
+                        </span>
+                      )}
+                    </div>
+                    <span className="fs-wait-name">{f.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="fs-wait-meta">
+              <span>{pending.cfg.duration} min</span>
+              <span>·</span>
+              <span>{pending.cfg.music || 'Silence'}</span>
+              <span>·</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
+            </div>
+            <div className="fs-wait-actions">
+              <button type="button" className="fs-wait-btn ghost" onClick={onCancel}>Annuler</button>
+              <button type="button" className="fs-wait-btn go" onClick={onStart}>Démarrer sans attendre</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.SessionWaitRoom = SessionWaitRoom;
+
     function SessionBarPremium({ session, user, onEnd, focusNudgeOpen = false, embedded = false }) {
       const [secs, setSecs] = _uS8(0);
       const [hovered, setHovered] = _uS8(false);
@@ -16212,13 +16470,40 @@
         : (session.friendUser?.name || session.friendEmail?.split('@')[0] || '?');
       const partnerInitial = partnerName ? partnerName[0].toUpperCase() : '?';
       const partnerColor = session.friendUser?.color || '#7af6a4';
+      /* Participants (multi-amis) + départs : un ami qui quitte reste rendu
+         ~0,7 s en « fantôme » le temps de son animation de sortie, puis les
+         avatars restants glissent en place (transition sur left/width). */
+      const friendList = React.useMemo(() => {
+        if (!isTogether) return [];
+        if (Array.isArray(session.friendUsers) && session.friendUsers.length) {
+          return session.friendUsers.filter(f => f && f.id).map(f => ({ id: f.id, name: f.name || '?', initial: f.initial || (f.name || '?')[0].toUpperCase(), color: f.color || '#7af6a4' }));
+        }
+        return [{ id: session.friendId || session.hostId || 'partner', name: partnerName, initial: partnerInitial, color: partnerColor }];
+      }, [isTogether, session.friendUsers, session.friendId, session.hostId, partnerName, partnerInitial, partnerColor]);
+      const leftIds = session.leftIds || [];
+      const [ghostIds, setGhostIds] = React.useState([]);
+      const prevLeftRef = React.useRef(leftIds);
+      React.useEffect(() => {
+        const added = leftIds.filter(id => !prevLeftRef.current.includes(id));
+        prevLeftRef.current = leftIds;
+        if (!added.length) return;
+        setGhostIds(g => [...g, ...added]);
+        const t = setTimeout(() => setGhostIds(g => g.filter(id => !added.includes(id))), 720);
+        return () => clearTimeout(t);
+      }, [leftIds.join(',')]);
+      const shownFriends = friendList.filter(f => !leftIds.includes(f.id) || ghostIds.includes(f.id));
+      const remainingFriends = friendList.filter(f => !leftIds.includes(f.id));
       const userPhoto = user?.photo || user?.avatar || null;
       const userInitial = (user?.name || user?.email || 'F').trim()[0]?.toUpperCase() || 'F';
       const col = session.type === 'solo' ? T.c1 : T.green;
       const R = 13;
       const circ = 2 * Math.PI * R;
       const label = isTogether ? 'Focus partagé' : 'Session active';
-      const detail = isTogether ? partnerName : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
+      const detail = isTogether
+        ? (remainingFriends.length
+          ? remainingFriends[0].name + (remainingFriends.length > 1 ? ' +' + (remainingFriends.length - 1) : '')
+          : 'Ton ami a quitté — continue !')
+        : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
       const barShift = embedded
         ? (focusNudgeOpen ? 'translateX(clamp(-430px, -34vw, -260px)) scale(.72)' : (hovered ? 'translateY(-1px)' : 'translateY(0)'))
         : (focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scale(.86)' : (hovered ? 'translateY(-2px)' : 'translateY(0)'));
@@ -16236,6 +16521,7 @@
             .fs-session-timer-fallback{animation:fsSessionBreath 2.6s ease-in-out infinite;}
             @keyframes fsSessionIn{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
             @keyframes fsSessionBreath{0%,100%{transform:scale(1);text-shadow:0 0 14px rgba(var(--theme-c1-rgb),.20)}50%{transform:scale(1.018);text-shadow:0 0 26px rgba(var(--theme-c1-rgb),.36)}}
+            @keyframes fsAvatarOut{0%{opacity:1;transform:scale(1)}28%{transform:scale(1.1)}100%{opacity:0;transform:scale(.15) translateY(10px)}}
             @media (max-width:768px){
               .fs-session-wrap{padding:10px 10px 6px!important;}
               .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:230px!important;}
@@ -16281,12 +16567,14 @@
           >
             <div style={{position:'absolute', inset:0, background:`radial-gradient(ellipse 48% 120% at 50% -30%, ${over ? 'rgba(255,107,138,.12)' : c1(.12)}, transparent 62%)`, pointerEvents:'none'}} />
             <div className="fs-session-status" style={{position:'relative', display:'flex', alignItems:'center', gap:11, minWidth:0, maxWidth: compacting ? 0 : 230, opacity: compacting ? 0 : 1, transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden'}}>
-              <div style={{position:'relative', width:isTogether?54:36, height:36, flexShrink:0}}>
+              <div style={{position:'relative', width:36 + shownFriends.length*22, height:36, flexShrink:0, transition:'width .5s cubic-bezier(.22,1.2,.36,1)'}}>
                 <div style={{position:'absolute', inset:-5, borderRadius:99, background:`radial-gradient(circle, ${over ? 'rgba(255,107,138,.18)' : c1(.18)}, transparent 66%)`}}/>
-                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', overflow:'hidden'}}>
+                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', overflow:'hidden', zIndex:1}}>
                   {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
                 </div>
-                {isTogether && <div style={{position:'absolute', left:22, top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${partnerColor},${partnerColor}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)'}}>{partnerInitial}</div>}
+                {shownFriends.map((f, i) => (
+                  <div key={f.id} style={{position:'absolute', left:22*(i+1), top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : undefined}}>{f.initial}</div>
+                ))}
               </div>
               <div style={{minWidth:0}}>
                 <div style={{display:'flex', alignItems:'center', gap:7, color:over?T.rose:T.text, fontSize:12, fontWeight:850, letterSpacing:'-.01em', whiteSpace:'nowrap'}}>
