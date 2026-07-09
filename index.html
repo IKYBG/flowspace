@@ -2009,21 +2009,34 @@
     function _fsSeedLocalFromRemote(remote, userId = remote?.user_id || window._fsSbUser?.id) {
       _fsIgnorePush = true;
       const sameLocalUser = _fsSameLocalUser(userId);
-
-      if (remote && remote.tasks != null) _fsRawSet('fs_tasks', JSON.stringify(remote.tasks));
-      else _fsRawRemove('fs_tasks');
-      if (remote && remote.notes != null) _fsRawSet('fs_notes', String(remote.notes));
-      else _fsRawRemove('fs_notes');
-      if (remote && remote.widgets != null) _fsRawSet('fs_widgets', JSON.stringify(remote.widgets));
-      else _fsRawRemove('fs_widgets');
+      /* Le cache local appartient-il au compte qu'on hydrate ? (fs_user vivant,
+         ou dernier logout de ce même compte — le logout garde les données exprès). */
+      const ownLocal = sameLocalUser || (() => {
+        try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY) === userId; } catch (_) { return false; }
+      })();
+      /* Un champ ABSENT du cloud ne doit JAMAIS détruire la donnée locale du
+         propriétaire (ligne partielle : push raté, row créée sans widgets…).
+         On garde le local et on le repoussera vers le cloud (auto-réparation).
+         Pour un cache étranger, on supprime comme avant (isolation). */
+      let healedKeys = false;
+      const seedField = (lsKey, remoteVal, serialize) => {
+        if (remote && remoteVal != null) { _fsRawSet(lsKey, serialize(remoteVal)); return; }
+        if (ownLocal && localStorage.getItem(lsKey) != null) {
+          window._fsDirtyKeys.add(lsKey);
+          healedKeys = true;
+          return;
+        }
+        _fsRawRemove(lsKey);
+      };
+      seedField('fs_tasks', remote?.tasks, v => JSON.stringify(v));
+      seedField('fs_notes', remote?.notes, v => String(v));
+      seedField('fs_widgets', remote?.widgets, v => JSON.stringify(v));
       if (remote && remote.onboarded) _fsRawSet('fs_onboarded', '1');
-      else _fsRawRemove('fs_onboarded');
+      else if (!(ownLocal && localStorage.getItem('fs_onboarded') === '1')) _fsRawRemove('fs_onboarded');
 
       /* Theme & style */
-      if (remote && remote.bg_theme != null) _fsRawSet('fs_bgtheme', remote.bg_theme);
-      else _fsRawRemove('fs_bgtheme');
-      if (remote && remote.custom_bg != null) _fsRawSet('fs_custom_bg', JSON.stringify(remote.custom_bg));
-      else _fsRawRemove('fs_custom_bg');
+      seedField('fs_bgtheme', remote?.bg_theme, v => String(v));
+      seedField('fs_custom_bg', remote?.custom_bg, v => JSON.stringify(v));
       if (remote && remote.widget_style != null) {
         const widgetStyle = _fsNormalizeWidgetStyle(remote.widget_style, _fsReadRememberedWidgetStyle(userId) || _fsReadWidgetStyle());
         _fsRawSet('fs_widget_style', JSON.stringify(widgetStyle));
@@ -2096,6 +2109,17 @@
       if (remote?.updated_at) _fsRawSet(FS_SYNC_REMOTE_APPLIED_KEY, remote.updated_at);
 
       setTimeout(() => { _fsIgnorePush = false; }, 2000);
+      /* Auto-réparation : les champs gardés localement (absents du cloud)
+         sont repoussés pour que la ligne remote redevienne complète. */
+      if (healedKeys) {
+        setTimeout(() => {
+          try {
+            if (!window._fsSbUser || window._fsSbUser.id !== userId) return;
+            window._fsDirtyThisSession = true;
+            _fsFlushPush();
+          } catch (_) { }
+        }, 2600);
+      }
     }
     window._fsSeedLocalFromRemote = _fsSeedLocalFromRemote;
 
@@ -2841,7 +2865,14 @@
       const [scale, setScale] = _uS3(1);
       React.useLayoutEffect(() => {
         const el = ref.current; if (!el) return;
-        const apply = (bw, bh) => { if (bw > 0 && bh > 0) setScale(Math.min(bw / w, bh / h, max)); };
+        /* Une dimension non mesurable (0) ne doit pas laisser scale=1 :
+           on ajuste sur la dimension connue pour ne JAMAIS déborder. */
+        const apply = (bw, bh) => {
+          if (bw <= 0 && bh <= 0) return;
+          const sw = bw > 0 ? bw / w : Infinity;
+          const sh = bh > 0 ? bh / h : Infinity;
+          setScale(Math.min(sw, sh, max));
+        };
         const r = el.getBoundingClientRect(); apply(r.width, r.height);
         if (typeof ResizeObserver === 'undefined') return;
         const ro = new ResizeObserver(es => { const cr = es[0]?.contentRect; if (cr) apply(cr.width, cr.height); });
@@ -2851,6 +2882,40 @@
       return (
         <div ref={ref} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
           <div style={{ width: w, height: h, flexShrink: 0, transform: `scale(${scale})`, transformOrigin: 'center center' }}>{children}</div>
+        </div>
+      );
+    }
+
+    /* Cartes flip déclarées au niveau module : leur identité de composant est
+       stable entre les rendus, donc React ne les remonte pas à chaque seconde —
+       le flip ne rejoue QUE quand la valeur affichée change (key interne). */
+    function FwFlipCard({ v, accent }) {
+      return (
+        <div style={{ perspective: 420 }}>
+          <div key={v} style={{
+            position: 'relative', minWidth: 68, padding: '15px 8px', textAlign: 'center', borderRadius: 13,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.085) 0%, rgba(255,255,255,0.035) 49.8%, rgba(0,0,0,0.20) 50.2%, rgba(255,255,255,0.025) 100%)',
+            border: accent ? `1px solid ${c1(0.32)}` : '1px solid rgba(255,255,255,0.10)',
+            boxShadow: accent
+              ? `0 12px 26px rgba(0,0,0,0.34), 0 0 20px ${c1(0.14)}, inset 0 1px 0 rgba(255,255,255,0.12)`
+              : '0 12px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.12)',
+            fontFamily: T.display, fontWeight: 800, fontSize: 37, letterSpacing: '-0.02em', lineHeight: 1,
+            color: accent ? T.c1 : T.text,
+            animation: 'fwFlip .48s cubic-bezier(.28,1.3,.45,1) both', transformOrigin: '50% 0%', willChange: 'transform',
+          }}>
+            {v}
+            <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 1, background: 'rgba(0,0,0,0.38)' }} />
+            <div style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)', width: 3, height: 8, borderRadius: 2, background: 'rgba(0,0,0,0.45)' }} />
+            <div style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 3, height: 8, borderRadius: 2, background: 'rgba(0,0,0,0.45)' }} />
+          </div>
+        </div>
+      );
+    }
+    function FwFlipDots() {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, animation: 'colonBlink 2s step-end infinite' }}>
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
         </div>
       );
     }
@@ -2915,7 +2980,9 @@
 
       if (variant === 2) return (
         <Shell style={style}>
-          <div style={{ padding: '24px', height: '100%', display: 'flex', gap: 20, alignItems: 'center' }}>
+          <div style={{ position: 'relative', height: '100%' }}>
+          <FwFit w={290} h={140}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', gap: 20, alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
             <svg width={96} height={96} viewBox="0 0 96 96" style={{ flexShrink: 0 }}>
               <circle cx={48} cy={48} r={44} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
               {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map(a => {
@@ -2929,34 +2996,12 @@
             </svg>
             <div><Num ch={`${hh}:${mm}`} size={32} /><Sub ch={dateStr} style={{ marginTop: 6 }} /></div>
           </div>
+          </FwFit>
+          </div>
         </Shell>
       );
 
       if (variant === 3) {
-        const FlipCard = ({ v, accent }) => (
-          <div style={{ perspective: 420 }}>
-            <div key={v} style={{
-              position: 'relative', minWidth: 68, padding: '15px 8px', textAlign: 'center', borderRadius: 13,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.085) 0%, rgba(255,255,255,0.035) 49.8%, rgba(0,0,0,0.20) 50.2%, rgba(255,255,255,0.025) 100%)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              boxShadow: '0 12px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.12)',
-              fontFamily: T.display, fontWeight: 800, fontSize: 37, letterSpacing: '-0.02em', lineHeight: 1,
-              color: accent ? T.c1 : T.text,
-              animation: 'fwFlip .48s cubic-bezier(.28,1.3,.45,1) both', transformOrigin: '50% 0%', willChange: 'transform',
-            }}>
-              {v}
-              <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 1, background: 'rgba(0,0,0,0.38)' }} />
-              <div style={{ position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)', width: 3, height: 8, borderRadius: 2, background: 'rgba(0,0,0,0.45)' }} />
-              <div style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 3, height: 8, borderRadius: 2, background: 'rgba(0,0,0,0.45)' }} />
-            </div>
-          </div>
-        );
-        const Dots = () => (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, animation: 'colonBlink 2s step-end infinite' }}>
-            <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
-            <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
-          </div>
-        );
         return (
           <Shell style={style}>
             <div style={{ position: 'relative', height: '100%' }}>
@@ -2967,11 +3012,11 @@
                     <Sub ch={ampm} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: T.c1 }} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
-                    <FlipCard v={hh} />
-                    <Dots />
-                    <FlipCard v={mm} />
-                    <Dots />
-                    <FlipCard v={ss} accent />
+                    <FwFlipCard v={hh} />
+                    <FwFlipDots />
+                    <FwFlipCard v={mm} />
+                    <FwFlipDots />
+                    <FwFlipCard v={ss} accent />
                   </div>
                   <Sub ch={dateStr} style={{ textAlign: 'center' }} />
                 </div>
@@ -3047,7 +3092,7 @@
         tokens.forEach(t => { const d = W[t]; if (d) for (let i = 0; i < d[2]; i++) lit[`${d[0]}-${d[1] + i}`] = minSet.has(t) ? 2 : 1; });
         const cornerOn = now.getMinutes() % 5;
         const corner = (x, y, i) => (
-          <span key={i} style={{ position: 'absolute', [y]: 6, [x]: 8, width: 5, height: 5, borderRadius: '50%', background: i < cornerOn ? T.warm : 'rgba(255,255,255,0.07)', boxShadow: i < cornerOn ? `0 0 7px ${T.warm}` : 'none', transition: 'background .4s, box-shadow .4s' }} />
+          <span key={i} style={{ position: 'absolute', [y]: 6, [x]: 8, width: 5, height: 5, borderRadius: '50%', background: i < cornerOn ? 'var(--theme-c2)' : 'rgba(255,255,255,0.07)', boxShadow: i < cornerOn ? `0 0 7px ${c2(0.85)}` : 'none', transition: 'background .4s, box-shadow .4s' }} />
         );
         return (
           <Shell dark glow={T.c1} style={style}>
@@ -3102,12 +3147,12 @@
                 </div>
                 <div style={{ position: 'relative', width: ensoS, height: ensoS, flexShrink: 0 }}>
                   <svg width={ensoS} height={ensoS} style={{ position: 'absolute', inset: 0 }}>
-                    <circle cx={ensoC} cy={ensoC} r={ensoR} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth={2.5} strokeLinecap="round"
+                    <circle cx={ensoC} cy={ensoC} r={ensoR} fill="none" stroke={c1(0.35)} strokeWidth={2.5} strokeLinecap="round"
                       strokeDasharray={`${ensoCirc * 0.86} ${ensoCirc}`} transform={`rotate(-58 ${ensoC} ${ensoC})`} />
-                    <circle cx={ensoC} cy={ensoC} r={ensoR - 4} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} strokeLinecap="round"
+                    <circle cx={ensoC} cy={ensoC} r={ensoR - 4} fill="none" stroke={c1(0.10)} strokeWidth={5} strokeLinecap="round"
                       strokeDasharray={`${ensoCirc * 0.55} ${ensoCirc}`} transform={`rotate(-40 ${ensoC} ${ensoC})`} />
-                    <circle cx={ensoC + ensoR * Math.cos(dotA)} cy={ensoC + ensoR * Math.sin(dotA)} r={3.5} fill={T.warm}
-                      style={{ filter: `drop-shadow(0 0 6px ${T.warm})`, transition: 'cx 1s linear, cy 1s linear' }} />
+                    <circle cx={ensoC + ensoR * Math.cos(dotA)} cy={ensoC + ensoR * Math.sin(dotA)} r={3.5} fill="var(--theme-c2)"
+                      style={{ filter: `drop-shadow(0 0 6px ${c2(0.9)})`, transition: 'cx 1s linear, cy 1s linear' }} />
                   </svg>
                   <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 30, color: T.text, opacity: 0.12, fontWeight: 500 }}>今</div>
                 </div>
@@ -13490,20 +13535,24 @@
       ]);
 
       const handleLogout = async () => {
+        /* Capturé UNE FOIS : si user/_fsSbUser devient null pendant les await,
+           le marqueur fs_last_logout_user et les backups sautaient — et la
+           prochaine connexion ne savait plus à qui appartenait le cache. */
+        const logoutUid = user?.id || window._fsSbUser?.id || null;
         try { window._fsSetSyncReady?.(true); } catch (e) { }
         try { window._fsStopRealtime?.(); } catch (e) { }
         try { window._fsStopSessionRealtime?.(); } catch (e) { }
         /* Save style settings directly from React state (bypasses localStorage timing issues)
            without letting a slow network request block logout. */
         const styleToSave = normalizeWidgetStyle(widgetStyle);
-        try { window._fsRememberWidgetStyle?.(user?.id || window._fsSbUser?.id, styleToSave); } catch (e) { }
+        try { window._fsRememberWidgetStyle?.(logoutUid, styleToSave); } catch (e) { }
         try { localStorage.setItem('fs_widget_style', JSON.stringify(styleToSave)); } catch (e) { }
-        try { window._fsBackupVisualPrefs?.(user?.id || window._fsSbUser?.id, styleToSave, true); } catch (e) { }
-        try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
+        try { window._fsBackupVisualPrefs?.(logoutUid, styleToSave, true); } catch (e) { }
+        try { window._fsBackupLocalUserData?.(logoutUid); } catch (e) { }
         try { await withLogoutTimeout(window._fsPushStyleOnly?.(styleToSave), 2800); } catch (e) { }
         try { await withLogoutTimeout(window._fsFlushPush?.(true), 1800); } catch (e) { }
-        try { window._fsBackupVisualPrefs?.(user?.id || window._fsSbUser?.id, styleToSave, true); } catch (e) { }
-        try { window._fsBackupLocalUserData?.(user?.id || window._fsSbUser?.id); } catch (e) { }
+        try { window._fsBackupVisualPrefs?.(logoutUid, styleToSave, true); } catch (e) { }
+        try { window._fsBackupLocalUserData?.(logoutUid); } catch (e) { }
         try { await withLogoutTimeout(window._fsSb.auth.signOut(), 1500); } catch (e) { }
         window._fsSbUser = null;
         try {
