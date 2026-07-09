@@ -1758,7 +1758,15 @@
             if (v && !_fsIsImageDbRef(v) && v.length <= FS_IMAGE_LOCAL_LIMIT) data.images[k] = v;
           }
         }
-        _fsRawSet(key, JSON.stringify(data));
+        try {
+          _fsRawSet(key, JSON.stringify(data));
+        } catch (quotaErr) {
+          /* Quota localStorage dépassé (images lourdes) : un backup sans images
+             vaut infiniment mieux que pas de backup — c'est lui qui restaure le
+             dashboard quand ce compte revient sur l'appareil. */
+          data.images = {};
+          _fsRawSet(key, JSON.stringify(data));
+        }
       } catch (e) { console.warn('[fs] local backup failed', e); }
     }
     window._fsBackupLocalUserData = _fsBackupLocalUserData;
@@ -2149,11 +2157,22 @@
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
       }
-      if (!remote) {
-        _fsClearLocalAppData(userId);
-        return { source: 'empty-remote', remote };
-      }
-      if (remote && !_fsRemoteHasSavedData(remote)) {
+      if (!remote || !_fsRemoteHasSavedData(remote)) {
+        /* Le cloud est vide ou illisible. Ne JAMAIS détruire des données
+           locales dans ce cas : d'abord tenter le backup de ce compte, sinon
+           garder le cache local s'il appartient prouvablement à ce compte
+           (le logout le conserve exprès), et repousser vers le cloud.
+           Le reset n'est légitime que pour un compte réellement vierge. */
+        if (_fsRestoreLocalUserData(userId)) {
+          window._fsSetSyncReady?.(true);
+          await _fsWithTimeout(_fsFlushPush(true), 3500, null);
+          return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
+        }
+        if (localBelongsToRequestedUser && _fsLocalHasSavedData(userId)) {
+          window._fsSetSyncReady?.(true);
+          await _fsWithTimeout(_fsFlushPush(true), 3500, null);
+          return { source: 'local', remote: _fsSnapshotLocalData(userId) };
+        }
         _fsClearLocalAppData(userId);
         return { source: 'empty-remote', remote };
       }
@@ -2804,9 +2823,33 @@
       document.head.appendChild(s);
     }
 
+    /* FwFit — le contenu est composé sur un canvas de taille fixe (w×h) puis
+       mis à l'échelle pour tenir dans le widget, centré, quelle que soit la
+       dimension de la cellule. Corrige les débordements/centrages des horloges
+       quand l'utilisateur redimensionne le widget. */
+    function FwFit({ w, h, max = 1.5, children }) {
+      const ref = React.useRef(null);
+      const [scale, setScale] = _uS3(1);
+      React.useLayoutEffect(() => {
+        const el = ref.current; if (!el) return;
+        const apply = (bw, bh) => { if (bw > 0 && bh > 0) setScale(Math.min(bw / w, bh / h, max)); };
+        const r = el.getBoundingClientRect(); apply(r.width, r.height);
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(es => { const cr = es[0]?.contentRect; if (cr) apply(cr.width, cr.height); });
+        ro.observe(el);
+        return () => ro.disconnect();
+      }, [w, h, max]);
+      return (
+        <div ref={ref} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+          <div style={{ width: w, height: h, flexShrink: 0, transform: `scale(${scale})`, transformOrigin: 'center center' }}>{children}</div>
+        </div>
+      );
+    }
+
     function ClockWidget({ variant = 1, style }) {
       const [now, setNow] = _uS3(new Date());
       _uE3(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
+      const gid = React.useMemo(() => 'fwg' + Math.random().toString(36).slice(2, 7), []);
 
       const hh = now.getHours().toString().padStart(2, '0');
       const mm = now.getMinutes().toString().padStart(2, '0');
@@ -2822,47 +2865,40 @@
       const ampm = h24 < 12 ? 'AM' : 'PM';
       const tzCity = (() => { try { return (Intl.DateTimeFormat().resolvedOptions().timeZone || '').split('/').pop().replace(/_/g, ' ') || 'Local'; } catch (_) { return 'Local'; } })();
       const tzOff = (() => { const o = -now.getTimezoneOffset() / 60; return `UTC${o >= 0 ? '+' : ''}${o}`; })();
-      /* Horloge à mots (variante 7) : arrondi aux 5 min, à la française. */
-      const _wordTime = (() => {
-        const H_UNITS = ['une', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze'];
-        const m5 = Math.round(now.getMinutes() / 5) * 5;
-        const hEff = (h24 + (m5 > 30 ? 1 : 0)) % 24;
-        const special = hEff === 0 ? 'minuit' : hEff === 12 ? 'midi' : null;
-        const h12w = hEff % 12;
-        const hourWord = special || (H_UNITS[h12w - 1] + (h12w === 1 ? ' heure' : ' heures'));
-        const M_WORDS = { 0: '', 5: 'cinq', 10: 'dix', 15: 'et quart', 20: 'vingt', 25: 'vingt-cinq', 30: special ? 'et demi' : 'et demie', 35: 'moins vingt-cinq', 40: 'moins vingt', 45: 'moins le quart', 50: 'moins dix', 55: 'moins cinq', 60: '' };
-        return { hourWord, minWord: M_WORDS[m5] };
-      })();
 
       if (variant === 1) {
-        const grad = { fontFamily: T.display, fontWeight: 800, fontSize: 78, letterSpacing: '-0.055em', lineHeight: 1, background: `linear-gradient(135deg, ${T.text} 38%, rgba(var(--theme-c1-rgb),0.88))`, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' };
+        const grad = { fontFamily: T.display, fontWeight: 800, fontSize: 74, letterSpacing: '-0.055em', lineHeight: 1, background: `linear-gradient(135deg, ${T.text} 38%, rgba(var(--theme-c1-rgb),0.88))`, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' };
         return (
           <Shell glow={T.c1} style={style}>
-            <div style={{ position: 'relative', padding: '30px 32px 26px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden' }}>
+            <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', right: -80, top: -80, width: 250, height: 250, borderRadius: '50%', background: `radial-gradient(circle, ${c1(0.15)}, transparent 64%)`, animation: 'fwOrb 10s ease-in-out infinite', pointerEvents: 'none' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Lbl ch="heure locale" />
-                <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: T.c1, padding: '3px 10px', borderRadius: 99, background: c1(0.10), border: `1px solid ${c1(0.24)}` }}>{ampm}</div>
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'baseline' }}>
-                  <span style={grad}>{hh}</span>
-                  <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 78, lineHeight: 1, color: T.faint, animation: 'colonBlink 1s step-end infinite', margin: '0 2px' }}>:</span>
-                  <span style={grad}>{mm}</span>
+              <FwFit w={330} h={190}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '6px 4px', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Lbl ch="heure locale" />
+                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: T.c1, padding: '3px 10px', borderRadius: 99, background: c1(0.10), border: `1px solid ${c1(0.24)}` }}>{ampm}</div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                      <span style={grad}>{hh}</span>
+                      <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 74, lineHeight: 1, color: T.faint, animation: 'colonBlink 1s step-end infinite', margin: '0 2px' }}>:</span>
+                      <span style={grad}>{mm}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
+                      <Sub ch={dateStr} style={{ fontSize: 13 }} />
+                      <span style={{ width: 3, height: 3, borderRadius: '50%', background: T.muted, opacity: 0.5 }} />
+                      <Sub ch={`${tzCity} · ${tzOff}`} style={{ fontSize: 12, opacity: 0.75 }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                      <Sub ch="Avancement du jour" style={{ fontSize: 10.5, letterSpacing: '0.04em' }} />
+                      <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: T.c1 }}>{Math.round(dayProg * 100)}%</span>
+                    </div>
+                    <Bar value={dayProg} h={2.5} />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                  <Sub ch={dateStr} style={{ fontSize: 13 }} />
-                  <span style={{ width: 3, height: 3, borderRadius: '50%', background: T.muted, opacity: 0.5 }} />
-                  <Sub ch={`${tzCity} · ${tzOff}`} style={{ fontSize: 12, opacity: 0.75 }} />
-                </div>
-              </div>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-                  <Sub ch="Avancement du jour" style={{ fontSize: 10.5, letterSpacing: '0.04em' }} />
-                  <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: T.c1 }}>{Math.round(dayProg * 100)}%</span>
-                </div>
-                <Bar value={dayProg} h={2.5} />
-              </div>
+              </FwFit>
             </div>
           </Shell>
         );
@@ -2891,13 +2927,13 @@
         const FlipCard = ({ v, accent }) => (
           <div style={{ perspective: 420 }}>
             <div key={v} style={{
-              position: 'relative', minWidth: 76, padding: '17px 10px', textAlign: 'center', borderRadius: 14,
+              position: 'relative', minWidth: 68, padding: '15px 8px', textAlign: 'center', borderRadius: 13,
               background: 'linear-gradient(180deg, rgba(255,255,255,0.085) 0%, rgba(255,255,255,0.035) 49.8%, rgba(0,0,0,0.20) 50.2%, rgba(255,255,255,0.025) 100%)',
               border: '1px solid rgba(255,255,255,0.10)',
               boxShadow: '0 12px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.12)',
-              fontFamily: T.display, fontWeight: 800, fontSize: 42, letterSpacing: '-0.02em', lineHeight: 1,
+              fontFamily: T.display, fontWeight: 800, fontSize: 37, letterSpacing: '-0.02em', lineHeight: 1,
               color: accent ? T.c1 : T.text,
-              animation: 'fwFlip .55s cubic-bezier(.28,1.3,.45,1) both', transformOrigin: '50% 0%', willChange: 'transform',
+              animation: 'fwFlip .48s cubic-bezier(.28,1.3,.45,1) both', transformOrigin: '50% 0%', willChange: 'transform',
             }}>
               {v}
               <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 1, background: 'rgba(0,0,0,0.38)' }} />
@@ -2906,93 +2942,132 @@
             </div>
           </div>
         );
+        const Dots = () => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, animation: 'colonBlink 2s step-end infinite' }}>
+            <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
+            <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
+          </div>
+        );
         return (
           <Shell style={style}>
-            <div style={{ padding: '20px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Lbl ch="maintenant" />
-                <Sub ch={ampm} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: T.c1 }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <FlipCard v={hh} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, animation: 'colonBlink 2s step-end infinite' }}>
-                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
-                  <span style={{ width: 4, height: 4, borderRadius: '50%', background: T.muted }} />
+            <div style={{ position: 'relative', height: '100%' }}>
+              <FwFit w={320} h={180}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '4px 2px', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Lbl ch="maintenant" />
+                    <Sub ch={ampm} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: T.c1 }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+                    <FlipCard v={hh} />
+                    <Dots />
+                    <FlipCard v={mm} />
+                    <Dots />
+                    <FlipCard v={ss} accent />
+                  </div>
+                  <Sub ch={dateStr} style={{ textAlign: 'center' }} />
                 </div>
-                <FlipCard v={mm} accent />
-              </div>
-              <Sub ch={dateStr} style={{ textAlign: 'center' }} />
+              </FwFit>
             </div>
           </Shell>
         );
       }
 
       if (variant === 4) {
-        const S = 128, C = S / 2;
-        const hFrac = (h24 + now.getMinutes() / 60) / 24;
-        const mFrac = (now.getMinutes() + now.getSeconds() / 60) / 60;
-        const sFrac = now.getSeconds() / 60;
-        const arc = (r, frac, color, w, glowA) => {
-          const circ = 2 * Math.PI * r;
-          return (
-            <circle cx={C} cy={C} r={r} fill="none" stroke={color} strokeWidth={w} strokeLinecap="round"
-              strokeDasharray={`${circ * Math.max(0.015, frac)} ${circ}`}
-              style={{ filter: `drop-shadow(0 0 5px ${glowA})`, transition: 'stroke-dasharray .92s cubic-bezier(.4,0,.2,1)' }} />
-          );
-        };
+        /* Montre sombre « faisceaux lumineux » : cadran quasi noir, index fins,
+           aiguille des minutes en rai de lumière thémé, heures en faisceau blanc. */
+        const S4 = 230, C4 = 115;
+        const mAng = (ma - 90) * Math.PI / 180;
+        const hAng = (ha - 90) * Math.PI / 180;
+        const mx = C4 + 80 * Math.cos(mAng), my = C4 + 80 * Math.sin(mAng);
+        const hx = C4 + 52 * Math.cos(hAng), hy = C4 + 52 * Math.sin(hAng);
+        const ticks = [];
+        for (let i = 0; i < 60; i++) {
+          const a = i * 6 * Math.PI / 180, big = i % 5 === 0, r1 = big ? 91 : 94.5;
+          ticks.push(<line key={i} x1={C4 + r1 * Math.cos(a)} y1={C4 + r1 * Math.sin(a)} x2={C4 + 99 * Math.cos(a)} y2={C4 + 99 * Math.sin(a)} stroke={big ? 'rgba(255,255,255,0.30)' : 'rgba(255,255,255,0.10)'} strokeWidth={big ? 1.4 : 0.8} strokeLinecap="round" />);
+        }
         return (
           <Shell dark glow={T.c1} style={style}>
-            <div style={{ padding: '18px 22px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Lbl ch="cadran polaire" />
-                <Sub ch={ampm} style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: T.c1 }} />
-              </div>
-              <div style={{ position: 'relative', width: S, height: S, alignSelf: 'center' }}>
-                <svg width={S} height={S} style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
-                  {[56, 45, 34].map(r => <circle key={r} cx={C} cy={C} r={r} fill="none" stroke="rgba(255,255,255,0.055)" strokeWidth={1} />)}
-                  {arc(56, hFrac, T.c1, 5.5, c1(0.4))}
-                  {arc(45, mFrac, T.c2, 5.5, c2(0.4))}
-                  {arc(34, sFrac, 'rgba(255,255,255,0.34)', 2.5, 'rgba(255,255,255,0.18)')}
+            <div style={{ position: 'relative', height: '100%' }}>
+              <FwFit w={S4} h={S4} max={1.35}>
+                <svg width={S4} height={S4} style={{ display: 'block' }}>
+                  <defs>
+                    <radialGradient id={`${gid}f`} cx="50%" cy="40%" r="70%">
+                      <stop offset="0%" stopColor="#131523" /><stop offset="100%" stopColor="#05060c" />
+                    </radialGradient>
+                    <linearGradient id={`${gid}m`} gradientUnits="userSpaceOnUse" x1={C4} y1={C4} x2={mx} y2={my}>
+                      <stop offset="0%" stopColor="rgba(var(--theme-c1-rgb),0.06)" />
+                      <stop offset="55%" stopColor="rgba(var(--theme-c1-rgb),0.92)" />
+                      <stop offset="100%" stopColor="#ffffff" />
+                    </linearGradient>
+                    <linearGradient id={`${gid}h`} gradientUnits="userSpaceOnUse" x1={C4} y1={C4} x2={hx} y2={hy}>
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.05)" />
+                      <stop offset="100%" stopColor="rgba(255,255,255,0.96)" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx={C4} cy={C4} r={102} fill={`url(#${gid}f)`} stroke="rgba(255,255,255,0.075)" strokeWidth={1} />
+                  <circle cx={C4} cy={C4} r={87} fill="none" stroke={c1(0.14)} strokeWidth={6} style={{ filter: 'blur(7px)' }} />
+                  {ticks}
+                  <text x={C4} y={C4 - 34} textAnchor="middle" fill="rgba(207,216,235,0.5)" style={{ fontSize: 9.5, letterSpacing: '0.3em', fontWeight: 600 }}>{ampm}</text>
+                  <line x1={C4} y1={C4} x2={mx} y2={my} stroke={c1(0.26)} strokeWidth={12} strokeLinecap="round" style={{ filter: 'blur(6px)' }} />
+                  <line x1={C4} y1={C4} x2={mx} y2={my} stroke={`url(#${gid}m)`} strokeWidth={4.5} strokeLinecap="round" style={{ filter: `drop-shadow(0 0 9px ${c1(0.75)})` }} />
+                  <line x1={C4} y1={C4} x2={hx} y2={hy} stroke="rgba(255,255,255,0.16)" strokeWidth={9} strokeLinecap="round" style={{ filter: 'blur(4px)' }} />
+                  <line x1={C4} y1={C4} x2={hx} y2={hy} stroke={`url(#${gid}h)`} strokeWidth={4} strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.45))' }} />
+                  <circle cx={C4} cy={C4} r={4.5} fill="#0a0c15" stroke="rgba(255,255,255,0.16)" strokeWidth={1} />
                 </svg>
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <Num ch={`${hh}:${mm}`} size={21} />
-                  <Sub ch={DAYS[now.getDay()].slice(0, 3)} style={{ fontSize: 9.5, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 14 }}>
-                {[[T.c1, 'heures'], [T.c2, 'minutes'], ['rgba(255,255,255,0.4)', 'secondes']].map(([col, lab]) => (
-                  <span key={lab} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, color: T.muted }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: col }} />{lab}
-                  </span>
-                ))}
-              </div>
+              </FwFit>
             </div>
           </Shell>
         );
       }
 
-      if (variant === 7) return (
-        <Shell flat style={style}>
-          <div style={{ padding: '26px 30px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <Lbl ch="en toutes lettres" />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.22em', textTransform: 'uppercase', color: T.muted }}>Il est</div>
-              <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 36, letterSpacing: '-0.03em', lineHeight: 1.12, marginTop: 6, color: T.text }}>
-                {_wordTime.hourWord}
-              </div>
-              {_wordTime.minWord && (
-                <div style={{ fontFamily: T.display, fontWeight: 700, fontSize: 24, letterSpacing: '-0.02em', lineHeight: 1.15, marginTop: 4, color: T.c1 }}>
-                  {_wordTime.minWord}
+      if (variant === 7) {
+        /* Horloge à mots façon QLOCKTWO : grille de lettres, seuls les mots de
+           l'heure s'illuminent. Les 4 points d'angle = minutes hors multiples de 5. */
+        const ROWS = ['ILNESTODEUX', 'QUATRETROIS', 'NEUFUNESEPT', 'HUITSIXCINQ', 'MIDIXMINUIT', 'ONZERHEURES', 'MOINSOLEDIX', 'ETRQUARTPMD', 'VINGT-CINQU', 'ETSDEMIEPAM'];
+        const W = { IL: [0, 0, 2], EST: [0, 3, 3], UNE: [2, 4, 3], DEUX: [0, 7, 4], TROIS: [1, 6, 5], QUATRE: [1, 0, 6], CINQH: [3, 7, 4], SIX: [3, 4, 3], SEPT: [2, 7, 4], HUIT: [3, 0, 4], NEUF: [2, 0, 4], DIXH: [4, 2, 3], ONZE: [5, 0, 4], MIDI: [4, 0, 4], MINUIT: [4, 5, 6], HEURES: [5, 5, 6], HEURE: [5, 5, 5], MOINS: [6, 0, 5], LE: [6, 6, 2], DIXM: [6, 8, 3], ET1: [7, 0, 2], QUART: [7, 3, 5], VINGT: [8, 0, 5], DASH: [8, 5, 1], CINQM: [8, 6, 4], ET2: [9, 0, 2], DEMIE: [9, 3, 5], DEMI: [9, 3, 4] };
+        const HW = ['MINUIT', 'UNE', 'DEUX', 'TROIS', 'QUATRE', 'CINQH', 'SIX', 'SEPT', 'HUIT', 'NEUF', 'DIXH', 'ONZE', 'MIDI'];
+        const m5 = Math.round(now.getMinutes() / 5) * 5;
+        const hEff = (h24 + (m5 > 30 ? 1 : 0)) % 24;
+        const hTok = hEff === 0 ? 'MINUIT' : hEff === 12 ? 'MIDI' : HW[hEff % 12];
+        const noHeure = hTok === 'MIDI' || hTok === 'MINUIT';
+        const MIN_T = { 0: [], 5: ['CINQM'], 10: ['DIXM'], 15: ['ET1', 'QUART'], 20: ['VINGT'], 25: ['VINGT', 'DASH', 'CINQM'], 30: ['ET2', noHeure ? 'DEMI' : 'DEMIE'], 35: ['MOINS', 'VINGT', 'DASH', 'CINQM'], 40: ['MOINS', 'VINGT'], 45: ['MOINS', 'LE', 'QUART'], 50: ['MOINS', 'DIXM'], 55: ['MOINS', 'CINQM'], 60: [] };
+        const minToks = MIN_T[m5];
+        const minSet = new Set(minToks);
+        const tokens = ['IL', 'EST', hTok, ...(noHeure ? [] : [hEff % 12 === 1 ? 'HEURE' : 'HEURES']), ...minToks];
+        const lit = {};
+        tokens.forEach(t => { const d = W[t]; if (d) for (let i = 0; i < d[2]; i++) lit[`${d[0]}-${d[1] + i}`] = minSet.has(t) ? 2 : 1; });
+        const cornerOn = now.getMinutes() % 5;
+        const corner = (x, y, i) => (
+          <span key={i} style={{ position: 'absolute', [y]: 6, [x]: 8, width: 5, height: 5, borderRadius: '50%', background: i < cornerOn ? T.warm : 'rgba(255,255,255,0.07)', boxShadow: i < cornerOn ? `0 0 7px ${T.warm}` : 'none', transition: 'background .4s, box-shadow .4s' }} />
+        );
+        return (
+          <Shell dark glow={T.c1} style={style}>
+            <div style={{ position: 'relative', height: '100%' }}>
+              <FwFit w={246} h={228} max={1.4}>
+                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3.5 }}>
+                  {[['left', 'top', 0], ['right', 'top', 1], ['right', 'bottom', 2], ['left', 'bottom', 3]].map(([x, y, i]) => corner(x, y, i))}
+                  {ROWS.map((row, r) => (
+                    <div key={r} style={{ display: 'flex', gap: 0 }}>
+                      {row.split('').map((ch, cI) => {
+                        const st = lit[`${r}-${cI}`];
+                        return (
+                          <span key={cI} style={{
+                            width: 18, textAlign: 'center', fontSize: 12.5, fontWeight: 750, lineHeight: '17px', letterSpacing: 0,
+                            fontFamily: T.font,
+                            color: st === 2 ? T.c1 : st === 1 ? T.text : 'rgba(207,216,235,0.10)',
+                            textShadow: st === 2 ? `0 0 12px ${c1(0.55)}` : st === 1 ? '0 0 12px rgba(255,255,255,0.28)' : 'none',
+                            transition: 'color .55s ease, text-shadow .55s ease',
+                          }}>{ch}</span>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
-              )}
+              </FwFit>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Sub ch={dateStr} />
-              <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: T.muted, opacity: 0.8, letterSpacing: '0.05em' }}>{hh}:{mm}</span>
-            </div>
-          </div>
-        </Shell>
-      );
+          </Shell>
+        );
+      }
 
       /* Variante 8 — zen : chiffres empilés poids léger, enso, kanji discrets. */
       const ensoR = 46, ensoS = 116, ensoC = ensoS / 2;
@@ -3000,31 +3075,35 @@
       const dotA = ((now.getMinutes() * 60 + now.getSeconds()) / 3600) * 2 * Math.PI - Math.PI / 2;
       return (
         <Shell flat style={style}>
-          <div style={{ padding: '24px 28px', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-              <Lbl ch="maintenant" style={{ marginBottom: 14 }} />
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 54, letterSpacing: '0.01em', lineHeight: 0.95, color: T.text }}>{hh}</div>
-                <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>時</span>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={310} h={165}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, padding: '0 6px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+                  <Lbl ch="maintenant" style={{ marginBottom: 13 }} />
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 52, letterSpacing: '0.01em', lineHeight: 0.95, color: T.text }}>{hh}</div>
+                    <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>時</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                    <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 52, letterSpacing: '0.01em', lineHeight: 0.95, color: T.c1 }}>{mm}</div>
+                    <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>分</span>
+                  </div>
+                  <div style={{ width: 26, height: 1, background: 'rgba(255,255,255,0.16)', margin: '13px 0 9px' }} />
+                  <Sub ch={dateStr} style={{ fontSize: 11.5 }} />
+                </div>
+                <div style={{ position: 'relative', width: ensoS, height: ensoS, flexShrink: 0 }}>
+                  <svg width={ensoS} height={ensoS} style={{ position: 'absolute', inset: 0 }}>
+                    <circle cx={ensoC} cy={ensoC} r={ensoR} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth={2.5} strokeLinecap="round"
+                      strokeDasharray={`${ensoCirc * 0.86} ${ensoCirc}`} transform={`rotate(-58 ${ensoC} ${ensoC})`} />
+                    <circle cx={ensoC} cy={ensoC} r={ensoR - 4} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} strokeLinecap="round"
+                      strokeDasharray={`${ensoCirc * 0.55} ${ensoCirc}`} transform={`rotate(-40 ${ensoC} ${ensoC})`} />
+                    <circle cx={ensoC + ensoR * Math.cos(dotA)} cy={ensoC + ensoR * Math.sin(dotA)} r={3.5} fill={T.warm}
+                      style={{ filter: `drop-shadow(0 0 6px ${T.warm})`, transition: 'cx 1s linear, cy 1s linear' }} />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 30, color: T.text, opacity: 0.12, fontWeight: 500 }}>今</div>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 54, letterSpacing: '0.01em', lineHeight: 0.95, color: T.c1 }}>{mm}</div>
-                <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>分</span>
-              </div>
-              <div style={{ width: 26, height: 1, background: 'rgba(255,255,255,0.16)', margin: '14px 0 10px' }} />
-              <Sub ch={dateStr} style={{ fontSize: 11.5 }} />
-            </div>
-            <div style={{ position: 'relative', width: ensoS, height: ensoS, flexShrink: 0 }}>
-              <svg width={ensoS} height={ensoS} style={{ position: 'absolute', inset: 0 }}>
-                <circle cx={ensoC} cy={ensoC} r={ensoR} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth={2.5} strokeLinecap="round"
-                  strokeDasharray={`${ensoCirc * 0.86} ${ensoCirc}`} transform={`rotate(-58 ${ensoC} ${ensoC})`} />
-                <circle cx={ensoC} cy={ensoC} r={ensoR - 4} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} strokeLinecap="round"
-                  strokeDasharray={`${ensoCirc * 0.55} ${ensoCirc}`} transform={`rotate(-40 ${ensoC} ${ensoC})`} />
-                <circle cx={ensoC + ensoR * Math.cos(dotA)} cy={ensoC + ensoR * Math.sin(dotA)} r={3.5} fill={T.warm}
-                  style={{ filter: `drop-shadow(0 0 6px ${T.warm})`, transition: 'cx 1s linear, cy 1s linear' }} />
-              </svg>
-              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 30, color: T.text, opacity: 0.12, fontWeight: 500 }}>今</div>
-            </div>
+            </FwFit>
           </div>
         </Shell>
       );
