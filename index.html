@@ -1557,15 +1557,27 @@
       catch (_) { return null; }
     }
 
-    function _fsClearLocalAppData(userId = null) {
+    function _fsClearLocalAppData(userId = null, opts = {}) {
       try {
         _fsIgnorePush = true;
         FS_GENERAL_DATA_KEYS.forEach(k => _fsRawRemove(k));
         _fsRawRemove('fs_intro_pending');
         _fsRawRemove('fs_session_focus_tasks');
+        _fsRawRemove('fs_active_session');
+        _fsRawRemove('fs_prod_prompt_seen');
+        /* Horodatages de sync : hérités de la session du compte précédent, ils
+           feraient croire à la réconciliation que le local (vidé ou étranger)
+           est « plus récent » que le remote du compte entrant. */
+        _fsRawRemove(FS_SYNC_LOCAL_WRITE_KEY);
+        _fsRawRemove(FS_WIDGETS_LOCAL_WRITE_KEY);
+        _fsRawRemove(FS_SYNC_REMOTE_APPLIED_KEY);
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
-          if (k && k.startsWith('fs_img_')) _fsRawRemove(k);
+          if (k && (k.startsWith('fs_img_') || k.startsWith('fs_image_touched_'))) _fsRawRemove(k);
+        }
+        if (opts.switching) {
+          FS_ACCOUNT_DEVICE_KEYS.forEach(k => _fsRawRemove(k));
+          FS_ACCOUNT_TRANSIENT_KEYS.forEach(k => _fsRawRemove(k));
         }
         if (userId) {
           [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => _fsRawRemove(k));
@@ -1608,8 +1620,14 @@
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
-      'fs_font_preset', 'fs_streak'
+      'fs_font_preset', 'fs_streak',
+      'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges'
     ];
+    /* Clés liées au COMPTE mais stockées globalement sur l'appareil (tokens
+       Spotify). Sauvegardées par utilisateur et effacées quand un AUTRE compte
+       se connecte — jamais lors d'un simple resync du même compte. */
+    const FS_ACCOUNT_DEVICE_KEYS = ['sp_access_token', 'sp_refresh_token', 'sp_token_expiry', 'sp_scope_version'];
+    const FS_ACCOUNT_TRANSIENT_KEYS = ['sp_code_verifier', 'sp_return_hash', 'sp_auth_error', 'sp_needs_reconnect'];
 
     function _fsBackupKey(userId) {
       return userId ? `${FS_USER_BACKUP_PREFIX}${userId}` : null;
@@ -1727,6 +1745,11 @@
         [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => {
           const v = localStorage.getItem(k);
           if (v != null) data.scoped[k] = v;
+        });
+        /* Tokens Spotify : liés au compte — repartent avec lui au prochain login. */
+        FS_ACCOUNT_DEVICE_KEYS.forEach(k => {
+          const v = localStorage.getItem(k);
+          if (v != null) data.general[k] = v;
         });
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
@@ -2084,7 +2107,11 @@
            to — or pushed up into — this account. Runs even when the remote is
            unreachable, so an outage can't expose the previous user's dashboard. */
         try { _fsBackupLocalUserData(localOwnerId); } catch (_) { }
-        _fsClearLocalAppData(userId);
+        _fsClearLocalAppData(userId, { switching: true });
+        /* Le cache local n'appartient plus à l'ancien compte : sans ce reset,
+           une future perte de fs_user (session expirée) ferait attribuer le
+           backup des données du nouvel utilisateur à l'ancien propriétaire. */
+        try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
       }
       if (_fsRemoteLoadFailed(remote)) {
         console.warn('[fs] remote sync unavailable; keeping local cache untouched');
@@ -13149,7 +13176,11 @@
         const visualSource = remote || (authUser?.id && window._fsSnapshotLocalData ? window._fsSnapshotLocalData(authUser.id) : null);
         if (visualSource && visualSource.widgets) setWidgets(visualSource.widgets);
         else setWidgets(DEFAULT_WIDGETS);
+        /* Toujours réinitialiser le thème : sans else, un compte sans thème
+           sauvegardé garderait visuellement celui du compte précédent. */
         if (visualSource && visualSource.bg_theme) setBgThemeId(visualSource.bg_theme);
+        else setBgThemeId('cosmos');
+        setFontPresetId((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (_) { return 'signature'; } })());
         /* widget_style: _fsSeedLocalFromRemote already set _fsIgnorePush=true for 2s,
            so this setWidgetStyle won't trigger a redundant push */
         if (visualSource && visualSource.widget_style != null) applySyncedWidgetStyle(visualSource.widget_style);
@@ -13259,6 +13290,8 @@
                 if (synced && synced.widgets) setWidgets(synced.widgets);
                 else setWidgets(DEFAULT_WIDGETS);
                 if (synced && synced.bg_theme) setBgThemeId(synced.bg_theme);
+                else setBgThemeId('cosmos');
+                setFontPresetId((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (_) { return 'signature'; } })());
                 setSyncEpoch(n => n + 1);
                 window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: synced || {} }));
               }
@@ -13289,7 +13322,13 @@
               window._fsSetSyncReady?.(false);
               try {
                 const staleUser = JSON.parse(localStorage.getItem('fs_user') || 'null');
-                if (staleUser?.id) window._fsBackupLocalUserData?.(staleUser.id);
+                if (staleUser?.id) {
+                  window._fsBackupLocalUserData?.(staleUser.id);
+                  /* Marquer le vrai propriétaire du cache local : sans ça, un
+                     fs_last_logout_user périmé d'un ancien switch ferait
+                     sauvegarder ces données sous le mauvais compte. */
+                  try { localStorage.setItem('fs_last_logout_user', staleUser.id); } catch (_) { }
+                }
                 localStorage.removeItem('fs_user');
                 localStorage.removeItem('fs_intro_pending');
               } catch (_) { }
