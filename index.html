@@ -17090,59 +17090,77 @@
   ───────────────────────────────────────────────────────────── */
   function FocusHeatmap({ heatmap={}, ratings={} }) {
     const RATING_C = (window.PROD_RATING_META) || { red:{c:'#fb7185'}, yellow:{c:'#fbbf24'}, green:{c:'#4ade80'} };
-    const todayK = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+    const RATING_LABEL = { red:'peu productif', yellow:'moyen', green:'productif' };
+    const CELL = 11, GAP = 3, DAYW = 30;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const fmtK = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const todayK = fmtK(today);
     const days = [];
     for (let i=364; i>=0; i--) {
-      const d = new Date(); d.setDate(d.getDate()-i);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      days.push({ k, min: heatmap[k]||0, rating: ratings[k]||null });
+      const d = new Date(today); d.setDate(today.getDate()-i);
+      const k = fmtK(d);
+      days.push({ d, k, min: heatmap[k]||0, rating: ratings[k]||null });
     }
-    const maxMin = Math.max(...days.map(d=>d.min), 1);
-    const getCol = min => {
-      if (!min) return 'rgba(255,255,255,0.05)';
-      const t = min/maxMin;
-      if (t < 0.25) return `rgba(103,232,249,${0.22+t*1.2})`;
-      if (t < 0.5)  return `rgba(103,232,249,${0.55+t*0.5})`;
-      if (t < 0.75) return `rgba(165,128,255,${0.65+t*0.4})`;
-      return `rgba(255,255,255,${0.75+t*0.25})`;
+    const maxMin = Math.max(...days.map(x=>x.min), 1);
+    /* Alignement calendaire réel : chaque colonne = une semaine Lun→Dim,
+       avec cases fantômes avant le premier jour et après aujourd'hui. */
+    const lead = (days[0].d.getDay()+6)%7;
+    const cells = Array(lead).fill(null).concat(days);
+    while (cells.length%7) cells.push(null);
+    const weeks = []; for (let i=0; i<cells.length; i+=7) weeks.push(cells.slice(i,i+7));
+    const monthLabels = []; let lastM = -1, lastCol = -4;
+    weeks.forEach((wk,wi)=>{
+      const f = wk.find(Boolean); if (!f) return;
+      const m = f.d.getMonth();
+      if (m !== lastM && wi - lastCol >= 3) { monthLabels.push({ wi, label: f.d.toLocaleDateString('fr-FR',{month:'short'}).replace('.','') }); lastCol = wi; }
+      lastM = m;
+    });
+    const focusCol = min => { const t = min/maxMin; const a = t<0.25?0.16 : t<0.5?0.32 : t<0.75?0.52 : 0.75; return `rgba(var(--theme-c1-rgb),${a})`; };
+    const cellStyle = day => {
+      if (day.rating && RATING_C[day.rating]) { const c = RATING_C[day.rating].c; return { background:c, boxShadow:`0 0 5px ${c}55` }; }
+      if (day.min > 0) return { background: focusCol(day.min) };
+      return { background:'rgba(255,255,255,0.045)' };
     };
-    /* La note quotidienne (rouge/jaune/vert) prime sur l'intensité focus :
-       en un regard, jours productifs vs jours creux. */
-    const cellCol = day => day.rating && RATING_C[day.rating] ? RATING_C[day.rating].c : getCol(day.min);
-    const RATING_LABEL = { red:'peu productif', yellow:'moyen', green:'productif' };
-    const weeks = [];
-    for (let i=0; i<days.length; i+=7) weeks.push(days.slice(i,i+7));
+    const scrollRef = React.useRef(null);
+    React.useEffect(()=>{ const el = scrollRef.current; if (el) el.scrollLeft = el.scrollWidth; },[]);
     return (
-      <div style={{overflowX:'auto',paddingBottom:6}}>
-        <div style={{display:'flex',gap:3,minWidth:'fit-content'}}>
-          {weeks.map((wk,wi)=>(
-            <div key={wi} style={{display:'flex',flexDirection:'column',gap:3}}>
-              {wk.map((day,di)=>(
-                <div key={di} className="heat-cell"
-                  title={`${day.k}${day.rating ? ' · ' + RATING_LABEL[day.rating] : ''}${day.min ? ' · ' + day.min + ' min focus' : ''}`}
-                  style={{background:cellCol(day), boxShadow: day.rating ? `0 0 6px ${RATING_C[day.rating].c}66` : undefined,
-                    outline: day.k === todayK ? '1.5px solid var(--theme-c1)' : undefined, outlineOffset: day.k === todayK ? 1 : undefined}}/>
-              ))}
+      <div>
+        <style>{`
+          .fs-hm-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px}
+          .fs-hm-col{display:flex;flex-direction:column;gap:3px;animation:fsHmColIn .45s ease both}
+          @keyframes fsHmColIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+          .fs-hm-mrow span{position:absolute;top:0;font-size:8.5px;font-weight:600;letter-spacing:.04em;color:rgba(244,246,251,0.42);text-transform:capitalize;white-space:nowrap}
+          .fs-hm-drow{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+          .fs-hm-drow div{height:11px;line-height:11px;font-size:8.5px;font-weight:600;color:rgba(244,246,251,0.38);text-align:right;padding-right:7px}
+          .fs-hm-tring{position:absolute;inset:-3px;border-radius:5px;border:1.5px solid var(--theme-c1);box-shadow:0 0 9px rgba(var(--theme-c1-rgb),0.55);animation:fsHmPulse 2.2s ease-in-out infinite;pointer-events:none}
+          @keyframes fsHmPulse{0%,100%{opacity:1}50%{opacity:.4}}
+          html.fs-reduce-motion .fs-hm-col{animation:none!important;opacity:1}
+          html.fs-reduce-motion .fs-hm-tring{animation:none!important}
+        `}</style>
+        <div className="fs-hm-scroll" ref={scrollRef}>
+          <div style={{minWidth:'fit-content'}}>
+            <div className="fs-hm-mrow" style={{position:'relative',height:15,marginLeft:DAYW}}>
+              {monthLabels.map(m=><span key={m.wi} style={{left:m.wi*(CELL+GAP)}}>{m.label}</span>)}
             </div>
-          ))}
-        </div>
-        <div style={{display:'flex',gap:12,marginTop:10,alignItems:'center',flexWrap:'wrap'}}>
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            <span style={{fontSize:9,color:T.muted}}>Focus · moins</span>
-            {[0,0.25,0.5,0.75,1].map((t,i)=>(
-              <div key={i} style={{width:11,height:11,borderRadius:3,background:getCol(t*maxMin||0)}}/>
-            ))}
-            <span style={{fontSize:9,color:T.muted}}>plus</span>
-          </div>
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            <span style={{fontSize:9,color:T.muted}}>Productivité</span>
-            {['red','yellow','green'].map(r=>(
-              <div key={r} title={RATING_LABEL[r]} style={{width:11,height:11,borderRadius:3,background:RATING_C[r].c,boxShadow:`0 0 6px ${RATING_C[r].c}55`}}/>
-            ))}
-          </div>
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            <div style={{width:11,height:11,borderRadius:3,background:'rgba(255,255,255,0.05)',outline:'1.5px solid var(--theme-c1)',outlineOffset:1}}/>
-            <span style={{fontSize:9,color:T.muted}}>Aujourd'hui</span>
+            <div style={{display:'flex'}}>
+              <div className="fs-hm-drow" style={{width:DAYW}}>
+                {['Lun','','Mer','','Ven','',''].map((l,i)=><div key={i}>{l}</div>)}
+              </div>
+              <div style={{display:'flex',gap:GAP}}>
+                {weeks.map((wk,wi)=>(
+                  <div key={wi} className="fs-hm-col" style={{animationDelay:`${Math.min(wi*8,420)}ms`}}>
+                    {wk.map((day,di)=> day
+                      ? <div key={di} className="heat-cell"
+                          title={`${day.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}${day.rating ? ' · ' + RATING_LABEL[day.rating] : ''}${day.min ? ' · ' + day.min + ' min focus' : ''}`}
+                          style={{position:'relative',...cellStyle(day)}}>
+                          {day.k === todayK && <span className="fs-hm-tring"/>}
+                        </div>
+                      : <div key={di} className="heat-cell" style={{visibility:'hidden'}}/>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -17239,15 +17257,7 @@
 
           {/* Heatmap */}
           <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',marginBottom:20}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,gap:10,flexWrap:'wrap'}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.text}}>Carte d'activité</div>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontSize:10,fontWeight:800,color:'var(--theme-c1)',background:'rgba(var(--theme-c1-rgb),0.10)',border:'1px solid rgba(var(--theme-c1-rgb),0.22)',borderRadius:99,padding:'3px 9px',textTransform:'capitalize'}}>
-                  {new Date().toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}
-                </span>
-                <span style={{fontSize:10,color:T.muted}}>365 derniers jours</span>
-              </div>
-            </div>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:14}}>Productivité</div>
             <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={heatmap} ratings={ratings}/></div>
           </div>
 
