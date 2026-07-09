@@ -17095,15 +17095,18 @@
     const today = new Date(); today.setHours(0,0,0,0);
     const fmtK = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const todayK = fmtK(today);
+    /* Année civile courante : du 1er janvier au 31 décembre,
+       les jours à venir apparaissent en cases vides atténuées. */
+    const year = today.getFullYear();
+    const yEnd = new Date(year, 11, 31);
     const days = [];
-    for (let i=364; i>=0; i--) {
-      const d = new Date(today); d.setDate(today.getDate()-i);
-      const k = fmtK(d);
-      days.push({ d, k, min: heatmap[k]||0, rating: ratings[k]||null });
+    for (let d = new Date(year, 0, 1); d <= yEnd; d.setDate(d.getDate()+1)) {
+      const dd = new Date(d); const k = fmtK(dd);
+      days.push({ d: dd, k, min: heatmap[k]||0, rating: ratings[k]||null, future: dd > today });
     }
     const maxMin = Math.max(...days.map(x=>x.min), 1);
     /* Alignement calendaire réel : chaque colonne = une semaine Lun→Dim,
-       avec cases fantômes avant le premier jour et après aujourd'hui. */
+       avec cases fantômes avant le 1er janvier et après le 31 décembre. */
     const lead = (days[0].d.getDay()+6)%7;
     const cells = Array(lead).fill(null).concat(days);
     while (cells.length%7) cells.push(null);
@@ -17117,12 +17120,18 @@
     });
     const focusCol = min => { const t = min/maxMin; const a = t<0.25?0.16 : t<0.5?0.32 : t<0.75?0.52 : 0.75; return `rgba(var(--theme-c1-rgb),${a})`; };
     const cellStyle = day => {
+      if (day.future) return { background:'rgba(255,255,255,0.018)', boxShadow:'inset 0 0 0 1px rgba(255,255,255,0.025)' };
       if (day.rating && RATING_C[day.rating]) { const c = RATING_C[day.rating].c; return { background:c, boxShadow:`0 0 5px ${c}55` }; }
       if (day.min > 0) return { background: focusCol(day.min) };
       return { background:'rgba(255,255,255,0.045)' };
     };
     const scrollRef = React.useRef(null);
-    React.useEffect(()=>{ const el = scrollRef.current; if (el) el.scrollLeft = el.scrollWidth; },[]);
+    React.useEffect(()=>{
+      const el = scrollRef.current; if (!el) return;
+      const idx = days.findIndex(x => x.k === todayK);
+      const col = Math.floor((lead + (idx < 0 ? days.length - 1 : idx)) / 7);
+      el.scrollLeft = Math.max(0, col*(CELL+GAP) - el.clientWidth*0.6);
+    },[]);
     return (
       <div>
         <style>{`
