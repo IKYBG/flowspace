@@ -1579,9 +1579,11 @@
           FS_ACCOUNT_DEVICE_KEYS.forEach(k => _fsRawRemove(k));
           FS_ACCOUNT_TRANSIENT_KEYS.forEach(k => _fsRawRemove(k));
         }
-        if (userId) {
-          [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => _fsRawRemove(k));
-        }
+        /* Ne JAMAIS supprimer les clés scopées du compte entrant
+           (fs_crystals_{uid}, fs_gamif_{uid}, fs_session_history_{uid}…) :
+           elles sont namespacées par utilisateur — aucune fuite possible —
+           et les cristaux/l'historique n'existent NULLE PART ailleurs
+           (pas de colonne cloud). Les effacer = compte remis à neuf. */
         window._fsImageMemory = {};
         window._fsDirtyThisSession = false;
         window._fsDirtyKeys.clear();
@@ -1792,6 +1794,38 @@
       }
     }
     window._fsRestoreLocalUserData = _fsRestoreLocalUserData;
+
+    /* Comble les TROUS depuis le backup local du compte : ne remplace jamais
+       une donnée présente, ne restaure que ce qui MANQUE (cristaux, historique,
+       gamif, widgets…). Les champs généraux comblés sont marqués dirty pour
+       être repoussés vers le cloud. Tant qu'un backup existe sur l'appareil,
+       « compte remis à neuf » est impossible. */
+    function _fsGapFillFromBackup(userId = window._fsSbUser?.id) {
+      const key = _fsBackupKey(userId);
+      if (!key) return false;
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!data) return false;
+        let filled = false;
+        Object.entries(data.general || {}).forEach(([k, v]) => {
+          if (v != null && localStorage.getItem(k) == null) { _fsRawSet(k, String(v)); window._fsDirtyKeys.add(k); filled = true; }
+        });
+        Object.entries(data.scoped || {}).forEach(([k, v]) => {
+          if (v != null && localStorage.getItem(k) == null) { _fsRawSet(k, String(v)); filled = true; }
+        });
+        Object.entries(data.images || {}).forEach(([k, v]) => {
+          if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v) && localStorage.getItem(k) == null) { _fsRawSet(k, v); filled = true; }
+        });
+        if (filled) {
+          window._fsDirtyThisSession = true;
+          setTimeout(() => { try { if (window._fsSbUser?.id === userId) _fsFlushPush(); } catch (_) { } }, 2800);
+          try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (_) { }
+          try { window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: JSON.parse(localStorage.getItem(`fs_gamif_${userId}`) || 'null') })); } catch (_) { }
+        }
+        return filled;
+      } catch (_) { return false; }
+    }
+    window._fsGapFillFromBackup = _fsGapFillFromBackup;
 
     function _fsRemoteHasSavedData(remote) {
       if (!remote || remote.__fsLoadFailed) return false;
@@ -2097,8 +2131,13 @@
         if (remote && remote.gamification != null) {
           _fsRawSet(`fs_gamif_${userId}`, JSON.stringify(remote.gamification));
           window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: remote.gamification }));
+        } else if (localStorage.getItem(`fs_gamif_${userId}`) != null) {
+          /* Ligne cloud sans gamification : on garde le local (clé scopée,
+             aucune fuite possible) et on le repousse vers le cloud. */
+          window._fsDirtyKeys.add(`fs_gamif_${userId}`);
+          healedKeys = true;
+          try { window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: JSON.parse(localStorage.getItem(`fs_gamif_${userId}`)) })); } catch (_) { }
         } else {
-          _fsRawRemove(`fs_gamif_${userId}`);
           window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: null }));
         }
         if (remote && Array.isArray(remote.friends)) {
@@ -2152,24 +2191,29 @@
       const localBelongsToRequestedUser = previousLocalUserId === userId || lastLogoutUserId === userId;
       const hasOrphanLocalData = !switchingUser && !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
       if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
+        _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
         return { source: 'logout-visual', remote: _fsSnapshotLocalData(userId) };
       }
       if (!remote && sameLocalUser) {
+        _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
       if (!remote && hasOrphanLocalData && !previousLocalUserId) {
+        _fsGapFillFromBackup(userId);
         window._fsSetSyncReady?.(true);
         await _fsWithTimeout(_fsFlushPush(true), 3500, null);
         return { source: 'local-first-sync', remote: _fsSnapshotLocalData(userId) };
       }
       if (_fsLocalLooksNewer(userId, remote)) {
+        _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
       if (_fsLocalDashboardLooksNewer(userId, remote)) {
+        _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local-dashboard', remote: _fsSnapshotLocalData(userId) };
       }
@@ -2201,6 +2245,9 @@
         return { source: 'empty-remote', remote };
       }
       _fsSeedLocalFromRemote(remote, userId);
+      /* Filet final : tout ce que le cloud n'a pas mais que le backup local
+         de CE compte possède (cristaux, historique…) est comblé. */
+      _fsGapFillFromBackup(userId);
       window._fsMarkHydratedFromRemote(remote);
       return { source: 'remote', remote };
     }
@@ -2869,8 +2916,10 @@
            on ajuste sur la dimension connue pour ne JAMAIS déborder. */
         const apply = (bw, bh) => {
           if (bw <= 0 && bh <= 0) return;
-          const sw = bw > 0 ? bw / w : Infinity;
-          const sh = bh > 0 ? bh / h : Infinity;
+          /* 0.96 : marge de respiration — le contenu ne touche jamais les
+             bords du widget, même à l'ajustement exact. */
+          const sw = bw > 0 ? (bw / w) * 0.96 : Infinity;
+          const sh = bh > 0 ? (bh / h) * 0.96 : Infinity;
           setScale(Math.min(sw, sh, max));
         };
         const r = el.getBoundingClientRect(); apply(r.width, r.height);
@@ -3040,7 +3089,7 @@
           ticks.push(<line key={i} x1={C4 + r1 * Math.cos(a)} y1={C4 + r1 * Math.sin(a)} x2={C4 + 99 * Math.cos(a)} y2={C4 + 99 * Math.sin(a)} stroke={big ? 'rgba(255,255,255,0.30)' : 'rgba(255,255,255,0.10)'} strokeWidth={big ? 1.4 : 0.8} strokeLinecap="round" />);
         }
         return (
-          <Shell dark glow={T.c1} style={style}>
+          <Shell glow={T.c1} style={style}>
             <div style={{ position: 'relative', height: '100%' }}>
               <FwFit w={S4} h={S4} max={1.35}>
                 <svg width={S4} height={S4} style={{ display: 'block' }}>
@@ -3095,7 +3144,7 @@
           <span key={i} style={{ position: 'absolute', [y]: 6, [x]: 8, width: 5, height: 5, borderRadius: '50%', background: i < cornerOn ? 'var(--theme-c2)' : 'rgba(255,255,255,0.07)', boxShadow: i < cornerOn ? `0 0 7px ${c2(0.85)}` : 'none', transition: 'background .4s, box-shadow .4s' }} />
         );
         return (
-          <Shell dark glow={T.c1} style={style}>
+          <Shell glow={T.c1} style={style}>
             <div style={{ position: 'relative', height: '100%' }}>
               <FwFit w={246} h={228} max={1.4}>
                 <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3.5 }}>
@@ -3261,7 +3310,9 @@
     const SPOTIFY_REDIRECT_URI = window.location.origin + _spRedirectPath;
     const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played';
     const SPOTIFY_SCOPE_VERSION = 'playback-fallback-v2';
-    const SP = '#1db954';
+    /* Accent du widget Spotify : suit le thème de l'utilisateur
+       (vert de marque d'origine : #1db954). */
+    const SP = 'var(--theme-c1)';
 
     function _spRand(n) {
       const ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
@@ -3573,17 +3624,17 @@
         const ConnectView = ({ compact }) => {
           if (compact) return (
             <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', boxSizing: 'border-box' }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(29,185,84,0.16), transparent 52%), radial-gradient(circle at 86% 14%, rgba(255,255,255,0.14), transparent 34%)', opacity: 0.9, pointerEvents: 'none' }} />
-              <div style={{ width: 36, height: 36, borderRadius: 14, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 26px rgba(29,185,84,0.15)', position: 'relative' }}>
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.16), transparent 52%), radial-gradient(circle at 86% 14%, rgba(255,255,255,0.14), transparent 34%)', opacity: 0.9, pointerEvents: 'none' }} />
+              <div style={{ width: 36, height: 36, borderRadius: 14, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 26px rgba(var(--theme-c1-rgb),0.15)', position: 'relative' }}>
                 <svg width={18} height={18} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
               </div>
               <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
                 <div style={{ fontSize: 13, fontWeight: 760, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pageTitle}</div>
                 <Sub ch={needsReconnect ? 'Compte à relier' : 'Widget musique'} style={{ fontSize: 11, marginTop: 2 }} />
               </div>
-              <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} aria-label={pageCta} style={{ width: 36, height: 36, borderRadius: 13, border: '1px solid rgba(255,255,255,0.18)', background: `linear-gradient(135deg, ${SP}, #7dffae)`, color: '#06140a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 12px 24px rgba(29,185,84,0.24)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.03)'; e.currentTarget.style.boxShadow = '0 16px 30px rgba(29,185,84,0.34)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(29,185,84,0.24)'; }}>
+              <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} aria-label={pageCta} style={{ width: 36, height: 36, borderRadius: 13, border: '1px solid rgba(255,255,255,0.18)', background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, color: '#06140a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 12px 24px rgba(var(--theme-c1-rgb),0.24)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.03)'; e.currentTarget.style.boxShadow = '0 16px 30px rgba(var(--theme-c1-rgb),0.34)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(var(--theme-c1-rgb),0.24)'; }}>
                 <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
               </button>
             </div>
@@ -3591,14 +3642,14 @@
 
           return (
             <div style={{ height: '100%', position: 'relative', overflow: 'hidden', padding: '18px 20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 16 }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 12%, rgba(29,185,84,0.28), transparent 34%), radial-gradient(circle at 88% 8%, rgba(255,255,255,0.16), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 12%, rgba(var(--theme-c1-rgb),0.28), transparent 34%), radial-gradient(circle at 88% 8%, rgba(255,255,255,0.16), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', inset: 1, borderRadius: 21, border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 28, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: 'rgba(248,250,255,0.72)', fontSize: 10.5, fontWeight: 740, letterSpacing: 0.7, textTransform: 'uppercase', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: needsReconnect ? '#f59e0b' : SP, boxShadow: `0 0 14px ${needsReconnect ? '#f59e0b' : SP}` }} />
                   {needsReconnect ? 'À reconnecter' : 'Connexion'}
                 </span>
-                <div style={{ width: 40, height: 40, borderRadius: 16, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.34)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 18px 38px rgba(29,185,84,0.18)' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 16, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.34)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 18px 38px rgba(var(--theme-c1-rgb),0.18)' }}>
                   <svg width={20} height={20} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
                 </div>
               </div>
@@ -3614,9 +3665,9 @@
                     <span key={x} style={{ padding: '5px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(248,250,255,0.62)', fontSize: 10.5, fontWeight: 660 }}>{x}</span>
                   ))}
                 </div>
-                <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, #7dffae)`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 16, padding: '10px 15px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.015)'; e.currentTarget.style.boxShadow = '0 22px 42px rgba(29,185,84,0.36), inset 0 1px 0 rgba(255,255,255,0.40)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)'; }}>
+                <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 16, padding: '10px 15px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.015)'; e.currentTarget.style.boxShadow = '0 22px 42px rgba(var(--theme-c1-rgb),0.36), inset 0 1px 0 rgba(255,255,255,0.40)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)'; }}>
                   {pageCta}
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
                 </button>
@@ -3632,9 +3683,9 @@
       if (reauthNeeded && !track) {
         const ReauthView = ({ compact }) => (
           <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: compact ? 'row' : 'column', justifyContent: 'center', alignItems: compact ? 'center' : 'stretch', gap: compact ? 12 : 18, padding: compact ? '12px 14px' : '20px 22px', boxSizing: 'border-box' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 12%, rgba(29,185,84,0.22), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 12%, rgba(var(--theme-c1-rgb),0.22), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <div style={{ width: compact ? 36 : 44, height: compact ? 36 : 44, borderRadius: 16, background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(29,185,84,0.16)' }}>
+              <div style={{ width: compact ? 36 : 44, height: compact ? 36 : 44, borderRadius: 16, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(var(--theme-c1-rgb),0.16)' }}>
                 <svg width={compact ? 18 : 21} height={compact ? 18 : 21} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
               </div>
               <div style={{ minWidth: 0 }}>
@@ -3643,7 +3694,7 @@
                 {compact && <Sub ch="Permission à mettre à jour" style={{ fontSize: 11, marginTop: 2 }} />}
               </div>
             </div>
-            <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ position: 'relative', minHeight: compact ? 36 : 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, #7dffae)`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: compact ? 13 : 16, padding: compact ? '8px 12px' : '10px 15px', color: '#06140a', fontSize: compact ? 12 : 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(29,185,84,0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}>
+            <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ position: 'relative', minHeight: compact ? 36 : 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: compact ? 13 : 16, padding: compact ? '8px 12px' : '10px 15px', color: '#06140a', fontSize: compact ? 12 : 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}>
               {compact ? 'Autoriser' : 'Mettre à jour Spotify'}
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
             </button>
@@ -3667,7 +3718,7 @@
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
                 <SpotifyDisconnectButton />
                 <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏮</button>
-                <button onClick={togglePlay} disabled={busy} style={{ width: 36, height: 36, borderRadius: '50%', background: SP, border: 'none', cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 20px ${SP}44`, fontWeight: 700, opacity: busy ? 0.7 : 1 }}>{playing ? '⏸' : '▶'}</button>
+                <button onClick={togglePlay} disabled={busy} style={{ width: 36, height: 36, borderRadius: '50%', background: SP, border: 'none', cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(var(--theme-c1-rgb),0.27)', fontWeight: 700, opacity: busy ? 0.7 : 1 }}>{playing ? '⏸' : '▶'}</button>
                 <button onClick={next} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏭</button>
               </div>
             </div>
@@ -4972,12 +5023,15 @@
       const partnerInitial = partnerName ? partnerName[0].toUpperCase() : '?';
       const partnerColor = session.friendUser?.color || '#4ade80';
       const col = session.type === 'solo' ? T.c1 : T.green;
-      /* Tous les invités ont quitté → la barre repasse en affichage solo. */
-      const _allLeft = !session.isGuest && Array.isArray(session.leftIds) && session.leftIds.length > 0
-        && (Array.isArray(session.friendUsers) && session.friendUsers.length
-          ? session.friendUsers.every(f => session.leftIds.includes(f.id))
-          : true);
-      const isTogether = session.type === 'together' && !_allLeft;
+      /* Partenaire visible seulement s'il a rejoint (joinedIds) et n'a pas
+         quitté (leftIds) — sinon la barre s'affiche en solo. */
+      const _friendIds = Array.isArray(session.friendUsers) && session.friendUsers.length
+        ? session.friendUsers.map(f => f.id)
+        : (session.friendId ? [session.friendId] : ['partner']);
+      const _joined = !session.isGuest && Array.isArray(session.joinedIds) ? session.joinedIds : null;
+      const _left = Array.isArray(session.leftIds) ? session.leftIds : [];
+      const _visibleFriends = session.isGuest ? 1 : _friendIds.filter(id => (!_joined || _joined.includes(id)) && !_left.includes(id)).length;
+      const isTogether = session.type === 'together' && _visibleFriends > 0;
       const R = 10;
       const circ = 2 * Math.PI * R;
 
@@ -13259,7 +13313,10 @@
         const p = pend || pendingRef.current;
         if (!p) return;
         setPendingSession(null);
-        const enriched = _activateSession(p.cfg, { broadcastId: p.ids[0], broadcastIds: p.ids });
+        /* joinedIds : seuls les amis qui ont ACCEPTÉ apparaissent dans la top
+           bar — « Démarrer sans attendre » démarre donc seul, et chaque ami
+           qui rejoint ensuite est ajouté (avatar animé). */
+        const enriched = _activateSession(p.cfg, { broadcastId: p.ids[0], broadcastIds: p.ids, joinedIds: [...(p.joined || [])] });
         /* Recale started_at sur le vrai départ : les invités (déjà dedans via
            fs-session-sync, ou en retard via re-lecture de la ligne) restent
            synchronisés avec le chrono de l'hôte. */
@@ -13317,6 +13374,23 @@
           const p = e.detail;
           if (!p?.friend?.id) return;
           const pend = pendingRef.current;
+          /* Session déjà lancée (« Démarrer sans attendre ») : l'ami qui
+             accepte maintenant rejoint la top bar avec son avatar animé. */
+          if (!pend && p.status === 'accepted') {
+            const a = activeSessionRef.current;
+            if (a && !a.isGuest && a.type === 'together'
+              && Array.isArray(a.friendUsers) && a.friendUsers.some(f => f.id === p.friend.id)
+              && Array.isArray(a.joinedIds) && !a.joinedIds.includes(p.friend.id)) {
+              addToast({ message: `${p.friend.name || 'Ton ami'} a rejoint la session`, type: 'success', icon: '✓', duration: 4200 });
+              setActiveSession(cur => {
+                if (!cur || !Array.isArray(cur.joinedIds) || cur.joinedIds.includes(p.friend.id)) return cur;
+                const next = { ...cur, joinedIds: [...cur.joinedIds, p.friend.id] };
+                try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (_) { }
+                return next;
+              });
+            }
+            return;
+          }
           if (!pend || !pend.invited.some(f => f.id === p.friend.id)) return;
           if (p.status === 'accepted') {
             setPendingSession(prev => {
@@ -16540,8 +16614,13 @@
         const t = setTimeout(() => setGhostIds(g => g.filter(id => !added.includes(id))), 720);
         return () => clearTimeout(t);
       }, [leftIds.join(',')]);
-      const shownFriends = friendList.filter(f => !leftIds.includes(f.id) || ghostIds.includes(f.id));
-      const remainingFriends = friendList.filter(f => !leftIds.includes(f.id));
+      /* Hôte : seuls les amis qui ont REJOINT sont affichés (joinedIds).
+         Absent (invité / anciennes sessions) → comportement historique. */
+      const joinedIds = (!session.isGuest && Array.isArray(session.joinedIds)) ? session.joinedIds : null;
+      const presentList = joinedIds ? friendList.filter(f => joinedIds.includes(f.id)) : friendList;
+      const shownFriends = presentList.filter(f => !leftIds.includes(f.id) || ghostIds.includes(f.id));
+      const remainingFriends = presentList.filter(f => !leftIds.includes(f.id));
+      const waitingForFriends = !!joinedIds && presentList.length === 0;
       const userPhoto = user?.photo || user?.avatar || null;
       const userInitial = (user?.name || user?.email || 'F').trim()[0]?.toUpperCase() || 'F';
       const col = session.type === 'solo' ? T.c1 : T.green;
@@ -16551,7 +16630,7 @@
       const detail = isTogether
         ? (remainingFriends.length
           ? remainingFriends[0].name + (remainingFriends.length > 1 ? ' +' + (remainingFriends.length - 1) : '')
-          : 'Ton ami a quitté — continue !')
+          : (waitingForFriends ? 'En attente de tes amis…' : 'Ton ami a quitté — continue !'))
         : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
       const barShift = embedded
         ? (focusNudgeOpen ? 'translateX(clamp(-430px, -34vw, -260px)) scale(.72)' : (hovered ? 'translateY(-1px)' : 'translateY(0)'))
@@ -16571,6 +16650,7 @@
             @keyframes fsSessionIn{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
             @keyframes fsSessionBreath{0%,100%{transform:scale(1);text-shadow:0 0 14px rgba(var(--theme-c1-rgb),.20)}50%{transform:scale(1.018);text-shadow:0 0 26px rgba(var(--theme-c1-rgb),.36)}}
             @keyframes fsAvatarOut{0%{opacity:1;transform:scale(1)}28%{transform:scale(1.1)}100%{opacity:0;transform:scale(.15) translateY(10px)}}
+            @keyframes fsAvatarIn{0%{opacity:0;transform:scale(.2) translateY(8px)}62%{transform:scale(1.12)}100%{opacity:1;transform:scale(1) translateY(0)}}
             @media (max-width:768px){
               .fs-session-wrap{padding:10px 10px 6px!important;}
               .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:230px!important;}
@@ -16622,7 +16702,7 @@
                   {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
                 </div>
                 {shownFriends.map((f, i) => (
-                  <div key={f.id} style={{position:'absolute', left:22*(i+1), top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : undefined}}>{f.initial}</div>
+                  <div key={f.id} style={{position:'absolute', left:22*(i+1), top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.92)', boxShadow:'0 10px 24px rgba(0,0,0,.32)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : 'fsAvatarIn .55s cubic-bezier(.22,1.4,.36,1) both'}}>{f.initial}</div>
                 ))}
               </div>
               <div style={{minWidth:0}}>
