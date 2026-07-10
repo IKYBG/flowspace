@@ -2191,6 +2191,15 @@
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
       }
       if (_fsRemoteLoadFailed(remote)) {
+        /* Panne réseau. Si on vient de VIDER le cache pour un changement de
+           compte, l'utilisateur entrant n'a plus RIEN en local → restaure son
+           propre backup pour qu'il voie ses vraies données (et non les défauts,
+           qui seraient ensuite repoussés dans le cloud par les effets React).
+           Le retry hydratera depuis le cloud dès qu'il répondra. */
+        if (switchingUser) {
+          try { _fsRestoreLocalUserData(userId); } catch (_) { }
+          try { _fsGapFillFromBackup(userId); } catch (_) { }
+        }
         console.warn('[fs] remote sync unavailable; keeping local cache untouched');
         return { source: 'load-failed', remote: null };
       }
@@ -13727,18 +13736,24 @@
 
       const handleAuth = (authUser, isNew, remote) => {
         window.__fsDiagLog('handleAuth', { userId: authUser?.id, isNew });
+        /* Le localStorage vient d'être RÉCONCILIÉ pour CE compte (seed/restore/
+           gapfill ont écrit ses vraies données, ou les ont retirées s'il n'en a
+           pas). C'est la source de vérité : on la lit en priorité. Mettre un
+           DEFAULT ici alors que le compte a des données déclenchait les effets de
+           persistance (widgets / widget_style) qui repoussaient les défauts dans
+           le cloud → réinitialisation PERMANENTE de la personnalisation. */
+        const _lsGet = (k, parse) => { try { const v = localStorage.getItem(k); return v == null ? null : (parse ? JSON.parse(v) : v); } catch (_) { return null; } };
         const visualSource = remote || (authUser?.id && window._fsSnapshotLocalData ? window._fsSnapshotLocalData(authUser.id) : null);
-        if (visualSource && visualSource.widgets) setWidgets(visualSource.widgets);
-        else setWidgets(DEFAULT_WIDGETS);
-        /* Toujours réinitialiser le thème : sans else, un compte sans thème
-           sauvegardé garderait visuellement celui du compte précédent. */
-        if (visualSource && visualSource.bg_theme) setBgThemeId(visualSource.bg_theme);
-        else setBgThemeId('cosmos');
-        setFontPresetId((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (_) { return 'signature'; } })());
-        /* widget_style: _fsSeedLocalFromRemote already set _fsIgnorePush=true for 2s,
-           so this setWidgetStyle won't trigger a redundant push */
-        if (visualSource && visualSource.widget_style != null) applySyncedWidgetStyle(visualSource.widget_style);
-        else applySyncedWidgetStyle(window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
+        const lsWidgets = _lsGet('fs_widgets', true);
+        setWidgets((visualSource && visualSource.widgets) || lsWidgets || DEFAULT_WIDGETS);
+        /* Thème : localStorage réconcilié (A's theme, ou absent s'il n'en a pas —
+           le seed a alors retiré fs_bgtheme, donc pas de fuite du thème de B). */
+        setBgThemeId((visualSource && visualSource.bg_theme) || _lsGet('fs_bgtheme', false) || 'cosmos');
+        setFontPresetId(_lsGet('fs_font_preset', false) || 'signature');
+        const _styleSrc = (visualSource && visualSource.widget_style != null)
+          ? visualSource.widget_style
+          : (window._fsReadWidgetStyle ? window._fsReadWidgetStyle(DEFAULT_WIDGET_STYLE) : DEFAULT_WIDGET_STYLE);
+        applySyncedWidgetStyle(_styleSrc);
         try {
           if (isNew) localStorage.setItem('fs_intro_pending', '1');
           else localStorage.removeItem('fs_intro_pending');
@@ -13841,11 +13856,13 @@
               setUser(authUser);
               if (syncResult.source === 'remote' || syncResult.source === 'backup' || syncResult.source === 'local' || syncResult.source === 'local-dashboard' || syncResult.source === 'local-first-sync') {
                 const synced = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(session.user.id);
-                if (synced && synced.widgets) setWidgets(synced.widgets);
-                else setWidgets(DEFAULT_WIDGETS);
-                if (synced && synced.bg_theme) setBgThemeId(synced.bg_theme);
-                else setBgThemeId('cosmos');
-                setFontPresetId((() => { try { return localStorage.getItem('fs_font_preset') || 'signature'; } catch (_) { return 'signature'; } })());
+                /* localStorage réconcilié = source de vérité (voir handleAuth) :
+                   ne jamais forcer un DEFAULT si le compte a des données, sinon
+                   les effets de persistance repoussent les défauts dans le cloud. */
+                const _lg = (k, p) => { try { const v = localStorage.getItem(k); return v == null ? null : (p ? JSON.parse(v) : v); } catch (_) { return null; } };
+                setWidgets((synced && synced.widgets) || _lg('fs_widgets', true) || DEFAULT_WIDGETS);
+                setBgThemeId((synced && synced.bg_theme) || _lg('fs_bgtheme', false) || 'cosmos');
+                setFontPresetId(_lg('fs_font_preset', false) || 'signature');
                 setSyncEpoch(n => n + 1);
                 window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: synced || {} }));
               }
