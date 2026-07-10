@@ -1991,7 +1991,9 @@
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
       if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
-      if ([...dirtyKeys].some(k => /^fs_gamif_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
+      /* gamif OU cristaux OU historique salis → on pousse le blob gamification
+         complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
+      if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
       return p;
     }
 
@@ -2129,8 +2131,12 @@
 
       if (userId) {
         if (remote && remote.gamification != null) {
-          _fsRawSet(`fs_gamif_${userId}`, JSON.stringify(remote.gamification));
-          window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: remote.gamification }));
+          /* Extrait d'abord cristaux/historique embarqués (fusion par union avec
+             le local), puis stocke le gamif nettoyé. */
+          const cleanGamif = _fsExtractGamifLocalData(userId, remote.gamification);
+          _fsRawSet(`fs_gamif_${userId}`, JSON.stringify(cleanGamif));
+          window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: cleanGamif }));
+          try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (_) { }
         } else if (localStorage.getItem(`fs_gamif_${userId}`) != null) {
           /* Ligne cloud sans gamification : on garde le local (clé scopée,
              aucune fuite possible) et on le repousse vers le cloud. */
@@ -2289,10 +2295,64 @@
         const v = localStorage.getItem('fs_font_preset');
         if (v != null) r.widget_style = { ...(r.widget_style || {}), fontPresetId: v };
       } catch (_) { }
-      try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; if (v != null) r.gamification = JSON.parse(v); } catch (_) { }
+      try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; const base = v != null ? JSON.parse(v) : null; const g = _fsGamifWithLocalData(userId, base); if (g != null) r.gamification = g; } catch (_) { }
       return r;
     }
     window._fsSnapshotLocalData = _fsSnapshotLocalData;
+
+    /* ── Durabilité cloud des cristaux & de l'historique ─────────────────────
+       Ni les cristaux ni l'historique de sessions n'ont de colonne cloud : ils
+       ne vivaient QUE dans localStorage → perdus au moindre nettoyage de cache,
+       changement d'appareil ou course de synchro. On les EMBARQUE dans le blob
+       `gamification` (jsonb, déjà synchronisé) sous les clés réservées __cr /
+       __hist. Cristaux et historique étant append-only (les cristaux ne
+       diminuent jamais), la fusion par union ne perd jamais rien. */
+    function _fsGamifWithLocalData(userId, baseGamif) {
+      let g = baseGamif;
+      if (!userId) return g;
+      try {
+        const cr = localStorage.getItem(`fs_crystals_${userId}`);
+        const hist = localStorage.getItem(`fs_session_history_${userId}`);
+        if (cr != null || hist != null) {
+          g = (g && typeof g === 'object') ? { ...g } : (g || {});
+          if (cr != null) { try { g.__cr = JSON.parse(cr); } catch (_) { } }
+          if (hist != null) { try { g.__hist = JSON.parse(hist); } catch (_) { } }
+        }
+      } catch (_) { }
+      return g;
+    }
+    window._fsGamifWithLocalData = _fsGamifWithLocalData;
+
+    function _fsExtractGamifLocalData(userId, remoteGamif) {
+      if (!remoteGamif || typeof remoteGamif !== 'object') return remoteGamif;
+      const g = { ...remoteGamif };
+      const cloudCr = Array.isArray(g.__cr) ? g.__cr : null;
+      const cloudHist = Array.isArray(g.__hist) ? g.__hist : null;
+      delete g.__cr; delete g.__hist;
+      if (userId && cloudCr) {
+        try {
+          const localCr = JSON.parse(localStorage.getItem(`fs_crystals_${userId}`) || '[]') || [];
+          const byId = new Map(); const noId = [];
+          [...cloudCr, ...localCr].forEach(c => {
+            if (!c) return;
+            if (c.id != null) { if (!byId.has(c.id)) byId.set(c.id, c); }
+            else noId.push(c);
+          });
+          const merged = [...byId.values(), ...noId].slice(0, 100);
+          _fsRawSet(`fs_crystals_${userId}`, JSON.stringify(merged));
+        } catch (_) { }
+      }
+      if (userId && cloudHist) {
+        try {
+          const localHist = JSON.parse(localStorage.getItem(`fs_session_history_${userId}`) || '[]') || [];
+          const seen = new Set(); const merged = [];
+          [...cloudHist, ...localHist].forEach(h => { const k = JSON.stringify(h); if (h && !seen.has(k)) { seen.add(k); merged.push(h); } });
+          _fsRawSet(`fs_session_history_${userId}`, JSON.stringify(merged.slice(0, 200)));
+        } catch (_) { }
+      }
+      return g;
+    }
+    window._fsExtractGamifLocalData = _fsExtractGamifLocalData;
 
     /* Debounced upsert of ALL localStorage values into user_data */
     let _fsPushTimer = null;
@@ -2320,7 +2380,7 @@
         const v = localStorage.getItem('fs_font_preset');
         if (v != null) payload.widget_style = { ...(payload.widget_style || {}), fontPresetId: v };
       } catch (_) { }
-      try { const v = localStorage.getItem(`fs_gamif_${u.id}`); if (v != null) payload.gamification = JSON.parse(v); } catch (_) { }
+      try { const v = localStorage.getItem(`fs_gamif_${u.id}`); const g = _fsGamifWithLocalData(u.id, v != null ? JSON.parse(v) : null); if (g != null) payload.gamification = g; } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
 
       /* Images – aggregate all fs_img_* keys, including GIFs kept in IndexedDB */
@@ -2929,8 +2989,12 @@
         return () => ro.disconnect();
       }, [w, h, max]);
       return (
-        <div ref={ref} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-          <div style={{ width: w, height: h, flexShrink: 0, transform: `scale(${scale})`, transformOrigin: 'center center' }}>{children}</div>
+        /* Centrage par translate(-50%,-50%) : le centre du canvas w×h est calé
+           EXACTEMENT sur le centre du widget, quelle que soit sa taille (le grid
+           place-items ne centrait pas fiablement un enfant plus grand que la
+           case avant mise à l'échelle → décalage vertical/horizontal). */
+        <div ref={ref} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', width: w, height: h, transform: `translate(-50%,-50%) scale(${scale})`, transformOrigin: 'center center' }}>{children}</div>
         </div>
       );
     }
@@ -6326,16 +6390,34 @@
       const [advancedOpen, setAdvancedOpen] = _uSA(false);
       /* ── Mode Ensemble : sélection dans la liste d'amis + salle d'attente ── */
       const me = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; } }, []);
-      const [friends] = _uSA(() => {
+      const _readFriends = () => {
         try {
           const u = JSON.parse(localStorage.getItem('fs_user') || 'null');
           const raw = JSON.parse(localStorage.getItem(u?.id ? 'fs_friends_' + u.id : 'fs_friends') || '[]');
           return Array.isArray(raw) ? raw.filter(f => f && f.id && f.email) : [];
         } catch (e) { return []; }
-      });
+      };
+      /* Liste d'amis RÉACTIVE : juste après le login, fs_friends_{uid} peut ne pas
+         encore être hydraté depuis le cloud → la liste se remplit dès son arrivée
+         (évite le flash « aucun ami » à la première ouverture). */
+      const [friends, setFriends] = _uSA(_readFriends);
+      React.useEffect(() => {
+        const reload = () => setFriends(_readFriends());
+        reload();
+        window.addEventListener('fs-store', reload);
+        window.addEventListener('fs-remote-update', reload);
+        window.addEventListener('fs-friends-update', reload);
+        return () => {
+          window.removeEventListener('fs-store', reload);
+          window.removeEventListener('fs-remote-update', reload);
+          window.removeEventListener('fs-friends-update', reload);
+        };
+      }, []);
       const [selIds, setSelIds] = _uSA([]);
       const [lobby, setLobby] = _uSA(null); /* { inviteId, items:[{friend,status}] } */
-      const [byEmail, setByEmail] = _uSA(false);
+      /* Invitation par email retirée : l'invitation se fait uniquement via la
+         liste d'amis. byEmail reste à false en permanence. */
+      const byEmail = false;
       const [presenceIds, setPresenceIds] = _uSA(() => new Set(window._fsPresenceIds || []));
       const lobbyRef = React.useRef(null);
       lobbyRef.current = lobby;
@@ -6554,28 +6636,15 @@
                           <span style={{flex:1,fontSize:11,color:selIds.length ? T.c1 : T.muted,fontWeight:800}}>
                             {selIds.length ? selIds.length + ' ami' + (selIds.length>1?'s':'') + ' sélectionné' + (selIds.length>1?'s':'') + ' · lance ci-dessous' : 'Choisis qui inviter'}
                           </span>
-                          <button type="button" onClick={() => setByEmail(true)} style={{background:'none',border:'none',cursor:'pointer',color:T.muted,fontSize:11,fontWeight:750,fontFamily:T.font,textDecoration:'underline',textUnderlineOffset:3}}>ou par email</button>
                         </div>
                         <div style={{marginTop:8,fontSize:10.5,color:T.muted}}>Chaque ami reçoit une demande à rejoindre — en direct s'il est en ligne, sinon à sa prochaine ouverture.</div>
                       </>
                     ) : (
                       <div style={{borderRadius:16,border:'1px dashed rgba(255,255,255,.14)',background:'rgba(255,255,255,.03)',padding:'16px 15px'}}>
                         <div style={{fontSize:12.5,fontWeight:850,color:T.text}}>Ta liste d'amis est vide</div>
-                        <div style={{fontSize:11,color:T.muted,marginTop:5,lineHeight:1.6}}>Ajoute des amis depuis la barre latérale (icône Amis) pour les inviter en un clic — ou invite par email.</div>
-                        <button type="button" onClick={() => setByEmail(true)} style={{marginTop:10,height:36,padding:'0 14px',borderRadius:12,border:'1px solid ' + c1(.32),background:c1(.12),color:T.c1,fontFamily:T.font,fontSize:11.5,fontWeight:850,cursor:'pointer'}}>Inviter par email</button>
+                        <div style={{fontSize:11,color:T.muted,marginTop:5,lineHeight:1.6}}>Ajoute des amis depuis la barre latérale (icône Amis) pour les inviter à une session en un clic.</div>
                       </div>
                     ))}
-
-                    {/* ── Repli : invitation par email (comportement historique) ── */}
-                    {byEmail && !lobby && (
-                      <>
-                        <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="email de ton ami" autoFocus style={{width:'100%',height:44,borderRadius:15,border:'1px solid ' + (emailTyped && !emailValid ? 'rgba(251,113,133,.42)' : 'rgba(255,255,255,.10)'),background:'rgba(5,7,17,.44)',color:T.text,fontFamily:T.font,fontSize:13,outline:'none',padding:'0 13px',boxSizing:'border-box'}} />
-                        <div style={{marginTop:8,display:'flex',justifyContent:'space-between',gap:10,fontSize:11}}>
-                          <span style={{color:emailTyped && !emailValid ? T.rose : T.muted}}>{emailLooking ? 'Recherche du profil...' : emailTyped && !emailValid ? 'Adresse email invalide.' : emailValid ? (emailUser ? 'Profil trouve: ' + emailUser.name : 'Invitation prete, profil local si non trouve.') : 'La session démarre directement chez ton ami.'}</span>
-                          {friends.length > 0 && <button type="button" onClick={() => setByEmail(false)} style={{background:'none',border:'none',cursor:'pointer',color:T.c1,fontSize:11,fontWeight:800,fontFamily:T.font,whiteSpace:'nowrap'}}>Mes amis</button>}
-                        </div>
-                      </>
-                    )}
 
                     {/* ── Salle d'attente : qui a rejoint, qui a refusé ── */}
                     {lobby && (
@@ -17380,7 +17449,12 @@
   window._gSave = (uid,data) => {
     try{ localStorage.setItem(`fs_gamif_${uid||'g'}`,JSON.stringify(data)); }catch(e){}
     window.dispatchEvent(new CustomEvent('fs-gamif-update',{detail:data}));
-    if(uid&&window._fsSb) window._fsSb.from('user_data').update({gamification:data,updated_at:new Date().toISOString()}).eq('user_id',uid).then(()=>{});
+    /* Embarque cristaux + historique dans le blob poussé, sinon cet update
+       direct écraserait la copie cloud des cristaux (perte de données). */
+    if(uid&&window._fsSb){
+      const blob = window._fsGamifWithLocalData ? window._fsGamifWithLocalData(uid, data) : data;
+      window._fsSb.from('user_data').update({gamification:blob,updated_at:new Date().toISOString()}).eq('user_id',uid).then(()=>{});
+    }
   };
 
   function _gResetQuests(g) {
