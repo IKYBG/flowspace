@@ -2611,6 +2611,17 @@
             window.dispatchEvent(new CustomEvent('fs-session-sync', { detail: payload.new }));
           }
         })
+        /* Côté HÔTE : détecte de façon FIABLE (postgres_changes, DB-backed —
+           contrairement au broadcast best-effort) qu'un invité a rejoint. Quand
+           l'ami rejoint, il « touche » la ligne (guest_joined_at via started_at) →
+           l'hôte reçoit cet UPDATE sur ses propres lignes host_id et ferme la
+           salle d'attente en temps réel. */
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'sessions',
+          filter: 'host_id=eq.' + userId
+        }, payload => {
+          window.dispatchEvent(new CustomEvent('fs-session-guest-update', { detail: payload.new }));
+        })
         .subscribe();
       window._fsSessionChannel = ch;
       _fsStartInviteRealtime(userId);
@@ -3446,7 +3457,13 @@
       const exp = parseInt(localStorage.getItem('sp_token_expiry') || '0');
       const at = localStorage.getItem('sp_access_token');
       if (at && Date.now() < exp - 60000) return at;
-      return _spRefresh();
+      try { return await _spRefresh(); }
+      catch (e) {
+        /* Refresh token mort/invalide : ne PAS rester silencieux (« aucune
+           musique ») — déconnecter proprement pour proposer la reconnexion. */
+        disconnectSpotify();
+        throw Object.assign(new Error('refresh failed'), { status: 401 });
+      }
     }
 
     async function spotifyApi(path, opts = {}) {
@@ -3545,43 +3562,66 @@
            doit JAMAIS interrompre la chaîne et masquer la musique qui joue.
            Seul un 401 (token mort) est propagé pour déclencher la reconnexion. */
         async function readPlayback() {
-          let sawScope403 = false;
+          let sawScope403 = false, devicePresent = false, wasPlaying = false, adPlaying = false;
           const tryGet = async (path) => {
             try { return await spotifyApi(path); }
             catch (e) {
               if (e.status === 401) throw e;
               if (e.status === 403 && String(e.body || '').toLowerCase().includes('scope')) sawScope403 = true;
+              window.__spDiag = { ...(window.__spDiag || {}), [path.split('?')[0]]: e.status || 'err' };
               return null;
             }
           };
-          const player = await tryGet('/me/player?market=from_token&additional_types=track,episode');
-          if (player?.item) return player;
-          const current = await tryGet('/me/player/currently-playing?market=from_token&additional_types=track,episode');
-          if (current?.item) return current;
+          /* Endpoints indépendants (market retiré : source fréquente de réponses
+             vides/relinking) ; on remonte aussi l'état device/lecture/pub pour un
+             message utile même sans piste lisible. */
+          const player = await tryGet('/me/player?additional_types=track,episode');
+          if (player) {
+            devicePresent = !!player.device; wasPlaying = wasPlaying || !!player.is_playing;
+            if (player.currently_playing_type === 'ad') adPlaying = true;
+            if (player.item) return player;
+          }
+          const current = await tryGet('/me/player/currently-playing?additional_types=track,episode');
+          if (current) {
+            wasPlaying = wasPlaying || !!current.is_playing;
+            if (current.currently_playing_type === 'ad') adPlaying = true;
+            if (current.item) return current;
+          }
           const recent = await tryGet('/me/player/recently-played?limit=1');
           const recentItem = recent?.items?.[0]?.track;
           if (recentItem) return { item: recentItem, is_playing: false, progress_ms: 0, is_recent: true };
-          return { item: null, __scope403: sawScope403 };
+          return { item: null, __scope403: sawScope403, __devicePresent: devicePresent, __playing: wasPlaying, __ad: adPlaying };
         }
+        let missCount = 0;
         async function poll() {
           try {
             const d = await readPlayback();
             if (dead) return;
             if (d?.item) {
+              missCount = 0;
               setTrack(d.item);
               setPlaying(!!d.is_playing);
               setProgressMs(d.progress_ms || 0);
               setDurationMs(d.item.duration_ms || 0);
               setReauthNeeded(false);
               setPlaybackHint(d.is_recent ? 'Dernier morceau écouté. Lance Spotify pour le direct.' : '');
-            } else if (d?.__scope403) {
-              /* Vrai problème de scope (token obtenu avec d'anciennes permissions)
-                 → guider vers une reconnexion, une seule fois. */
+              return;
+            }
+            missCount++;
+            if (d?.__scope403) {
               setReauthNeeded(true);
               setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage de la musique.');
+            } else if (d?.__ad) {
+              setPlaybackHint('Publicité en cours sur Spotify…');
+            } else if (d?.__playing || d?.__devicePresent) {
+              /* Un appareil joue mais l'API ne renvoie pas la piste : cause n°1
+                 sur compte gratuit = « Session privée » activée dans Spotify. */
+              setPlaybackHint('Lecture détectée mais masquée — désactive la « Session privée » dans Spotify (Réglages › Réseaux sociaux).');
             } else {
               setPlaybackHint('Lance une musique sur Spotify — le widget se synchronise tout seul.');
             }
+            /* Ne pas garder indéfiniment une vieille piste fantôme. */
+            if (missCount >= 3) { setTrack(null); setPlaying(false); }
           } catch (e) {
             if (dead) return;
             if (e.status === 401) {
@@ -13276,6 +13316,10 @@
           notify();
           [500, 1400, 3000].forEach(ms => setTimeout(notify, ms));
         }
+        /* Signal FIABLE (DB-backed) : « touche » la ligne pour que l'hôte reçoive
+           un postgres_changes UPDATE sur ses lignes host_id et ferme sa salle
+           d'attente, même si le broadcast est perdu. Best-effort (RLS). */
+        try { window._fsSb.from('sessions').update({ started_at: new Date().toISOString() }).eq('id', s.id).then(() => {}, () => {}); } catch (_) {}
       };
 
       /* Présenter une invitation reçue (depuis la table sessions) comme une CARTE
@@ -13443,13 +13487,17 @@
           setRoutedScreen('dashboard', true);
           const targets = (session.friendIds && session.friendIds.length ? session.friendIds : [session.friendId]).filter(Boolean);
           const ids = [];
+          /* started_at IDENTIQUE pour toutes les lignes = ligne de base. Quand un
+             ami rejoint, il remplace started_at → l'hôte détecte « != baseline »
+             (exact, même pour un join instantané). */
+          const launchIso = new Date().toISOString();
           for (const fid of targets) {
             try {
               const { data } = await window._fsSb.from('sessions').insert({
                 host_id: window._fsSbUser?.id, friend_id: fid,
                 type: 'together', duration: session.duration,
                 music: session.music, breaks: session.breaks, active: true,
-                started_at: new Date().toISOString(),
+                started_at: launchIso,
               }).select('id').single();
               if (data) ids.push(data.id);
             } catch (e) { console.warn('[fs] session insert failed', e); }
@@ -13465,7 +13513,7 @@
             : [{ id: session.friendId, name: session.friendUser?.name || '?', initial: session.friendUser?.initial, color: session.friendUser?.color }]
           ).filter(f => f && f.id).map(f => ({ id: f.id, name: f.name || '?', initial: f.initial || (f.name || '?')[0].toUpperCase(), color: f.color || '#4ade80' }));
           startedPendingRef.current = null;
-          setPendingSession({ cfg: session, ids, invited, joined: [], declined: [], createdAt: Date.now() });
+          setPendingSession({ cfg: session, ids, invited, joined: [], declined: [], createdAt: Date.now(), startedBaseline: launchIso });
           return;
         }
         _activateSession(session);
@@ -13513,9 +13561,48 @@
               : prev);
           }
         };
+        /* Signal DB-backed (fiable) : l'ami a touché sa ligne en rejoignant.
+           Marche même si le broadcast est perdu. */
+        const markJoinedAndStart = (friendId) => {
+          setPendingSession(prev => {
+            if (!prev) return prev;
+            if (friendId && !prev.joined.includes(friendId)) return { ...prev, joined: [...prev.joined, friendId] };
+            return prev;
+          });
+          setTimeout(() => { const cur = pendingRef.current; if (cur) startPendingRef.current?.(cur); }, 900);
+        };
+        const onGuestUpdate = (e) => {
+          const row = e.detail;
+          if (!row?.id || !row.active) return;
+          const pend = pendingRef.current;
+          if (!pend || !pend.ids.includes(row.id)) return;
+          markJoinedAndStart(row.friend_id);
+        };
+        /* Repli par polling : si le temps réel est indisponible, l'hôte relit
+           ses lignes toutes les 2,5 s et démarre dès qu'un ami les a touchées
+           (started_at postérieur à la création = ami présent). */
+        let pollTimer = null;
+        const pollJoins = async () => {
+          const pend = pendingRef.current;
+          if (!pend || !window._fsSb || !user?.id) return;
+          try {
+            const { data } = await window._fsSb.from('sessions')
+              .select('id, friend_id, active, started_at')
+              .eq('host_id', user.id).in('id', pend.ids);
+            (data || []).forEach(row => {
+              if (row.active && pend.startedBaseline && row.started_at !== pend.startedBaseline) markJoinedAndStart(row.friend_id);
+            });
+          } catch (_) {}
+        };
         window.addEventListener('fs-invite-response', onResp);
-        return () => window.removeEventListener('fs-invite-response', onResp);
-      }, []);
+        window.addEventListener('fs-session-guest-update', onGuestUpdate);
+        pollTimer = setInterval(pollJoins, 2500);
+        return () => {
+          window.removeEventListener('fs-invite-response', onResp);
+          window.removeEventListener('fs-session-guest-update', onGuestUpdate);
+          if (pollTimer) clearInterval(pollTimer);
+        };
+      }, [user?.id]);
 
       /* Invité : resynchronise le chrono quand l'hôte démarre pour de vrai.
          Hôte : un invité quitte → avatar retiré de la top bar (animé) + toast. */
@@ -14114,7 +14201,11 @@
         left: max(136px, calc(50vw - 170px));
         width: min(340px, calc(100vw - 24px));
         z-index:10041;
-        background:rgba(8,7,18,0.98);
+        /* Fond dérivé du THÈME (variables minérales calculées depuis le thème)
+           + lavis de la couleur d'accent → le panneau s'adapte au thème. */
+        background:
+          radial-gradient(120% 60% at 50% 0%, rgba(var(--theme-c1-rgb),0.14), transparent 60%),
+          linear-gradient(180deg, rgba(var(--mineral-surface-2-rgb),0.97), rgba(var(--mineral-bg-rgb),0.98));
         border:1px solid rgba(255,255,255,0.09);
         border-radius:28px;
         backdrop-filter:blur(60px) saturate(160%);
