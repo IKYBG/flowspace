@@ -3540,20 +3540,28 @@
       React.useEffect(() => {
         if (!connected) return;
         let dead = false;
+        /* Chaque endpoint est interrogé INDÉPENDAMMENT : une erreur sur l'un
+           (souvent un 403 transitoire de /me/player ou currently-playing) ne
+           doit JAMAIS interrompre la chaîne et masquer la musique qui joue.
+           Seul un 401 (token mort) est propagé pour déclencher la reconnexion. */
         async function readPlayback() {
-          let player = null;
-          try {
-            player = await spotifyApi('/me/player?market=from_token&additional_types=track,episode');
-          } catch (e) {
-            if (e.status === 401) throw e;
-          }
+          let sawScope403 = false;
+          const tryGet = async (path) => {
+            try { return await spotifyApi(path); }
+            catch (e) {
+              if (e.status === 401) throw e;
+              if (e.status === 403 && String(e.body || '').toLowerCase().includes('scope')) sawScope403 = true;
+              return null;
+            }
+          };
+          const player = await tryGet('/me/player?market=from_token&additional_types=track,episode');
           if (player?.item) return player;
-          const current = await spotifyApi('/me/player/currently-playing?market=from_token&additional_types=track,episode');
+          const current = await tryGet('/me/player/currently-playing?market=from_token&additional_types=track,episode');
           if (current?.item) return current;
-          const recent = await spotifyApi('/me/player/recently-played?limit=1');
+          const recent = await tryGet('/me/player/recently-played?limit=1');
           const recentItem = recent?.items?.[0]?.track;
           if (recentItem) return { item: recentItem, is_playing: false, progress_ms: 0, is_recent: true };
-          return null;
+          return { item: null, __scope403: sawScope403 };
         }
         async function poll() {
           try {
@@ -3564,9 +3572,15 @@
               setPlaying(!!d.is_playing);
               setProgressMs(d.progress_ms || 0);
               setDurationMs(d.item.duration_ms || 0);
+              setReauthNeeded(false);
               setPlaybackHint(d.is_recent ? 'Dernier morceau écouté. Lance Spotify pour le direct.' : '');
+            } else if (d?.__scope403) {
+              /* Vrai problème de scope (token obtenu avec d'anciennes permissions)
+                 → guider vers une reconnexion, une seule fois. */
+              setReauthNeeded(true);
+              setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage de la musique.');
             } else {
-              setPlaybackHint('Lance une musique sur Spotify, le widget se synchronise tout seul.');
+              setPlaybackHint('Lance une musique sur Spotify — le widget se synchronise tout seul.');
             }
           } catch (e) {
             if (dead) return;
@@ -3575,12 +3589,7 @@
               setNeedsReconnect(true);
               setPlaybackHint('');
             }
-            else if (e.status === 403 && String(e.body || '').toLowerCase().includes('scope')) {
-              setReauthNeeded(true);
-              setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage fiable du widget.');
-            }
-            else if (e.status === 403) setPlaybackHint('Compte connecté. Lance un titre dans Spotify pour afficher la musique.');
-            else setPlaybackHint('Spotify connecté, synchronisation en attente...');
+            else setPlaybackHint('Spotify connecté, synchronisation en attente…');
           }
         }
         poll();
@@ -13257,6 +13266,16 @@
         setActiveSession(prev => prev?.broadcastId === next.broadcastId ? prev : next);
         try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
         setRoutedScreen('dashboard', true);
+        /* Signale l'hôte de façon FIABLE pour fermer sa salle d'attente en temps
+           réel. Le broadcast Supabase est best-effort (peut être perdu) : on
+           renvoie donc l'acceptation plusieurs fois. Sans ça, l'hôte pouvait
+           rester bloqué dans la salle d'attente alors que l'ami avait rejoint. */
+        if (s.host_id) {
+          const payload = { inviteId: 'sess-' + s.id, status: 'accepted', friend: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || '', email: user?.email || '' } };
+          const notify = () => { try { window._fsSendToUser?.(s.host_id, 'invite-response', payload); } catch (_) { } };
+          notify();
+          [500, 1400, 3000].forEach(ms => setTimeout(notify, ms));
+        }
       };
 
       /* Présenter une invitation reçue (depuis la table sessions) comme une CARTE
@@ -13369,6 +13388,10 @@
       const [pendingSession, setPendingSession] = _uSC(null);
       const pendingRef = React.useRef(null);
       _uEC(() => { pendingRef.current = pendingSession; }, [pendingSession]);
+      /* Empêche un double démarrage : les invités renvoient l'acceptation
+         plusieurs fois (fiabilité), donc plusieurs `startPendingSession` peuvent
+         être planifiés — on ne démarre qu'UNE fois par lot d'invitations. */
+      const startedPendingRef = React.useRef(null);
       const activeSessionRef = React.useRef(null);
       _uEC(() => { activeSessionRef.current = activeSession; }, [activeSession]);
 
@@ -13390,6 +13413,9 @@
       const startPendingSession = async (pend = null) => {
         const p = pend || pendingRef.current;
         if (!p) return;
+        const startKey = (p.ids || []).join(',');
+        if (startedPendingRef.current === startKey) return; /* déjà démarré */
+        startedPendingRef.current = startKey;
         setPendingSession(null);
         /* joinedIds : seuls les amis qui ont ACCEPTÉ apparaissent dans la top
            bar — « Démarrer sans attendre » démarre donc seul, et chaque ami
@@ -13438,6 +13464,7 @@
             ? session.friendUsers
             : [{ id: session.friendId, name: session.friendUser?.name || '?', initial: session.friendUser?.initial, color: session.friendUser?.color }]
           ).filter(f => f && f.id).map(f => ({ id: f.id, name: f.name || '?', initial: f.initial || (f.name || '?')[0].toUpperCase(), color: f.color || '#4ade80' }));
+          startedPendingRef.current = null;
           setPendingSession({ cfg: session, ids, invited, joined: [], declined: [], createdAt: Date.now() });
           return;
         }
@@ -14092,19 +14119,19 @@
         border-radius:28px;
         backdrop-filter:blur(60px) saturate(160%);
         -webkit-backdrop-filter:blur(60px) saturate(160%);
-        box-shadow:0 32px 80px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04),0 0 80px rgba(100,120,255,0.06);
+        box-shadow:0 32px 80px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04),0 0 80px rgba(var(--theme-c1-rgb),0.08);
         display:flex; flex-direction:column; overflow:hidden;
         animation: friendsSlideIn 0.36s cubic-bezier(0.34,1.56,0.64,1) both;
       }
       .fs-friends-panel::before {
         content:''; position:absolute; top:0; left:25%; right:25%; height:1px;
-        background:linear-gradient(90deg,transparent,rgba(165,184,255,0.55),transparent);
+        background:linear-gradient(90deg,transparent,rgba(var(--theme-c1-rgb),0.55),transparent);
         pointer-events:none;
       }
       .fs-friends-panel::after {
         content:''; position:absolute; top:-60px; left:50%; transform:translateX(-50%);
         width:280px; height:180px; border-radius:50%;
-        background:radial-gradient(ellipse, rgba(100,120,255,0.1) 0%, transparent 70%);
+        background:radial-gradient(ellipse, rgba(var(--theme-c1-rgb),0.12) 0%, transparent 70%);
         pointer-events:none;
       }
       .fs-friends-backdrop {
@@ -14133,7 +14160,7 @@
       .fs-friend-actions { display:none; gap:6px; align-items:center; flex-shrink:0; }
       .fs-friend-card:hover .fs-friend-actions { display:flex; }
       .fs-friend-card:focus-visible {
-        outline:2px solid rgba(165,184,255,0.65);
+        outline:2px solid rgba(var(--theme-c1-rgb),0.65);
         outline-offset:3px;
       }
       .fs-friend-action {
@@ -14150,9 +14177,9 @@
         transition:border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
       }
       .fs-add-input:focus {
-        border-color:rgba(165,184,255,0.55);
-        background:rgba(165,184,255,0.05);
-        box-shadow:0 0 0 3.5px rgba(165,184,255,0.12);
+        border-color:rgba(var(--theme-c1-rgb),0.55);
+        background:rgba(var(--theme-c1-rgb),0.05);
+        box-shadow:0 0 0 3.5px rgba(var(--theme-c1-rgb),0.12);
       }
       .fs-add-input::placeholder { color:rgba(248,246,252,0.22); }
       .fs-preview-modal {
