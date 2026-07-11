@@ -2979,6 +2979,8 @@
     @keyframes fwWave  { 0%,100%{transform:scaleY(0.25)} 50%{transform:scaleY(1)} }
     @keyframes fwBrth  { 0%,100%{transform:scale(1);opacity:0.35} 50%{transform:scale(1.22);opacity:0.9} }
     @keyframes fwPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    @keyframes fwAurora{ 0%,100%{transform:scale(1) translate(0,0);opacity:.85} 50%{transform:scale(1.12) translate(2%,-2%);opacity:1} }
+    html.fs-reduce-motion .fw-kf,html.fs-reduce-motion [style*="fwAurora"]{animation:none!important}
   `;
       document.head.appendChild(s);
     }
@@ -3207,48 +3209,62 @@
         );
       }
 
-      if (variant === 7) {
-        /* Horloge à mots façon QLOCKTWO : grille de lettres, seuls les mots de
-           l'heure s'illuminent. Les 4 points d'angle = minutes hors multiples de 5. */
-        const ROWS = ['ILNESTODEUX', 'QUATRETROIS', 'NEUFUNESEPT', 'HUITSIXCINQ', 'MIDIXMINUIT', 'ONZERHEURES', 'MOINSOLEDIX', 'ETRQUARTPMD', 'VINGT-CINQU', 'ETSDEMIEPAM'];
-        const W = { IL: [0, 0, 2], EST: [0, 3, 3], UNE: [2, 4, 3], DEUX: [0, 7, 4], TROIS: [1, 6, 5], QUATRE: [1, 0, 6], CINQH: [3, 7, 4], SIX: [3, 4, 3], SEPT: [2, 7, 4], HUIT: [3, 0, 4], NEUF: [2, 0, 4], DIXH: [4, 2, 3], ONZE: [5, 0, 4], MIDI: [4, 0, 4], MINUIT: [4, 5, 6], HEURES: [5, 5, 6], HEURE: [5, 5, 5], MOINS: [6, 0, 5], LE: [6, 6, 2], DIXM: [6, 8, 3], ET1: [7, 0, 2], QUART: [7, 3, 5], VINGT: [8, 0, 5], DASH: [8, 5, 1], CINQM: [8, 6, 4], ET2: [9, 0, 2], DEMIE: [9, 3, 5], DEMI: [9, 3, 4] };
-        const HW = ['MINUIT', 'UNE', 'DEUX', 'TROIS', 'QUATRE', 'CINQH', 'SIX', 'SEPT', 'HUIT', 'NEUF', 'DIXH', 'ONZE', 'MIDI'];
-        const m5 = Math.round(now.getMinutes() / 5) * 5;
-        const hEff = (h24 + (m5 > 30 ? 1 : 0)) % 24;
-        const hTok = hEff === 0 ? 'MINUIT' : hEff === 12 ? 'MIDI' : HW[hEff % 12];
-        const noHeure = hTok === 'MIDI' || hTok === 'MINUIT';
-        const MIN_T = { 0: [], 5: ['CINQM'], 10: ['DIXM'], 15: ['ET1', 'QUART'], 20: ['VINGT'], 25: ['VINGT', 'DASH', 'CINQM'], 30: ['ET2', noHeure ? 'DEMI' : 'DEMIE'], 35: ['MOINS', 'VINGT', 'DASH', 'CINQM'], 40: ['MOINS', 'VINGT'], 45: ['MOINS', 'LE', 'QUART'], 50: ['MOINS', 'DIXM'], 55: ['MOINS', 'CINQM'], 60: [] };
-        const minToks = MIN_T[m5];
-        const minSet = new Set(minToks);
-        const tokens = ['IL', 'EST', hTok, ...(noHeure ? [] : [hEff % 12 === 1 ? 'HEURE' : 'HEURES']), ...minToks];
-        const lit = {};
-        tokens.forEach(t => { const d = W[t]; if (d) for (let i = 0; i < d[2]; i++) lit[`${d[0]}-${d[1] + i}`] = minSet.has(t) ? 2 : 1; });
-        const cornerOn = now.getMinutes() % 5;
-        const corner = (x, y, i) => (
-          <span key={i} style={{ position: 'absolute', [y]: 6, [x]: 8, width: 5, height: 5, borderRadius: '50%', background: i < cornerOn ? 'var(--theme-c2)' : 'rgba(255,255,255,0.07)', boxShadow: i < cornerOn ? `0 0 7px ${c2(0.85)}` : 'none', transition: 'background .4s, box-shadow .4s' }} />
-        );
+      const secFrac = now.getSeconds() / 60;
+      const minFrac = (now.getMinutes() + secFrac) / 60;
+
+      /* ── V7 — MONOLITHE : minimalisme suisse, heure fine géante ─────────────
+         Restraint typographique (Braun/Rams). Grande heure poids léger, filet
+         d'accent, barre de secondes discrète. Lecture instantanée, aucune
+         distraction — pensé pour la concentration. */
+      if (variant === 7) return (
+        <Shell glow={T.c1} style={style}>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={332} h={196}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '6px 4px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.24em', textTransform: 'uppercase', color: T.muted }}>{DAYS[now.getDay()]}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: T.c1 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 9px var(--theme-c1)' }} />{tzCity}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', fontFamily: T.display, fontWeight: 300, fontSize: 88, letterSpacing: '-0.05em', lineHeight: 0.86, color: T.text, fontVariantNumeric: 'tabular-nums' }}>
+                  {hh}<span style={{ color: T.c1, margin: '0 2px' }}>:</span>{mm}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.muted, marginBottom: 7, letterSpacing: '0.03em' }}>
+                    <span style={{ textTransform: 'capitalize' }}>{MONTHS[now.getMonth()]} {now.getDate()}</span>
+                    <span style={{ fontFamily: T.mono, fontVariantNumeric: 'tabular-nums' }}>:{ss}</span>
+                  </div>
+                  <div style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${secFrac * 100}%`, background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)', transition: secFrac < 0.02 ? 'none' : 'width .9s linear' }} />
+                  </div>
+                </div>
+              </div>
+            </FwFit>
+          </div>
+        </Shell>
+      );
+
+      /* ── V8 — RYTHME DU JOUR : anneau de progression de la journée ──────────
+         Un arc premium montre l'avancement de ta journée (productivité), l'heure
+         au centre, le % écoulé. Minimal, focus-timer. */
+      if (variant === 8) {
+        const S = 156, C = S / 2, R = 66, circ = 2 * Math.PI * R;
         return (
           <Shell glow={T.c1} style={style}>
             <div style={{ position: 'relative', height: '100%' }}>
-              <FwFit w={246} h={228} max={1.4}>
-                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3.5 }}>
-                  {[['left', 'top', 0], ['right', 'top', 1], ['right', 'bottom', 2], ['left', 'bottom', 3]].map(([x, y, i]) => corner(x, y, i))}
-                  {ROWS.map((row, r) => (
-                    <div key={r} style={{ display: 'flex', gap: 0 }}>
-                      {row.split('').map((ch, cI) => {
-                        const st = lit[`${r}-${cI}`];
-                        return (
-                          <span key={cI} style={{
-                            width: 18, textAlign: 'center', fontSize: 12.5, fontWeight: 750, lineHeight: '17px', letterSpacing: 0,
-                            fontFamily: T.font,
-                            color: st === 2 ? T.c1 : st === 1 ? T.text : 'rgba(207,216,235,0.10)',
-                            textShadow: st === 2 ? `0 0 12px ${c1(0.55)}` : st === 1 ? '0 0 12px rgba(255,255,255,0.28)' : 'none',
-                            transition: 'color .55s ease, text-shadow .55s ease',
-                          }}>{ch}</span>
-                        );
-                      })}
-                    </div>
-                  ))}
+              <FwFit w={S + 30} h={S + 30}>
+                <div style={{ position: 'relative', width: S, height: S }}>
+                  <svg width={S} height={S} style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx={C} cy={C} r={R} fill="none" stroke="rgba(255,255,255,0.055)" strokeWidth={3} />
+                    <circle cx={C} cy={C} r={R} fill="none" stroke="var(--theme-c1)" strokeWidth={3} strokeLinecap="round"
+                      strokeDasharray={`${circ * dayProg} ${circ}`} style={{ filter: 'drop-shadow(0 0 6px rgba(var(--theme-c1-rgb),0.7))', transition: 'stroke-dasharray .9s cubic-bezier(.4,0,.2,1)' }} />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                    <div style={{ fontFamily: T.display, fontWeight: 300, fontSize: 40, letterSpacing: '-0.03em', lineHeight: 1, color: T.text, fontVariantNumeric: 'tabular-nums' }}>{hh}:{mm}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.c1 }}>{Math.round(dayProg * 100)}% du jour</div>
+                    <div style={{ fontSize: 10, color: T.muted, textTransform: 'capitalize', marginTop: 1 }}>{DAYS[now.getDay()]}</div>
+                  </div>
                 </div>
               </FwFit>
             </div>
@@ -3256,40 +3272,135 @@
         );
       }
 
-      /* Variante 8 — zen : chiffres empilés poids léger, enso, kanji discrets. */
-      const ensoR = 46, ensoS = 116, ensoC = ensoS / 2;
-      const ensoCirc = 2 * Math.PI * ensoR;
-      const dotA = ((now.getMinutes() * 60 + now.getSeconds()) / 3600) * 2 * Math.PI - Math.PI / 2;
-      return (
-        <Shell flat style={style}>
-          <div style={{ position: 'relative', height: '100%' }}>
-            <FwFit w={310} h={165}>
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, padding: '0 6px', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-                  <Lbl ch="maintenant" style={{ marginBottom: 13 }} />
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 52, letterSpacing: '0.01em', lineHeight: 0.95, color: T.text }}>{hh}</div>
-                    <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>時</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                    <div style={{ fontFamily: T.font, fontWeight: 300, fontSize: 52, letterSpacing: '0.01em', lineHeight: 0.95, color: T.c1 }}>{mm}</div>
-                    <span style={{ fontSize: 13, color: T.muted, opacity: 0.65 }}>分</span>
-                  </div>
-                  <div style={{ width: 26, height: 1, background: 'rgba(255,255,255,0.16)', margin: '13px 0 9px' }} />
-                  <Sub ch={dateStr} style={{ fontSize: 11.5 }} />
-                </div>
-                <div style={{ position: 'relative', width: ensoS, height: ensoS, flexShrink: 0 }}>
-                  <svg width={ensoS} height={ensoS} style={{ position: 'absolute', inset: 0 }}>
-                    <circle cx={ensoC} cy={ensoC} r={ensoR} fill="none" stroke={c1(0.35)} strokeWidth={2.5} strokeLinecap="round"
-                      strokeDasharray={`${ensoCirc * 0.86} ${ensoCirc}`} transform={`rotate(-58 ${ensoC} ${ensoC})`} />
-                    <circle cx={ensoC} cy={ensoC} r={ensoR - 4} fill="none" stroke={c1(0.10)} strokeWidth={5} strokeLinecap="round"
-                      strokeDasharray={`${ensoCirc * 0.55} ${ensoCirc}`} transform={`rotate(-40 ${ensoC} ${ensoC})`} />
-                    <circle cx={ensoC + ensoR * Math.cos(dotA)} cy={ensoC + ensoR * Math.sin(dotA)} r={3.5} fill="var(--theme-c2)"
-                      style={{ filter: `drop-shadow(0 0 6px ${c2(0.9)})`, transition: 'cx 1s linear, cy 1s linear' }} />
-                  </svg>
-                  <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 30, color: T.text, opacity: 0.12, fontWeight: 500 }}>今</div>
+      /* ── V9 — AURORA : dégradé doux thémé, heure fine par-dessus ────────────
+         Ambiance moderne premium, dégradé vivant aux couleurs du thème. */
+      if (variant === 9) return (
+        <Shell glow={T.c1} style={style}>
+          <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+              background: `radial-gradient(120% 90% at 18% 12%, rgba(var(--theme-c1-rgb),0.30), transparent 55%), radial-gradient(110% 90% at 92% 88%, rgba(var(--theme-c2-rgb),0.26), transparent 52%)`,
+              animation: 'fwAurora 14s ease-in-out infinite' }} />
+            <FwFit w={320} h={188}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '6px 4px', boxSizing: 'border-box' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)' }}>{DAYS[now.getDay()]}</div>
+                <div style={{ fontFamily: T.display, fontWeight: 700, fontSize: 66, letterSpacing: '-0.05em', lineHeight: 0.95, marginTop: 4,
+                  background: 'linear-gradient(120deg, #fff, rgba(var(--theme-c1-rgb),0.92))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', fontVariantNumeric: 'tabular-nums' }}>{hh}:{mm}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.66)', textTransform: 'capitalize' }}>{MONTHS[now.getMonth()]} {now.getDate()}</span>
+                  <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+                  <span style={{ fontFamily: T.mono, fontSize: 12, color: T.c1 }}>{ampm}</span>
                 </div>
               </div>
+            </FwFit>
+          </div>
+        </Shell>
+      );
+
+      /* ── V10 — BENTO : mini-dashboard temps (SaaS) ─────────────────────────
+         Cellules nettes : heure, date, avancement du jour, statut live. */
+      if (variant === 10) return (
+        <Shell style={style}>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={330} h={196}>
+              <div style={{ width: '100%', height: '100%', display: 'grid', gridTemplateColumns: '1.5fr 1fr', gridTemplateRows: '1fr 1fr', gap: 8 }}>
+                <div style={{ gridColumn: '1', gridRow: '1 / 3', borderRadius: 16, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.c1 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)', animation: 'fwPulse 2s ease-in-out infinite' }} />live
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 46, letterSpacing: '-0.05em', lineHeight: 0.9, color: T.text, fontVariantNumeric: 'tabular-nums' }}>{hh}:{mm}</div>
+                    <div style={{ fontFamily: T.mono, fontSize: 12, color: T.muted, marginTop: 4 }}>:{ss} · {ampm}</div>
+                  </div>
+                </div>
+                <div style={{ gridColumn: '2', gridRow: '1', borderRadius: 16, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', padding: '12px 13px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ fontFamily: T.display, fontWeight: 850, fontSize: 26, letterSpacing: '-0.03em', lineHeight: 1, color: T.text }}>{now.getDate()}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.muted, marginTop: 3 }}>{MONTHS[now.getMonth()]} · {DAYS[now.getDay()].slice(0, 3)}</div>
+                </div>
+                <div style={{ gridColumn: '2', gridRow: '2', borderRadius: 16, background: 'rgba(var(--theme-c1-rgb),0.06)', border: '1px solid rgba(var(--theme-c1-rgb),0.16)', padding: '12px 13px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 7 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.muted }}>Jour</span>
+                    <span style={{ fontFamily: T.mono, fontSize: 13, fontWeight: 700, color: T.c1 }}>{Math.round(dayProg * 100)}%</span>
+                  </div>
+                  <Bar value={dayProg} h={3} />
+                </div>
+              </div>
+            </FwFit>
+          </div>
+        </Shell>
+      );
+
+      /* ── V11 — ÉDITORIAL : HH / MM empilés, filet d'accent, magazine ───────*/
+      if (variant === 11) return (
+        <Shell glow={T.c1} style={style}>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={300} h={200}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', gap: 18, padding: '4px 2px', boxSizing: 'border-box' }}>
+                <div style={{ width: 3, borderRadius: 3, background: 'linear-gradient(180deg, var(--theme-c1), var(--theme-c2))', flexShrink: 0, boxShadow: '0 0 12px rgba(var(--theme-c1-rgb),0.4)' }} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 74, letterSpacing: '-0.05em', lineHeight: 0.82, color: T.text, fontVariantNumeric: 'tabular-nums' }}>{hh}</div>
+                  <div style={{ fontFamily: T.display, fontWeight: 300, fontSize: 74, letterSpacing: '-0.05em', lineHeight: 0.92, color: T.c1, fontVariantNumeric: 'tabular-nums' }}>{mm}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12 }}>
+                    <span style={{ fontSize: 11, fontWeight: 750, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.muted }}>{DAYS[now.getDay()]}</span>
+                    <span style={{ fontSize: 11, color: T.muted, opacity: 0.7, textTransform: 'capitalize' }}>{MONTHS[now.getMonth()]} {now.getDate()}</span>
+                  </div>
+                </div>
+              </div>
+            </FwFit>
+          </div>
+        </Shell>
+      );
+
+      /* ── V12 — CONSOLE : mono raffiné, caret, statut LIVE (dev-premium) ─────*/
+      if (variant === 12) return (
+        <Shell dark glow={T.c1} style={style}>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={320} h={180}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, fontFamily: T.mono, padding: '4px 6px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, letterSpacing: '0.1em', color: T.muted }}>
+                  <span style={{ display: 'inline-flex', gap: 4 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.14)' }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.14)' }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)' }} />
+                  </span>
+                  <span style={{ marginLeft: 'auto', color: T.c1 }}>● LIVE</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, fontSize: 44, fontWeight: 700, letterSpacing: '0.01em', color: T.text, fontVariantNumeric: 'tabular-nums' }}>
+                  <span>{hh}</span><span style={{ color: T.c1, animation: 'colonBlink 1s step-end infinite' }}>:</span><span>{mm}</span>
+                  <span style={{ fontSize: 20, color: T.muted, marginLeft: 4 }}>:{ss}</span>
+                  <span style={{ width: 11, height: 24, background: 'var(--theme-c1)', marginLeft: 6, alignSelf: 'center', animation: 'colonBlink 1.1s step-end infinite', boxShadow: '0 0 10px var(--theme-c1)' }} />
+                </div>
+                <div style={{ fontSize: 11, color: T.muted, letterSpacing: '0.04em' }}>
+                  <span style={{ color: T.c1 }}>&gt;</span> {DAYS[now.getDay()].toLowerCase()}_{now.getDate()}.{String(now.getMonth() + 1).padStart(2, '0')} · {tzOff}
+                </div>
+              </div>
+            </FwFit>
+          </div>
+        </Shell>
+      );
+
+      /* ── V13 — MÉRIDIEN : analogique ultra-fin, suisse (défaut) ────────────
+         Aiguilles filiformes, index discrets, trotteuse d'accent. */
+      const S13 = 200, C13 = S13 / 2;
+      const hA = ((h24 % 12) * 30 + now.getMinutes() * 0.5 - 90) * Math.PI / 180;
+      const mA = (now.getMinutes() * 6 - 90) * Math.PI / 180;
+      const sA = (now.getSeconds() * 6 - 90) * Math.PI / 180;
+      const ticks13 = [];
+      for (let i = 0; i < 12; i++) {
+        const a = i * 30 * Math.PI / 180, big = i % 3 === 0;
+        ticks13.push(<line key={i} x1={C13 + (big ? 82 : 86) * Math.cos(a)} y1={C13 + (big ? 82 : 86) * Math.sin(a)} x2={C13 + 92 * Math.cos(a)} y2={C13 + 92 * Math.sin(a)} stroke={big ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.14)'} strokeWidth={big ? 2 : 1} strokeLinecap="round" />);
+      }
+      return (
+        <Shell glow={T.c1} style={style}>
+          <div style={{ position: 'relative', height: '100%' }}>
+            <FwFit w={S13} h={S13}>
+              <svg width={S13} height={S13} style={{ display: 'block' }}>
+                {ticks13}
+                <line x1={C13} y1={C13} x2={C13 + 48 * Math.cos(hA)} y2={C13 + 48 * Math.sin(hA)} stroke={T.text} strokeWidth={3} strokeLinecap="round" />
+                <line x1={C13} y1={C13} x2={C13 + 72 * Math.cos(mA)} y2={C13 + 72 * Math.sin(mA)} stroke={T.text} strokeWidth={2} strokeLinecap="round" opacity={0.85} />
+                <line x1={C13 - 14 * Math.cos(sA)} y1={C13 - 14 * Math.sin(sA)} x2={C13 + 80 * Math.cos(sA)} y2={C13 + 80 * Math.sin(sA)} stroke="var(--theme-c1)" strokeWidth={1.3} strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 4px rgba(var(--theme-c1-rgb),0.7))' }} />
+                <circle cx={C13} cy={C13} r={4} fill={T.text} />
+                <circle cx={C13} cy={C13} r={2} fill="var(--theme-c1)" />
+              </svg>
             </FwFit>
           </div>
         </Shell>
@@ -5575,7 +5686,7 @@
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
       const CATALOG = [
-        { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8] },
+        { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13] },
         { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
         { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
         { id: 'spotify', label: 'Spotify', name: 'Musique', short: 'Ambiance musicale premium', category: 'Ambiance', desc: 'Ajouter une zone musicale visuelle pour accompagner le focus.', best: 'Mood de travail', icon: '♪', color: T.green, C: window.SpotifyWidget, variants: [1, 5, 10] },
@@ -11992,7 +12103,7 @@
       const [group, setGroup] = _uSC('essentials');
       const [appearanceOpen, setAppearanceOpen] = _uSC(false);
       const CATALOG = [
-        { id:'clock', label:'Clock', name:'Horloge', group:'essentials', short:'Temps en direct', icon:'◷', Component:ClockWidget, variants:[1,2,3,4,7,8] },
+        { id:'clock', label:'Clock', name:'Horloge', group:'essentials', short:'Temps en direct', icon:'◷', Component:ClockWidget, variants:[1,2,3,4,7,8,9,10,11,12,13] },
         { id:'tasks', label:'Tasks', name:'Taches', group:'essentials', short:'Actions du jour', icon:'✓', Component:TasksWidget, variants:[1,2,3] },
         { id:'notes', label:'Notes', name:'Note rapide', group:'essentials', short:'Idees capturees vite', icon:'✎', Component:NotesWidget, variants:[1,2] },
         { id:'pomodoro', label:'Pomodoro', name:'Pomodoro', group:'focus', short:'Cycles de focus', icon:'◑', Component:PomodoroWidget, variants:[1,2,9] },
