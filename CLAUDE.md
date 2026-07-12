@@ -1,7 +1,7 @@
 # LumenOS — CLAUDE.md
 
 ## Vue produit
-LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gratuit : un dashboard de productivité entièrement personnalisable — widgets musique Spotify, horloge, thèmes, opacité, image/gif, plus tâches et notes. Mécanique cœur : une session de travail **forge un cristal** ; le but est d'accumuler des cristaux pour faire grandir et « flexer » son **île de cristal**. Échelle actuelle : early stage, un seul fichier applicatif.
+LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gratuit : un dashboard de productivité entièrement personnalisable — widget « Sons de focus » (ambiances sonores synthétisées : pluie, océan, forêt, espace…), horloge, thèmes, opacité, image/gif, plus tâches et notes. Mécanique cœur : une session de travail **forge un cristal** ; le but est d'accumuler des cristaux pour faire grandir et « flexer » son **île de cristal**. Échelle actuelle : early stage, un seul fichier applicatif.
 
 ## Hors scope
 - Pas d'offre payante pour l'instant (gratuit d'abord).
@@ -11,12 +11,12 @@ LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gra
 
 ## Stack technique non négociable
 - Front : **un seul fichier `index.html`** (~15k lignes). React 18.3.1 + ReactDOM en UMD (unpkg), GSAP, supabase-js — tous via CDN. JSX transpilé **dans le navigateur** par Babel Standalone (`<script type="text/babel">`). Aucun build step actuellement.
-- Backend : Supabase (auth + données). Intégration Spotify OAuth (tokens en localStorage).
+- Backend : Supabase (auth + données). Sons d'ambiance : synthétisés à la volée via la Web Audio API (aucun fichier, aucun réseau, offline) — plus d'intégration Spotify.
 - Déploiement : Vercel depuis la racine du repo. PWA : `manifest.json` + `sw.js`.
 - Migration vers un vrai bundler prévue un jour → ne pas écrire de code qui la rende plus difficile (scopes nets, pas de dépendances cachées entre blocs).
 
 ## Structure clé
-- `index.html` — TOUTE l'app (styles, composants React, logique Supabase/Spotify). Seul fichier servi par Vercel.
+- `index.html` — TOUTE l'app (styles, composants React, logique Supabase, moteur de sons Web Audio). Seul fichier servi par Vercel.
 - `sw.js` — service worker PWA (cache `lumenos-vN`).
 - `vercel.json` — en-têtes de sécurité + CSP (allowlist des domaines externes).
 - `manifest.json`, `icons/`, `assets/`, `logo.png`, `bg.png` — PWA et médias.

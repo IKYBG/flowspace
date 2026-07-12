@@ -1623,13 +1623,23 @@
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
       'fs_font_preset', 'fs_streak',
-      'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges'
+      'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
+      'fs_ambient'
     ];
-    /* Clés liées au COMPTE mais stockées globalement sur l'appareil (tokens
-       Spotify). Sauvegardées par utilisateur et effacées quand un AUTRE compte
-       se connecte — jamais lors d'un simple resync du même compte. */
-    const FS_ACCOUNT_DEVICE_KEYS = ['sp_access_token', 'sp_refresh_token', 'sp_token_expiry', 'sp_scope_version'];
-    const FS_ACCOUNT_TRANSIENT_KEYS = ['sp_code_verifier', 'sp_return_hash', 'sp_auth_error', 'sp_needs_reconnect'];
+    /* Anciennes clés liées au compte (tokens Spotify — fonctionnalité retirée) :
+       gardées vides pour ne rien casser dans les boucles qui les parcourent ; le
+       ménage des vieux tokens résiduels se fait via _fsPurgeLegacyKeys ci-dessous. */
+    const FS_ACCOUNT_DEVICE_KEYS = [];
+    const FS_ACCOUNT_TRANSIENT_KEYS = [];
+    /* Purge unique des tokens Spotify laissés par l'ancienne intégration. */
+    (function _fsPurgeLegacyKeys() {
+      try {
+        ['sp_access_token', 'sp_refresh_token', 'sp_token_expiry', 'sp_scope_version',
+         'sp_code_verifier', 'sp_return_hash', 'sp_auth_error', 'sp_needs_reconnect',
+         'sp_display_name', 'sp_user_id', 'sp_product', 'sp_access_forbidden'
+        ].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      } catch (e) {}
+    })();
 
     function _fsBackupKey(userId) {
       return userId ? `${FS_USER_BACKUP_PREFIX}${userId}` : null;
@@ -3504,667 +3514,335 @@
   </script>
 
   <script type="text/babel">
-    // ── Spotify OAuth / PKCE ─────────────────────────────────────────
-    const SPOTIFY_CLIENT_ID = 'cbbffeb55791479688f52e26960b5459';
-    const _spRedirectPath = (() => {
-      const path = window.location.pathname || '/';
-      if (path.endsWith('/')) return path;
-      const last = path.split('/').pop() || '';
-      if (last.includes('.')) return path.slice(0, path.lastIndexOf('/') + 1) || '/';
-      return path + '/';
-    })();
-    const SPOTIFY_REDIRECT_URI = window.location.origin + _spRedirectPath;
-    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played user-read-private';
-    /* Bump ⇒ force TOUS les comptes existants à se reconnecter (le widget
-       compare la version stockée à celle-ci ; un mismatch = reauth). « account-v3 »
-       remet tout le monde à zéro pour repartir propre + récupérer le nom du
-       compte Spotify (scope user-read-private ⇒ /me). */
-    const SPOTIFY_SCOPE_VERSION = 'account-v3';
-    /* Accent du widget Spotify : suit le thème de l'utilisateur
-       (vert de marque d'origine : #1db954). */
-    const SP = 'var(--theme-c1)';
+    // ── Sons d'ambiance (Web Audio API — 100% synthétisé, offline, aucun asset) ──
+    /* Refonte du widget musique : plus de Spotify. Un mixeur de sons de focus
+       (pluie, océan, forêt, espace…) entièrement généré par la Web Audio API,
+       donc sans fichier externe, sans réseau, sans CSP à ouvrir, et jouable hors
+       ligne dans la PWA. Plusieurs sons peuvent tourner EN MÊME TEMPS (calques),
+       chacun avec son volume ; un volume maître global par-dessus. */
 
-    function _spRand(n) {
-      const ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-      const b = new Uint8Array(n);
-      crypto.getRandomValues(b);
-      return Array.from(b).map(x => ch[x % ch.length]).join('');
-    }
-    function _spB64u(buf) {
-      return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-    }
-
-    async function initiateSpotifyAuth() {
-      if (!SPOTIFY_CLIENT_ID || SPOTIFY_CLIENT_ID === 'YOUR_SPOTIFY_CLIENT_ID') {
-        alert('Configure ton Spotify Client ID dans index.html (variable SPOTIFY_CLIENT_ID).\n\nCrée une app sur developer.spotify.com, ajoute ' + SPOTIFY_REDIRECT_URI + ' comme Redirect URI.');
-        return;
+    /* Génère un buffer de bruit (blanc / rose / brun) réutilisable en boucle. */
+    function _ambNoise(ctx, kind) {
+      const len = 2 * ctx.sampleRate;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      if (kind === 'white') {
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      } else if (kind === 'pink') {
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < len; i++) {
+          const w = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759;
+          b2 = 0.96900 * b2 + w * 0.1538520; b3 = 0.86650 * b3 + w * 0.3104856;
+          b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
+          d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+        }
+      } else { /* brown */
+        let last = 0;
+        for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
       }
-      const verifier = _spRand(64);
-      const challenge = _spB64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-      localStorage.setItem('sp_code_verifier', verifier);
-      localStorage.setItem('sp_return_hash', window.location.hash || '#dashboard');
-      localStorage.removeItem('sp_auth_error');
-      const p = new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, response_type: 'code', redirect_uri: SPOTIFY_REDIRECT_URI, code_challenge_method: 'S256', code_challenge: challenge, scope: SPOTIFY_SCOPES, show_dialog: 'true' });
-      window.location.href = 'https://accounts.spotify.com/authorize?' + p;
+      return buf;
+    }
+    function _ambSrc(ctx, kind) {
+      const s = ctx.createBufferSource(); s.buffer = _ambNoise(ctx, kind); s.loop = true; s.start(0); return s;
     }
 
-    async function _spExchange(code) {
-      const verifier = localStorage.getItem('sp_code_verifier');
-      if (!verifier) throw new Error('no verifier');
-      const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'authorization_code', code, redirect_uri: SPOTIFY_REDIRECT_URI, code_verifier: verifier }) });
-      if (!r.ok) throw new Error('exchange failed ' + r.status);
-      const d = await r.json();
-      localStorage.setItem('sp_access_token', d.access_token);
-      localStorage.setItem('sp_refresh_token', d.refresh_token);
-      localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
-      localStorage.setItem('sp_scope_version', SPOTIFY_SCOPE_VERSION);
-      localStorage.removeItem('sp_code_verifier');
-      localStorage.removeItem('sp_needs_reconnect');
-      localStorage.removeItem('sp_auth_error');
-      /* Récupère l'identité du compte Spotify tout juste relié pour pouvoir
-         afficher « Est-ce toi ? [nom] » — c'est le diagnostic n°1 du bug
-         « connecté mais rien ne s'affiche » : le compte relié n'est pas celui
-         où la musique joue. */
-      try { await _spFetchProfile(d.access_token); } catch (e) {}
-    }
+    /* Chaque son : build(ctx, out) branche son graphe sur `out` (gain du son, déjà
+       relié au maître) et renvoie { stop } pour tout couper proprement. */
+    const AMBIENT_SOUNDS = [
+      { id: 'rain', label: 'Pluie', icon: '🌧️', build(ctx, out) {
+        const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 380;
+        src.connect(lp); lp.connect(hp); hp.connect(out);
+        const src2 = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6200; bp.Q.value = 0.6;
+        const g2 = ctx.createGain(); g2.gain.value = 0.06; src2.connect(bp); bp.connect(g2); g2.connect(out);
+        return { stop() { try { src.stop(); src2.stop(); } catch (e) {} } };
+      } },
+      { id: 'storm', label: 'Orage', icon: '⛈️', build(ctx, out) {
+        const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+        const rg = ctx.createGain(); rg.gain.value = 0.7; src.connect(lp); lp.connect(rg); rg.connect(out);
+        const src2 = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 5000; bp.Q.value = 0.5;
+        const hg = ctx.createGain(); hg.gain.value = 0.05; src2.connect(bp); bp.connect(hg); hg.connect(out);
+        let alive = true;
+        (function thunder() {
+          if (!alive) return;
+          const n = _ambSrc(ctx, 'brown'), flp = ctx.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 200;
+          const tg = ctx.createGain(), t = ctx.currentTime;
+          tg.gain.setValueAtTime(0, t); tg.gain.linearRampToValueAtTime(0.6 + Math.random() * 0.3, t + 0.3); tg.gain.exponentialRampToValueAtTime(0.001, t + 2.5 + Math.random() * 2);
+          n.connect(flp); flp.connect(tg); tg.connect(out); setTimeout(() => { try { n.stop(); } catch (e) {} }, 6000);
+          setTimeout(thunder, 9000 + Math.random() * 17000);
+        })();
+        return { stop() { alive = false; try { src.stop(); src2.stop(); } catch (e) {} } };
+      } },
+      { id: 'ocean', label: 'Océan', icon: '🌊', build(ctx, out) {
+        const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600;
+        const g = ctx.createGain(); g.gain.value = 0.5; src.connect(lp); lp.connect(g); g.connect(out);
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 0.08; const lg = ctx.createGain(); lg.gain.value = 0.35; lfo.connect(lg); lg.connect(g.gain); lfo.start();
+        const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.05; const lg2 = ctx.createGain(); lg2.gain.value = 280; lfo2.connect(lg2); lg2.connect(lp.frequency); lfo2.start();
+        return { stop() { try { src.stop(); lfo.stop(); lfo2.stop(); } catch (e) {} } };
+      } },
+      { id: 'stream', label: 'Ruisseau', icon: '💧', build(ctx, out) {
+        const src = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2500; bp.Q.value = 0.7;
+        const g = ctx.createGain(); g.gain.value = 0.12; src.connect(bp); bp.connect(g); g.connect(out);
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 3.5; const lg = ctx.createGain(); lg.gain.value = 1200; lfo.connect(lg); lg.connect(bp.frequency); lfo.start();
+        const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.4; const lg2 = ctx.createGain(); lg2.gain.value = 0.05; lfo2.connect(lg2); lg2.connect(g.gain); lfo2.start();
+        return { stop() { try { src.stop(); lfo.stop(); lfo2.stop(); } catch (e) {} } };
+      } },
+      { id: 'wind', label: 'Vent', icon: '🍃', build(ctx, out) {
+        const src = _ambSrc(ctx, 'pink'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 1.2;
+        const g = ctx.createGain(); g.gain.value = 0.6; src.connect(bp); bp.connect(g); g.connect(out);
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 0.06; const lg = ctx.createGain(); lg.gain.value = 340; lfo.connect(lg); lg.connect(bp.frequency); lfo.start();
+        const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.13; const lg2 = ctx.createGain(); lg2.gain.value = 0.25; lfo2.connect(lg2); lg2.connect(g.gain); lfo2.start();
+        return { stop() { try { src.stop(); lfo.stop(); lfo2.stop(); } catch (e) {} } };
+      } },
+      { id: 'forest', label: 'Forêt', icon: '🌲', build(ctx, out) {
+        const src = _ambSrc(ctx, 'pink'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+        const g = ctx.createGain(); g.gain.value = 0.16; src.connect(lp); lp.connect(g); g.connect(out);
+        let alive = true;
+        (function chirp() {
+          if (!alive) return;
+          const o = ctx.createOscillator(); o.type = 'sine'; const f0 = 1800 + Math.random() * 2200; o.frequency.value = f0;
+          const og = ctx.createGain(); const t = ctx.currentTime;
+          o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * 1.15, t + 0.06); o.frequency.linearRampToValueAtTime(f0 * 0.9, t + 0.12);
+          og.gain.setValueAtTime(0, t); og.gain.linearRampToValueAtTime(0.11, t + 0.02); og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+          o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.28);
+          setTimeout(chirp, 1400 + Math.random() * 4200);
+        })();
+        return { stop() { alive = false; try { src.stop(); } catch (e) {} } };
+      } },
+      { id: 'fire', label: 'Feu de camp', icon: '🔥', build(ctx, out) {
+        const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800;
+        const g = ctx.createGain(); g.gain.value = 0.35; src.connect(lp); lp.connect(g); g.connect(out);
+        let alive = true;
+        (function crackle() {
+          if (!alive) return;
+          const b = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + Math.random() * 2500; bp.Q.value = 3;
+          const cg = ctx.createGain(), t = ctx.currentTime;
+          cg.gain.setValueAtTime(0, t); cg.gain.linearRampToValueAtTime(0.22 + Math.random() * 0.3, t + 0.005); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.05 + Math.random() * 0.08);
+          b.connect(bp); bp.connect(cg); cg.connect(out); setTimeout(() => { try { b.stop(); } catch (e) {} }, 220);
+          setTimeout(crackle, 40 + Math.random() * 260);
+        })();
+        return { stop() { alive = false; try { src.stop(); } catch (e) {} } };
+      } },
+      { id: 'night', label: 'Nuit', icon: '🌙', build(ctx, out) {
+        const pad = ctx.createOscillator(); pad.type = 'sine'; pad.frequency.value = 60; const pg = ctx.createGain(); pg.gain.value = 0.05; pad.connect(pg); pg.connect(out); pad.start();
+        let alive = true;
+        (function cricket() {
+          if (!alive) return;
+          const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 4200 + Math.random() * 600;
+          const g = ctx.createGain(); g.gain.value = 0; o.connect(g); g.connect(out); const t = ctx.currentTime; o.start(t);
+          const n = 3 + Math.floor(Math.random() * 3);
+          for (let i = 0; i < n; i++) { const tt = t + i * 0.06; g.gain.setValueAtTime(0, tt); g.gain.linearRampToValueAtTime(0.05, tt + 0.01); g.gain.linearRampToValueAtTime(0, tt + 0.045); }
+          o.stop(t + n * 0.06 + 0.1);
+          setTimeout(cricket, 700 + Math.random() * 1800);
+        })();
+        return { stop() { alive = false; try { pad.stop(); } catch (e) {} } };
+      } },
+      { id: 'space', label: 'Espace', icon: '🌌', build(ctx, out) {
+        const g = ctx.createGain(); g.gain.value = 0.5; g.connect(out);
+        const freqs = [55, 82.4, 110, 164.8];
+        const parts = freqs.map((f, i) => {
+          const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+          const og = ctx.createGain(); og.gain.value = 0.25 / (i + 1); o.connect(og); og.connect(g);
+          const lfo = ctx.createOscillator(); lfo.frequency.value = 0.03 + i * 0.017; const lg = ctx.createGain(); lg.gain.value = og.gain.value * 0.6; lfo.connect(lg); lg.connect(og.gain); lfo.start(); o.start();
+          return { o, lfo };
+        });
+        const src = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 0.5; const sg = ctx.createGain(); sg.gain.value = 0.02; src.connect(bp); bp.connect(sg); sg.connect(g);
+        return { stop() { parts.forEach(p => { try { p.o.stop(); p.lfo.stop(); } catch (e) {} }); try { src.stop(); } catch (e) {} } };
+      } },
+      { id: 'whitenoise', label: 'Bruit blanc', icon: '⚪', build(ctx, out) {
+        const src = _ambSrc(ctx, 'white'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 8000; const g = ctx.createGain(); g.gain.value = 0.22; src.connect(lp); lp.connect(g); g.connect(out);
+        return { stop() { try { src.stop(); } catch (e) {} } };
+      } },
+      { id: 'brownnoise', label: 'Bruit brun', icon: '🟤', build(ctx, out) {
+        const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1600; const g = ctx.createGain(); g.gain.value = 0.5; src.connect(lp); lp.connect(g); g.connect(out);
+        return { stop() { try { src.stop(); } catch (e) {} } };
+      } },
+    ];
 
-    /* GET /me → nom d'affichage, id et type de compte (free/premium).
-       Stocké en localStorage pour l'affichage « Est-ce toi ? ». */
-    async function _spFetchProfile(token) {
-      const at = token || localStorage.getItem('sp_access_token');
-      if (!at) return null;
-      const r = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: 'Bearer ' + at } });
-      /* 403 sur /me = signal le plus fiable de « compte non autorisé » : /me ne
-         dépend NI d'un appareil NI d'une lecture, il devrait TOUJOURS répondre
-         pour un token valide. Un 403 ici ⇒ l'app Spotify est en mode
-         développement et ce compte n'est pas dans l'allowlist du dashboard. */
-      if (r.status === 403) {
-        localStorage.setItem('sp_access_forbidden', '1');
-        try { window.dispatchEvent(new Event('sp_forbidden')); } catch (e) {}
-        return { forbidden: true };
-      }
-      localStorage.removeItem('sp_access_forbidden');
-      if (!r.ok) return null;
-      const me = await r.json();
-      if (me?.display_name) localStorage.setItem('sp_display_name', me.display_name);
-      else localStorage.removeItem('sp_display_name');
-      if (me?.id) localStorage.setItem('sp_user_id', me.id);
-      if (me?.product) localStorage.setItem('sp_product', me.product);
-      try { window.dispatchEvent(new CustomEvent('sp_profile', { detail: me })); } catch (e) {}
-      return me;
-    }
-    window._spFetchProfile = _spFetchProfile;
-
-    async function _spRefresh() {
-      const rt = localStorage.getItem('sp_refresh_token');
-      if (!rt) throw new Error('no refresh token');
-      const r = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, grant_type: 'refresh_token', refresh_token: rt }) });
-      if (!r.ok) {
-        const err = new Error('refresh failed ' + r.status);
-        err.status = r.status;
-        throw err;
-      }
-      const d = await r.json();
-      localStorage.setItem('sp_access_token', d.access_token);
-      localStorage.setItem('sp_token_expiry', Date.now() + d.expires_in * 1000);
-      if (d.refresh_token) localStorage.setItem('sp_refresh_token', d.refresh_token);
-      return d.access_token;
-    }
-
-    async function _spToken() {
-      const exp = parseInt(localStorage.getItem('sp_token_expiry') || '0');
-      const at = localStorage.getItem('sp_access_token');
-      if (at && Date.now() < exp - 60000) return at;
-      try { return await _spRefresh(); }
-      catch (e) {
-        /* Refresh token mort/invalide : ne PAS rester silencieux (« aucune
-           musique ») — déconnecter proprement pour proposer la reconnexion. */
-        disconnectSpotify();
-        throw Object.assign(new Error('refresh failed'), { status: 401 });
-      }
-    }
-
-    async function spotifyApi(path, opts = {}) {
-      const token = await _spToken();
-      const r = await fetch('https://api.spotify.com/v1' + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
-      if (r.status === 204 || r.status === 202) return null;
-      if (r.status === 401) { disconnectSpotify(); throw Object.assign(new Error('unauthorized'), { status: 401 }); }
-      if (!r.ok) {
-        const err = new Error('Spotify API ' + r.status);
-        err.status = r.status;
-        err.path = path;
-        try { err.body = await r.text(); } catch (e) {}
-        throw err;
-      }
-      const ct = r.headers.get('content-type') || '';
-      return ct.includes('json') ? r.json() : null;
-    }
-
-    function disconnectSpotify() {
-      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier','sp_scope_version','sp_auth_error','sp_display_name','sp_user_id','sp_product'].forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('sp_needs_reconnect', '1');
-      window.dispatchEvent(new Event('sp_disconnected'));
-    }
-
-    // Gestion du callback OAuth (appelé depuis App au montage)
-    window._spHandleCallback = async () => {
-      const p = new URLSearchParams(window.location.search);
-      const code = p.get('code');
-      const returnHash = localStorage.getItem('sp_return_hash') || '#dashboard';
-      localStorage.removeItem('sp_return_hash');
-      const authError = p.get('error');
-      if (authError) {
-        localStorage.setItem('sp_auth_error', authError);
-        localStorage.setItem('sp_needs_reconnect', '1');
-        window.history.replaceState({}, '', window.location.pathname + returnHash);
-        window.dispatchEvent(new CustomEvent('sp_auth_error', { detail: { error: authError } }));
-        return;
-      }
-      if (!code || !localStorage.getItem('sp_code_verifier')) return;
-      window.history.replaceState({}, '', window.location.pathname + returnHash);
-      try { await _spExchange(code); window.dispatchEvent(new Event('sp_connected')); }
-      catch (e) { console.error('Spotify callback:', e); }
+    /* Moteur singleton : gère l'AudioContext (créé au 1er geste utilisateur, comme
+       l'exigent les navigateurs) et l'ensemble des sons actifs. Persisté dans
+       localStorage `fs_ambient` ; au chargement on restaure la sélection + volumes
+       mais on démarre EN PAUSE (l'autoplay exige un geste → bouton lecture). */
+    window.LumenAmbient = {
+      sounds: AMBIENT_SOUNDS,
+      active: new Set(),
+      playing: new Map(),
+      volumes: {},
+      master: 0.85,
+      paused: true,
+      ctx: null,
+      masterGain: null,
+      _ensureCtx() {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          this.ctx = new AC();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = this.master;
+          this.masterGain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) {} }
+        return this.ctx;
+      },
+      _startSound(id) {
+        if (this.playing.has(id)) return;
+        const ctx = this._ensureCtx(); if (!ctx) return;
+        const meta = this.sounds.find(s => s.id === id); if (!meta) return;
+        const g = ctx.createGain(); g.gain.value = (this.volumes[id] != null ? this.volumes[id] : 0.7); g.connect(this.masterGain);
+        let inst; try { inst = meta.build(ctx, g); } catch (e) { return; }
+        this.playing.set(id, { stop: inst.stop, gain: g });
+      },
+      _stopSound(id) {
+        const p = this.playing.get(id); if (!p) return;
+        try { p.stop(); } catch (e) {}
+        try { p.gain.disconnect(); } catch (e) {}
+        this.playing.delete(id);
+      },
+      isActive(id) { return this.active.has(id); },
+      toggle(id) {
+        this._ensureCtx();
+        if (this.active.has(id)) { this.active.delete(id); this._stopSound(id); }
+        else { this.active.add(id); this.paused = false; this._startSound(id); }
+        this._persist(); this._emit();
+      },
+      togglePause() {
+        this._ensureCtx();
+        if (this.paused) { this.paused = false; this.active.forEach(id => this._startSound(id)); }
+        else { this.paused = true; [...this.playing.keys()].forEach(id => this._stopSound(id)); }
+        this._persist(); this._emit();
+      },
+      setVolume(id, v) {
+        this.volumes[id] = v; const p = this.playing.get(id); if (p) p.gain.gain.value = v; this._persist(); this._emit();
+      },
+      setMaster(v) { this.master = v; if (this.masterGain) this.masterGain.gain.value = v; this._persist(); this._emit(); },
+      clearAll() { this.active.clear(); [...this.playing.keys()].forEach(id => this._stopSound(id)); this.paused = true; this._persist(); this._emit(); },
+      stopAll() { this.paused = true; [...this.playing.keys()].forEach(id => this._stopSound(id)); this._emit(); },
+      getState() { return { active: [...this.active], playing: [...this.playing.keys()], paused: this.paused, volumes: { ...this.volumes }, master: this.master }; },
+      _emit() { try { window.dispatchEvent(new Event('fs-ambient-change')); } catch (e) {} },
+      _persist() { try { localStorage.setItem('fs_ambient', JSON.stringify({ active: [...this.active], volumes: this.volumes, master: this.master })); } catch (e) {} },
+      _restore() {
+        try {
+          const s = JSON.parse(localStorage.getItem('fs_ambient') || 'null');
+          if (s) { this.active = new Set(s.active || []); this.volumes = s.volumes || {}; this.master = typeof s.master === 'number' ? s.master : 0.85; this.paused = true; }
+        } catch (e) {}
+      },
     };
+    window.LumenAmbient._restore();
+    window.addEventListener('beforeunload', () => { try { window.LumenAmbient.stopAll(); } catch (e) {} });
 
-    // ── SpotifyWidget ────────────────────────────────────────────────
-    function SpotifyWidget({ variant = 1, style }) {
-      const [connected, setConnected] = React.useState(() => !!localStorage.getItem('sp_access_token'));
-      const [needsReconnect, setNeedsReconnect] = React.useState(() => localStorage.getItem('sp_needs_reconnect') === '1');
-      const [track, setTrack] = React.useState(null);
-      const [playing, setPlaying] = React.useState(false);
-      const [progressMs, setProgressMs] = React.useState(0);
-      const [durationMs, setDurationMs] = React.useState(0);
-      const [playbackHint, setPlaybackHint] = React.useState('');
-      const [reauthNeeded, setReauthNeeded] = React.useState(() => !!localStorage.getItem('sp_access_token') && localStorage.getItem('sp_scope_version') !== SPOTIFY_SCOPE_VERSION);
-      const [authError, setAuthError] = React.useState(() => localStorage.getItem('sp_auth_error') || '');
-      const [busy, setBusy] = React.useState(false);
-      const [account, setAccount] = React.useState(() => ({ name: localStorage.getItem('sp_display_name') || '', product: localStorage.getItem('sp_product') || '' }));
-      /* Bannière « Est-ce toi ? [nom] » affichée juste après une (re)connexion,
-         le temps que l'utilisateur vérifie que c'est le bon compte Spotify. */
-      const [confirmAccount, setConfirmAccount] = React.useState(false);
-      /* Compte connecté mais NON autorisé par l'app Spotify (mode développement,
-         allowlist du dashboard). L'OAuth passe, mais toute l'API renvoie 403. */
-      const [accessForbidden, setAccessForbidden] = React.useState(() => localStorage.getItem('sp_access_forbidden') === '1');
-      const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
-      const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
-      const waveDelay = React.useRef([...Array(24)].map((_, i) => i * 0.04)).current;
+    // ── AmbientWidget : mixeur de sons de focus (calques + volumes) ──
+    const _AMB_CSS = `
+      .fs-amb-scroll::-webkit-scrollbar{width:6px}
+      .fs-amb-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:3px}
+      .fs-amb-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+        border-radius:15px;padding:11px 6px 9px;cursor:pointer;font-family:var(--font-body);
+        border:1px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.035);color:var(--mineral-text);
+        transition:transform .16s var(--mineral-ease),border-color .18s,background .18s,box-shadow .18s;min-height:74px}
+      .fs-amb-tile:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),0.32);background:rgba(255,255,255,0.06)}
+      .fs-amb-tile.on{border-color:rgba(var(--theme-c1-rgb),0.55);background:linear-gradient(150deg,rgba(var(--theme-c1-rgb),0.20),rgba(var(--theme-c1-rgb),0.06));
+        box-shadow:0 12px 28px rgba(var(--theme-c1-rgb),0.16),inset 0 1px 0 rgba(255,255,255,0.10)}
+      .fs-amb-emoji{font-size:21px;line-height:1;filter:saturate(1.05)}
+      .fs-amb-lbl{font-size:10.5px;font-weight:750;letter-spacing:.01em;text-align:center;color:var(--mineral-text);opacity:.82;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .fs-amb-tile.on .fs-amb-lbl{opacity:1;color:var(--theme-c1)}
+      .fs-amb-vol{width:88%;margin-top:1px;height:14px;cursor:pointer;accent-color:var(--theme-c1)}
+      .fs-amb-eq{display:flex;gap:1.5px;align-items:flex-end;height:9px;margin-top:1px}
+      .fs-amb-eq i{width:2px;background:var(--theme-c1);border-radius:1px;animation:fsAmbEq .9s ease-in-out infinite}
+      @keyframes fsAmbEq{0%,100%{height:2px}50%{height:9px}}
+      html.fs-reduce-motion .fs-amb-eq i{animation:none;height:5px}
+    `;
 
+    function AmbientWidget({ variant = 1, style }) {
+      const A = window.LumenAmbient;
+      const [st, setSt] = React.useState(() => A.getState());
       React.useEffect(() => {
-        const onConn = () => {
-          localStorage.removeItem('sp_needs_reconnect');
-          localStorage.removeItem('sp_auth_error');
-          setNeedsReconnect(false);
-          setAuthError('');
-          setReauthNeeded(false);
-          setPlaybackHint('Recherche de ta musique...');
-          setAccount({ name: localStorage.getItem('sp_display_name') || '', product: localStorage.getItem('sp_product') || '' });
-          setConfirmAccount(true);
-          setConnected(true);
-        };
-        const onProfile = e => {
-          const me = e?.detail;
-          setAccessForbidden(false);
-          setAccount({ name: me?.display_name || localStorage.getItem('sp_display_name') || '', product: me?.product || localStorage.getItem('sp_product') || '' });
-        };
-        const onForbidden = () => { setConfirmAccount(false); setAccessForbidden(true); };
-        const onDisc = () => {
-          setNeedsReconnect(true);
-          setConnected(false);
-          setTrack(null);
-          setPlaybackHint('');
-          setConfirmAccount(false);
-          setAccessForbidden(false);
-          setAccount({ name: '', product: '' });
-        };
-        const onAuthError = e => {
-          const err = e?.detail?.error || localStorage.getItem('sp_auth_error') || 'access_denied';
-          setAuthError(err);
-          setNeedsReconnect(true);
-          setConnected(false);
-          setTrack(null);
-          setPlaybackHint('');
-        };
-        window.addEventListener('sp_connected', onConn);
-        window.addEventListener('sp_disconnected', onDisc);
-        window.addEventListener('sp_auth_error', onAuthError);
-        window.addEventListener('sp_profile', onProfile);
-        window.addEventListener('sp_forbidden', onForbidden);
-        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); window.removeEventListener('sp_profile', onProfile); window.removeEventListener('sp_forbidden', onForbidden); };
+        const h = () => setSt(A.getState());
+        window.addEventListener('fs-ambient-change', h);
+        return () => window.removeEventListener('fs-ambient-change', h);
       }, []);
-
-      /* Compte déjà connecté au montage (reload, ou token restauré par la couche
-         de sync) mais nom pas encore en cache : on va chercher /me une fois. */
-      React.useEffect(() => {
-        if (!connected) return;
-        if (accessForbidden || !localStorage.getItem('sp_display_name')) {
-          _spFetchProfile().then(me => {
-            if (me?.forbidden) setAccessForbidden(true);
-            else if (me) { setAccessForbidden(false); setAccount({ name: me.display_name || '', product: me.product || '' }); }
-          }).catch(() => {});
-        }
-      }, [connected]);
-
-      React.useEffect(() => {
-        if (!connected) return;
-        let dead = false;
-        /* Chaque endpoint est interrogé INDÉPENDAMMENT : une erreur sur l'un
-           (souvent un 403 transitoire de /me/player ou currently-playing) ne
-           doit JAMAIS interrompre la chaîne et masquer la musique qui joue.
-           Seul un 401 (token mort) est propagé pour déclencher la reconnexion. */
-        async function readPlayback() {
-          let sawScope403 = false, sawForbidden = false, devicePresent = false, wasPlaying = false, adPlaying = false;
-          const tryGet = async (path) => {
-            try { return await spotifyApi(path); }
-            catch (e) {
-              if (e.status === 401) throw e;
-              if (e.status === 403) {
-                if (String(e.body || '').toLowerCase().includes('scope')) sawScope403 = true;
-                else sawForbidden = true; /* 403 non-scope = app en mode dev / compte hors allowlist */
-              }
-              window.__spDiag = { ...(window.__spDiag || {}), [path.split('?')[0]]: e.status || 'err' };
-              return null;
-            }
-          };
-          /* Endpoints indépendants (market retiré : source fréquente de réponses
-             vides/relinking) ; on remonte aussi l'état device/lecture/pub pour un
-             message utile même sans piste lisible. */
-          const player = await tryGet('/me/player?additional_types=track,episode');
-          if (player) {
-            devicePresent = !!player.device; wasPlaying = wasPlaying || !!player.is_playing;
-            if (player.currently_playing_type === 'ad') adPlaying = true;
-            if (player.item) return player;
-          }
-          const current = await tryGet('/me/player/currently-playing?additional_types=track,episode');
-          if (current) {
-            wasPlaying = wasPlaying || !!current.is_playing;
-            if (current.currently_playing_type === 'ad') adPlaying = true;
-            if (current.item) return current;
-          }
-          const recent = await tryGet('/me/player/recently-played?limit=1');
-          const recentItem = recent?.items?.[0]?.track;
-          if (recentItem) return { item: recentItem, is_playing: false, progress_ms: 0, is_recent: true };
-          return { item: null, __scope403: sawScope403, __forbidden: sawForbidden, __devicePresent: devicePresent, __playing: wasPlaying, __ad: adPlaying };
-        }
-        let missCount = 0;
-        async function poll() {
-          try {
-            const d = await readPlayback();
-            if (dead) return;
-            if (d?.item) {
-              missCount = 0;
-              setTrack(d.item);
-              setPlaying(!!d.is_playing);
-              setProgressMs(d.progress_ms || 0);
-              setDurationMs(d.item.duration_ms || 0);
-              setReauthNeeded(false);
-              setPlaybackHint(d.is_recent ? 'Dernier morceau écouté. Lance Spotify pour le direct.' : '');
-              return;
-            }
-            missCount++;
-            if (d?.__forbidden || localStorage.getItem('sp_access_forbidden') === '1') {
-              /* 403 persistant sur toute l'API = app Spotify en mode dev, compte
-                 hors allowlist. Confirmé via /me (autorité). */
-              setAccessForbidden(true);
-              setTrack(null); setPlaying(false);
-              _spFetchProfile().catch(() => {});
-              return;
-            }
-            if (d?.__scope403) {
-              setReauthNeeded(true);
-              setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage de la musique.');
-            } else if (d?.__ad) {
-              setPlaybackHint('Publicité en cours sur Spotify…');
-            } else if (d?.__playing || d?.__devicePresent) {
-              /* Un appareil joue mais l'API ne renvoie pas la piste : cause n°1
-                 sur compte gratuit = « Session privée » activée dans Spotify. */
-              setPlaybackHint('Lecture détectée mais masquée — désactive la « Session privée » dans Spotify (Réglages › Réseaux sociaux).');
-            } else {
-              setPlaybackHint('Lance une musique sur Spotify — le widget se synchronise tout seul.');
-            }
-            /* Ne pas garder indéfiniment une vieille piste fantôme. */
-            if (missCount >= 3) { setTrack(null); setPlaying(false); }
-          } catch (e) {
-            if (dead) return;
-            if (e.status === 401) {
-              setConnected(false);
-              setNeedsReconnect(true);
-              setPlaybackHint('');
-            }
-            else setPlaybackHint('Spotify connecté, synchronisation en attente…');
-          }
-        }
-        poll();
-        /* Onglet caché : on saute l'appel réseau Spotify (batterie + quota). */
-        const iv = setInterval(() => { if (!document.hidden) poll(); }, 3000);
-        const onVisible = () => { if (!document.hidden) poll(); };
-        document.addEventListener('visibilitychange', onVisible);
-        window.addEventListener('focus', poll);
-        return () => {
-          dead = true;
-          clearInterval(iv);
-          document.removeEventListener('visibilitychange', onVisible);
-          window.removeEventListener('focus', poll);
-        };
-      }, [connected]);
-
-      function fmt(ms) { const s = Math.floor(ms / 1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
-
-      async function cmd(path, method = 'PUT') {
-        setBusy(true);
-        try { await spotifyApi(path, { method }); }
-        catch(e) {
-          if (e.status === 403) setPlaybackHint('Contrôle indisponible sur ce compte, mais la lecture reste affichée.');
-        }
-        setTimeout(() => setBusy(false), 700);
-      }
-      const togglePlay = () => { if (playing) { cmd('/me/player/pause'); setPlaying(false); } else { cmd('/me/player/play'); setPlaying(true); } };
-      const next = () => cmd('/me/player/next', 'POST');
-      const prev = () => cmd('/me/player/previous', 'POST');
-      const handleDisconnect = e => {
-        e?.stopPropagation?.();
-        setBusy(false);
-        setTrack(null);
-        setPlaying(false);
-        setProgressMs(0);
-        setDurationMs(0);
-        disconnectSpotify();
-      };
-
-      const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || track?.images?.[1]?.url || track?.images?.[0]?.url;
-      const title = track?.name || (connected ? (account.name ? account.name : 'Spotify connecté') : '—');
-      const artist = track?.artists?.map(a => a.name).join(', ') || track?.show?.publisher || playbackHint || '';
-      const prog = durationMs ? progressMs / durationMs : 0;
-      const openSpotifyAuth = e => {
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
-        initiateSpotifyAuth();
-      };
-      const stopSpotifyGesture = e => e?.stopPropagation?.();
-
-      const SpotifyDisconnectButton = () => (
-        <button
-          onClick={handleDisconnect}
-          title="DÃ©connecter Spotify"
-          aria-label="DÃ©connecter Spotify"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            border: '1px solid rgba(255,255,255,0.11)',
-            background: 'rgba(255,255,255,0.055)',
-            color: 'rgba(248,250,255,0.58)',
-            padding: 0,
-            cursor: 'pointer',
-            flexShrink: 0,
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.20)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-            transition: 'transform 0.18s var(--mineral-ease), border-color 0.18s, background 0.18s, color 0.18s, box-shadow 0.18s'
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-1px)';
-            e.currentTarget.style.borderColor = 'rgba(251,113,133,0.36)';
-            e.currentTarget.style.background = 'rgba(251,113,133,0.14)';
-            e.currentTarget.style.color = '#fff';
-            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.12), 0 10px 24px rgba(251,113,133,0.15)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.11)';
-            e.currentTarget.style.background = 'rgba(255,255,255,0.055)';
-            e.currentTarget.style.color = 'rgba(248,250,255,0.58)';
-            e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.20)';
-          }}>
-          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M10 17l5-5-5-5" />
-            <path d="M15 12H3" />
-            <path d="M21 19V5" />
-          </svg>
-        </button>
-      );
-
-      function AlbumArt({ size = 52 }) {
-        if (albumUrl) return <img src={albumUrl} alt="" style={{ width: size, height: size, borderRadius: size > 60 ? 16 : 12, objectFit: 'cover', flexShrink: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }} />;
-        return (
-          <div style={{ width: size, height: size, borderRadius: size > 60 ? 16 : 12, background: 'linear-gradient(135deg,#1a1030,#0d1e35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.5)', position: 'relative', overflow: 'hidden' }}>
-            <svg width={size*0.45} height={size*0.45} viewBox="0 0 24 24" fill={SP} opacity={0.5}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-          </div>
-        );
-      }
-
-      // ── État non connecté ──
-      if (!connected) {
-        const pageTitle = authError ? 'Connexion Spotify bloquée' : (needsReconnect ? 'Spotify déconnecté' : 'Relier Spotify');
-        const pageCopy = authError
-          ? 'Spotify n’a pas autorisé la connexion. Réessaie avec le bon compte Spotify.'
-          : needsReconnect
-          ? 'Reconnecte ton compte pour relier le widget musique à ton dashboard.'
-          : 'Connecte Spotify pour piloter ta musique depuis LumenOS.';
-        const pageCta = needsReconnect || authError ? 'Reconnecter Spotify' : 'Connecter Spotify';
-        const ConnectView = ({ compact }) => {
-          if (compact) return (
-            <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', boxSizing: 'border-box' }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.16), transparent 52%), radial-gradient(circle at 86% 14%, rgba(255,255,255,0.14), transparent 34%)', opacity: 0.9, pointerEvents: 'none' }} />
-              <div style={{ width: 36, height: 36, borderRadius: 14, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.38)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 12px 26px rgba(var(--theme-c1-rgb),0.15)', position: 'relative' }}>
-                <svg width={18} height={18} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-              </div>
-              <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-                <div style={{ fontSize: 13, fontWeight: 760, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pageTitle}</div>
-                <Sub ch={needsReconnect ? 'Compte à relier' : 'Widget musique'} style={{ fontSize: 11, marginTop: 2 }} />
-              </div>
-              <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} aria-label={pageCta} style={{ width: 36, height: 36, borderRadius: 13, border: '1px solid rgba(255,255,255,0.18)', background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, color: '#06140a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 12px 24px rgba(var(--theme-c1-rgb),0.24)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.03)'; e.currentTarget.style.boxShadow = '0 16px 30px rgba(var(--theme-c1-rgb),0.34)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(var(--theme-c1-rgb),0.24)'; }}>
-                <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
-              </button>
-            </div>
-          );
-
-          return (
-            <div style={{ height: '100%', position: 'relative', overflow: 'hidden', padding: '18px 20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 16 }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 12%, rgba(var(--theme-c1-rgb),0.28), transparent 34%), radial-gradient(circle at 88% 8%, rgba(255,255,255,0.16), transparent 30%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', inset: 1, borderRadius: 21, border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 28, padding: '5px 10px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: 'rgba(248,250,255,0.72)', fontSize: 10.5, fontWeight: 740, letterSpacing: 0.7, textTransform: 'uppercase', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: needsReconnect ? '#f59e0b' : SP, boxShadow: `0 0 14px ${needsReconnect ? '#f59e0b' : SP}` }} />
-                  {needsReconnect ? 'À reconnecter' : 'Connexion'}
-                </span>
-                <div style={{ width: 40, height: 40, borderRadius: 16, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.34)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 18px 38px rgba(var(--theme-c1-rgb),0.18)' }}>
-                  <svg width={20} height={20} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-                </div>
-              </div>
-
-              <div style={{ position: 'relative' }}>
-                <div style={{ fontSize: 18, lineHeight: 1.08, fontWeight: 780, color: T.text, marginBottom: 8, letterSpacing: 0 }}>{pageTitle}</div>
-                <div style={{ maxWidth: 270, fontSize: 12.5, lineHeight: 1.45, color: T.muted }}>{pageCopy}</div>
-              </div>
-
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {['Lecture', 'Pause', 'Morceaux'].map(x => (
-                    <span key={x} style={{ padding: '5px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(248,250,255,0.62)', fontSize: 10.5, fontWeight: 660 }}>{x}</span>
-                  ))}
-                </div>
-                <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 16, padding: '10px 15px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.015)'; e.currentTarget.style.boxShadow = '0 22px 42px rgba(var(--theme-c1-rgb),0.36), inset 0 1px 0 rgba(255,255,255,0.40)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; e.currentTarget.style.boxShadow = '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)'; }}>
-                  {pageCta}
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
-                </button>
-              </div>
-            </div>
-          );
-        };
-        if (variant === 1) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
-        if (variant === 5) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
-        return <Shell flat style={style}><ConnectView compact /></Shell>;
-      }
-
-      // ── Connecté mais compte non autorisé (app Spotify en mode développement) ──
-      if (accessForbidden) {
-        const ForbiddenView = ({ compact }) => (
-          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? 8 : 12, padding: compact ? '12px 15px' : '18px 20px', boxSizing: 'border-box' }} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture}>
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 10%, rgba(245,158,11,0.20), transparent 38%), linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))', pointerEvents: 'none' }} />
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-              <div style={{ width: compact ? 34 : 40, height: compact ? 34 : 40, borderRadius: 13, background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width={compact ? 17 : 20} height={compact ? 17 : 20} viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: compact ? 13 : 15, fontWeight: 780, color: T.text, whiteSpace: compact ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>Compte pas encore autorisé</div>
-                {compact && <Sub ch="Accès Spotify en attente" style={{ fontSize: 11, marginTop: 2 }} />}
-              </div>
-            </div>
-            {!compact && <div style={{ position: 'relative', fontSize: 12, lineHeight: 1.45, color: T.muted }}>Ton compte Spotify est bien connecté, mais l'application est en <b style={{ color: T.text }}>mode développement</b> : seuls les comptes ajoutés par le créateur peuvent afficher leur musique. Demande-lui de t'ajouter — ensuite tout marchera.</div>}
-            <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={handleDisconnect} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: compact ? 34 : 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '8px 13px', color: T.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>
-                Déconnecter
-              </button>
-            </div>
-          </div>
-        );
-        if (variant === 1) return <Shell glow="#f59e0b" style={style}><ForbiddenView /></Shell>;
-        if (variant === 5) return <Shell glow="#f59e0b" style={style}><ForbiddenView /></Shell>;
-        return <Shell flat style={style}><ForbiddenView compact /></Shell>;
-      }
-
-      if (reauthNeeded && !track) {
-        const ReauthView = ({ compact }) => (
-          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: compact ? 'row' : 'column', justifyContent: 'center', alignItems: compact ? 'center' : 'stretch', gap: compact ? 12 : 18, padding: compact ? '12px 14px' : '20px 22px', boxSizing: 'border-box' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 20% 12%, rgba(var(--theme-c1-rgb),0.22), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <div style={{ width: compact ? 36 : 44, height: compact ? 36 : 44, borderRadius: 16, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(var(--theme-c1-rgb),0.16)' }}>
-                <svg width={compact ? 18 : 21} height={compact ? 18 : 21} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: compact ? 13 : 17, lineHeight: 1.1, fontWeight: 780, color: T.text, whiteSpace: compact ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>Autoriser Spotify</div>
-                {!compact && <div style={{ marginTop: 7, maxWidth: 280, fontSize: 12.5, lineHeight: 1.45, color: T.muted }}>Mets à jour l’autorisation pour afficher la musique de tous les comptes.</div>}
-                {compact && <Sub ch="Permission à mettre à jour" style={{ fontSize: 11, marginTop: 2 }} />}
-              </div>
-            </div>
-            <button onClick={openSpotifyAuth} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ position: 'relative', minHeight: compact ? 36 : 42, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: compact ? 13 : 16, padding: compact ? '8px 12px' : '10px 15px', color: '#06140a', fontSize: compact ? 12 : 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, flexShrink: 0, boxShadow: '0 18px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34)', transition: 'transform 0.18s var(--mineral-ease), box-shadow 0.18s' }}>
-              {compact ? 'Autoriser' : 'Mettre à jour Spotify'}
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.35} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
-            </button>
-          </div>
-        );
-        if (variant === 1) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
-        if (variant === 5) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
-        return <Shell flat style={style}><ReauthView compact /></Shell>;
-      }
-
-      // ── Confirmation du compte relié : « Est-ce toi ? [nom] » ──
-      const changeAccount = e => {
-        e?.stopPropagation?.();
-        setConfirmAccount(false);
-        disconnectSpotify();
-        setTimeout(() => initiateSpotifyAuth(), 120);
-      };
-      const confirmYes = e => { e?.stopPropagation?.(); setConfirmAccount(false); };
-      if (confirmAccount && account.name) {
-        const productLabel = account.product === 'premium' ? 'Premium' : (account.product === 'free' || account.product === 'open' ? 'Gratuit' : '');
-        const AccountConfirmView = ({ compact }) => (
-          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? 10 : 14, padding: compact ? '12px 15px' : '20px 22px', boxSizing: 'border-box' }} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture}>
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 10%, rgba(var(--theme-c1-rgb),0.24), transparent 36%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <div style={{ width: compact ? 38 : 46, height: compact ? 38 : 46, borderRadius: 15, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(var(--theme-c1-rgb),0.16)' }}>
-                <svg width={compact ? 19 : 22} height={compact ? 19 : 22} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: compact ? 10.5 : 11, fontWeight: 740, letterSpacing: 0.7, textTransform: 'uppercase', color: T.muted }}>Est-ce toi ?</div>
-                <div style={{ fontSize: compact ? 15 : 18, fontWeight: 780, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{account.name}</div>
-                {productLabel && <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Compte Spotify {productLabel}</div>}
-              </div>
-            </div>
-            {!compact && <div style={{ position: 'relative', fontSize: 12, lineHeight: 1.4, color: T.muted }}>Vérifie que c'est bien le compte où tu écoutes ta musique — sinon rien ne s'affichera.</div>}
-            <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={confirmYes} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ flex: 1, minHeight: compact ? 36 : 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 13, padding: '9px 12px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, boxShadow: '0 14px 28px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.34)' }}>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                Oui, c'est moi
-              </button>
-              <button onClick={changeAccount} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: compact ? 36 : 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 13, padding: '9px 12px', color: T.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>
-                Changer
-              </button>
-            </div>
-          </div>
-        );
-        if (variant === 1) return <Shell glow={SP} style={style}><AccountConfirmView /></Shell>;
-        if (variant === 5) return <Shell glow={SP} style={style}><AccountConfirmView /></Shell>;
-        return <Shell flat style={style}><AccountConfirmView compact /></Shell>;
-      }
-
-      // ── Connecté : player réel ──
-      if (variant === 1) return (
-        <Shell glow={SP} style={style}>
-          <div style={{ padding: '22px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <AlbumArt size={52} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
-                {artist && <Sub ch={artist} style={{ marginTop: 3 }} />}
-              </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-                <SpotifyDisconnectButton />
-                <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏮</button>
-                <button onClick={togglePlay} disabled={busy} style={{ width: 36, height: 36, borderRadius: '50%', background: SP, border: 'none', cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(var(--theme-c1-rgb),0.27)', fontWeight: 700, opacity: busy ? 0.7 : 1 }}>{playing ? '⏸' : '▶'}</button>
-                <button onClick={next} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 14, cursor: 'pointer', padding: 2, opacity: busy ? 0.4 : 1 }}>⏭</button>
-              </div>
-            </div>
-            <div>
-              <Bar value={prog} color={SP} h={2} />
-              <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
-                <Sub ch={fmt(progressMs)} /><Sub ch={fmt(durationMs)} />
-              </div>
-            </div>
-          </div>
-        </Shell>
-      );
-
-      if (variant === 5) return (
-        <Shell glow={SP} style={style}>
-          <div style={{ padding: '22px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                <Lbl ch={playing ? 'en lecture' : 'en pause'} />
-                <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
-                {artist && <Sub ch={artist} style={{ marginTop: 2 }} />}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <SpotifyDisconnectButton />
-                <button onClick={togglePlay} disabled={busy} style={{ background: SP, border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', color: '#000', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{playing ? '⏸' : '▶'}</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 40 }}>
-              {waveH.map((h, i) => (
-                <div key={i} style={{ flex: 1, height: `${h}%`, background: SP, borderRadius: '2px 2px 0 0', transformOrigin: 'bottom', animation: playing ? `fwWave ${waveDur[i]}s ${waveDelay[i]}s ease-in-out infinite` : 'none', opacity: 0.8 }} />
-              ))}
-            </div>
-          </div>
-        </Shell>
-      );
+      const activeCount = st.active.length;
+      const anyPlaying = st.playing.length > 0;
+      const stop = e => e && e.stopPropagation && e.stopPropagation();
 
       return (
-        <Shell flat style={style}>
-          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
-              {artist && <Sub ch={artist} style={{ marginTop: 3, fontSize: 11 }} />}
+        <Shell style={style}>
+          <style>{_AMB_CSS}</style>
+          <div style={{ padding: '16px 16px 14px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 13 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: T.text, letterSpacing: '-0.01em' }}>Sons de focus</span>
+                  {anyPlaying && (
+                    <span className="fs-amb-eq" aria-hidden="true"><i style={{ animationDelay: '0s' }} /><i style={{ animationDelay: '.15s' }} /><i style={{ animationDelay: '.3s' }} /></span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                  {activeCount === 0 ? 'Choisis une ambiance' : `${activeCount} son${activeCount > 1 ? 's' : ''} · ${anyPlaying ? 'en lecture' : 'en pause'}`}
+                </div>
+              </div>
+              <button
+                onClick={() => A.togglePause()} onPointerDown={stop} onMouseDown={stop}
+                disabled={activeCount === 0}
+                aria-label={anyPlaying ? 'Pause' : 'Lecture'}
+                style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, cursor: activeCount === 0 ? 'default' : 'pointer',
+                  border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06140a',
+                  background: activeCount === 0 ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))',
+                  boxShadow: activeCount === 0 ? 'none' : '0 12px 26px rgba(var(--theme-c1-rgb),0.28)', opacity: activeCount === 0 ? 0.5 : 1,
+                  transition: 'transform .16s var(--mineral-ease), box-shadow .18s' }}>
+                {anyPlaying
+                  ? <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.3" /><rect x="14" y="5" width="4" height="14" rx="1.3" /></svg>
+                  : <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .78.86 1.25 1.52.83l10.78-6.86a1 1 0 0 0 0-1.66L9.52 4.31C8.86 3.89 8 4.36 8 5.14z" /></svg>}
+              </button>
             </div>
-            <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexShrink: 0 }}>
-              <SpotifyDisconnectButton />
-              <button onClick={prev} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 12, cursor: 'pointer', padding: 2 }}>⏮</button>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: SP, boxShadow: `0 0 8px ${SP}`, animation: playing ? 'fwPulse 1.5s infinite' : '' }} />
-              <button onClick={togglePlay} disabled={busy} style={{ background: 'none', border: 'none', color: T.text, fontSize: 20, cursor: 'pointer', padding: 2 }}>{playing ? '⏸' : '▶'}</button>
-              <button onClick={next} disabled={busy} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 12, cursor: 'pointer', padding: 2 }}>⏭</button>
+
+            <div className="fs-amb-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', paddingRight: 4, marginRight: -4,
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8, alignContent: 'start' }}>
+              {A.sounds.map(s => {
+                const on = st.active.includes(s.id);
+                const vol = st.volumes[s.id] != null ? st.volumes[s.id] : 0.7;
+                return (
+                  <div key={s.id} className={'fs-amb-tile' + (on ? ' on' : '')} onClick={() => A.toggle(s.id)}
+                    role="button" aria-pressed={on} aria-label={s.label}>
+                    <span className="fs-amb-emoji">{s.icon}</span>
+                    <span className="fs-amb-lbl">{s.label}</span>
+                    {on && (
+                      <input type="range" min={0} max={1} step={0.02} value={vol} className="fs-amb-vol"
+                        onClick={stop} onPointerDown={stop} onMouseDown={stop} onTouchStart={stop}
+                        onChange={e => A.setVolume(s.id, parseFloat(e.target.value))}
+                        aria-label={'Volume ' + s.label} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 11, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M11 5 6 9H2v6h4l5 4V5z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" />
+              </svg>
+              <input type="range" min={0} max={1} step={0.02} value={st.master}
+                onChange={e => A.setMaster(parseFloat(e.target.value))}
+                onClick={stop} onPointerDown={stop} onMouseDown={stop} onTouchStart={stop}
+                aria-label="Volume général"
+                style={{ flex: 1, height: 16, cursor: 'pointer', accentColor: 'var(--theme-c1)' }} />
+              {activeCount > 0 && (
+                <button onClick={() => A.clearAll()} onPointerDown={stop} onMouseDown={stop} aria-label="Tout couper"
+                  style={{ flexShrink: 0, background: 'none', border: 'none', color: T.muted, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', padding: '2px 4px', fontFamily: T.font }}>
+                  Effacer
+                </button>
+              )}
             </div>
           </div>
         </Shell>
       );
     }
 
-    window.SpotifyWidget = SpotifyWidget;
+    /* Alias legacy : les dashboards enregistrés référencent encore le type
+       « spotify » ; on garde donc l'export sous les deux noms pour une migration
+       transparente (l'ancien emplacement musique affiche le nouveau mixeur). */
+    window.AmbientWidget = AmbientWidget;
+    window.SpotifyWidget = AmbientWidget;
   </script>
 
   <script type="text/babel">
@@ -5378,7 +5056,7 @@
       clock: (v) => React.createElement(ClockWidget, { variant: v }),
       pomodoro: (v) => React.createElement(PomodoroWidget, { variant: v }),
       tasks: (v) => React.createElement(TasksWidget, { variant: v }),
-      spotify: (v) => React.createElement(SpotifyWidget, { variant: v }),
+      spotify: (v) => React.createElement(AmbientWidget, { variant: v }),
       goal: (v) => React.createElement(GoalWidget, { variant: v }),
       streak: (v, id, ctx) => React.createElement(StreakWidget, { variant: v, user: ctx?.user }),
       countdown: (v) => React.createElement(CountdownWidget, { variant: v }),
@@ -5846,7 +5524,7 @@
         { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13] },
         { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
         { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
-        { id: 'spotify', label: 'Spotify', name: 'Musique', short: 'Ambiance musicale premium', category: 'Ambiance', desc: 'Ajouter une zone musicale visuelle pour accompagner le focus.', best: 'Mood de travail', icon: '♪', color: T.green, C: window.SpotifyWidget, variants: [1, 5, 10] },
+        { id: 'spotify', label: 'Sons', name: 'Sons de focus', short: 'Ambiances sonores pour se concentrer', category: 'Ambiance', desc: 'Mixe des sons d’ambiance (pluie, océan, forêt, espace…) pour te concentrer.', best: 'Concentration', icon: '🎧', color: T.green, C: window.AmbientWidget, variants: [1, 5, 10] },
         { id: 'goal', label: 'Goal', name: 'Objectif', short: 'Objectifs mesurables clairs', category: 'Progression', desc: 'Suivre un objectif mesurable avec une barre ou une jauge claire.', best: 'Objectif hebdo', icon: '◎', color: T.c1, C: window.GoalWidget, variants: [1, 2, 10] },
         { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Habitudes en chaine', category: 'Habitude', desc: 'Visualiser la série de jours actifs et garder le rythme.', best: 'Habitude focus', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
         { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous controle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
@@ -5858,7 +5536,7 @@
       const WIDGET_FILTERS = [
         { id:'essentials', label:'Essentiels', match:['Clock','Tasks','Pomodoro','Notes'] },
         { id:'focus', label:'Focus', match:['Pomodoro','Goal','Streak','Countdown'] },
-        { id:'media', label:'Media', match:['Spotify','Image','Links'] },
+        { id:'media', label:'Media', match:['Sons','Image','Links'] },
         { id:'all', label:'Tous', match:TRAY },
       ];
       const filteredCatalog = CATALOG.filter(c => (WIDGET_FILTERS.find(f => f.id === widgetFilter) || WIDGET_FILTERS[0]).match.includes(c.label));
@@ -6323,7 +6001,7 @@
                   </div>
                   {filteredCatalog.map((cat, i) => {
                     const name = cat.label;
-                    const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Spotify: { icon: '♪', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
+                    const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Sons: { icon: '🎧', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
                     const m = META[name] || { icon: '◇', c: T.c1 };
                     const friendly = cat || { name, short: name, desc: '', best: '', category: '', color: T.c1 };
                     return (
@@ -12267,7 +11945,7 @@
         { id:'goal', label:'Goal', name:'Objectif', group:'focus', short:'Objectifs mesurables clairs', icon:'◎', Component:GoalWidget, variants:[1,2,10] },
         { id:'streak', label:'Streak', name:'Regularite', group:'focus', short:'Habitudes en chaine', icon:'▲', Component:StreakWidget, variants:[1,2,10] },
         { id:'countdown', label:'Countdown', name:'Deadline', group:'focus', short:'Deadline sous controle', icon:'⏱', Component:CountdownWidget, variants:[1,10] },
-        { id:'spotify', label:'Spotify', name:'Musique', group:'media', short:'Ambiance musicale premium', icon:'♪', Component:SpotifyWidget, variants:[1,5,10] },
+        { id:'spotify', label:'Sons', name:'Sons de focus', group:'media', short:'Ambiances sonores pour se concentrer', icon:'🎧', Component:AmbientWidget, variants:[1,5,10] },
         { id:'image', label:'Image', name:'Image', group:'media', short:'Inspiration visuelle personnelle', icon:'◈', Component:ImageWidget, variants:[1] },
         { id:'links', label:'Links', name:'Liens rapides', group:'media', short:'Raccourcis essentiels rapides', icon:'⊞', Component:LinksWidget, variants:[1,2,8] },
       ];
@@ -12648,7 +12326,6 @@
       const [displayName, setDisplayName] = React.useState(user?.name || user?.username || 'Utilisateur');
       const [email] = React.useState(user?.email || '');
       const emailLocked = !!user?.email;
-      const [spConnected, setSpConnected] = React.useState(() => !!safeGet('sp_access_token'));
       const [confirmWipe, setConfirmWipe] = React.useState(false);
       const fileRef = React.useRef(null);
 
@@ -12691,13 +12368,6 @@
         root.classList.toggle('fs-compact-cards', !!prefs.compactCards);
       }, [prefs]);
 
-      React.useEffect(() => {
-        const sync = () => setSpConnected(!!safeGet('sp_access_token'));
-        window.addEventListener('sp_disconnected', sync);
-        window.addEventListener('focus', sync);
-        return () => { window.removeEventListener('sp_disconnected', sync); window.removeEventListener('focus', sync); };
-      }, []);
-
       const handlePhotoFile = e => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -12725,15 +12395,6 @@
         setPrefs({ ...DEFAULTS });
         flashSave();
         addToast({ message: 'Réglages réinitialisés', type: 'success', icon: '↺' });
-      };
-      const toggleSpotify = () => {
-        if (spConnected) {
-          try { (window.disconnectSpotify || disconnectSpotify)(); } catch (_) {}
-          setSpConnected(false);
-          addToast({ message: 'Spotify déconnecté', type: 'success', icon: '✓' });
-        } else {
-          try { (window.initiateSpotifyAuth || initiateSpotifyAuth)(); } catch (_) {}
-        }
       };
       const wipeAll = () => {
         try {
@@ -13065,16 +12726,6 @@
                     </SubCard>
 
                     <SubCard title="Intégrations">
-                      <div className="fs-set-int">
-                        <div className="fs-set-int-l">
-                          <span className="fs-set-int-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1DB954"><circle cx="12" cy="12" r="11" /><path d="M7 10.5c3-0.8 6.5-0.6 9 1M7.5 13.5c2.4-0.6 5-0.4 7 0.9M8 16c1.8-0.4 3.7-0.3 5.2 0.6" stroke="#0a0c14" strokeWidth="1.3" fill="none" strokeLinecap="round" /></svg></span>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="fs-set-row-t">Spotify {spConnected && <span className="fs-set-statusdot" />}</div>
-                            <div className="fs-set-row-d">{spConnected ? 'Connecté.' : 'Ta musique depuis le dashboard.'}</div>
-                          </div>
-                        </div>
-                        <button className={'fs-set-connect' + (spConnected ? ' off' : '')} onClick={toggleSpotify}>{spConnected ? 'Déconnecter' : 'Connecter'}</button>
-                      </div>
                       <div className="fs-set-int">
                         <div className="fs-set-int-l">
                           <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
@@ -13463,9 +13114,6 @@
           hostEmail: session.hostEmail || '',
         };
       };
-
-      /* Spotify OAuth callback – traite le code retourné par Spotify au chargement */
-      _uEC(() => { if (window._spHandleCallback) window._spHandleCallback(); }, []);
 
       /* Crystallization Reveal – show once per session on dashboard entry */
       const [showReveal, setShowReveal] = _uSC(() => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumenos-v11';
+const CACHE_NAME = 'lumenos-v12';
 
 // Static assets to cache on install
 const PRECACHE = [
@@ -39,8 +39,6 @@ self.addEventListener('fetch', (event) => {
   // Never intercept Supabase or external API calls — always go to network
   if (
     url.hostname.includes('supabase.co') ||
-    url.hostname.includes('spotify.com') ||
-    url.hostname.includes('accounts.spotify.com') ||
     url.hostname.includes('fonts.googleapis.com') ||
     url.hostname.includes('fonts.gstatic.com') ||
     url.hostname.includes('unpkg.com') ||
