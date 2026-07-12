@@ -3503,8 +3503,12 @@
       return path + '/';
     })();
     const SPOTIFY_REDIRECT_URI = window.location.origin + _spRedirectPath;
-    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played';
-    const SPOTIFY_SCOPE_VERSION = 'playback-fallback-v2';
+    const SPOTIFY_SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played user-read-private';
+    /* Bump ⇒ force TOUS les comptes existants à se reconnecter (le widget
+       compare la version stockée à celle-ci ; un mismatch = reauth). « account-v3 »
+       remet tout le monde à zéro pour repartir propre + récupérer le nom du
+       compte Spotify (scope user-read-private ⇒ /me). */
+    const SPOTIFY_SCOPE_VERSION = 'account-v3';
     /* Accent du widget Spotify : suit le thème de l'utilisateur
        (vert de marque d'origine : #1db954). */
     const SP = 'var(--theme-c1)';
@@ -3546,7 +3550,29 @@
       localStorage.removeItem('sp_code_verifier');
       localStorage.removeItem('sp_needs_reconnect');
       localStorage.removeItem('sp_auth_error');
+      /* Récupère l'identité du compte Spotify tout juste relié pour pouvoir
+         afficher « Est-ce toi ? [nom] » — c'est le diagnostic n°1 du bug
+         « connecté mais rien ne s'affiche » : le compte relié n'est pas celui
+         où la musique joue. */
+      try { await _spFetchProfile(d.access_token); } catch (e) {}
     }
+
+    /* GET /me → nom d'affichage, id et type de compte (free/premium).
+       Stocké en localStorage pour l'affichage « Est-ce toi ? ». */
+    async function _spFetchProfile(token) {
+      const at = token || localStorage.getItem('sp_access_token');
+      if (!at) return null;
+      const r = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: 'Bearer ' + at } });
+      if (!r.ok) return null;
+      const me = await r.json();
+      if (me?.display_name) localStorage.setItem('sp_display_name', me.display_name);
+      else localStorage.removeItem('sp_display_name');
+      if (me?.id) localStorage.setItem('sp_user_id', me.id);
+      if (me?.product) localStorage.setItem('sp_product', me.product);
+      try { window.dispatchEvent(new CustomEvent('sp_profile', { detail: me })); } catch (e) {}
+      return me;
+    }
+    window._spFetchProfile = _spFetchProfile;
 
     async function _spRefresh() {
       const rt = localStorage.getItem('sp_refresh_token');
@@ -3594,7 +3620,7 @@
     }
 
     function disconnectSpotify() {
-      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier','sp_scope_version','sp_auth_error'].forEach(k => localStorage.removeItem(k));
+      ['sp_access_token','sp_refresh_token','sp_token_expiry','sp_code_verifier','sp_scope_version','sp_auth_error','sp_display_name','sp_user_id','sp_product'].forEach(k => localStorage.removeItem(k));
       localStorage.setItem('sp_needs_reconnect', '1');
       window.dispatchEvent(new Event('sp_disconnected'));
     }
@@ -3631,6 +3657,10 @@
       const [reauthNeeded, setReauthNeeded] = React.useState(() => !!localStorage.getItem('sp_access_token') && localStorage.getItem('sp_scope_version') !== SPOTIFY_SCOPE_VERSION);
       const [authError, setAuthError] = React.useState(() => localStorage.getItem('sp_auth_error') || '');
       const [busy, setBusy] = React.useState(false);
+      const [account, setAccount] = React.useState(() => ({ name: localStorage.getItem('sp_display_name') || '', product: localStorage.getItem('sp_product') || '' }));
+      /* Bannière « Est-ce toi ? [nom] » affichée juste après une (re)connexion,
+         le temps que l'utilisateur vérifie que c'est le bon compte Spotify. */
+      const [confirmAccount, setConfirmAccount] = React.useState(false);
       const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
       const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
       const waveDelay = React.useRef([...Array(24)].map((_, i) => i * 0.04)).current;
@@ -3643,13 +3673,21 @@
           setAuthError('');
           setReauthNeeded(false);
           setPlaybackHint('Recherche de ta musique...');
+          setAccount({ name: localStorage.getItem('sp_display_name') || '', product: localStorage.getItem('sp_product') || '' });
+          setConfirmAccount(true);
           setConnected(true);
+        };
+        const onProfile = e => {
+          const me = e?.detail;
+          setAccount({ name: me?.display_name || localStorage.getItem('sp_display_name') || '', product: me?.product || localStorage.getItem('sp_product') || '' });
         };
         const onDisc = () => {
           setNeedsReconnect(true);
           setConnected(false);
           setTrack(null);
           setPlaybackHint('');
+          setConfirmAccount(false);
+          setAccount({ name: '', product: '' });
         };
         const onAuthError = e => {
           const err = e?.detail?.error || localStorage.getItem('sp_auth_error') || 'access_denied';
@@ -3662,8 +3700,20 @@
         window.addEventListener('sp_connected', onConn);
         window.addEventListener('sp_disconnected', onDisc);
         window.addEventListener('sp_auth_error', onAuthError);
-        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); };
+        window.addEventListener('sp_profile', onProfile);
+        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); window.removeEventListener('sp_profile', onProfile); };
       }, []);
+
+      /* Compte déjà connecté au montage (reload, ou token restauré par la couche
+         de sync) mais nom pas encore en cache : on va chercher /me une fois. */
+      React.useEffect(() => {
+        if (!connected) return;
+        if (!localStorage.getItem('sp_display_name')) {
+          _spFetchProfile().then(me => {
+            if (me) setAccount({ name: me.display_name || '', product: me.product || '' });
+          }).catch(() => {});
+        }
+      }, [connected]);
 
       React.useEffect(() => {
         if (!connected) return;
@@ -3781,7 +3831,7 @@
       };
 
       const albumUrl = track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || track?.images?.[1]?.url || track?.images?.[0]?.url;
-      const title = track?.name || (connected ? 'Spotify connecté' : '—');
+      const title = track?.name || (connected ? (account.name ? account.name : 'Spotify connecté') : '—');
       const artist = track?.artists?.map(a => a.name).join(', ') || track?.show?.publisher || playbackHint || '';
       const prog = durationMs ? progressMs / durationMs : 0;
       const openSpotifyAuth = e => {
@@ -3936,6 +3986,46 @@
         if (variant === 1) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
         if (variant === 5) return <Shell glow={SP} style={style}><ReauthView /></Shell>;
         return <Shell flat style={style}><ReauthView compact /></Shell>;
+      }
+
+      // ── Confirmation du compte relié : « Est-ce toi ? [nom] » ──
+      const changeAccount = e => {
+        e?.stopPropagation?.();
+        setConfirmAccount(false);
+        disconnectSpotify();
+        setTimeout(() => initiateSpotifyAuth(), 120);
+      };
+      const confirmYes = e => { e?.stopPropagation?.(); setConfirmAccount(false); };
+      if (confirmAccount && account.name) {
+        const productLabel = account.product === 'premium' ? 'Premium' : (account.product === 'free' || account.product === 'open' ? 'Gratuit' : '');
+        const AccountConfirmView = ({ compact }) => (
+          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? 10 : 14, padding: compact ? '12px 15px' : '20px 22px', boxSizing: 'border-box' }} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture}>
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 10%, rgba(var(--theme-c1-rgb),0.24), transparent 36%), linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.025))', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div style={{ width: compact ? 38 : 46, height: compact ? 38 : 46, borderRadius: 15, background: 'rgba(var(--theme-c1-rgb),0.15)', border: '1px solid rgba(var(--theme-c1-rgb),0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 14px 30px rgba(var(--theme-c1-rgb),0.16)' }}>
+                <svg width={compact ? 19 : 22} height={compact ? 19 : 22} viewBox="0 0 24 24" fill={SP}><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.335.132-.67.469-.746 3.809-.87 7.076-.496 9.713 1.115.293.18.386.563.207.856zm1.223-2.723c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.518-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.258 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.128-1.016.621-1.165 3.55-1.075 9.453-.866 13.177 1.337.445.264.59.836.327 1.282-.264.445-.836.59-1.282.327z"/></svg>
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: compact ? 10.5 : 11, fontWeight: 740, letterSpacing: 0.7, textTransform: 'uppercase', color: T.muted }}>Est-ce toi ?</div>
+                <div style={{ fontSize: compact ? 15 : 18, fontWeight: 780, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{account.name}</div>
+                {productLabel && <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Compte Spotify {productLabel}</div>}
+              </div>
+            </div>
+            {!compact && <div style={{ position: 'relative', fontSize: 12, lineHeight: 1.4, color: T.muted }}>Vérifie que c'est bien le compte où tu écoutes ta musique — sinon rien ne s'affichera.</div>}
+            <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={confirmYes} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ flex: 1, minHeight: compact ? 36 : 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: `linear-gradient(135deg, ${SP}, var(--theme-c2))`, border: '1px solid rgba(255,255,255,0.18)', borderRadius: 13, padding: '9px 12px', color: '#06140a', fontSize: 12.5, fontWeight: 780, cursor: 'pointer', fontFamily: T.font, boxShadow: '0 14px 28px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.34)' }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                Oui, c'est moi
+              </button>
+              <button onClick={changeAccount} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: compact ? 36 : 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 13, padding: '9px 12px', color: T.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, whiteSpace: 'nowrap' }}>
+                Changer
+              </button>
+            </div>
+          </div>
+        );
+        if (variant === 1) return <Shell glow={SP} style={style}><AccountConfirmView /></Shell>;
+        if (variant === 5) return <Shell glow={SP} style={style}><AccountConfirmView /></Shell>;
+        return <Shell flat style={style}><AccountConfirmView compact /></Shell>;
       }
 
       // ── Connecté : player réel ──
