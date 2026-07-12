@@ -13250,8 +13250,13 @@
            ainsi un reload pendant l'attente re-propose la carte au lieu de bloquer. */
         window._fsActiveBroadcastId = s.id;
         const selfName = user?.name || user?.email?.split('@')[0] || 'Toi';
-        const baselineIso = s.started_at || null;
-        const myJoinIso = new Date().toISOString();
+        /* Base de comparaison NUMÉRIQUE (epoch ms) : `started_at` fait un
+           aller-retour Postgres et revient REFORMATÉ (ex. « +00:00 » vs « Z »,
+           microsecondes) → toute comparaison de CHAÎNES est fausse. On compare
+           donc des epochs. L'invité NE touche PAS started_at (sinon son propre
+           UPDATE le ferait démarrer tout seul) ; il attend que l'hôte écrive une
+           heure de départ nettement différente de la base. */
+        const baselineEpoch = s.started_at ? new Date(s.started_at).getTime() : 0;
         const lobby = {
           isGuest: true, rowId: s.id, hostId: s.host_id, hostMeta: { name: hostData?.name, email: hostData?.email },
           cfg: { type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks },
@@ -13262,25 +13267,20 @@
           ],
           joined: [s.host_id, user?.id].filter(Boolean),
           declined: [], createdAt: Date.now(), crystal: {},
-          baselineIso, myJoinIso,
+          baselineEpoch,
         };
         setGuestLobby(lobby);
         try { localStorage.removeItem('fs_active_session'); } catch (e) {}
         setRoutedScreen('dashboard', true);
-        /* Prévient l'hôte que l'ami a rejoint — DEUX voies pour que la salle
-           d'attente de l'hôte se remplisse de façon FIABLE :
-           1) broadcast invite-response (rapide, best-effort, renvoyé plusieurs fois) ;
-           2) DB : « touch » de started_at (= myJoinIso, ≠ baseline) → l'hôte le
-              détecte par postgres_changes ET par son polling toutes les 2,5 s.
-           L'invité stocke baselineIso + myJoinIso pour NE PAS confondre son propre
-           touch avec le vrai démarrage de l'hôte (qui écrit un 3e timestamp). */
+        /* Prévient l'hôte que l'ami a rejoint : broadcast invite-response
+           (renvoyé plusieurs fois). C'est la SEULE source de « qui a rejoint »
+           côté hôte → il n'affiche « prêt » que sur une vraie acceptation. */
         if (s.host_id) {
           const payload = { inviteId: 'sess-' + s.id, status: 'accepted', friend: { id: user?.id, name: selfName, email: user?.email || '' } };
           const notify = () => { try { window._fsSendToUser?.(s.host_id, 'invite-response', payload); } catch (_) { } };
           notify();
-          [500, 1400, 3000].forEach(ms => setTimeout(notify, ms));
+          [400, 1200, 2600, 4500].forEach(ms => setTimeout(notify, ms));
         }
-        try { window._fsSb.from('sessions').update({ started_at: myJoinIso }).eq('id', s.id).then(() => {}, () => {}); } catch (_) {}
       };
 
       /* Invité : passe de la salle d'attente à la session active (l'hôte a
@@ -13597,13 +13597,6 @@
             return next;
           });
         };
-        const onGuestUpdate = (e) => {
-          const row = e.detail;
-          if (!row?.id || !row.active) return;
-          const pend = pendingRef.current;
-          if (!pend || !pend.ids.includes(row.id)) return;
-          markJoined(row.friend_id);
-        };
         /* Un invité quitte la salle d'attente avant le départ : on le retire du
            roster et on rediffuse. */
         const onLobbyLeave = (e) => {
@@ -13618,31 +13611,16 @@
             return next;
           });
         };
-        /* Repli par polling : si le temps réel est indisponible, l'hôte relit
-           ses lignes toutes les 2,5 s et démarre dès qu'un ami les a touchées
-           (started_at postérieur à la création = ami présent). */
-        let pollTimer = null;
-        const pollJoins = async () => {
-          const pend = pendingRef.current;
-          if (!pend || !window._fsSb || !user?.id) return;
-          try {
-            const { data } = await window._fsSb.from('sessions')
-              .select('id, friend_id, active, started_at')
-              .eq('host_id', user.id).in('id', pend.ids);
-            (data || []).forEach(row => {
-              if (row.active && pend.startedBaseline && row.started_at !== pend.startedBaseline) markJoined(row.friend_id);
-            });
-          } catch (_) {}
-        };
+        /* IMPORTANT : plus de détection de « join » par la DB (started_at). Un
+           aller-retour Postgres reformate started_at → toute comparaison de
+           chaînes marquait l'ami « prêt » AVANT même son acceptation. La seule
+           source de « qui a rejoint » est donc l'acceptation broadcast (onResp),
+           qui n'arrive que sur une VRAIE acceptation. */
         window.addEventListener('fs-invite-response', onResp);
-        window.addEventListener('fs-session-guest-update', onGuestUpdate);
         window.addEventListener('fs-lobby-leave', onLobbyLeave);
-        pollTimer = setInterval(pollJoins, 2500);
         return () => {
           window.removeEventListener('fs-invite-response', onResp);
-          window.removeEventListener('fs-session-guest-update', onGuestUpdate);
           window.removeEventListener('fs-lobby-leave', onLobbyLeave);
-          if (pollTimer) clearInterval(pollTimer);
         };
       }, [user?.id]);
 
@@ -13652,14 +13630,15 @@
         const onSync = (e) => {
           const row = e.detail;
           if (!row?.id || !row.started_at) return;
-          /* Invité en salle d'attente : l'UPDATE started_at = l'hôte a démarré
-             → transition. MAIS on ignore l'UPDATE issu du propre « touch » de
-             l'invité (started_at === myJoinIso) et la valeur de base, sinon
-             l'invité démarrerait tout seul en rejoignant. */
+          /* Invité en salle d'attente : on ne bascule QUE si started_at diffère
+             NETTEMENT (epoch, ≥ 2 s) de la base — c'est l'hôte qui a écrit une
+             vraie heure de départ. Comparaison numérique obligatoire (le format
+             de started_at change à l'aller-retour Postgres). */
           const lobby = guestLobbyRef.current;
           if (lobby && lobby.rowId === row.id) {
-            if (row.started_at === lobby.myJoinIso || row.started_at === lobby.baselineIso) return;
-            transitionGuestToActive(new Date(row.started_at).getTime(), lobby.crystal);
+            const t = new Date(row.started_at).getTime();
+            if (!t || Math.abs(t - (lobby.baselineEpoch || 0)) < 2000) return;
+            transitionGuestToActive(t, lobby.crystal);
             return;
           }
           setActiveSession(a => {
@@ -13762,12 +13741,41 @@
             const cur = guestLobbyRef.current;
             if (!cur || cur.rowId !== lobby.rowId) return;
             if (!row.active) { setGuestLobby(null); addToast({ message: 'La session partagée a été annulée', type: 'info', icon: '✕', duration: 3600 }); return; }
-            if (row.started_at && row.started_at !== cur.myJoinIso && row.started_at !== cur.baselineIso) {
-              transitionGuestToActive(new Date(row.started_at).getTime(), cur.crystal);
+            const t = row.started_at ? new Date(row.started_at).getTime() : 0;
+            if (t && Math.abs(t - (cur.baselineEpoch || 0)) >= 2000) {
+              transitionGuestToActive(t, cur.crystal);
             }
           } catch (_) {}
         };
         const lobbyPollTimer = setInterval(pollLobby, 2000);
+        /* Repli FIABLE (DB polling) pour la SORTIE d'un participant : le broadcast
+           « session-left » et le postgres_changes peuvent être perdus → l'hôte
+           relit ses lignes toutes les 3 s ; toute ligne passée active=false = ami
+           parti → on l'ajoute à leftIds → son avatar s'anime et disparaît de la
+           top bar (fsAvatarOut) sur TOUS les dashboards de la session. */
+        const pollLeaves = async () => {
+          const a = activeSessionRef.current;
+          if (!a || a.isGuest || a.type !== 'together' || !window._fsSb) return;
+          const ids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
+          if (!ids.length) return;
+          try {
+            const { data } = await window._fsSb.from('sessions').select('id, friend_id, active').in('id', ids);
+            (data || []).forEach(row => {
+              if (row.active !== false || !row.friend_id) return;
+              const cur = activeSessionRef.current;
+              if (!cur || (cur.leftIds || []).includes(row.friend_id)) return;
+              const fname = (cur.friendUsers || []).find(f => f.id === row.friend_id)?.name || 'Ton ami';
+              addToast({ message: `${fname} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
+              setActiveSession(c => {
+                if (!c || (c.leftIds || []).includes(row.friend_id)) return c;
+                const next = { ...c, leftIds: [...(c.leftIds || []), row.friend_id] };
+                try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (_) {}
+                return next;
+              });
+            });
+          } catch (_) {}
+        };
+        const leavePollTimer = setInterval(pollLeaves, 3000);
         window.addEventListener('fs-session-sync', onSync);
         window.addEventListener('fs-session-left', onLeft);
         window.addEventListener('fs-session-start', onGuestStart);
@@ -13775,6 +13783,7 @@
         window.addEventListener('fs-session-guest-update', onHostGuestUpdate);
         return () => {
           clearInterval(lobbyPollTimer);
+          clearInterval(leavePollTimer);
           window.removeEventListener('fs-session-sync', onSync);
           window.removeEventListener('fs-session-left', onLeft);
           window.removeEventListener('fs-session-start', onGuestStart);
@@ -16321,12 +16330,149 @@
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
     }
 
+    /* ── Image partageable de la grotte (canvas 2D, aucun asset externe) ──────
+       Compose une carte premium des cristaux de l'utilisateur pour le partage
+       social — la mécanique de croissance de l'audience (chaque grotte partagée
+       = pub). Logo LumenOS discret en bas à droite. */
+    function _caveGemColors(c, i) {
+      const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+      if (isGold) return { stops: ['#fff7b8', '#ffd36a', '#f59e0b'], glow: 'rgba(255,202,75,0.92)' };
+      const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+      if (grad && grad.stops) return { stops: grad.stops, glow: grad.glow };
+      const si = Math.min(c.stateIdx != null ? c.stateIdx : 3, 3);
+      const pal = (window.CRYSTAL_PALETTES || [])[si];
+      if (pal) return { stops: [pal.b, pal.a, pal.c], glow: pal.glow };
+      return { stops: ['#bfe9ff', '#8fdcff', '#4a6f9c'], glow: 'rgba(143,220,255,0.7)' };
+    }
+    function _drawShareGem(ctx, x, y, size, colors, rot) {
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(rot || 0);
+      const w = size, h = size * 1.4;
+      const topY = -h * 0.5, midY = -h * 0.5 + w * 0.36, botY = h * 0.5, tW = w * 0.5, mW = w * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(-tW, topY); ctx.lineTo(tW, topY); ctx.lineTo(mW, midY); ctx.lineTo(0, botY); ctx.lineTo(-mW, midY); ctx.closePath();
+      const st = colors.stops;
+      const g = ctx.createLinearGradient(0, topY, 0, botY);
+      g.addColorStop(0, st[0]); g.addColorStop(0.5, st[1] || st[0]); g.addColorStop(1, st[st.length - 1]);
+      ctx.shadowColor = colors.glow; ctx.shadowBlur = size * 0.95;
+      ctx.fillStyle = g; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,0.26)'; ctx.lineWidth = Math.max(1, size * 0.018);
+      ctx.beginPath();
+      ctx.moveTo(-tW, topY); ctx.lineTo(-mW * 0.42, midY); ctx.lineTo(0, botY);
+      ctx.moveTo(tW, topY); ctx.lineTo(mW * 0.42, midY); ctx.lineTo(0, botY);
+      ctx.moveTo(-mW, midY); ctx.lineTo(mW, midY);
+      ctx.moveTo(-tW, topY); ctx.lineTo(0, midY); ctx.lineTo(tW, topY);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.beginPath(); ctx.moveTo(-tW * 0.66, topY + size * 0.04); ctx.lineTo(tW * 0.66, topY + size * 0.04); ctx.lineTo(mW * 0.36, midY * 0.86); ctx.lineTo(-mW * 0.36, midY * 0.86); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    function _drawLumenBrand(ctx, x, y) {
+      ctx.save();
+      ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = 0.62;
+      ctx.font = '800 30px Inter, system-ui, sans-serif'; ctx.fillStyle = '#eef4ff';
+      ctx.fillText('LumenOS', x, y + 10);
+      const tw = ctx.measureText('LumenOS').width;
+      ctx.translate(x - tw - 22, y);
+      ctx.globalAlpha = 0.9;
+      const s = 15;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.5, -s * 0.5); ctx.lineTo(s * 0.5, -s * 0.5); ctx.lineTo(s * 0.42, s * 0.12); ctx.lineTo(0, s * 0.78); ctx.lineTo(-s * 0.42, s * 0.12); ctx.closePath();
+      const gg = ctx.createLinearGradient(0, -s, 0, s); gg.addColorStop(0, '#e8f6ff'); gg.addColorStop(1, '#8fdcff');
+      ctx.fillStyle = gg; ctx.shadowColor = 'rgba(143,220,255,0.8)'; ctx.shadowBlur = 12; ctx.fill();
+      ctx.restore();
+    }
+    function _buildCaveShareCanvas(crystals, userName) {
+      const W = 1080, H = 1350;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      const cs = getComputedStyle(document.documentElement);
+      const c1rgb = (cs.getPropertyValue('--theme-c1-rgb') || '143,220,255').trim();
+      const c2rgb = (cs.getPropertyValue('--theme-c2-rgb') || '192,132,252').trim();
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#05070f'); bg.addColorStop(0.55, '#080b18'); bg.addColorStop(1, '#04060d');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      const rg = ctx.createRadialGradient(W / 2, H * 0.7, 40, W / 2, H * 0.7, W * 0.8);
+      rg.addColorStop(0, `rgba(${c1rgb},0.30)`); rg.addColorStop(0.5, `rgba(${c2rgb},0.10)`); rg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 130; i++) {
+        const px = Math.abs((Math.sin(i * 127.1) * 43758.5) % 1) * W;
+        const py = Math.abs((Math.sin(i * 311.7) * 12543.7) % 1) * H * 0.6;
+        const r = Math.abs(Math.sin(i * 7.3)) * 1.7 + 0.3;
+        ctx.globalAlpha = 0.55 * Math.abs(Math.cos(i)); ctx.fillStyle = '#dbeafe';
+        ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      const fg = ctx.createRadialGradient(W / 2, H * 0.82, 20, W / 2, H * 0.82, W * 0.6);
+      fg.addColorStop(0, `rgba(${c1rgb},0.30)`); fg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.ellipse(W / 2, H * 0.82, W * 0.46, H * 0.12, 0, 0, 7); ctx.fill();
+      const items = (crystals || []).slice(0, 48).map((c, i) => {
+        const seed = (Number(c.seed) || i * 97.13);
+        const rx = (Math.abs(Math.sin(seed * 1.7)) * 2 - 1);
+        const rz = Math.abs(Math.sin(seed * 2.3));
+        const dur = Math.min(Number(c.duration) || 25, 120);
+        const size = (46 + dur / 120 * 46) * (0.6 + rz * 0.75);
+        const cx = W / 2 + rx * W * 0.33 * (0.5 + rz * 0.7);
+        const cy = H * 0.48 + rz * H * 0.3 + Math.sin(seed * 4.1) * 22;
+        return { size, cx, cy, rot: Math.sin(seed) * 0.16, colors: _caveGemColors(c, i) };
+      }).sort((a, b) => a.cy - b.cy);
+      items.forEach(it => _drawShareGem(ctx, it.cx, it.cy, it.size, it.colors, it.rot));
+      if (!items.length) {
+        ctx.globalAlpha = 0.85; _drawShareGem(ctx, W / 2, H * 0.56, 120, _caveGemColors({}, 0), 0); ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = `rgba(${c1rgb},0.9)`; ctx.font = '800 24px Inter, system-ui, sans-serif';
+      ctx.fillText('GROTTE DE CRISTAUX', 74, 116);
+      ctx.fillStyle = '#f3f7ff'; ctx.font = '800 68px Inter, system-ui, sans-serif';
+      const title = userName ? ('Grotte de ' + userName) : 'Ma grotte';
+      ctx.fillText(title.length > 20 ? title.slice(0, 19) + '…' : title, 72, 186);
+      const total = (crystals || []).reduce((s, c) => s + (Number(c.duration) || 0), 0);
+      ctx.font = '800 52px Inter, system-ui, sans-serif'; ctx.fillStyle = '#8ef6ff';
+      ctx.fillText(String((crystals || []).length), 76, H - 118);
+      ctx.font = '600 21px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.6)';
+      ctx.fillText('cristaux', 76, H - 86);
+      ctx.font = '800 52px Inter, system-ui, sans-serif'; ctx.fillStyle = '#e7b7ff';
+      const mx = 76 + ctx.measureText(String((crystals || []).length)).width + 70;
+      ctx.fillText(String(total), mx, H - 118);
+      ctx.font = '600 21px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.6)';
+      ctx.fillText('minutes de focus', mx, H - 86);
+      _drawLumenBrand(ctx, W - 44, H - 54);
+      return cv;
+    }
+
     function MesCristauxPanel({ open, onClose, user, embedded = false }) {
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
       const [sel, setSel] = React.useState(null);
       const [hover, setHover] = React.useState(null);
       const [dragId, setDragId] = React.useState(null);
+      const [shareUrl, setShareUrl] = React.useState(null);
+      const [shareBusy, setShareBusy] = React.useState(false);
+      const shareCave = () => {
+        setShareBusy(true);
+        try {
+          const cv = _buildCaveShareCanvas(crystals, user?.name || user?.email?.split('@')[0] || '');
+          setShareUrl(cv.toDataURL('image/png'));
+        } catch (e) { console.warn('[fs] cave share failed', e); }
+        setShareBusy(false);
+      };
+      const downloadShare = () => {
+        if (!shareUrl) return;
+        const a = document.createElement('a'); a.href = shareUrl; a.download = 'ma-grotte-lumenos.png';
+        document.body.appendChild(a); a.click(); a.remove();
+      };
+      const nativeShare = async () => {
+        if (!shareUrl) return;
+        try {
+          const blob = await (await fetch(shareUrl)).blob();
+          const file = new File([blob], 'ma-grotte-lumenos.png', { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Ma grotte de cristaux', text: 'Ma grotte de cristaux sur LumenOS ✦ lumenos.vercel.app' });
+          } else { downloadShare(); }
+        } catch (e) { if (String(e && e.name) !== 'AbortError') downloadShare(); }
+      };
       const viewRef = React.useRef(null);
       const canvasRef = React.useRef(null);
       const worldRef = React.useRef(null);
@@ -16727,8 +16873,11 @@
               )}
 
               <div className="fs-cv-hud">
-                <button type="button" onClick={() => dollyBy(150)} aria-label="Avancer dans la grotte">▲ Avancer</button>
-                <button type="button" onClick={() => dollyBy(-150)} aria-label="Reculer">▼ Reculer</button>
+                <button type="button" onClick={shareCave} disabled={shareBusy} aria-label="Partager ma grotte à mes amis"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.9), rgba(var(--theme-c2-rgb),0.9))', border: '1px solid rgba(255,255,255,0.22)', color: '#06140a', fontWeight: 900 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+                  {shareBusy ? 'Création…' : 'Partager à mes amis'}
+                </button>
                 <button type="button" onClick={() => { camRef.current.vz = 0; camRef.current.target = 0; }}>Reset</button>
               </div>
 
@@ -16762,6 +16911,33 @@
               )}
             </div>
           </div>
+
+          {shareUrl && (
+            <div onClick={() => setShareUrl(null)} style={{ position: 'fixed', inset: 0, zIndex: 6000, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(3,5,11,0.72)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', animation: 'fsWaitVeilIn .3s ease both' }}>
+              <div onClick={e => e.stopPropagation()} style={{ width: 'min(400px, 100%)', borderRadius: 24, overflow: 'hidden', background: 'linear-gradient(170deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-surface-rgb),0.9))', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 32px 90px rgba(0,0,0,0.55), 0 0 60px rgba(var(--theme-c1-rgb),0.1)', padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontFamily: T.display, fontWeight: 850, fontSize: 19, color: T.text, letterSpacing: '-0.02em' }}>Partage ta grotte</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Montre tes cristaux à tes amis ✦</div>
+                  </div>
+                  <button onClick={() => setShareUrl(null)} aria-label="Fermer" style={{ width: 32, height: 32, borderRadius: 11, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: T.muted, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                </div>
+                <img src={shareUrl} alt="Aperçu de ma grotte de cristaux" style={{ width: '100%', borderRadius: 16, display: 'block', boxShadow: '0 16px 44px rgba(0,0,0,0.45)' }} />
+                <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                  <button onClick={downloadShare} style={{ flex: 1, height: 46, borderRadius: 14, border: 'none', cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 800, color: '#06140a', background: 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))', boxShadow: '0 14px 32px rgba(var(--theme-c1-rgb),0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 11l5 4 5-4M5 21h14"/></svg>
+                    Télécharger
+                  </button>
+                  {typeof navigator !== 'undefined' && navigator.share && (
+                    <button onClick={nativeShare} style={{ height: 46, padding: '0 16px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: T.text, cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+                      Partager
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </>
       );
     }
