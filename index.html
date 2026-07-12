@@ -2662,6 +2662,17 @@
         .on('broadcast', { event: 'session-left' }, ({ payload }) => {
           window.dispatchEvent(new CustomEvent('fs-session-left', { detail: payload }));
         })
+        /* Salle d'attente commune : l'hôte diffuse le roster (qui a rejoint) aux
+           invités, et « session-start » (crystal + départ) quand il démarre. */
+        .on('broadcast', { event: 'lobby-sync' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-lobby-sync', { detail: payload }));
+        })
+        .on('broadcast', { event: 'session-start' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-session-start', { detail: payload }));
+        })
+        .on('broadcast', { event: 'lobby-leave' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-lobby-leave', { detail: payload }));
+        })
         .subscribe();
       window._fsInviteChannel = ch;
     }
@@ -3563,6 +3574,16 @@
       const at = token || localStorage.getItem('sp_access_token');
       if (!at) return null;
       const r = await fetch('https://api.spotify.com/v1/me', { headers: { Authorization: 'Bearer ' + at } });
+      /* 403 sur /me = signal le plus fiable de « compte non autorisé » : /me ne
+         dépend NI d'un appareil NI d'une lecture, il devrait TOUJOURS répondre
+         pour un token valide. Un 403 ici ⇒ l'app Spotify est en mode
+         développement et ce compte n'est pas dans l'allowlist du dashboard. */
+      if (r.status === 403) {
+        localStorage.setItem('sp_access_forbidden', '1');
+        try { window.dispatchEvent(new Event('sp_forbidden')); } catch (e) {}
+        return { forbidden: true };
+      }
+      localStorage.removeItem('sp_access_forbidden');
       if (!r.ok) return null;
       const me = await r.json();
       if (me?.display_name) localStorage.setItem('sp_display_name', me.display_name);
@@ -3661,6 +3682,9 @@
       /* Bannière « Est-ce toi ? [nom] » affichée juste après une (re)connexion,
          le temps que l'utilisateur vérifie que c'est le bon compte Spotify. */
       const [confirmAccount, setConfirmAccount] = React.useState(false);
+      /* Compte connecté mais NON autorisé par l'app Spotify (mode développement,
+         allowlist du dashboard). L'OAuth passe, mais toute l'API renvoie 403. */
+      const [accessForbidden, setAccessForbidden] = React.useState(() => localStorage.getItem('sp_access_forbidden') === '1');
       const waveH = React.useRef([...Array(24)].map(() => 25 + Math.random() * 70)).current;
       const waveDur = React.useRef([...Array(24)].map(() => 0.35 + Math.random() * 0.5)).current;
       const waveDelay = React.useRef([...Array(24)].map((_, i) => i * 0.04)).current;
@@ -3679,14 +3703,17 @@
         };
         const onProfile = e => {
           const me = e?.detail;
+          setAccessForbidden(false);
           setAccount({ name: me?.display_name || localStorage.getItem('sp_display_name') || '', product: me?.product || localStorage.getItem('sp_product') || '' });
         };
+        const onForbidden = () => { setConfirmAccount(false); setAccessForbidden(true); };
         const onDisc = () => {
           setNeedsReconnect(true);
           setConnected(false);
           setTrack(null);
           setPlaybackHint('');
           setConfirmAccount(false);
+          setAccessForbidden(false);
           setAccount({ name: '', product: '' });
         };
         const onAuthError = e => {
@@ -3701,16 +3728,18 @@
         window.addEventListener('sp_disconnected', onDisc);
         window.addEventListener('sp_auth_error', onAuthError);
         window.addEventListener('sp_profile', onProfile);
-        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); window.removeEventListener('sp_profile', onProfile); };
+        window.addEventListener('sp_forbidden', onForbidden);
+        return () => { window.removeEventListener('sp_connected', onConn); window.removeEventListener('sp_disconnected', onDisc); window.removeEventListener('sp_auth_error', onAuthError); window.removeEventListener('sp_profile', onProfile); window.removeEventListener('sp_forbidden', onForbidden); };
       }, []);
 
       /* Compte déjà connecté au montage (reload, ou token restauré par la couche
          de sync) mais nom pas encore en cache : on va chercher /me une fois. */
       React.useEffect(() => {
         if (!connected) return;
-        if (!localStorage.getItem('sp_display_name')) {
+        if (accessForbidden || !localStorage.getItem('sp_display_name')) {
           _spFetchProfile().then(me => {
-            if (me) setAccount({ name: me.display_name || '', product: me.product || '' });
+            if (me?.forbidden) setAccessForbidden(true);
+            else if (me) { setAccessForbidden(false); setAccount({ name: me.display_name || '', product: me.product || '' }); }
           }).catch(() => {});
         }
       }, [connected]);
@@ -3723,12 +3752,15 @@
            doit JAMAIS interrompre la chaîne et masquer la musique qui joue.
            Seul un 401 (token mort) est propagé pour déclencher la reconnexion. */
         async function readPlayback() {
-          let sawScope403 = false, devicePresent = false, wasPlaying = false, adPlaying = false;
+          let sawScope403 = false, sawForbidden = false, devicePresent = false, wasPlaying = false, adPlaying = false;
           const tryGet = async (path) => {
             try { return await spotifyApi(path); }
             catch (e) {
               if (e.status === 401) throw e;
-              if (e.status === 403 && String(e.body || '').toLowerCase().includes('scope')) sawScope403 = true;
+              if (e.status === 403) {
+                if (String(e.body || '').toLowerCase().includes('scope')) sawScope403 = true;
+                else sawForbidden = true; /* 403 non-scope = app en mode dev / compte hors allowlist */
+              }
               window.__spDiag = { ...(window.__spDiag || {}), [path.split('?')[0]]: e.status || 'err' };
               return null;
             }
@@ -3751,7 +3783,7 @@
           const recent = await tryGet('/me/player/recently-played?limit=1');
           const recentItem = recent?.items?.[0]?.track;
           if (recentItem) return { item: recentItem, is_playing: false, progress_ms: 0, is_recent: true };
-          return { item: null, __scope403: sawScope403, __devicePresent: devicePresent, __playing: wasPlaying, __ad: adPlaying };
+          return { item: null, __scope403: sawScope403, __forbidden: sawForbidden, __devicePresent: devicePresent, __playing: wasPlaying, __ad: adPlaying };
         }
         let missCount = 0;
         async function poll() {
@@ -3769,6 +3801,14 @@
               return;
             }
             missCount++;
+            if (d?.__forbidden || localStorage.getItem('sp_access_forbidden') === '1') {
+              /* 403 persistant sur toute l'API = app Spotify en mode dev, compte
+                 hors allowlist. Confirmé via /me (autorité). */
+              setAccessForbidden(true);
+              setTrack(null); setPlaying(false);
+              _spFetchProfile().catch(() => {});
+              return;
+            }
             if (d?.__scope403) {
               setReauthNeeded(true);
               setPlaybackHint('Reconnecte Spotify pour autoriser l’affichage de la musique.');
@@ -3961,6 +4001,33 @@
         if (variant === 1) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         if (variant === 5) return <Shell glow={SP} style={style}><ConnectView /></Shell>;
         return <Shell flat style={style}><ConnectView compact /></Shell>;
+      }
+
+      // ── Connecté mais compte non autorisé (app Spotify en mode développement) ──
+      if (accessForbidden) {
+        const ForbiddenView = ({ compact }) => (
+          <div style={{ height: '100%', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? 8 : 12, padding: compact ? '12px 15px' : '18px 20px', boxSizing: 'border-box' }} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture}>
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 10%, rgba(245,158,11,0.20), transparent 38%), linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+              <div style={{ width: compact ? 34 : 40, height: compact ? 34 : 40, borderRadius: 13, background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.36)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width={compact ? 17 : 20} height={compact ? 17 : 20} viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: compact ? 13 : 15, fontWeight: 780, color: T.text, whiteSpace: compact ? 'nowrap' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>Compte pas encore autorisé</div>
+                {compact && <Sub ch="Accès Spotify en attente" style={{ fontSize: 11, marginTop: 2 }} />}
+              </div>
+            </div>
+            {!compact && <div style={{ position: 'relative', fontSize: 12, lineHeight: 1.45, color: T.muted }}>Ton compte Spotify est bien connecté, mais l'application est en <b style={{ color: T.text }}>mode développement</b> : seuls les comptes ajoutés par le créateur peuvent afficher leur musique. Demande-lui de t'ajouter — ensuite tout marchera.</div>}
+            <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={handleDisconnect} onPointerDown={stopSpotifyGesture} onMouseDown={stopSpotifyGesture} onTouchStart={stopSpotifyGesture} style={{ minHeight: compact ? 34 : 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '8px 13px', color: T.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>
+                Déconnecter
+              </button>
+            </div>
+          </div>
+        );
+        if (variant === 1) return <Shell glow="#f59e0b" style={style}><ForbiddenView /></Shell>;
+        if (variant === 5) return <Shell glow="#f59e0b" style={style}><ForbiddenView /></Shell>;
+        return <Shell flat style={style}><ForbiddenView compact /></Shell>;
       }
 
       if (reauthNeeded && !track) {
@@ -13482,11 +13549,24 @@
         } catch (_) { return false; }
       };
 
-      /* Rejoindre effectivement une session partagée (l'ami accepte). */
+      /* Construit l'objet session « active » à partir d'une ligne + cristal. */
+      const _buildGuestSession = (s, hostMeta, startTime, crystal = {}) => ({
+        type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
+        startTime: startTime || (s.started_at ? new Date(s.started_at).getTime() : Date.now()),
+        broadcastId: s.id, isGuest: true, hostId: s.host_id,
+        hostEmail: hostMeta?.email || '',
+        friendUser: { name: hostMeta?.name || hostMeta?.email?.split('@')[0] || '?', initial: (hostMeta?.name || hostMeta?.email || '?')[0].toUpperCase(), color: '#4ade80' },
+        crystalShape: crystal.crystalShape || null,
+        crystalGradient: crystal.crystalGradient || null,
+        crystalRarity: crystal.crystalRarity || null,
+      });
+
+      /* Accepter une invitation → entrer dans la SALLE D'ATTENTE commune (pas
+         directement la session). L'invité y patiente jusqu'à ce que l'hôte
+         démarre (signal fiable : fs-session-sync ; le cristal arrive via
+         « session-start »). */
       const joinSharedSession = async (s) => {
         if (!s?.active || !s.id) return;
-        /* Relit la ligne fraîche : si l'hôte a patienté en salle d'attente,
-           started_at a été mis à jour au vrai départ — le chrono reste juste. */
         try {
           const { data: fresh } = await window._fsSb.from('sessions')
             .select('id, host_id, type, duration, music, breaks, active, started_at')
@@ -13495,32 +13575,65 @@
         } catch (_) {}
         let hostData = null;
         try { ({ data: hostData } = await window._fsSb.from('user_data').select('name, email').eq('user_id', s.host_id).maybeSingle()); } catch (_) {}
-        const next = {
-          type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks,
-          startTime: new Date(s.started_at).getTime(),
-          broadcastId: s.id, isGuest: true, hostId: s.host_id,
-          hostEmail: hostData?.email || '',
-          friendUser: { name: hostData?.name || hostData?.email?.split('@')[0] || '?', initial: (hostData?.name || hostData?.email || '?')[0].toUpperCase(), color: '#4ade80' },
-        };
+        const hostName = hostData?.name || hostData?.email?.split('@')[0] || 'Ton ami';
+        /* _fsActiveBroadcastId dédupe les cartes d'invitation pendant l'attente.
+           Le guard fs_joined_sessions n'est posé qu'au VRAI départ (transition) :
+           ainsi un reload pendant l'attente re-propose la carte au lieu de bloquer. */
         window._fsActiveBroadcastId = s.id;
-        _fsSessionGuard('fs_joined_sessions', s.id, true);
-        setActiveSession(prev => prev?.broadcastId === next.broadcastId ? prev : next);
-        try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(e) {}
+        const selfName = user?.name || user?.email?.split('@')[0] || 'Toi';
+        const lobby = {
+          isGuest: true, rowId: s.id, hostId: s.host_id, hostMeta: { name: hostData?.name, email: hostData?.email },
+          cfg: { type: s.type || 'together', duration: s.duration, music: s.music, breaks: s.breaks },
+          host: { id: s.host_id, name: hostName + ' (hôte)', initial: hostName[0].toUpperCase(), color: 'var(--theme-c1)' },
+          invited: [
+            { id: s.host_id, name: hostName + ' (hôte)', initial: hostName[0].toUpperCase(), color: 'var(--theme-c1)', host: true },
+            { id: user?.id, name: 'Toi', initial: selfName[0].toUpperCase(), color: '#a5b8ff' },
+          ],
+          joined: [s.host_id, user?.id].filter(Boolean),
+          declined: [], createdAt: Date.now(), crystal: {},
+        };
+        setGuestLobby(lobby);
+        try { localStorage.removeItem('fs_active_session'); } catch (e) {}
         setRoutedScreen('dashboard', true);
-        /* Signale l'hôte de façon FIABLE pour fermer sa salle d'attente en temps
-           réel. Le broadcast Supabase est best-effort (peut être perdu) : on
-           renvoie donc l'acceptation plusieurs fois. Sans ça, l'hôte pouvait
-           rester bloqué dans la salle d'attente alors que l'ami avait rejoint. */
+        /* Prévient l'hôte (affichage de sa salle d'attente). Best-effort → renvoyé
+           plusieurs fois. Plus de « touch » de started_at : ça déclencherait un
+           faux fs-session-sync côté invité (son propre UPDATE) et fausserait la
+           détection du VRAI démarrage de l'hôte. */
         if (s.host_id) {
-          const payload = { inviteId: 'sess-' + s.id, status: 'accepted', friend: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || '', email: user?.email || '' } };
+          const payload = { inviteId: 'sess-' + s.id, status: 'accepted', friend: { id: user?.id, name: selfName, email: user?.email || '' } };
           const notify = () => { try { window._fsSendToUser?.(s.host_id, 'invite-response', payload); } catch (_) { } };
           notify();
           [500, 1400, 3000].forEach(ms => setTimeout(notify, ms));
         }
-        /* Signal FIABLE (DB-backed) : « touche » la ligne pour que l'hôte reçoive
-           un postgres_changes UPDATE sur ses lignes host_id et ferme sa salle
-           d'attente, même si le broadcast est perdu. Best-effort (RLS). */
-        try { window._fsSb.from('sessions').update({ started_at: new Date().toISOString() }).eq('id', s.id).then(() => {}, () => {}); } catch (_) {}
+      };
+
+      /* Invité : passe de la salle d'attente à la session active (l'hôte a
+         démarré). Idempotent : appelé par « session-start » (broadcast, porte le
+         cristal) OU par fs-session-sync (DB, fiable). */
+      const transitionGuestToActive = (startTime, crystal) => {
+        const lobby = guestLobbyRef.current;
+        if (!lobby) return;
+        const next = _buildGuestSession(
+          { id: lobby.rowId, host_id: lobby.hostId, type: lobby.cfg.type, duration: lobby.cfg.duration, music: lobby.cfg.music, breaks: lobby.cfg.breaks },
+          lobby.hostMeta, startTime, crystal || lobby.crystal || {}
+        );
+        setGuestLobby(null);
+        window._fsActiveBroadcastId = lobby.rowId;
+        _fsSessionGuard('fs_joined_sessions', lobby.rowId, true);
+        setActiveSession(prev => (prev && prev.broadcastId === next.broadcastId) ? prev : next);
+        try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (e) {}
+        setRoutedScreen('dashboard', true);
+      };
+
+      /* Invité : quitter la salle d'attente avant le départ (retire du roster
+         de l'hôte, marque refusé pour ne pas re-proposer la carte). */
+      const leaveGuestLobby = () => {
+        const lobby = guestLobbyRef.current;
+        setGuestLobby(null);
+        if (!lobby) return;
+        if (window._fsActiveBroadcastId === lobby.rowId) window._fsActiveBroadcastId = null;
+        _fsSessionGuard('fs_declined_sessions', lobby.rowId, true);
+        try { window._fsSendToUser?.(lobby.hostId, 'lobby-leave', { sessionIds: [lobby.rowId], friendId: user?.id }); } catch (_) {}
       };
 
       /* Présenter une invitation reçue (depuis la table sessions) comme une CARTE
@@ -13573,6 +13686,15 @@
         const onInvite = async (e) => { await presentSessionInvite(e.detail); };
         const onEnd = (e) => {
           if (window._fsActiveBroadcastId === e.detail?.id) window._fsActiveBroadcastId = null;
+          /* L'hôte a annulé la salle d'attente avant de démarrer : on ferme la
+             salle d'attente de l'invité. */
+          setGuestLobby(prev => {
+            if (prev && prev.rowId === e.detail?.id) {
+              addToast({ message: 'La session partagée a été annulée', type: 'info', icon: '✕', duration: 3600 });
+              return null;
+            }
+            return prev;
+          });
           setActiveSession(a => {
             if (a && a.broadcastId === e.detail.id) {
               saveSessionRecord(buildSessionRecord(a, false, new Date().toISOString()));
@@ -13633,6 +13755,11 @@
       const [pendingSession, setPendingSession] = _uSC(null);
       const pendingRef = React.useRef(null);
       _uEC(() => { pendingRef.current = pendingSession; }, [pendingSession]);
+      /* Salle d'attente côté INVITÉ : après avoir accepté, l'ami patiente ici
+         (voit les participants) jusqu'à ce que l'hôte démarre. */
+      const [guestLobby, setGuestLobby] = _uSC(null);
+      const guestLobbyRef = React.useRef(null);
+      _uEC(() => { guestLobbyRef.current = guestLobby; }, [guestLobby]);
       /* Empêche un double démarrage : les invités renvoient l'acceptation
          plusieurs fois (fiabilité), donc plusieurs `startPendingSession` peuvent
          être planifiés — on ne démarre qu'UNE fois par lot d'invitations. */
@@ -13655,6 +13782,19 @@
         return enriched;
       };
 
+      /* Diffuse aux invités le roster de la salle d'attente (qui a rejoint) —
+         best-effort, donc renvoyé plusieurs fois. Permet à chaque invité de voir
+         les mêmes participants dans SA salle d'attente. */
+      const _broadcastLobby = (p) => {
+        if (!p) return;
+        const participants = [
+          { id: user?.id, name: (user?.name || user?.email?.split('@')[0] || 'Hôte') + ' (hôte)', initial: (user?.name || user?.email || 'H')[0].toUpperCase(), color: 'var(--theme-c1)', joined: true, host: true },
+          ...(p.invited || []).map(f => ({ id: f.id, name: f.name, initial: f.initial, color: f.color, joined: (p.joined || []).includes(f.id) })),
+        ];
+        const payload = { sessionIds: p.ids, host: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || 'Hôte' }, participants };
+        (p.invited || []).forEach(f => { if (f?.id) { const s = () => { try { window._fsSendToUser?.(f.id, 'lobby-sync', payload); } catch (_) {} }; s(); [500, 1600].forEach(ms => setTimeout(s, ms)); } });
+      };
+
       const startPendingSession = async (pend = null) => {
         const p = pend || pendingRef.current;
         if (!p) return;
@@ -13663,13 +13803,21 @@
         startedPendingRef.current = startKey;
         setPendingSession(null);
         /* joinedIds : seuls les amis qui ont ACCEPTÉ apparaissent dans la top
-           bar — « Démarrer sans attendre » démarre donc seul, et chaque ami
-           qui rejoint ensuite est ajouté (avatar animé). */
+           bar — « Démarrer » démarre donc l'hôte + les invités présents, et
+           chaque ami qui rejoint ensuite est ajouté (avatar animé). */
         const enriched = _activateSession(p.cfg, { broadcastId: p.ids[0], broadcastIds: p.ids, joinedIds: [...(p.joined || [])] });
-        /* Recale started_at sur le vrai départ : les invités (déjà dedans via
-           fs-session-sync, ou en retard via re-lecture de la ligne) restent
-           synchronisés avec le chrono de l'hôte. */
-        try { await window._fsSb.from('sessions').update({ started_at: new Date(enriched.startTime).toISOString() }).in('id', p.ids); } catch (e) {}
+        /* Recale started_at sur le vrai départ : c'est le signal FIABLE (DB,
+           postgres_changes → fs-session-sync) qui fait passer les invités de la
+           salle d'attente à la session. Le broadcast « session-start » porte en
+           plus le cristal choisi pour qu'ils forgent le MÊME. */
+        const startIso = new Date(enriched.startTime).toISOString();
+        try { await window._fsSb.from('sessions').update({ started_at: startIso }).in('id', p.ids); } catch (e) {}
+        const startPayload = {
+          sessionIds: p.ids, startTime: enriched.startTime,
+          crystalShape: p.cfg.crystalShape, crystalGradient: p.cfg.crystalGradient, crystalRarity: p.cfg.crystalRarity,
+          host: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || 'Hôte' },
+        };
+        (p.invited || []).forEach(f => { if (f?.id) { const s = () => { try { window._fsSendToUser?.(f.id, 'session-start', startPayload); } catch (_) {} }; s(); [400, 1200, 2600].forEach(ms => setTimeout(s, ms)); } });
       };
       const startPendingRef = React.useRef(null);
       _uEC(() => { startPendingRef.current = startPendingSession; });
@@ -13742,42 +13890,57 @@
                 try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (_) { }
                 return next;
               });
+              /* Ami qui accepte APRÈS le démarrage : il est dans sa salle
+                 d'attente → on lui envoie « session-start » (cristal + départ)
+                 pour l'y faire entrer avec le MÊME cristal. */
+              const sids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
+              const startPayload = { sessionIds: sids, startTime: a.startTime, crystalShape: a.crystalShape, crystalGradient: a.crystalGradient, crystalRarity: a.crystalRarity, host: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || 'Hôte' } };
+              const s = () => { try { window._fsSendToUser?.(p.friend.id, 'session-start', startPayload); } catch (_) {} };
+              s(); [500, 1500].forEach(ms => setTimeout(s, ms));
             }
             return;
           }
           if (!pend || !pend.invited.some(f => f.id === p.friend.id)) return;
           if (p.status === 'accepted') {
-            setPendingSession(prev => {
-              if (!prev || prev.joined.includes(p.friend.id)) return prev;
-              return { ...prev, joined: [...prev.joined, p.friend.id] };
-            });
-            /* Petit temps pour voir le ✓ apparaître, puis lancement. */
-            setTimeout(() => {
-              const cur = pendingRef.current;
-              if (cur && cur.joined.length > 0) startPendingRef.current?.(cur);
-            }, 1100);
+            /* PLUS d'auto-démarrage : l'ami rejoint la salle d'attente (✓), et
+               l'hôte reste maître du départ via le bouton « Démarrer ». */
+            markJoined(p.friend.id);
           } else if (p.status === 'declined') {
             setPendingSession(prev => prev && !prev.declined.includes(p.friend.id)
               ? { ...prev, declined: [...prev.declined, p.friend.id] }
               : prev);
           }
         };
-        /* Signal DB-backed (fiable) : l'ami a touché sa ligne en rejoignant.
-           Marche même si le broadcast est perdu. */
-        const markJoinedAndStart = (friendId) => {
+        /* L'ami a rejoint la salle d'attente : on l'ajoute au roster (affichage)
+           et on rediffuse le roster à tous les invités. AUCUN démarrage auto. */
+        const markJoined = (friendId) => {
           setPendingSession(prev => {
             if (!prev) return prev;
-            if (friendId && !prev.joined.includes(friendId)) return { ...prev, joined: [...prev.joined, friendId] };
-            return prev;
+            const next = (friendId && !prev.joined.includes(friendId)) ? { ...prev, joined: [...prev.joined, friendId] } : prev;
+            setTimeout(() => _broadcastLobby(next), 0);
+            return next;
           });
-          setTimeout(() => { const cur = pendingRef.current; if (cur) startPendingRef.current?.(cur); }, 900);
         };
         const onGuestUpdate = (e) => {
           const row = e.detail;
           if (!row?.id || !row.active) return;
           const pend = pendingRef.current;
           if (!pend || !pend.ids.includes(row.id)) return;
-          markJoinedAndStart(row.friend_id);
+          markJoined(row.friend_id);
+        };
+        /* Un invité quitte la salle d'attente avant le départ : on le retire du
+           roster et on rediffuse. */
+        const onLobbyLeave = (e) => {
+          const d = e.detail;
+          if (!d?.friendId) return;
+          const pend = pendingRef.current;
+          if (!pend || !pend.ids.some(id => (d.sessionIds || []).includes(id))) return;
+          setPendingSession(prev => {
+            if (!prev) return prev;
+            const next = { ...prev, joined: prev.joined.filter(id => id !== d.friendId), declined: prev.declined.includes(d.friendId) ? prev.declined : [...prev.declined, d.friendId] };
+            setTimeout(() => _broadcastLobby(next), 0);
+            return next;
+          });
         };
         /* Repli par polling : si le temps réel est indisponible, l'hôte relit
            ses lignes toutes les 2,5 s et démarre dès qu'un ami les a touchées
@@ -13791,16 +13954,18 @@
               .select('id, friend_id, active, started_at')
               .eq('host_id', user.id).in('id', pend.ids);
             (data || []).forEach(row => {
-              if (row.active && pend.startedBaseline && row.started_at !== pend.startedBaseline) markJoinedAndStart(row.friend_id);
+              if (row.active && pend.startedBaseline && row.started_at !== pend.startedBaseline) markJoined(row.friend_id);
             });
           } catch (_) {}
         };
         window.addEventListener('fs-invite-response', onResp);
         window.addEventListener('fs-session-guest-update', onGuestUpdate);
+        window.addEventListener('fs-lobby-leave', onLobbyLeave);
         pollTimer = setInterval(pollJoins, 2500);
         return () => {
           window.removeEventListener('fs-invite-response', onResp);
           window.removeEventListener('fs-session-guest-update', onGuestUpdate);
+          window.removeEventListener('fs-lobby-leave', onLobbyLeave);
           if (pollTimer) clearInterval(pollTimer);
         };
       }, [user?.id]);
@@ -13811,6 +13976,13 @@
         const onSync = (e) => {
           const row = e.detail;
           if (!row?.id || !row.started_at) return;
+          /* Invité en salle d'attente : l'UPDATE started_at (actif) = l'hôte a
+             démarré → transition FIABLE (DB-backed) vers la session active. */
+          const lobby = guestLobbyRef.current;
+          if (lobby && lobby.rowId === row.id) {
+            transitionGuestToActive(new Date(row.started_at).getTime(), lobby.crystal);
+            return;
+          }
           setActiveSession(a => {
             if (!a || !a.isGuest || a.broadcastId !== row.id) return a;
             const t = new Date(row.started_at).getTime();
@@ -13818,6 +13990,39 @@
             const next = { ...a, startTime: t };
             try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(_) {}
             return next;
+          });
+        };
+        /* Broadcast « session-start » : porte le cristal choisi par l'hôte.
+           Arrive souvent avant fs-session-sync ; sinon il complète le cristal
+           d'une session déjà transitionnée. */
+        const onGuestStart = (e) => {
+          const p = e.detail;
+          if (!p?.sessionIds) return;
+          const crystal = { crystalShape: p.crystalShape, crystalGradient: p.crystalGradient, crystalRarity: p.crystalRarity };
+          const lobby = guestLobbyRef.current;
+          if (lobby && p.sessionIds.includes(lobby.rowId)) {
+            transitionGuestToActive(p.startTime, crystal);
+            return;
+          }
+          /* Déjà en session (transition via sync) : applique le cristal manquant. */
+          setActiveSession(a => {
+            if (!a || !a.isGuest || !p.sessionIds.includes(a.broadcastId)) return a;
+            if (a.crystalShape) return a;
+            const next = { ...a, ...crystal };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (_) {}
+            return next;
+          });
+        };
+        /* Roster de la salle d'attente diffusé par l'hôte : qui a rejoint. */
+        const onLobbySync = (e) => {
+          const p = e.detail;
+          if (!p?.sessionIds || !Array.isArray(p.participants)) return;
+          setGuestLobby(prev => {
+            if (!prev || !p.sessionIds.includes(prev.rowId)) return prev;
+            const invited = p.participants.map(x => ({ id: x.id, name: x.host ? x.name : (x.id === user?.id ? 'Toi' : x.name), initial: x.initial, color: x.color, host: !!x.host }));
+            const joined = p.participants.filter(x => x.joined).map(x => x.id);
+            if (!joined.includes(user?.id)) joined.push(user?.id);
+            return { ...prev, invited, joined };
           });
         };
         const onLeft = (e) => {
@@ -13840,11 +14045,38 @@
             try { window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).eq('id', p.sessionId).then(() => {}); } catch(_) {}
           }
         };
+        /* Repli FIABLE (DB-backed) au broadcast « session-left » best-effort :
+           quand un invité quitte, sa ligne passe active=false → l'hôte reçoit un
+           postgres_changes sur ses lignes host_id → on retire son avatar de la
+           top bar même si le broadcast a été perdu. */
+        const onHostGuestUpdate = (e) => {
+          const row = e.detail;
+          if (!row?.id || row.active !== false || !row.friend_id) return;
+          const a = activeSessionRef.current;
+          if (!a || a.isGuest || a.type !== 'together') return;
+          const ids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
+          if (!ids.includes(row.id)) return;
+          if ((a.leftIds || []).includes(row.friend_id)) return;
+          const fname = (a.friendUsers || []).find(f => f.id === row.friend_id)?.name || 'Ton ami';
+          addToast({ message: `${fname} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
+          setActiveSession(cur => {
+            if (!cur || (cur.leftIds || []).includes(row.friend_id)) return cur;
+            const next = { ...cur, leftIds: [...(cur.leftIds || []), row.friend_id] };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch (_) {}
+            return next;
+          });
+        };
         window.addEventListener('fs-session-sync', onSync);
         window.addEventListener('fs-session-left', onLeft);
+        window.addEventListener('fs-session-start', onGuestStart);
+        window.addEventListener('fs-lobby-sync', onLobbySync);
+        window.addEventListener('fs-session-guest-update', onHostGuestUpdate);
         return () => {
           window.removeEventListener('fs-session-sync', onSync);
           window.removeEventListener('fs-session-left', onLeft);
+          window.removeEventListener('fs-session-start', onGuestStart);
+          window.removeEventListener('fs-lobby-sync', onLobbySync);
+          window.removeEventListener('fs-session-guest-update', onHostGuestUpdate);
         };
       }, []);
 
@@ -14307,6 +14539,7 @@
           {isApp && focusNudge && <FocusNudgePopup nudge={focusNudge} onClose={() => setFocusNudge(null)} />}
           {isApp && screen === 'dashboard' && !activeSession && user?.id && window.ProdRatingPrompt && React.createElement(window.ProdRatingPrompt, { user, key: user.id })}
           {isApp && pendingSession && !activeSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: pendingSession, user, onStart: () => startPendingSession(), onCancel: cancelPendingSession })}
+          {isApp && guestLobby && !activeSession && !pendingSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: guestLobby, user, isGuest: true, hostName: (guestLobby.host?.name || '').replace(' (hôte)', ''), onCancel: leaveGuestLobby })}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
         </>
       );
@@ -16834,7 +17067,7 @@
        L'hôte patiente ici pendant que les invitations sont en route : avatars
        avec anneau pulsant, ✓ vert à l'acceptation (départ auto ~1 s après),
        ✕ si refus, et actions « Démarrer sans attendre » / « Annuler ». */
-    function SessionWaitRoom({ pending, user, onStart, onCancel }) {
+    function SessionWaitRoom({ pending, user, onStart, onCancel, isGuest = false, hostName = '' }) {
       const joined = pending.joined || [];
       const declined = pending.declined || [];
       const allDeclined = pending.invited.length > 0 && pending.invited.every(f => declined.includes(f.id));
@@ -16842,12 +17075,16 @@
       const [elapsed, setElapsed] = React.useState(() => Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000)));
       React.useEffect(() => { const id = setInterval(() => setElapsed(Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000))), 1000); return () => clearInterval(id); }, [pending.createdAt]);
       const names = pending.invited.map(f => f.name).join(', ');
-      const title = anyJoined ? 'C’est parti !' : allDeclined ? 'Invitation refusée' : 'En attente de tes amis';
-      const subtitle = anyJoined
-        ? 'Ton ami a rejoint — lancement de la session…'
-        : allDeclined
-          ? 'Tu peux quand même te lancer en solo, ou annuler.'
-          : `Invitation envoyée à ${names}. La session démarrera dès qu’un ami accepte.`;
+      const title = isGuest
+        ? 'Salle d’attente'
+        : anyJoined ? 'Prêt à démarrer' : allDeclined ? 'Invitation refusée' : 'En attente de tes amis';
+      const subtitle = isGuest
+        ? `En attente que ${hostName || 'l’hôte'} démarre la session. Tu y entreras automatiquement.`
+        : anyJoined
+          ? 'Tes amis présents sont prêts. Démarre quand tu veux — les autres rejoindront en cours.'
+          : allDeclined
+            ? 'Tu peux quand même te lancer en solo, ou annuler.'
+            : `Invitation envoyée à ${names}. Démarre quand un ami a rejoint, ou attends-les.`;
       return (
         <div className="fs-wait-veil" role="dialog" aria-label="Salle d'attente de session partagée">
           <style>{`
@@ -16933,8 +17170,14 @@
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
             </div>
             <div className="fs-wait-actions">
-              <button type="button" className="fs-wait-btn ghost" onClick={onCancel}>Annuler</button>
-              <button type="button" className="fs-wait-btn go" onClick={onStart}>Démarrer sans attendre</button>
+              {isGuest ? (
+                <button type="button" className="fs-wait-btn ghost" onClick={onCancel}>Quitter</button>
+              ) : (
+                <>
+                  <button type="button" className="fs-wait-btn ghost" onClick={onCancel}>Annuler</button>
+                  <button type="button" className="fs-wait-btn go" onClick={onStart}>Démarrer la session</button>
+                </>
+              )}
             </div>
           </div>
         </div>
