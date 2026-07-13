@@ -4140,6 +4140,28 @@
       window._gSave(uid, g);
     }
 
+    /* Check-in AUTOMATIQUE : appelé au chargement du site. Enregistre la
+       connexion du jour dans fs_streak (la série se calcule ensuite en jours
+       consécutifs — un jour manqué la brise). Idempotent : ne fait rien si
+       aujourd'hui est déjà enregistré. */
+    function _fsAutoStreakCheckIn(user) {
+      try {
+        const today = _todayStr();
+        let dates = [];
+        try { dates = JSON.parse(localStorage.getItem('fs_streak') || '[]') || []; } catch(e) { dates = []; }
+        const already = dates.includes(today);
+        if (!already) {
+          dates.push(today);
+          try { localStorage.setItem('fs_streak', JSON.stringify(dates)); } catch(e) {}
+        }
+        _syncGamifCheckIn(user);
+        if (!already) {
+          try { window.dispatchEvent(new CustomEvent('fs-streak-update')); } catch(e) {}
+        }
+      } catch(e) {}
+    }
+    window._fsAutoStreakCheckIn = _fsAutoStreakCheckIn;
+
     function StreakWidget({ variant = 1, style, user }) {
       const [dates, setDates] = _uSST(() => {
         try { return JSON.parse(localStorage.getItem('fs_streak') || '[]'); } catch(e) { return []; }
@@ -4224,7 +4246,7 @@
           <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{streak} jours de suite</div>
-              <Sub ch={checkedToday ? 'Check-in quotidien · actif' : "Pas encore checké aujourd'hui"} style={{ marginTop: 3, fontSize: 11 }} />
+              <Sub ch={checkedToday ? 'Connecté aujourd\'hui · série active' : 'Reviens chaque jour pour garder la flamme'} style={{ marginTop: 3, fontSize: 11 }} />
             </div>
             <div style={{ display: 'flex', gap: 3 }}>
               {week.map((a, i) => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: a ? T.warm : 'rgba(255,255,255,0.1)' }} />)}
@@ -9820,13 +9842,18 @@
       };
       const createNote = () => {
         const now = new Date().toISOString();
-        const cleanTitle = draft.title.trim() || 'Nouvelle note';
+        const body = draft.content.trim();
+        if (!body) { addToast({ message: 'Écris quelque chose d\'abord', type: 'error', icon: '!' }); return; }
+        // Le titre = les premiers mots (première ligne non vide) de la zone.
+        const cleanTitle = fsNoteTitleFromContent(body);
+        // Tags inline : les #mots présents dans le texte.
+        const inlineTags = Array.from(new Set((body.match(/#([a-zA-Z0-9À-ÿ_-]+)/g) || []).map(t => t.slice(1)))).slice(0, 8);
         const note = fsNormalizeNote({
           id: `note-${Date.now()}`,
           title: cleanTitle,
           folder: draft.folder.trim() || FS_NOTE_DEFAULT_FOLDER,
-          tags: parseTags(draft.tags),
-          content: draft.content.trim() || `# ${cleanTitle}\n\n- Nouvelle idée\n- Relie cette note avec [[Nom de note]] ou #tag`,
+          tags: inlineTags,
+          content: body,
           createdAt: now,
           updatedAt: now,
         });
@@ -9965,12 +9992,20 @@
             <div style={{padding:'24px 22px 18px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
               <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Écrire</div>
               <div style={{fontFamily:T.display,fontWeight:850,fontSize:29,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Nouvelle note</div>
-              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Écris librement. Un titre, ton texte, et c'est noté. Les tags s'ajoutent quand tu veux — la carte mentale se construit toute seule.</div>
+              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Écris librement dans une seule zone. La première ligne devient le titre. Ajoute des #tags dans le texte — la carte mentale se construit toute seule.</div>
             </div>
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
-              <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre de la note" style={{height:42,padding:'0 13px',fontSize:14,fontWeight:700,flexShrink:0}} />
-              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') createNote(); }} placeholder={"Commence à écrire…\n\nAstuce : [[une autre note]] pour relier · #tag pour classer"} style={{flex:1,minHeight:180,resize:'none',padding:'13px',fontSize:14,lineHeight:1.7}} />
-              <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="Tags (optionnel) — ex : idées, projet" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
+              {(() => {
+                const livePreview = fsNoteTitleFromContent(draft.content || '');
+                const hasBody = draft.content.trim().length > 0;
+                return (
+                  <div style={{display:'flex',alignItems:'center',gap:8,minHeight:18,flexShrink:0,opacity:hasBody?1:0,transition:'opacity 0.2s'}}>
+                    <span style={{fontSize:9,fontWeight:850,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.75)'}}>Titre</span>
+                    <span style={{fontSize:12,fontWeight:750,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{hasBody ? livePreview : ''}</span>
+                  </div>
+                );
+              })()}
+              <textarea className="fs-note-field fs-note-single" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') createNote(); }} placeholder={"Écris le titre sur la première ligne…\n\nPuis développe ton idée en dessous.\n\nAstuce : [[une autre note]] pour relier · #tag pour classer"} autoFocus style={{flex:1,minHeight:240,resize:'none',padding:'15px',fontSize:14,lineHeight:1.7}} />
               <button className="fs-note-builder-submit" onClick={createNote} style={{height:46,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:13,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8}}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                 Créer la note
@@ -13204,6 +13239,13 @@
         if (!user?.id || screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
         try { localStorage.setItem('fs_widgets', JSON.stringify(widgets)); } catch (e) { }
       }, [widgets, user?.id, screen]);
+      /* Compteur de flamme : chaque connexion au site enregistre le jour.
+         La série = nombre de jours consécutifs de connexion (un jour manqué
+         la brise). Automatique — plus besoin de check-in manuel. */
+      _uEC(() => {
+        if (screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
+        try { window._fsAutoStreakCheckIn && window._fsAutoStreakCheckIn(user); } catch (e) {}
+      }, [user?.id, screen]);
       const _restoreSession = (uid) => {
         try {
           const s = JSON.parse(localStorage.getItem('fs_active_session') || 'null');
