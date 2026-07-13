@@ -3521,42 +3521,75 @@
        ligne dans la PWA. Plusieurs sons peuvent tourner EN MÊME TEMPS (calques),
        chacun avec son volume ; un volume maître global par-dessus. */
 
-    /* Génère un buffer de bruit (blanc / rose / brun) réutilisable en boucle. */
-    function _ambNoise(ctx, kind) {
-      const len = 2 * ctx.sampleRate;
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      if (kind === 'white') {
-        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      } else if (kind === 'pink') {
-        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-        for (let i = 0; i < len; i++) {
-          const w = Math.random() * 2 - 1;
-          b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759;
-          b2 = 0.96900 * b2 + w * 0.1538520; b3 = 0.86650 * b3 + w * 0.3104856;
-          b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
-          d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+    /* Génère un buffer de bruit STÉRÉO et LONG (défaut 18 s) : la boucle est
+       assez longue pour ne pas s'entendre se répéter (fini les « bruitages »
+       courts qui bouclent), et les 2 canaux décorrélés donnent une vraie largeur
+       stéréo → son plus riche et naturel. Blanc / rose / brun. */
+    const _ambBufCache = new Map();
+    function _ambNoise(ctx, kind, seconds) {
+      const sec = seconds || 18;
+      const cacheKey = kind + '_' + sec + '_' + ctx.sampleRate;
+      const cached = _ambBufCache.get(cacheKey);
+      if (cached) return cached;
+      const len = Math.floor(sec * ctx.sampleRate);
+      const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        if (kind === 'white') {
+          for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        } else if (kind === 'pink') {
+          let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+          for (let i = 0; i < len; i++) {
+            const w = Math.random() * 2 - 1;
+            b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759;
+            b2 = 0.96900 * b2 + w * 0.1538520; b3 = 0.86650 * b3 + w * 0.3104856;
+            b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
+            d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+          }
+        } else { /* brown */
+          let last = 0;
+          for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
         }
-      } else { /* brown */
-        let last = 0;
-        for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
       }
+      _ambBufCache.set(cacheKey, buf);
       return buf;
     }
-    function _ambSrc(ctx, kind) {
-      const s = ctx.createBufferSource(); s.buffer = _ambNoise(ctx, kind); s.loop = true; s.start(0); return s;
+    function _ambSrc(ctx, kind, seconds) {
+      const s = ctx.createBufferSource(); s.buffer = _ambNoise(ctx, kind, seconds); s.loop = true;
+      /* départ à un offset aléatoire → deux couches d'un même son ne sont jamais
+         synchronisées (encore moins de répétition perçue). */
+      try { s.start(0, Math.random() * (s.buffer.duration - 0.1)); } catch (e) { s.start(0); }
+      return s;
+    }
+    /* Réponse impulsionnelle procédurale pour une réverb douce (spatialisation)
+       → enlève le côté « sec/synthétique » et donne une qualité plus premium. */
+    function _ambReverbIR(ctx, seconds, decay) {
+      const len = Math.floor((seconds || 2.4) * ctx.sampleRate);
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay || 2.6);
+      }
+      return ir;
     }
 
     /* Chaque son : build(ctx, out) branche son graphe sur `out` (gain du son, déjà
        relié au maître) et renvoie { stop } pour tout couper proprement. */
     const AMBIENT_SOUNDS = [
       { id: 'rain', label: 'Pluie', icon: '🌧️', build(ctx, out) {
+        /* Lit grave (ruissellement) + patter médium (gouttes) + fin hiss aigu,
+           le tout ondulant lentement pour des « averses » qui vont et viennent. */
+        const swell = ctx.createGain(); swell.gain.value = 0.85; swell.connect(out);
         const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
         const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 380;
-        src.connect(lp); lp.connect(hp); hp.connect(out);
+        src.connect(lp); lp.connect(hp); hp.connect(swell);
+        const src3 = _ambSrc(ctx, 'pink'), mp = ctx.createBiquadFilter(); mp.type = 'bandpass'; mp.frequency.value = 2200; mp.Q.value = 0.5;
+        const g3 = ctx.createGain(); g3.gain.value = 0.5; src3.connect(mp); mp.connect(g3); g3.connect(swell);
         const src2 = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6200; bp.Q.value = 0.6;
-        const g2 = ctx.createGain(); g2.gain.value = 0.06; src2.connect(bp); bp.connect(g2); g2.connect(out);
-        return { stop() { try { src.stop(); src2.stop(); } catch (e) {} } };
+        const g2 = ctx.createGain(); g2.gain.value = 0.06; src2.connect(bp); bp.connect(g2); g2.connect(swell);
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 0.045; const lg = ctx.createGain(); lg.gain.value = 0.18;
+        lfo.connect(lg); lg.connect(swell.gain); lfo.start();
+        return { stop() { try { src.stop(); src2.stop(); src3.stop(); lfo.stop(); } catch (e) {} } };
       } },
       { id: 'storm', label: 'Orage', icon: '⛈️', build(ctx, out) {
         const src = _ambSrc(ctx, 'brown'), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
@@ -3566,7 +3599,7 @@
         let alive = true;
         (function thunder() {
           if (!alive) return;
-          const n = _ambSrc(ctx, 'brown'), flp = ctx.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 200;
+          const n = _ambSrc(ctx, 'brown', 4), flp = ctx.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 200;
           const tg = ctx.createGain(), t = ctx.currentTime;
           tg.gain.setValueAtTime(0, t); tg.gain.linearRampToValueAtTime(0.6 + Math.random() * 0.3, t + 0.3); tg.gain.exponentialRampToValueAtTime(0.001, t + 2.5 + Math.random() * 2);
           n.connect(flp); flp.connect(tg); tg.connect(out); setTimeout(() => { try { n.stop(); } catch (e) {} }, 6000);
@@ -3616,7 +3649,7 @@
         let alive = true;
         (function crackle() {
           if (!alive) return;
-          const b = _ambSrc(ctx, 'white'), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + Math.random() * 2500; bp.Q.value = 3;
+          const b = _ambSrc(ctx, 'white', 0.35), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500 + Math.random() * 2500; bp.Q.value = 3;
           const cg = ctx.createGain(), t = ctx.currentTime;
           cg.gain.setValueAtTime(0, t); cg.gain.linearRampToValueAtTime(0.22 + Math.random() * 0.3, t + 0.005); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.05 + Math.random() * 0.08);
           b.connect(bp); bp.connect(cg); cg.connect(out); setTimeout(() => { try { b.stop(); } catch (e) {} }, 220);
@@ -3680,7 +3713,14 @@
           this.ctx = new AC();
           this.masterGain = this.ctx.createGain();
           this.masterGain.gain.value = this.master;
-          this.masterGain.connect(this.ctx.destination);
+          /* Chaîne maître : sec + réverb douce (spatialisation) → destination. */
+          try {
+            const dry = this.ctx.createGain(); dry.gain.value = 1;
+            const conv = this.ctx.createConvolver(); conv.buffer = _ambReverbIR(this.ctx, 2.6, 2.8);
+            const wet = this.ctx.createGain(); wet.gain.value = 0.15;
+            this.masterGain.connect(dry); dry.connect(this.ctx.destination);
+            this.masterGain.connect(conv); conv.connect(wet); wet.connect(this.ctx.destination);
+          } catch (e) { this.masterGain.connect(this.ctx.destination); }
         }
         if (this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) {} }
         return this.ctx;
@@ -3788,7 +3828,10 @@
       return (
         <Shell style={style}>
           <style>{_AMB_CSS}</style>
-          <div style={{ padding: '16px 16px 14px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxSizing: 'border-box' }}>
+          {/* position:absolute → le contenu ne contribue PAS au min-content de la
+              cellule de grille : la taille du widget n'impacte donc jamais les
+              dimensions des autres widgets du dashboard (grille 12 colonnes). */}
+          <div style={{ position: 'absolute', inset: 0, padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', minHeight: 0, boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 13 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -9568,7 +9611,7 @@
       const pinchRef = React.useRef(null);
       const [editingId, setEditingId] = React.useState(null);
       const [previewModal, setPreviewModal] = React.useState(false);
-      const [mobileTab, setMobileTab] = React.useState('map');
+      const [mobileTab, setMobileTab] = React.useState('builder');
       const [mapStyle, setMapStyle] = React.useState(readMapStyle);
       const [draft, setDraft] = React.useState({
         title: '',
@@ -9789,7 +9832,7 @@
           `}</style>
 
           <div className="fs-notes-mobile-tabs" style={{display:'none',position:'absolute',top:0,left:0,right:0,zIndex:20,height:52,background:'rgba(var(--mineral-bg-rgb),0.96)',borderBottom:'1px solid rgba(255,255,255,0.07)',backdropFilter:'blur(14px)',WebkitBackdropFilter:'blur(14px)',alignItems:'center',gap:4,padding:'0 14px'}}>
-            {[{id:'map',label:'Carte mentale'},{id:'builder',label:'Nouvelle note'}].map(tab=>(
+            {[{id:'builder',label:'Nouvelle note'},{id:'map',label:'Carte mentale'}].map(tab=>(
               <button key={tab.id} onClick={()=>setMobileTab(tab.id)} style={{flex:1,height:36,borderRadius:12,border:'1px solid',cursor:'pointer',fontFamily:T.font,fontSize:12,fontWeight:750,transition:'all 0.18s',background:mobileTab===tab.id?'rgba(var(--theme-c1-rgb),0.13)':'transparent',color:mobileTab===tab.id?T.c1:T.muted,borderColor:mobileTab===tab.id?'rgba(var(--theme-c1-rgb),0.28)':'transparent'}}>
                 {tab.label}
               </button>
@@ -9797,15 +9840,18 @@
           </div>
           <aside className={"fs-note-builder" + (mobileTab==='builder' ? ' fs-mob-show' : '')}>
             <div style={{padding:'24px 22px 18px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-              <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Ajouter</div>
+              <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Écrire</div>
               <div style={{fontFamily:T.display,fontWeight:850,fontSize:29,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Nouvelle note</div>
-              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Clique sur un nœud de la carte pour l'éditer. Même premier tag = même cluster.</div>
+              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Écris librement. Un titre, ton texte, et c'est noté. Les tags s'ajoutent quand tu veux — la carte mentale se construit toute seule.</div>
             </div>
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
-              <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre précis" style={{height:42,padding:'0 13px',fontSize:13,flexShrink:0}} />
-              <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="tag, tag" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
-              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} placeholder={"Contenu de la note...\nEx: idées, liens, [[note liée]], #tag"} style={{flex:1,minHeight:140,resize:'none',padding:'13px',fontSize:13,lineHeight:1.7}} />
-              <button className="fs-note-builder-submit" onClick={createNote} style={{height:44,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0}}>Ajouter à la carte mentale</button>
+              <input className="fs-note-field" value={draft.title} onChange={e=>setDraft(d=>({...d,title:e.target.value}))} placeholder="Titre de la note" style={{height:42,padding:'0 13px',fontSize:14,fontWeight:700,flexShrink:0}} />
+              <textarea className="fs-note-field" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') createNote(); }} placeholder={"Commence à écrire…\n\nAstuce : [[une autre note]] pour relier · #tag pour classer"} style={{flex:1,minHeight:180,resize:'none',padding:'13px',fontSize:14,lineHeight:1.7}} />
+              <input className="fs-note-field" value={draft.tags} onChange={e=>setDraft(d=>({...d,tags:e.target.value}))} placeholder="Tags (optionnel) — ex : idées, projet" style={{height:40,padding:'0 12px',fontSize:12,flexShrink:0}} />
+              <button className="fs-note-builder-submit" onClick={createNote} style={{height:46,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:13,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                Créer la note
+              </button>
             </div>
           </aside>
 
@@ -17926,9 +17972,9 @@
     const g=window._gLoad(uid), today=window._gToday(), mon=window._gMon(), dur=session?.duration||0, hr=new Date().getHours();
     const yest=(()=>{ const d=new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
     /* streaks */
-    if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?g.streaks.daily+1:1; g.streaks.lastDate=today; }
+    if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?Number(g.streaks.daily||0)+1:1; g.streaks.lastDate=today; }
     if(g.streaks.weekStart!==mon){ g.streaks.weekStart=mon; g.streaks.jokers=1; g.streaks.jokersUsed=0; }
-    g.streaks.weekly=Math.floor(g.streaks.daily/7);
+    g.streaks.weekly=Math.floor(Number(g.streaks.daily||0)/7);
     try {
       const legacy = JSON.parse(localStorage.getItem('fs_streak') || '[]');
       if (!legacy.includes(today)) localStorage.setItem('fs_streak', JSON.stringify([...legacy, today]));
@@ -18475,15 +18521,6 @@
             <div className="fs-heatmap-wrap" style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}><FocusHeatmap heatmap={heatmap} ratings={ratings}/></div>
           </div>
 
-          {/* Weekly FP chart */}
-          <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)',marginBottom:20}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.text}}>Focus Points — 7 derniers jours</div>
-              <span className="fp-badge">{(g.fp||0).toLocaleString('fr')} FP total</span>
-            </div>
-            <FPBarChart fpmap={fpmap}/>
-          </div>
-
           {/* Crystal Vault */}
           {crystals.length > 0 && (
             <div style={{padding:'20px 20px',borderRadius:22,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.07)'}}>
@@ -18505,7 +18542,7 @@
                         ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold?'gold':c.crystalGradient, progress:0.88, size:sz, seed:c.seed||c.id })
                         : React.createElement(window.CrystalGem, { progress:window._cStateProgress(si), size:sz, skin:c.skin })
                       }
-                      <div style={{fontSize:8,color:isGold?'#ffd36a':T.muted,fontWeight:800}}>{isGold?'Doré · ':''}{c.duration}m</div>
+                      <div style={{fontSize:8,color:isGold?'#ffd36a':T.muted,fontWeight:800}}>{isGold?'Doré · ':''}{durLabel}</div>
                     </div>
                   );
                 })}
