@@ -8855,7 +8855,7 @@
 
     const PRI = {
       high: { label: 'Haute', color: '#fb7185', bg: 'rgba(251,113,133,0.14)' },
-      medium: { label: 'Moy', color: '#ffd27d', bg: 'rgba(255,210,125,0.14)' },
+      medium: { label: 'Moyenne', color: '#ffd27d', bg: 'rgba(255,210,125,0.14)' },
       low: { label: 'Basse', color: '#2dd4bf', bg: 'rgba(45,212,191,0.14)' },
     };
 
@@ -8879,9 +8879,7 @@
       const [filter, setFilter] = _uST('all');
       const [inputVal, setInputVal] = _uST('');
       const [newPri, setNewPri] = _uST('medium');
-      const [hoverId, setHoverId] = _uST(null);
       const [animId, setAnimId] = _uST(null);
-      const [hovClear, setHovClear] = _uST(false);
       const taskInputRef = _uRT(null);
       const [composerPulse, setComposerPulse] = _uST(false);
 
@@ -8941,101 +8939,220 @@
         { id: 'done', label: 'Complétées', count: totalDone },
       ];
 
-      const SectionHead = ({ label, count }) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 10px' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(248,246,252,0.28)', whiteSpace: 'nowrap' }}>{label}</span>
-          <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: 'rgba(248,246,252,0.35)' }}>{count}</span>
-          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
+      const SectionHead = ({ label, count, accent }) => (
+        <div className="fs-task-sechead">
+          <span className="fs-task-sechead-lbl" style={accent ? { color: 'rgba(var(--theme-c1-rgb),0.85)' } : null}>{label}</span>
+          <span className="fs-task-sechead-count">{count}</span>
+          <div className="fs-task-sechead-line" />
         </div>
       );
 
-      const TaskRow = ({ task }) => {
-        const p = PRI[task.priority];
-        const isAnim = animId === task.id, isHov = hoverId === task.id, isDone = task.done;
+      const TaskRow = ({ task, idx = 0 }) => {
+        const p = PRI[task.priority] || PRI.medium;
+        const isAnim = animId === task.id, isDone = task.done;
         return (
           <div
-            className="fs-task-row"
-            onMouseEnter={() => setHoverId(task.id)}
-            onMouseLeave={() => setHoverId(null)}
+            className={'fs-task-row' + (isDone ? ' done' : '')}
             style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 16,
-              background: isHov ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
-              border: `1px solid ${isHov ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.04)'}`,
-              transition: 'all 0.18s ease',
-              opacity: isAnim ? 0.4 : isDone ? 0.52 : 1,
-              transform: isAnim ? 'scale(0.985)' : 'scale(1)',
+              animationDelay: `${Math.min(idx, 9) * 36}ms`,
+              opacity: isAnim ? 0.35 : undefined,
+              transform: isAnim ? 'scale(0.985)' : undefined,
             }}
           >
-            {/* Checkbox */}
-            <div onClick={() => toggle(task.id)} style={{
-              width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer',
-              border: `1.5px solid ${isDone ? T.c1 : 'rgba(255,255,255,0.2)'}`,
-              background: isDone ? T.c1 : 'transparent',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.2s ease', boxShadow: isDone ? `0 0 10px ${c1(0.267)}` : 'none',
-            }}>
-              {isDone && <svg width={11} height={9} viewBox="0 0 11 9" fill="none"><path d="M1 4.5 4 7.5l6-6" stroke="#07070d" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" /></svg>}
+            <span className="fs-task-accent" style={{ background: `linear-gradient(180deg, ${p.color}, ${p.color}55)`, boxShadow: isDone ? 'none' : `0 0 10px ${p.color}44` }} />
+            <div className={'fs-task-check' + (isDone ? ' on' : '')} role="checkbox" aria-checked={isDone} tabIndex={0}
+              onClick={() => toggle(task.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(task.id); } }}>
+              {isDone && (
+                <svg width={12} height={10} viewBox="0 0 12 10" fill="none">
+                  <path className="fs-task-check-path" d="M1.5 5 4.5 8l6-6.5" stroke="#07070d" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </div>
-            {/* Text */}
-            <span style={{ flex: 1, fontSize: 13, fontWeight: isDone ? 400 : 500, letterSpacing: '-0.01em', fontFamily: T.font, color: isDone ? 'rgba(248,246,252,0.28)' : 'rgba(248,246,252,0.88)', textDecoration: isDone ? 'line-through' : 'none', transition: 'all 0.2s ease' }}>
-              {task.text}
-            </span>
-            {/* Tag */}
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.05)', color: 'rgba(248,246,252,0.3)', flexShrink: 0 }}>
-              {task.tag}
-            </span>
-            {/* Priority */}
-            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, color: isDone ? 'rgba(255,255,255,0.18)' : p.color, flexShrink: 0, transition: 'all 0.2s ease' }}>
+            <span className="fs-task-text">{task.text}</span>
+            <span className="fs-task-pri" style={{ color: isDone ? 'rgba(248,246,252,0.22)' : p.color, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, borderColor: isDone ? 'transparent' : `${p.color}30` }}>
+              <i style={{ background: isDone ? 'rgba(255,255,255,0.2)' : p.color }} />
               {p.label}
             </span>
-            {/* Delete */}
-            <button onClick={() => remove(task.id)} style={{
-              width: 22, height: 22, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-              background: 'rgba(251,113,133,0.1)', border: 'none', color: 'rgba(251,113,133,0.7)',
-              fontSize: 15, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: isHov ? 1 : 0, transition: 'opacity 0.15s ease',
-            }}>×</button>
+            <button className="fs-task-del" onClick={() => remove(task.id)} aria-label="Supprimer la tâche">
+              <svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+                <path d="M2 3h8M5 1.2h2M3.6 3l.6 7.4h3.6L8.4 3" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
         );
       };
 
       return (
-        <div className="fs-tasks-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: T.font }}>
+        <div className="fs-tasks-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: T.font, position: 'relative' }}>
           <style>{`
             .fs-tasks-screen { min-width: 0; }
+            .fs-tasks-screen::before {
+              content:''; position:absolute; left:50%; top:-160px; width:640px; height:340px; transform:translateX(-50%);
+              background: radial-gradient(ellipse at center, rgba(var(--theme-c1-rgb),0.10), transparent 62%);
+              pointer-events:none; z-index:0;
+            }
+            .fs-tasks-head, .fs-task-list { position:relative; z-index:1; }
+
+            /* ── Composer ── */
+            .fs-task-input-wrap {
+              flex:1; display:flex; align-items:center; gap:11px; height:50px; padding:0 16px; border-radius:16px;
+              background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.022));
+              border:1px solid rgba(255,255,255,0.085);
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 24px rgba(0,0,0,0.14);
+              transition: border-color .22s var(--mineral-ease), box-shadow .22s var(--mineral-ease), background .22s var(--mineral-ease);
+            }
+            .fs-task-input-wrap:focus-within {
+              border-color: rgba(var(--theme-c1-rgb),0.45);
+              background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.055), rgba(255,255,255,0.02));
+              box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.10), 0 16px 36px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.07);
+            }
+            .fs-task-input-wrap input { flex:1; background:none; border:none; outline:none; color: var(--mineral-text); font-size:13.5px; font-family:inherit; }
+            .fs-task-input-wrap input::placeholder { color: rgba(248,246,252,0.30); }
+            .fs-task-input-icon { flex-shrink:0; width:24px; height:24px; border-radius:9px; display:grid; place-items:center;
+              background: rgba(var(--theme-c1-rgb),0.12); color: var(--theme-c1); transition: transform .22s var(--mineral-ease); }
+            .fs-task-input-wrap:focus-within .fs-task-input-icon { transform: rotate(90deg) scale(1.06); }
+            .fs-task-kbd { flex-shrink:0; font-size:9.5px; font-weight:800; letter-spacing:.05em; color:rgba(248,246,252,0.30);
+              border:1px solid rgba(255,255,255,0.10); border-bottom-width:2px; border-radius:6px; padding:2px 6px; }
+
+            .fs-task-priority-row { display:flex; gap:5px; flex-shrink:0; }
+            .fs-task-priority-row button {
+              height:50px; padding:0 12px; border-radius:14px; cursor:pointer; display:flex; align-items:center; gap:7px;
+              font-family:inherit; font-size:11px; font-weight:800; letter-spacing:.01em;
+              background: rgba(255,255,255,0.028); border:1px solid rgba(255,255,255,0.07); color: rgba(248,246,252,0.42);
+              transition: all .2s var(--mineral-ease);
+            }
+            .fs-task-priority-row button:hover { transform: translateY(-1px); background: rgba(255,255,255,0.05); }
+            .fs-task-priority-row button i { width:7px; height:7px; border-radius:50%; display:block; box-shadow:0 0 8px currentColor; }
+            .fs-task-priority-row button .fs-task-pri-lbl { display:block; }
+
+            .fs-task-add-btn {
+              height:50px; padding:0 22px; border:none; border-radius:16px; cursor:pointer; flex-shrink:0;
+              display:inline-flex; align-items:center; gap:9px;
+              font-family:inherit; font-size:13px; font-weight:850; color:#070810;
+              background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+              box-shadow: 0 14px 30px rgba(var(--theme-c1-rgb),0.24), inset 0 1px 0 rgba(255,255,255,0.35);
+              transition: transform .2s var(--mineral-ease), box-shadow .2s var(--mineral-ease);
+            }
+            .fs-task-add-btn:hover { transform: translateY(-1px) scale(1.02); box-shadow: 0 20px 42px rgba(var(--theme-c1-rgb),0.34), inset 0 1px 0 rgba(255,255,255,0.4); }
+            .fs-task-add-btn:active { transform: scale(0.98); }
+
+            /* ── Filtres segmentés ── */
+            .fs-task-filters { display:inline-flex; gap:3px; padding:4px; border-radius:14px;
+              background: rgba(255,255,255,0.028); border:1px solid rgba(255,255,255,0.06);
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.035); }
+            .fs-task-fbtn {
+              border:none; cursor:pointer; border-radius:11px; padding:7px 15px;
+              display:flex; align-items:center; gap:8px; font-family:inherit; font-size:11.5px; font-weight:750;
+              background:transparent; color: rgba(248,246,252,0.45);
+              transition: all .22s var(--mineral-ease);
+            }
+            .fs-task-fbtn:hover { color: rgba(248,246,252,0.75); }
+            .fs-task-fbtn.on {
+              background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.16), rgba(var(--theme-c1-rgb),0.07));
+              color: var(--theme-c1);
+              box-shadow: 0 6px 16px rgba(var(--theme-c1-rgb),0.12), inset 0 1px 0 rgba(255,255,255,0.09);
+            }
+            .fs-task-fbtn span { font-size:10px; font-weight:800; padding:1px 7px; border-radius:99px;
+              background: rgba(255,255,255,0.06); color: rgba(248,246,252,0.35); font-variant-numeric: tabular-nums; }
+            .fs-task-fbtn.on span { background: rgba(var(--theme-c1-rgb),0.16); color: var(--theme-c1); }
+
+            /* ── Sections ── */
+            .fs-task-sechead { display:flex; align-items:center; gap:10px; margin:22px 0 11px; }
+            .fs-task-sechead-lbl { font-size:10px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; color:rgba(248,246,252,0.30); white-space:nowrap; }
+            .fs-task-sechead-count { font-size:10px; font-weight:750; padding:1px 8px; border-radius:99px; background:rgba(255,255,255,0.055); color:rgba(248,246,252,0.38); font-variant-numeric:tabular-nums; }
+            .fs-task-sechead-line { flex:1; height:1px; background:linear-gradient(90deg, rgba(255,255,255,0.07), transparent); }
+
+            /* ── Rangées ── */
+            .fs-task-section-list { display:flex; flex-direction:column; gap:7px; }
+            .fs-task-row {
+              position:relative; display:flex; align-items:center; gap:13px; padding:13px 15px 13px 17px; border-radius:16px;
+              background: linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.015));
+              border:1px solid rgba(255,255,255,0.055);
+              box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+              transition: transform .2s var(--mineral-ease), border-color .2s, background .2s, box-shadow .2s, opacity .2s;
+              animation: fsTaskIn .45s cubic-bezier(.22,1,.36,1) both;
+            }
+            .fs-task-row:hover {
+              transform: translateY(-1px);
+              border-color: rgba(var(--theme-c1-rgb),0.20);
+              background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.022));
+              box-shadow: 0 12px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06);
+            }
+            .fs-task-row.done { opacity:.5; }
+            .fs-task-row.done:hover { opacity:.72; }
+            @keyframes fsTaskIn { from { opacity:0; transform:translateY(9px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+            html.fs-reduce-motion .fs-task-row { animation:none; }
+
+            .fs-task-accent { position:absolute; left:0; top:11px; bottom:11px; width:3px; border-radius:0 99px 99px 0; transition: box-shadow .2s; }
+            .fs-task-row.done .fs-task-accent { opacity:.3; }
+
+            .fs-task-check {
+              width:22px; height:22px; border-radius:8px; flex-shrink:0; cursor:pointer;
+              border:1.5px solid rgba(255,255,255,0.22); background:transparent;
+              display:flex; align-items:center; justify-content:center;
+              transition: all .22s var(--mineral-ease); outline:none;
+            }
+            .fs-task-check:hover { border-color: rgba(var(--theme-c1-rgb),0.65); box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.10); transform: scale(1.06); }
+            .fs-task-check:focus-visible { box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.22); }
+            .fs-task-check.on {
+              background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+              border-color: transparent;
+              box-shadow: 0 0 14px rgba(var(--theme-c1-rgb),0.38), inset 0 1px 0 rgba(255,255,255,0.4);
+            }
+            .fs-task-check-path { stroke-dasharray:14; stroke-dashoffset:14; animation: fsTaskCheckDraw .34s ease .04s forwards; }
+            @keyframes fsTaskCheckDraw { to { stroke-dashoffset:0; } }
+
+            .fs-task-text { flex:1; min-width:0; font-size:13.5px; font-weight:550; letter-spacing:-0.01em; color:rgba(248,246,252,0.90);
+              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition: color .2s; }
+            .fs-task-row.done .fs-task-text { color:rgba(248,246,252,0.35); text-decoration:line-through; text-decoration-color:rgba(248,246,252,0.25); font-weight:450; }
+
+            .fs-task-pri { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:800; letter-spacing:.04em;
+              padding:3px 10px; border-radius:99px; border:1px solid transparent; transition: all .2s; }
+            .fs-task-pri i { width:5px; height:5px; border-radius:50%; display:block; }
+
+            .fs-task-del {
+              width:26px; height:26px; border-radius:9px; flex-shrink:0; cursor:pointer; border:none;
+              background: rgba(251,113,133,0.10); color:rgba(251,113,133,0.8);
+              display:flex; align-items:center; justify-content:center;
+              opacity:0; transform: scale(.82);
+              transition: all .18s var(--mineral-ease);
+            }
+            .fs-task-row:hover .fs-task-del { opacity:1; transform:scale(1); }
+            .fs-task-del:hover { background: rgba(251,113,133,0.20); color:#fda4af; transform: scale(1.08) !important; }
+
+            /* ── Mobile ── */
             @media (max-width: 768px) {
               .fs-tasks-screen {
                 background:
-                  radial-gradient(circle at 18% 0%, rgba(45, 212, 191, 0.08), transparent 30%),
+                  radial-gradient(circle at 18% 0%, rgba(var(--theme-c1-rgb), 0.08), transparent 30%),
                   linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
                 overflow: hidden !important;
               }
               .fs-tasks-head { padding: 18px 16px 0 !important; flex-shrink: 0 !important; }
               .fs-tasks-hero { align-items: center !important; margin-bottom: 14px !important; gap: 12px !important; }
-              .fs-tasks-kicker,
-              .fs-tasks-hero > div:first-child > :first-child { display: none !important; }
-              .fs-tasks-title,
-              .fs-tasks-hero > div:first-child > div:nth-child(2) { font-size: 26px !important; line-height: 0.96 !important; margin-top: 0 !important; letter-spacing: -0.035em !important; }
-              .fs-tasks-stats,
-              .fs-tasks-hero > div:first-child > div:nth-child(3) { margin-top: 8px !important; gap: 7px !important; font-size: 12px !important; flex-wrap: wrap !important; }
+              .fs-tasks-kicker { display: none !important; }
+              .fs-tasks-title { font-size: 26px !important; line-height: 0.96 !important; margin-top: 0 !important; letter-spacing: -0.035em !important; }
+              .fs-tasks-stats { margin-top: 8px !important; gap: 7px !important; font-size: 12px !important; flex-wrap: wrap !important; }
               .fs-tasks-progress { width: 54px !important; height: 54px !important; flex-shrink: 0 !important; }
               .fs-task-composer { display: grid !important; grid-template-columns: 1fr auto !important; gap: 9px !important; align-items: center !important; margin-bottom: 12px !important; }
-              .fs-task-input-wrap { grid-column: 1 / -1 !important; height: 50px !important; border-radius: 16px !important; padding: 0 14px !important; gap: 10px !important; background: rgba(255,255,255,0.058) !important; border-color: rgba(255,255,255,0.10) !important; }
+              .fs-task-input-wrap { grid-column: 1 / -1 !important; height: 50px !important; }
               .fs-task-input-wrap input { min-width: 0 !important; font-size: 16px !important; }
+              .fs-task-kbd { display: none !important; }
               .fs-task-priority-row { gap: 7px !important; }
-              .fs-task-priority-row button { width: 42px !important; height: 42px !important; border-radius: 14px !important; }
+              .fs-task-priority-row button { height: 42px !important; padding: 0 !important; width: 42px !important; border-radius: 14px !important; justify-content: center !important; }
+              .fs-task-priority-row button .fs-task-pri-lbl { display: none !important; }
               .fs-task-add-btn { height: 42px !important; min-width: 108px !important; padding: 0 16px !important; border-radius: 14px !important; box-shadow: none !important; font-size: 13px !important; }
-              .fs-task-filters { display: flex !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; scrollbar-width: none !important; flex-wrap: nowrap !important; gap: 7px !important; padding-bottom: 14px !important; }
+              .fs-task-filters { display: flex !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; scrollbar-width: none !important; flex-wrap: nowrap !important; gap: 5px !important; margin-bottom: 14px !important; }
               .fs-task-filters::-webkit-scrollbar { display: none !important; }
-              .fs-task-filters button { flex-shrink: 0 !important; height: 38px !important; padding: 0 14px !important; font-size: 12px !important; border-radius: 99px !important; }
-              .fs-task-filters button span { padding: 1px 6px !important; }
+              .fs-task-fbtn { flex-shrink: 0 !important; padding: 8px 13px !important; font-size: 12px !important; }
               .fs-task-list { padding: 10px 16px 94px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
               .fs-task-section-list { gap: 8px !important; }
-              .fs-task-row { align-items: flex-start !important; gap: 12px !important; padding: 15px !important; border-radius: 18px !important; background: rgba(255,255,255,0.04) !important; border-color: rgba(255,255,255,0.06) !important; transform: none !important; min-height: 56px !important; }
-              .fs-task-row > div:first-child { width: 24px !important; height: 24px !important; border-radius: 8px !important; margin-top: 2px !important; flex-shrink: 0 !important; }
-              .fs-task-row > span:first-of-type { min-width: 0 !important; font-size: 14px !important; line-height: 1.38 !important; white-space: normal !important; }
-              .fs-task-row > span:nth-of-type(2), .fs-task-row > span:nth-of-type(3) { font-size: 9px !important; padding: 3px 7px !important; margin-top: 2px !important; }
-              .fs-task-row > button { opacity: 1 !important; width: 34px !important; height: 34px !important; font-size: 18px !important; background: rgba(251,113,133,0.12) !important; margin-top: -6px !important; border-radius: 10px !important; }
+              .fs-task-row { align-items: flex-start !important; padding: 15px 15px 15px 17px !important; border-radius: 18px !important; min-height: 56px !important; }
+              .fs-task-check { width: 24px !important; height: 24px !important; border-radius: 9px !important; margin-top: 1px !important; }
+              .fs-task-text { white-space: normal !important; font-size: 14px !important; line-height: 1.38 !important; }
+              .fs-task-pri { margin-top: 3px !important; }
+              .fs-task-del { opacity: 1 !important; transform: scale(1) !important; width: 32px !important; height: 32px !important; border-radius: 10px !important; }
               .fs-task-done-head { margin: 18px 0 10px !important; }
               .fs-task-done-head button { height: 34px !important; padding: 0 12px !important; transform: none !important; font-size: 11px !important; }
               .fs-task-empty { height: 260px !important; padding-bottom: 82px !important; }
@@ -9051,156 +9168,162 @@
           <div className="fs-tasks-head" style={{ padding: '28px 32px 0', flexShrink: 0 }}>
             <div className="fs-tasks-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
               <div>
-                <Lbl ch="focus queue" />
-                <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 30, letterSpacing: '-0.04em', lineHeight: 1, marginTop: 8 }}>File de focus</div>
-                <div style={{ fontSize: 13, color: T.muted, marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.c1, display: 'inline-block', boxShadow: `0 0 6px ${T.c1}` }} />
-                    <span style={{ color: T.c1, fontWeight: 600 }}>{totalActive}</span> en cours
+                <div className="fs-tasks-kicker"><Lbl ch="focus queue" /></div>
+                <div className="fs-tasks-title" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 30, letterSpacing: '-0.04em', lineHeight: 1, marginTop: 8 }}>File de focus</div>
+                <div className="fs-tasks-stats" style={{ fontSize: 12, marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 11px', borderRadius: 999, background: 'rgba(var(--theme-c1-rgb),0.08)', border: '1px solid rgba(var(--theme-c1-rgb),0.18)', color: T.c1, fontWeight: 750 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}`, animation: 'fwPulse 2.2s ease-in-out infinite' }} />
+                    {totalActive} en cours
                   </span>
-                  <span style={{ opacity: 0.25 }}>·</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.green, display: 'inline-block', boxShadow: `0 0 6px ${T.green}` }} />
-                    <span style={{ color: T.green, fontWeight: 600 }}>{totalDone}</span> complétées
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 11px', borderRadius: 999, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(248,246,252,0.55)', fontWeight: 700 }}>
+                    <svg width={10} height={9} viewBox="0 0 11 9" fill="none"><path d="M1 4.5 4 7.5l6-6" stroke={T.green} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    {totalDone} complétée{totalDone > 1 ? 's' : ''}
                   </span>
                 </div>
               </div>
               {/* Progress ring */}
-              <div className="fs-tasks-progress" style={{ position: 'relative', width: 64, height: 64 }}>
-                <svg width={64} height={64} style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
-                  <circle cx={32} cy={32} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={3.5} />
-                  <circle cx={32} cy={32} r={r} fill="none" stroke={T.green} strokeWidth={3.5}
+              <div className="fs-tasks-progress" style={{ position: 'relative', width: 66, height: 66 }}>
+                <svg width={66} height={66} viewBox="0 0 64 64" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
+                  <defs>
+                    <linearGradient id="fsTasksRingG" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="var(--theme-c1)" />
+                      <stop offset="100%" stopColor="var(--theme-c2)" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx={32} cy={32} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={4} />
+                  <circle cx={32} cy={32} r={r} fill="none" stroke="url(#fsTasksRingG)" strokeWidth={4}
                     strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
-                    style={{ filter: `drop-shadow(0 0 6px ${T.green}66)`, transition: 'stroke-dasharray 0.7s cubic-bezier(0.4,0,0.2,1)' }} />
+                    style={{ filter: 'drop-shadow(0 0 7px rgba(var(--theme-c1-rgb),0.5))', transition: 'stroke-dasharray 0.7s cubic-bezier(0.4,0,0.2,1)' }} />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1 }}>{Math.round(prog * 100)}</span>
-                  <span style={{ fontSize: 9, color: T.muted, fontWeight: 600 }}>%</span>
+                  <span style={{ fontSize: 16, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}</span>
+                  <span style={{ fontSize: 8.5, color: T.muted, fontWeight: 750, letterSpacing: '0.08em' }}>%</span>
                 </div>
               </div>
             </div>
 
-            {/* ── Add task ── */}
+            {/* ── Composer ── */}
             <div className="fs-task-composer" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
-              <div className="fs-task-input-wrap" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: composerPulse ? 'rgba(var(--theme-c1-rgb),0.075)' : 'rgba(255,255,255,0.04)', border: `1px solid ${composerPulse ? 'rgba(var(--theme-c1-rgb),0.46)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 14, padding: '0 14px', height: 44, animation: composerPulse ? 'fsTaskComposerPulse .52s cubic-bezier(.16,1,.3,1)' : 'none', transition: 'background .22s var(--mineral-ease), border-color .22s var(--mineral-ease)' }}>
-                <svg width={14} height={14} viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, opacity: 0.3 }}>
-                  <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-                </svg>
+              <div className="fs-task-input-wrap" style={composerPulse ? { animation: 'fsTaskComposerPulse .52s cubic-bezier(.16,1,.3,1)' } : null}>
+                <span className="fs-task-input-icon">
+                  <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" /></svg>
+                </span>
                 <input
                   ref={taskInputRef}
                   value={inputVal}
                   onChange={e => setInputVal(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTask()}
-                  placeholder="Ajouter une tâche…  (Entrée pour valider)"
-                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: T.text, fontSize: 13, fontFamily: T.font }}
+                  placeholder="Qu'est-ce qui compte aujourd'hui ?"
                 />
+                <span className="fs-task-kbd">↵</span>
               </div>
-              {/* Priority dots */}
-              <div className="fs-task-priority-row" style={{ display: 'flex', gap: 4 }}>
+              <div className="fs-task-priority-row">
                 {Object.entries(PRI).map(([key, p]) => (
-                  <button key={key} onClick={() => setNewPri(key)} title={p.label}
-                    style={{ width: 32, height: 32, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${newPri === key ? p.color : 'rgba(255,255,255,0.08)'}`, background: newPri === key ? p.bg : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease' }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color }} />
+                  <button key={key} onClick={() => setNewPri(key)} title={`Priorité ${p.label.toLowerCase()}`}
+                    style={newPri === key ? { background: p.bg, borderColor: `${p.color}55`, color: p.color, boxShadow: `0 8px 20px ${p.color}1e, inset 0 1px 0 rgba(255,255,255,0.08)` } : null}>
+                    <i style={{ background: p.color, color: p.color, opacity: newPri === key ? 1 : 0.45 }} />
+                    <span className="fs-task-pri-lbl">{p.label}</span>
                   </button>
                 ))}
               </div>
-              <button className="fs-task-add-btn" onClick={addTask}
-                style={{ height: 44, padding: '0 20px', background: T.c1, border: 'none', borderRadius: 12, color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, boxShadow: `0 0 20px ${c1(0.2)}`, transition: 'all 0.18s ease', flexShrink: 0 }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 0 32px ${c1(0.333)}`; e.currentTarget.style.transform = 'scale(1.04)'; }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 0 20px ${c1(0.2)}`; e.currentTarget.style.transform = 'scale(1)'; }}>
+              <button className="fs-task-add-btn" onClick={addTask}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
                 Ajouter
               </button>
             </div>
 
-            {/* ── Filters ── */}
-            <div className="fs-task-filters" style={{ display: 'flex', gap: 6, paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              {FILTERS.map(f => (
-                <button key={f.id} onClick={() => setFilter(f.id)}
-                  style={{ background: filter === f.id ? `${c1(0.094)}` : 'transparent', border: `1px solid ${filter === f.id ? `${c1(0.267)}` : 'rgba(255,255,255,0.07)'}`, borderRadius: 999, padding: '6px 14px', cursor: 'pointer', color: filter === f.id ? T.c1 : T.muted, fontSize: 11, fontWeight: 600, fontFamily: T.font, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 7 }}>
-                  {f.label}
-                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, background: filter === f.id ? `${c1(0.133)}` : 'rgba(255,255,255,0.06)', color: filter === f.id ? T.c1 : 'rgba(248,246,252,0.32)' }}>{f.count}</span>
-                </button>
-              ))}
+            {/* ── Filtres ── */}
+            <div style={{ paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="fs-task-filters">
+                {FILTERS.map(f => (
+                  <button key={f.id} className={'fs-task-fbtn' + (filter === f.id ? ' on' : '')} onClick={() => setFilter(f.id)}>
+                    {f.label}
+                    <span>{f.count}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* ── Task list ── */}
+          {/* ── Liste ── */}
           <div className="fs-task-list" style={{ flex: 1, overflowY: 'auto', padding: '0 32px 28px' }}>
             {hasFocus && (
-              <div style={{ margin: '14px 0 8px', padding: '9px 14px', borderRadius: 12, background: `${T.c1}0e`, border: `1px solid ${T.c1}28`, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ margin: '16px 0 6px', padding: '10px 15px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.09), rgba(var(--theme-c2-rgb),0.04))', border: '1px solid rgba(var(--theme-c1-rgb),0.22)', display: 'flex', alignItems: 'center', gap: 9, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' }}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><circle cx={12} cy={12} r={9} stroke={T.c1} strokeWidth={1.8}/><path d="M12 7v5l3 3" stroke={T.c1} strokeWidth={1.8} strokeLinecap="round"/></svg>
-                <span style={{ fontSize: 11, fontWeight: 700, color: T.c1, letterSpacing: '0.03em' }}>Session focus active · {focusTasks.length} tâche{focusTasks.length !== 1 ? 's' : ''} sélectionnée{focusTasks.length !== 1 ? 's' : ''}</span>
+                <span style={{ fontSize: 11, fontWeight: 750, color: T.c1, letterSpacing: '0.03em' }}>Session focus active · {focusTasks.length} tâche{focusTasks.length !== 1 ? 's' : ''} sélectionnée{focusTasks.length !== 1 ? 's' : ''}</span>
               </div>
             )}
             {hasFocus ? (<>
               {focusTasks.length > 0 && <>
-                <SectionHead label="⚡ Focus" count={focusTasks.length} />
-                <div className="fs-task-section-list" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {focusTasks.map(t => <TaskRow key={t.id} task={t} />)}
+                <SectionHead label="⚡ Focus" count={focusTasks.length} accent />
+                <div className="fs-task-section-list">
+                  {focusTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
                 </div>
               </>}
               {otherTasks.length > 0 && <>
                 <SectionHead label="Hors focus" count={otherTasks.length} />
-                <div className="fs-task-section-list" style={{ display: 'flex', flexDirection: 'column', gap: 5, opacity: 0.3, filter: 'blur(1px)', pointerEvents: 'none', userSelect: 'none' }}>
-                  {otherTasks.map(t => <TaskRow key={t.id} task={t} />)}
+                <div className="fs-task-section-list" style={{ opacity: 0.3, filter: 'blur(1px)', pointerEvents: 'none', userSelect: 'none' }}>
+                  {otherTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
                 </div>
               </>}
             </>) : (<>
               {activeTasks.length > 0 && <>
                 <SectionHead label="En cours" count={activeTasks.length} />
-                <div className="fs-task-section-list" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {activeTasks.map(t => <TaskRow key={t.id} task={t} />)}
+                <div className="fs-task-section-list">
+                  {activeTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
                 </div>
               </>}
             </>)}
             {doneTasks.length > 0 && <>
-              {/* ── Done section header with clear-all action ── */}
-              <div className="fs-task-done-head" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '20px 0 10px' }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(248,246,252,0.28)', whiteSpace: 'nowrap' }}>Complétées</span>
-                <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: 'rgba(248,246,252,0.35)' }}>{doneTasks.length}</span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
+              <div className="fs-task-done-head fs-task-sechead">
+                <span className="fs-task-sechead-lbl">Complétées</span>
+                <span className="fs-task-sechead-count">{doneTasks.length}</span>
+                <div className="fs-task-sechead-line" />
                 <button
                   onClick={clearDone}
-                  onMouseEnter={() => setHovClear(true)}
-                  onMouseLeave={() => setHovClear(false)}
                   aria-label="Effacer toutes les tâches complétées"
+                  className="fs-task-clear-btn"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
-                    background: hovClear ? 'rgba(251,113,133,0.10)' : 'transparent',
-                    border: `1px solid ${hovClear ? 'rgba(251,113,133,0.28)' : 'rgba(255,255,255,0.07)'}`,
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.07)',
                     borderRadius: 99, padding: '4px 11px 4px 9px',
-                    color: hovClear ? '#fb7185' : 'rgba(248,246,252,0.28)',
-                    fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                    color: 'rgba(248,246,252,0.30)',
+                    fontSize: 10, fontWeight: 650, cursor: 'pointer',
                     fontFamily: T.font, letterSpacing: '0.02em',
                     transition: 'all 0.22s cubic-bezier(0.34,1.56,0.64,1)',
-                    transform: hovClear ? 'scale(1.06)' : 'scale(1)',
                     flexShrink: 0, outline: 'none',
-                    boxShadow: hovClear ? '0 4px 16px rgba(251,113,133,0.16)' : 'none',
-                  }}>
-                  <svg width={10} height={10} viewBox="0 0 12 12" fill="none"
-                    style={{ transform: hovClear ? 'rotate(-12deg)' : 'rotate(0deg)', transition: 'transform 0.25s ease', flexShrink: 0 }}>
+                  }}
+                  onMouseEnter={e => { const s = e.currentTarget.style; s.background = 'rgba(251,113,133,0.10)'; s.borderColor = 'rgba(251,113,133,0.28)'; s.color = '#fb7185'; s.transform = 'scale(1.06)'; s.boxShadow = '0 4px 16px rgba(251,113,133,0.16)'; }}
+                  onMouseLeave={e => { const s = e.currentTarget.style; s.background = 'transparent'; s.borderColor = 'rgba(255,255,255,0.07)'; s.color = 'rgba(248,246,252,0.30)'; s.transform = 'scale(1)'; s.boxShadow = 'none'; }}>
+                  <svg width={10} height={10} viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
                     <path d="M2 3h8M5 1h2M4 3l.6 7h2.8L8 3" stroke="currentColor" strokeWidth={1.45} strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   Tout effacer
                 </button>
               </div>
-              <div className="fs-task-section-list" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {doneTasks.map(t => <TaskRow key={t.id} task={t} />)}
+              <div className="fs-task-section-list">
+                {doneTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
               </div>
             </>}
             {activeTasks.length === 0 && doneTasks.length === 0 && (
-              <div className="fs-task-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 14 }}>
-                <div style={{ width: 52, height: 52, borderRadius: 18, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="rgba(248,246,252,0.3)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 11l3 3 8-8" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                  </svg>
+              <div className="fs-task-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 260, gap: 16 }}>
+                <div style={{ position: 'relative', width: 64, height: 64 }}>
+                  <div style={{ position: 'absolute', inset: -14, borderRadius: '50%', background: 'radial-gradient(circle, rgba(var(--theme-c1-rgb),0.16), transparent 68%)', animation: 'fwPulse 3.2s ease-in-out infinite' }} />
+                  <div style={{ position: 'relative', width: 64, height: 64, borderRadius: 22, background: 'linear-gradient(150deg, rgba(var(--theme-c1-rgb),0.14), rgba(255,255,255,0.03))', border: '1px solid rgba(var(--theme-c1-rgb),0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 18px 40px rgba(var(--theme-c1-rgb),0.14), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
+                    <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="var(--theme-c1)" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 11l3 3 8-8" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                  </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 5 }}>Commence ta première tâche</div>
-                  <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 14 }}>Note ce que tu veux accomplir aujourd'hui — une action à la fois.</div>
+                  <div style={{ fontFamily: T.display, fontSize: 17, fontWeight: 800, letterSpacing: '-0.02em', color: T.text, marginBottom: 6 }}>Commence ta première tâche</div>
+                  <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 16, maxWidth: 300, lineHeight: 1.55 }}>Note ce que tu veux accomplir aujourd'hui — une action à la fois.</div>
                   <button type="button"
                     onClick={() => { try { taskInputRef.current?.focus(); setComposerPulse(true); setTimeout(() => setComposerPulse(false), 900); } catch (e) {} }}
-                    style={{ border: 'none', borderRadius: 13, padding: '11px 20px', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color: '#07070d', fontSize: 13, fontWeight: 850, fontFamily: T.font, cursor: 'pointer', boxShadow: '0 12px 30px rgba(var(--theme-c1-rgb),0.26)' }}>
+                    style={{ border: 'none', borderRadius: 14, padding: '12px 22px', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color: '#07070d', fontSize: 13, fontWeight: 850, fontFamily: T.font, cursor: 'pointer', boxShadow: '0 14px 34px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.35)', transition: 'transform .2s var(--mineral-ease)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0) scale(1)'; }}>
                     + Ajouter une tâche
                   </button>
                 </div>
@@ -17361,60 +17484,157 @@
     return `#${c(ar+(br-ar)*t).toString(16).padStart(2,'0')}${c(ag+(bg-ag)*t).toString(16).padStart(2,'0')}${c(ab+(bb-ab)*t).toString(16).padStart(2,'0')}`;
   }
 
-  /* ── Jitter polygon builder ── */
-  /* ── Polygon builder ──
-     stableAmt: irreversible sculpting that GROWS over the session
-                (0 at start = exact base shape, maxVal at end = unique organic form)
-     liveAmt:   tiny continuous sine oscillation for "alive" feel (optional)
-     timeMs:    elapsed ms for the live oscillation ── */
-  function _poly(pts, rng, stableAmt, off = 0, liveAmt = 0, timeMs = 0) {
+  /* ══════════════════════════════════════════════════════════════
+     GÉOMÉTRIE PROCÉDURALE DE CRISTAL — v2 « sculpté »
+     Chaque graine (seed = startTime de la session) produit une
+     silhouette UNIQUE dans sa famille de forme + un facettage réel
+     aligné sur la géométrie (éventail colonne vertébrale → arêtes),
+     éclairé par une direction de lumière — plus deux cristaux
+     identiques. La topologie (nb de sommets) est IDENTIQUE entre la
+     forme canonique (départ de session) et la forme unique (fin),
+     pour que la croissance morphe proprement de l'une à l'autre.
+  ══════════════════════════════════════════════════════════════ */
+  function _cxGeom(shape, rng) {
     const n = rng.length;
-    return pts.map(([x, y], i) => {
-      const idx = (i * 6 + off * 7) % n;
-      /* Stable directional deformation per vertex — unique, irreversible */
-      const sdx = rng[idx]         * stableAmt;
-      const sdy = rng[(idx+1) % n] * stableAmt * 0.58;
-      /* Tiny living pulse — barely perceptible, stops when crystal is complete */
-      let ldx = 0, ldy = 0;
-      if (liveAmt > 0.01 && timeMs > 0) {
-        const freqX = 0.0007 + Math.abs(rng[(idx+2)%n]) * 0.0005;
-        const freqY = 0.0006 + Math.abs(rng[(idx+3)%n]) * 0.0006;
-        const phX   = rng[(idx+4)%n] * Math.PI * 4;
-        const phY   = rng[(idx+5)%n] * Math.PI * 4;
-        ldx = Math.sin(timeMs * freqX + phX) * liveAmt;
-        ldy = Math.cos(timeMs * freqY + phY) * liveAmt * 0.55;
-      }
-      return `${(x + sdx + ldx).toFixed(1)},${(y + sdy + ldy).toFixed(1)}`;
-    }).join(' ');
+    const R = i => rng[((i % n) + n) % n];          /* -0.5 .. 0.5 */
+    const U = i => Math.abs(R(i)) * 2;              /*  0   .. 1   */
+    let canon = [], uniq = [], extras = {};
+
+    if (shape === 'shard') {
+      /* Pointe déchiquetée : m crans par côté (2-4), penchée, asymétrique */
+      const m = 2 + Math.floor(U(19) * 2.99);
+      const wp = t => 15 + 27 * Math.pow(Math.sin(Math.PI * t), 0.85);
+      const build = q => {
+        const pts = [[q.ax, 6]];
+        for (let i = 0; i < m; i++) { const t = (i + 1) / (m + 1); pts.push([50 + wp(t) + q.rw[i], 18 + t * 74]); }
+        pts.push([50 + q.hw, 96], [q.tx, 140], [50 - q.hw2, 96]);
+        for (let i = m - 1; i >= 0; i--) { const t = (i + 1) / (m + 1); pts.push([50 - wp(t) + q.lw[i], 18 + t * 74]); }
+        return pts;
+      };
+      canon = build({ ax: 50, rw: Array(m).fill(0), lw: Array(m).fill(0), hw: 15, hw2: 15, tx: 50 });
+      uniq  = build({ ax: 50 + R(11) * 12, tx: 50 + R(12) * 8, hw: 11 + U(13) * 9, hw2: 11 + U(14) * 9,
+                      rw: Array.from({length:m}, (_, i) => R(20 + i) * 13),
+                      lw: Array.from({length:m}, (_, i) => R(28 + i) * 13) });
+    } else if (shape === 'geode') {
+      /* Rocher organique : ellipse à harmoniques radiales seedées */
+      const N = 10 + Math.floor(U(20) * 3.99);
+      const k1 = 2 + Math.floor(U(21) * 2.99), ph1 = R(24) * 6.28;
+      const build = wob => {
+        const pts = [];
+        for (let i = 0; i < N; i++) {
+          const th = -Math.PI / 2 + (i / N) * Math.PI * 2;
+          let f = 1;
+          if (wob) f = Math.max(0.74, Math.min(1.2, 1 + 0.13 * Math.sin(th * k1 + ph1) + R(22 + i) * 0.15));
+          pts.push([50 + Math.cos(th) * 43 * f, 54 + Math.sin(th) * 46 * f]);
+        }
+        return pts;
+      };
+      canon = build(false); uniq = build(true);
+    } else if (shape === 'prism') {
+      /* Colonne hexagonale effilée : épaules/hanches/pointe seedées */
+      const build = q => [
+        [50 + q.a, 8], [50 + q.w1, q.y1], [50 + q.w2, q.y2],
+        [50 + q.w2 * 0.58 + q.pr, q.y2 + (q.ty - q.y2) * 0.42],
+        [q.tx, q.ty],
+        [50 - q.w2 * 0.58 + q.pl, q.y2 + (q.ty - q.y2) * 0.42],
+        [50 - q.w2, q.y2], [50 - q.w1, q.y1],
+      ];
+      canon = build({ a: 0, w1: 27, y1: 24, w2: 27, y2: 58, tx: 50, ty: 138, pr: 0, pl: 0 });
+      uniq  = build({ a: R(30) * 7, w1: 21 + U(31) * 11, y1: 19 + U(32) * 11, w2: 19 + U(33) * 13,
+                      y2: 51 + U(34) * 15, tx: 50 + R(35) * 8, ty: 127 + U(36) * 12, pr: R(37) * 8, pl: R(38) * 8 });
+    } else if (shape === 'cluster') {
+      /* Grappe : 2-4 flèches de hauteurs/largeurs propres + pointe basse */
+      const nsp = 2 + (U(40) > 0.5 ? 1 : 0) + (U(41) > 0.72 ? 1 : 0);
+      const build = q => {
+        const pts = [[q.bl, 90]];
+        for (let i = 0; i < nsp; i++) {
+          if (i > 0) pts.push([(q.xs[i - 1] + q.xs[i]) / 2 + q.vx[i - 1], q.vy[i - 1]]);
+          pts.push([q.xs[i], q.ay[i]]);
+        }
+        pts.push([q.br, 90], [q.tx, q.ty]);
+        return pts;
+      };
+      const spread = i => 50 + (i / (nsp - 1) - 0.5) * 46;
+      canon = build({ bl: 20, br: 80, tx: 50, ty: 138,
+                      xs: Array.from({length:nsp}, (_, i) => spread(i)),
+                      ay: Array.from({length:nsp}, (_, i) => 10 + Math.abs(i - (nsp - 1) / 2) * 14),
+                      vx: Array(Math.max(nsp - 1, 0)).fill(0), vy: Array(Math.max(nsp - 1, 0)).fill(40) });
+      uniq  = build({ bl: 17 + U(42) * 8, br: 75 + U(43) * 8, tx: 50 + R(44) * 9, ty: 128 + U(45) * 12,
+                      xs: Array.from({length:nsp}, (_, i) => spread(i) + R(46 + i) * 9),
+                      ay: Array.from({length:nsp}, (_, i) => 5 + U(50 + i) * 30),
+                      vx: Array.from({length:Math.max(nsp - 1, 0)}, (_, i) => R(54 + i) * 6),
+                      vy: Array.from({length:Math.max(nsp - 1, 0)}, (_, i) => 30 + U(57 + i) * 22) });
+    } else if (shape === 'quartz') {
+      /* Pilier : largeur, terminaison et cône de base seedés + stries */
+      const build = q => [
+        [50 + q.a, 6], [50 + q.w, q.sy], [50 + q.w + q.m1, 56], [50 + q.w2, 90],
+        [q.tx, q.ty],
+        [50 - q.w2 + q.m3, 90], [50 - q.w - q.m2, 56], [50 - q.w, q.sy],
+      ];
+      canon = build({ a: 0, w: 16, sy: 14, m1: 0, m2: 0, m3: 0, w2: 16, tx: 50, ty: 138 });
+      const w = 11 + U(30) * 9;
+      uniq  = build({ a: R(31) * 6, w, sy: 10 + U(32) * 10, m1: R(33) * 6, m2: R(34) * 6, m3: R(35) * 4,
+                      w2: w * (0.8 + U(36) * 0.36), tx: 50 + R(37) * 7, ty: 127 + U(38) * 12 });
+      const ns = 2 + Math.floor(U(76) * 2.99);
+      extras.striations = Array.from({length:ns}, (_, i) => ({ y: 22 + U(77 + i) * 58, w: w * (0.72 + U(82 + i) * 0.5) }));
+    } else {
+      /* diamond (défaut) : taille brillant — table, couronne, rondiste, culasse */
+      const build = q => [
+        [50 - q.tw + q.j0, 8], [50 + q.tw + q.j1, 8],
+        [50 + (q.tw + q.gw) / 2 + q.kR, (8 + q.gy) / 2 + q.kRy],
+        [50 + q.gw + q.j2, q.gy],
+        [50 + q.gw * 0.58 + q.pR, q.gy + (q.ty - q.gy) * 0.42],
+        [q.tx, q.ty],
+        [50 - q.gw * 0.58 + q.pL, q.gy + (q.ty - q.gy) * 0.42],
+        [50 - q.gw + q.j3, q.gy],
+        [50 - (q.tw + q.gw) / 2 + q.kL, (8 + q.gy) / 2 + q.kLy],
+      ];
+      canon = build({ tw: 17, gw: 42, gy: 52, tx: 50, ty: 138, j0: 0, j1: 0, j2: 0, j3: 0, kR: 0, kRy: 0, kL: 0, kLy: 0, pR: 0, pL: 0 });
+      uniq  = build({ tw: 12 + U(0) * 9, gw: 36 + U(2) * 10, gy: 46 + U(1) * 12, tx: 50 + R(5) * 9, ty: 126 + U(6) * 13,
+                      j0: R(7) * 4, j1: R(8) * 4, j2: R(9) * 3, j3: R(10) * 3,
+                      kR: R(11) * 8, kRy: R(12) * 5, kL: R(13) * 8, kLy: R(14) * 5, pR: R(15) * 9, pL: R(16) * 9 });
+    }
+    return { canon, uniq, extras };
   }
 
   /* ══════════════════════════════════════════════════════════════
-     ShapedCrystalGem
-     colorProgress : 0 = raw white/silver → 1 = full vivid gradient
-     timeOffset    : elapsed ms → continuous organic shape sculpting
+     ShapedCrystalGem — rendu procédural facetté
+     colorProgress : 0 = argent brut → 1 = dégradé vif
+     progress      : 0 = forme canonique → 1 = sculpture unique (seed)
   ══════════════════════════════════════════════════════════════ */
   function ShapedCrystalGem({ shape = 'diamond', gradientId = null, progress = 0, size = 90,
                                animate = false, shattered = false, seed,
                                colorProgress = 1,
                                timeOffset = 0 }) {
     const _s  = React.useRef(seed != null ? seed : Math.floor(Math.random() * 999983));
-    /* Single stable RNG — fixed for the whole session */
     const rng = React.useMemo(() => window._seedRng(_s.current), [_s.current]);
+    const geom = React.useMemo(() => _cxGeom(shape, rng), [shape, rng]);
+    const nR = rng.length;
+    const R = i => rng[((i % nR) + nR) % nR];
+    const U = i => Math.abs(R(i)) * 2;
 
-    /* ── Growth model ──────────────────────────────────────────────
-       Crystal starts as the EXACT chosen shape (no deformation).
-       Faces gradually sculpt into a unique organic variation.
-       stableDeform: 0 → 10px  (irreversible face displacement)
-       liveDeform:   0 → 2px   (tiny oscillation, crystal feels alive)
-       scale:        0.88 → 1.0 (subtle swelling as crystal matures)
-       alpha:        0.82 → 1.0 (solidifies as it crystallises)      ── */
-    const organicP    = Math.pow(progress, 0.58);   // fast start, decelerates
-    const stableDeform = organicP * 10;              // 0 → 10 px face displacement
-    const liveDeform   = organicP * 1.8;             // 0 → 1.8 px pulse
-    const scale        = 0.88 + progress * 0.12;
-    const alpha        = 0.82 + progress * 0.18;
+    /* ── Croissance : canonique → unique, se solidifie, s'anime à peine ── */
+    const pr = Math.max(0, Math.min(1, progress));
+    const organicP   = Math.pow(pr, 0.58);
+    const liveDeform = organicP * 1.6;
+    const scale      = 0.88 + pr * 0.12;
+    const alpha      = 0.82 + pr * 0.18;
 
-    /* ── Colour: starts white/silver, gradually reveals gradient ── */
+    /* Silhouette affichée = lerp(canon → uniq) + micro-pulsation vivante */
+    const pts = geom.canon.map((c, i) => {
+      const u = geom.uniq[i];
+      let x = c[0] + (u[0] - c[0]) * organicP;
+      let y = c[1] + (u[1] - c[1]) * organicP;
+      if (liveDeform > 0.01 && timeOffset > 0) {
+        const fx = 0.0007 + U(i * 3 + 2) * 0.00028, fy = 0.0006 + U(i * 3 + 3) * 0.0003;
+        x += Math.sin(timeOffset * fx + R(i * 3 + 4) * 12.5) * liveDeform;
+        y += Math.cos(timeOffset * fy + R(i * 3 + 5) * 12.5) * liveDeform * 0.55;
+      }
+      return [x, y];
+    });
+    const ptsStr = pts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+
+    /* ── Couleur : argent → dégradé (inchangé) ── */
     const GREY1 = '#cdd5dc', GREY2 = '#a8b4be';
     const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gradientId)
                  || (window.CRYSTAL_GRADIENTS||[])[0]
@@ -17423,142 +17643,59 @@
     const cp = Math.max(0, Math.min(1, colorProgress));
     const c1 = cp >= 1 ? targetC1 : _lerpHex(GREY1, targetC1, cp);
     const c2 = cp >= 1 ? targetC2 : _lerpHex(GREY2, targetC2, cp);
-
-    /* Glow: near-invisible silver at cp=0, full vivid at cp=1 */
     const glowAlpha = (0.08 + cp * 0.64).toFixed(2);
     const rawGlow   = grad.glow.replace(/[\d.]+\)$/, `${glowAlpha})`);
-    const glowPx   = 2 + progress * 7 + cp * 9;
-
+    const glowPx    = 2 + pr * 7 + cp * 9;
     const uid = `shcg-${shape}-${_s.current}`;
-    /* p() applies progressive face sculpting + subtle live pulse */
-    const p   = (pts, off = 0) => _poly(pts, rng, stableDeform, off, liveDeform, timeOffset);
 
-    /* ── Shape-specific SVG content ── */
-    let content = null;
+    /* ── Colonne vertébrale intérieure (ancrage des facettes) ── */
+    let minY = 1e9, maxY = -1e9;
+    pts.forEach(p => { if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; });
+    const H = Math.max(maxY - minY, 1);
+    const spine = [
+      [50 + R(60) * 5 * organicP, minY + H * 0.2],
+      [50 + R(61) * 8 * organicP, minY + H * 0.52],
+      [50 + R(62) * 5 * organicP, minY + H * 0.82],
+    ];
 
-    if (shape === 'diamond') {
-      content = <>
-        <polygon points={p([[33,8],[67,8],[84,33],[92,52],[8,52],[16,33]])} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
-        <polygon points={p([[8,52],[92,52],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.28"/>
-        <polygon points={p([[33,8],[67,8],[74,22],[26,22]])} fill={`url(#${uid}-t)`}/>
-        <polygon points={p([[33,8],[26,22],[16,33],[8,52]])} fill={c2} opacity="0.2"/>
-        <polygon points={p([[40,9],[60,9],[66,19],[34,19]])} fill="rgba(255,255,255,0.7)"/>
-        {[[33,8,50,52],[67,8,50,52],[26,22,50,52],[74,22,50,52],[8,52,50,138],[92,52,50,138]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.22"/>
-        ))}
-      </>;
-    } else if (shape === 'shard') {
-      content = <>
-        <polygon points={p([[52,6],[74,20],[86,46],[82,70],[65,92],[50,140],[35,92],[17,66],[12,44],[26,18]])} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
-        <polygon points={p([[52,6],[38,22],[28,44],[35,92],[52,6]])} fill={c2} opacity="0.18"/>
-        <polygon points={p([[52,6],[68,22],[82,46],[65,92]])} fill={c1} opacity="0.1"/>
-        <polygon points={p([[44,9],[62,9],[70,21],[36,21]])} fill="rgba(255,255,255,0.68)"/>
-        {[[52,6,50,140],[17,66,82,46],[26,18,65,92]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
-        ))}
-      </>;
-    } else if (shape === 'geode') {
-      const body = [[50,10],[70,8],[86,22],[94,44],[90,68],[76,88],[56,95],[44,95],[24,86],[10,66],[6,44],[14,22],[30,10]];
-      const dome = [[50,10],[70,8],[86,22],[94,44],[50,44]];
-      content = <>
-        <polygon points={p(body)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.35"/>
-        <polygon points={p([[6,44],[10,66],[24,86],[44,95],[56,95],[76,88],[90,68],[94,44],[50,130]],8)} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.22"/>
-        <polygon points={p(dome)} fill="rgba(255,255,255,0.14)"/>
-        <polygon points={p([[43,11],[57,11],[62,22],[38,22]])} fill="rgba(255,255,255,0.65)"/>
-        {[[26,20,14,44],[50,10,50,95],[74,22,90,50]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
-        ))}
-      </>;
-    } else if (shape === 'prism') {
-      const hex = [[50,8],[77,24],[77,58],[50,74],[23,58],[23,24]];
-      content = <>
-        <polygon points={p(hex)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
-        <polygon points={p([[23,58],[77,58],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.25"/>
-        <polygon points={p([[50,8],[23,24],[23,58],[50,74]])} fill={c1} opacity="0.18"/>
-        <polygon points={p([[50,8],[77,24],[77,58],[50,74]])} fill={c2} opacity="0.12"/>
-        <polygon points={p([[50,8],[77,24],[63,30],[37,30],[23,24]])} fill="rgba(255,255,255,0.62)"/>
-        {[[50,8,50,74],[50,74,50,138],[77,58,50,138],[23,58,50,138],[23,24,77,24]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.22"/>
-        ))}
-      </>;
-    } else if (shape === 'cluster') {
-      const body = [[50,5],[60,28],[70,6],[81,30],[80,58],[68,88],[50,140],[32,88],[20,58],[19,30],[30,6],[40,28]];
-      content = <>
-        <polygon points={p(body)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
-        <polygon points={p([[50,5],[40,28],[60,28]])} fill="rgba(255,255,255,0.22)"/>
-        <polygon points={p([[30,6],[19,30],[40,28]])} fill={c1} opacity="0.18"/>
-        <polygon points={p([[70,6],[81,30],[60,28]])} fill={c2} opacity="0.15"/>
-        <polygon points={p([[47,7],[53,7],[56,18],[44,18]])} fill="rgba(255,255,255,0.65)"/>
-        {[[50,5,50,140],[30,6,32,88],[70,6,68,88],[40,28,32,88],[60,28,68,88]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.35" strokeOpacity="0.2"/>
-        ))}
-      </>;
-    } else if (shape === 'quartz') {
-      const pillar = [[50,5],[66,14],[66,90],[50,98],[34,90],[34,14]];
-      content = <>
-        <polygon points={p(pillar)} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.4"/>
-        <polygon points={p([[34,90],[66,90],[50,138]])} fill={`url(#${uid}-g2)`} stroke={c1} strokeWidth="0.5" strokeOpacity="0.25"/>
-        <polygon points={p([[50,5],[66,14],[66,90],[50,98]])} fill={c2} opacity="0.1"/>
-        <polygon points={p([[50,5],[66,14],[50,20],[34,14]])} fill="rgba(255,255,255,0.68)"/>
-        {[[50,5,50,98],[50,98,50,138],[66,90,50,138],[34,90,50,138]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c2} strokeWidth="0.4" strokeOpacity="0.2"/>
-        ))}
-        {[0.28,0.52,0.76].map((t,i)=>(
-          <line key={i} x1="34" y1={14+t*76} x2="66" y2={14+t*76} stroke={c2} strokeWidth="0.3" strokeOpacity="0.18"/>
-        ))}
-      </>;
+    /* ── Lumière directionnelle seedée (haut-gauche ± variation) ── */
+    const lightAng = -2.25 + R(63) * 0.55;
+    const Lx = Math.cos(lightAng), Ly = Math.sin(lightAng);
+
+    /* ── Facettes : chaque arête de silhouette + point de colonne le plus
+         proche = un triangle. Luminosité = normale · lumière + hauteur. ── */
+    const facetFloor = 0.16; /* relief minimal même à progress 0 (aperçus) */
+    const facetOp = Math.max(facetFloor, Math.min(organicP * 1.12, 0.92));
+    const facets = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      let s = spine[0], sd = Math.abs(my - spine[0][1]);
+      for (let k = 1; k < spine.length; k++) { const d = Math.abs(my - spine[k][1]); if (d < sd) { sd = d; s = spine[k]; } }
+      const ex = b[0] - a[0], ey = b[1] - a[1];
+      const el = Math.hypot(ex, ey) || 1;
+      let nx = ey / el, ny = -ex / el;
+      if (nx * (mx - s[0]) + ny * (my - s[1]) < 0) { nx = -nx; ny = -ny; }
+      const bright = (nx * Lx + ny * Ly) * 0.62 + (1 - my / 145) * 0.30 - 0.14 + R(70 + i) * 0.24;
+      facets.push({ a, b, s, mx, my, nx, ny, bright });
     }
 
-    /* ── 3D facet system ─────────────────────────────────────────────
-       Simplified crystal outlines for clip-path (one per shape)     */
-    const OUTLINES = {
-      diamond: [[33,8],[67,8],[92,52],[50,138],[8,52]],
-      shard:   [[52,6],[86,46],[65,92],[50,140],[35,92],[12,44],[26,18]],
-      geode:   [[50,10],[86,22],[94,44],[90,68],[76,88],[50,95],[24,86],[10,66],[6,44],[14,22],[30,10]],
-      prism:   [[50,8],[77,24],[77,58],[50,138],[23,58],[23,24]],
-      cluster: [[50,5],[81,30],[80,58],[68,88],[50,140],[32,88],[20,58],[19,30],[30,6]],
-      quartz:  [[50,5],[66,14],[66,90],[50,140],[34,90],[34,14]],
-    };
-
-    /* Clip region sculpts alongside the crystal (offset 70 → different deformation) */
-    const clipPts = _poly(OUTLINES[shape] || OUTLINES.diamond, rng, stableDeform * 0.52, 70);
-
-    /* Random light/shadow facets — computed once per session seed */
-    const facets = React.useMemo(() => {
-      const n = rng.length, res = [];
-      for (let i = 0; i < 18; i++) {
-        const idx = (i * 11 + 7) % n;
-        /* Anchor distributed across crystal face */
-        const ax = 12 + ((i % 5) / 4) * 76  + rng[idx]       * 7;
-        const ay = 8  + (Math.floor(i/5)/3)  * 120 + rng[(idx+1)%n] * 9;
-        const angle = rng[(idx+2)%n] * Math.PI * 2;
-        const da    = Math.PI * (0.18 + Math.abs(rng[(idx+3)%n]) * 0.72);
-        const r1    = 18 + Math.abs(rng[(idx+4)%n]) * 65;
-        const r2    = 18 + Math.abs(rng[(idx+5)%n]) * 65;
-        const p1    = [ax + Math.cos(angle)    * r1, ay + Math.sin(angle)    * r1 * 0.7];
-        const p2    = [ax + Math.cos(angle+da) * r2, ay + Math.sin(angle+da) * r2 * 0.7];
-        /* Brightness: top of crystal is lighter (top-lit), RNG adds randomness */
-        const topLight = 1 - ay / 145;
-        const bright   = rng[(idx+6)%n] * 0.65 + topLight * 0.32;
-        const pStr     = `${ax.toFixed(1)},${ay.toFixed(1)} ${p1[0].toFixed(1)},${p1[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-        res.push({ pStr, bright, ax, ay, p1x: p1[0], p1y: p1[1] });
-      }
-      return res;
+    /* ── Détails seedés : inclusions internes + cristal jumeau ── */
+    const inclusions = React.useMemo(() => {
+      const nInc = 1 + Math.floor(U(80) * 2.99);
+      return Array.from({length:nInc}, (_, i) => ({
+        x1: 38 + U(96 + i) * 24, y1: 30 + U(100 + i) * 60,
+        dx: R(104 + i) * 16, dy: 6 + U(108 + i) * 16,
+      }));
     }, [rng]);
+    const hasTwin = U(85) > 0.6;
+    const twinSide = R(86) > 0 ? 1 : -1;
+    const twinX = 50 + twinSide * (16 + U(87) * 12);
+    const twinTop = minY + H * (0.55 + U(88) * 0.2);
+    const twinPts = `${twinX - 6},${(twinTop + 24).toFixed(0)} ${twinX - 3 + R(89) * 3},${twinTop.toFixed(0)} ${twinX + 5},${(twinTop + 10).toFixed(0)} ${twinX + 7},${(twinTop + 26).toFixed(0)}`;
 
-    /* Specular highlight position (stable per session) */
-    const spCx = 26 + Math.abs(rng[88]) * 26;
-    const spCy = 14 + Math.abs(rng[89]) * 32;
-    const spR  = 2.2 + Math.abs(rng[90]) * 5.5;
-    const sp2x = spCx + rng[91] * 28;
-    const sp2y = spCy + Math.abs(rng[92]) * 24;
-
-    /* Facet opacity grows with organic sculpting */
-    const facetOp  = Math.min(organicP * 1.1, 0.88);
-    const ridgeMax = Math.round(4 + organicP * 10); // more ridges as crystal sculpts
-
-    /* Sparkle: appears only late in session */
-    const sparkle = progress > 0.78 ? (
+    /* Éclat scintillant en fin de session (inchangé) */
+    const sparkle = pr > 0.78 ? (
       <g style={{animation:'crystalSparkle 1.9s ease-in-out infinite'}}>
         <line x1="4" y1="38" x2="12" y2="38" stroke="white" strokeWidth="1.6" strokeOpacity="0.85" strokeLinecap="round"/>
         <line x1="8" y1="34" x2="8"  y2="42" stroke="white" strokeWidth="1.6" strokeOpacity="0.85" strokeLinecap="round"/>
@@ -17567,7 +17704,6 @@
       </g>
     ) : null;
 
-    /* Shatter cracks */
     const cracks = shattered ? (
       <g stroke="rgba(255,255,255,0.88)" strokeLinecap="round">
         <line x1="50" y1="8" x2="26" y2="58" strokeWidth="1.2"/>
@@ -17593,74 +17729,78 @@
             <stop offset="48%" stopColor={c1} stopOpacity="0.87"/>
             <stop offset="100%" stopColor={c1} stopOpacity="0.96"/>
           </linearGradient>
-          <linearGradient id={`${uid}-g2`} x1="28%" y1="0%" x2="72%" y2="100%">
-            <stop offset="0%" stopColor={c1} stopOpacity="0.68"/>
-            <stop offset="100%" stopColor={c2} stopOpacity="0.94"/>
+          <linearGradient id={`${uid}-v`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.10"/>
+            <stop offset="55%" stopColor="#000618" stopOpacity="0"/>
+            <stop offset="100%" stopColor="#000618" stopOpacity="0.30"/>
           </linearGradient>
-          <radialGradient id={`${uid}-t`} cx="42%" cy="38%" r="62%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.94"/>
-            <stop offset="100%" stopColor={c2} stopOpacity="0.40"/>
+          <radialGradient id={`${uid}-core`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={(0.34 * cp).toFixed(2)}/>
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
           </radialGradient>
-          {/* Crystal outline for facet clipping */}
-          <clipPath id={`${uid}-clip`}>
-            <polygon points={clipPts}/>
-          </clipPath>
+          <clipPath id={`${uid}-clip`}><polygon points={ptsStr}/></clipPath>
         </defs>
 
-        {/* ── Base shape polygons ── */}
-        {content}
+        {/* Corps : silhouette unique */}
+        <polygon points={ptsStr} fill={`url(#${uid}-g)`} stroke={c1} strokeWidth="0.55" strokeOpacity="0.42"/>
+        <polygon points={ptsStr} fill={`url(#${uid}-v)`}/>
 
-        {/* ── 3D facet overlays (clipped to crystal shape) ── */}
-        {organicP > 0.02 && (
-          <g clipPath={`url(#${uid}-clip)`}>
-            {/* Light + shadow facet polygons */}
-            {facets.map((f, i) => {
-              const absB = Math.abs(f.bright);
-              if (absB < 0.05) return null;
-              const col = f.bright > 0
-                ? `rgba(255,255,255,${(Math.min(f.bright * 0.82, 0.52) * facetOp).toFixed(3)})`
-                : `rgba(0,5,22,${(Math.min(absB * 0.78, 0.48) * facetOp).toFixed(3)})`;
-              return <polygon key={i} points={f.pStr} fill={col}/>;
-            })}
+        <g clipPath={`url(#${uid}-clip)`}>
+          {/* Cœur lumineux */}
+          <ellipse cx={spine[1][0]} cy={spine[1][1]} rx={H * 0.30} ry={H * 0.36} fill={`url(#${uid}-core)`}/>
 
-            {/* Ridge lines — facet boundary edges */}
-            {facets.slice(0, ridgeMax).map((f, i) => {
-              const absB = Math.abs(f.bright);
-              if (absB < 0.09) return null;
-              const strokeCol = f.bright > 0.12
-                ? `rgba(255,255,255,${(organicP * 0.42).toFixed(2)})`
-                : `rgba(0,8,44,${(organicP * 0.36).toFixed(2)})`;
-              return (
-                <line key={`r${i}`}
-                  x1={f.ax.toFixed(1)} y1={f.ay.toFixed(1)}
-                  x2={f.p1x.toFixed(1)} y2={f.p1y.toFixed(1)}
-                  stroke={strokeCol} strokeWidth="0.6" strokeLinecap="round"/>
-              );
-            })}
+          {/* Facettes sculptées (éventail colonne → arêtes) */}
+          {facets.map((f, i) => {
+            const ab = Math.abs(f.bright);
+            if (ab < 0.045) return null;
+            const col = f.bright > 0
+              ? `rgba(255,255,255,${(Math.min(f.bright * 0.55, 0.42) * facetOp).toFixed(3)})`
+              : `rgba(3,10,34,${(Math.min(ab * 0.6, 0.46) * facetOp).toFixed(3)})`;
+            return <polygon key={i} points={`${f.a[0].toFixed(1)},${f.a[1].toFixed(1)} ${f.b[0].toFixed(1)},${f.b[1].toFixed(1)} ${f.s[0].toFixed(1)},${f.s[1].toFixed(1)}`} fill={col}/>;
+          })}
 
-            {/* Specular highlight — main bright spot */}
-            <circle cx={spCx.toFixed(1)} cy={spCy.toFixed(1)} r={(spR * organicP).toFixed(2)}
-              fill={`rgba(255,255,255,${(organicP * 0.62).toFixed(2)})`}/>
+          {/* Arêtes de facettes */}
+          {facets.map((f, i) => {
+            if (Math.abs(f.bright) < 0.12) return null;
+            const sc = f.bright > 0
+              ? `rgba(255,255,255,${(facetOp * 0.34).toFixed(2)})`
+              : `rgba(2,8,34,${(facetOp * 0.3).toFixed(2)})`;
+            return <line key={`r${i}`} x1={f.s[0].toFixed(1)} y1={f.s[1].toFixed(1)} x2={f.a[0].toFixed(1)} y2={f.a[1].toFixed(1)} stroke={sc} strokeWidth="0.55" strokeLinecap="round"/>;
+          })}
 
-            {/* Refraction streak from specular */}
-            {organicP > 0.35 && (
-              <line
-                x1={spCx.toFixed(1)} y1={spCy.toFixed(1)}
-                x2={sp2x.toFixed(1)} y2={sp2y.toFixed(1)}
-                stroke={`rgba(255,255,255,${(organicP * 0.30).toFixed(2)})`}
-                strokeWidth="1.3" strokeLinecap="round"/>
-            )}
+          {/* Liseré lumineux : arêtes face à la lumière */}
+          {facets.map((f, i) => {
+            if (f.nx * Lx + f.ny * Ly < 0.4) return null;
+            return <line key={`e${i}`} x1={f.a[0].toFixed(1)} y1={f.a[1].toFixed(1)} x2={f.b[0].toFixed(1)} y2={f.b[1].toFixed(1)} stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" strokeOpacity={(0.28 + facetOp * 0.4).toFixed(2)} strokeLinecap="round"/>;
+          })}
 
-            {/* Secondary specular — smaller, offset */}
-            {organicP > 0.55 && (
-              <circle
-                cx={(spCx + rng[93] * 18).toFixed(1)}
-                cy={(spCy + Math.abs(rng[94]) * 20 + 15).toFixed(1)}
-                r={(1.5 + Math.abs(rng[95]) * 2.5).toFixed(2)}
-                fill={`rgba(255,255,255,${(organicP * 0.38).toFixed(2)})`}/>
-            )}
-          </g>
-        )}
+          {/* Inclusions internes (mémoire du cristal) */}
+          {organicP > 0.3 && inclusions.map((inc, i) => (
+            <line key={`i${i}`} x1={inc.x1} y1={inc.y1} x2={inc.x1 + inc.dx} y2={inc.y1 + inc.dy}
+              stroke={c2} strokeWidth="0.5" strokeOpacity={(organicP * 0.32).toFixed(2)} strokeLinecap="round"/>
+          ))}
+
+          {/* Cristal jumeau incrusté (certaines graines seulement) */}
+          {hasTwin && organicP > 0.45 && (
+            <polygon points={twinPts} fill={c2} opacity={(organicP * 0.4).toFixed(2)} stroke="rgba(255,255,255,0.3)" strokeWidth="0.4"/>
+          )}
+
+          {/* Stries du quartz */}
+          {geom.extras.striations && geom.extras.striations.map((st, i) => (
+            <line key={`s${i}`} x1={50 - st.w} y1={st.y} x2={50 + st.w} y2={st.y}
+              stroke={c2} strokeWidth="0.35" strokeOpacity="0.2"/>
+          ))}
+
+          {/* Spéculaire principal + reflet */}
+          <circle cx={(spine[0][0] + Lx * -9).toFixed(1)} cy={(spine[0][1] + Ly * -7).toFixed(1)}
+            r={(1.6 + U(90) * 4 * Math.max(organicP, 0.3)).toFixed(2)}
+            fill={`rgba(255,255,255,${(0.24 + organicP * 0.4).toFixed(2)})`}/>
+          {organicP > 0.35 && (
+            <line x1={(spine[0][0] + Lx * -9).toFixed(1)} y1={(spine[0][1] + Ly * -7).toFixed(1)}
+              x2={(spine[1][0] + R(91) * 20).toFixed(1)} y2={(spine[1][1] + U(92) * 16).toFixed(1)}
+              stroke={`rgba(255,255,255,${(organicP * 0.3).toFixed(2)})`} strokeWidth="1.2" strokeLinecap="round"/>
+          )}
+        </g>
 
         {sparkle}
         {cracks}
