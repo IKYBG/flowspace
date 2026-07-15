@@ -4035,65 +4035,7 @@
   </script>
 
   <script type="text/babel">
-    const G = { label: 'Lancer le portfolio', curr: 7200, total: 10000, unit: 'mots', deadline: '31 déc.', color: T.warm };
-    const GP = G.curr / G.total;
-
-    function GoalWidget({ variant = 1, style }) {
-      if (variant === 1) return (
-        <Shell glow={G.color} style={style}>
-          <div style={{ padding: '28px 30px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Lbl ch="objectif" /><Pill ch="en bonne voie" color={T.green} />
-            </div>
-            <div>
-              <Num ch={`${Math.round(GP * 100)}%`} size={56} color={G.color} />
-              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 6 }}>{G.label}</div>
-            </div>
-            <div>
-              <Bar value={GP} color={G.color} h={2} />
-              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-                <Sub ch={`${G.curr.toLocaleString()} ${G.unit}`} /><Sub ch={`Échéance ${G.deadline}`} />
-              </div>
-            </div>
-          </div>
-        </Shell>
-      );
-
-      if (variant === 2) return (
-        <Shell style={style}>
-          <div style={{ padding: '20px', display: 'flex', gap: 16, alignItems: 'center', height: '100%' }}>
-            <Ring value={GP} size={64} stroke={3.5} color={G.color}>
-              <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 13, color: G.color }}>{Math.round(GP * 100)}</div>
-            </Ring>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{G.label}</div>
-              <Sub ch={`${(G.curr / 1000).toFixed(1)}k / ${G.total / 1000}k ${G.unit}`} style={{ marginTop: 4 }} />
-              <div style={{ marginTop: 10 }}><Bar value={GP} color={G.color} h={2} /></div>
-            </div>
-          </div>
-        </Shell>
-      );
-
-      return (
-        <Shell style={style}>
-          <div style={{ padding: '28px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <Lbl ch={G.label} />
-            <Num ch={`${(G.curr / 1000).toFixed(1)}k`} size={52} color={G.color} />
-            <div>
-              <Bar value={GP} color={G.color} h={1.5} />
-              <Sub ch={`sur ${G.total / 1000}k ${G.unit}`} style={{ marginTop: 6 }} />
-            </div>
-          </div>
-        </Shell>
-      );
-    }
-
-    window.GoalWidget = GoalWidget;
-  </script>
-
-  <script type="text/babel">
     const { useState: _uSST, useEffect: _uEST } = React;
-    const DAYS_S = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
     function _todayStr() {
       const d = new Date();
@@ -4104,16 +4046,6 @@
       const d = new Date(y, m - 1, day);
       d.setDate(d.getDate() - 1);
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    }
-    function _weekDates() {
-      const today = new Date();
-      const dow = today.getDay();
-      const mon = new Date(today);
-      mon.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
-      return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(mon); d.setDate(mon.getDate() + i);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      });
     }
     function _calcStreak(dates) {
       const set = new Set(dates);
@@ -4213,6 +4145,16 @@
     }
     window.FsHintDot = FsHintDot;
 
+    /* Fenêtre des N derniers jours (clés YYYY-MM-DD, du plus ancien à auj.). */
+    function _lastNDates(n) {
+      const out = [], d = new Date();
+      for (let i = n - 1; i >= 0; i--) {
+        const x = new Date(d); x.setDate(d.getDate() - i);
+        out.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`);
+      }
+      return out;
+    }
+
     function StreakWidget({ variant = 1, style, user }) {
       const [dates, setDates] = _uSST(() => {
         try { return JSON.parse(localStorage.getItem('fs_streak') || '[]'); } catch(e) { return []; }
@@ -4228,10 +4170,12 @@
         };
         window.addEventListener('fs-gamif-update', sync);
         window.addEventListener('fs-streak-update', sync);
+        window.addEventListener('fs-prod-rating-update', sync);
         window.addEventListener('storage', sync);
         return () => {
           window.removeEventListener('fs-gamif-update', sync);
           window.removeEventListener('fs-streak-update', sync);
+          window.removeEventListener('fs-prod-rating-update', sync);
           window.removeEventListener('storage', sync);
         };
       }, []);
@@ -4242,65 +4186,120 @@
       const gamifStreak = _streakGamifValue(gamif?.streaks);
       const checkedToday = dates.includes(today) || gamif?.streaks?.lastDate === today;
       const streak = Math.max(_calcStreak(dates), gamifStreak);
-      const week = _weekDates().map(d => dates.includes(d) || !!gamif?.heatmap?.[d] || gamif?.streaks?.lastDate === d);
-      const checkIn = () => {
-        if (checkedToday) return;
-        setDates(prev => {
-          const next = prev.includes(today) ? prev : [...prev, today];
-          try { localStorage.setItem('fs_streak', JSON.stringify(next)); } catch(e) {}
-          return next;
-        });
-        try { window.dispatchEvent(new CustomEvent('fs-streak-update')); } catch(e) {}
-        _syncGamifCheckIn(user);
+
+      /* Régularité réelle : les évaluations rouge/jaune/vert que l'user pose
+         sur sa Carte d'activité (fs_prod_ratings_{uid}) nourrissent le graphe. */
+      const RATE_META = window.PROD_RATING_META || {
+        red:    { c: '#fb7185', label: 'Peu' },
+        yellow: { c: '#fbbf24', label: 'Moyen' },
+        green:  { c: '#4ade80', label: 'Productif' },
+      };
+      const ratings = window._fsProdRatings ? window._fsProdRatings(user?.id || window._fsSbUser?.id) : {};
+      const RATE_H = { green: 1, yellow: 0.62, red: 0.32 };
+      const buildDays = n => _lastNDates(n).map(k => {
+        const r = RATE_H[ratings[k]] != null ? ratings[k] : null;
+        const active = dates.includes(k) || !!gamif?.heatmap?.[k] || gamif?.streaks?.lastDate === k;
+        return { k, r, active };
+      });
+      const dayTitle = d => {
+        const [y, m, dd] = d.k.split('-').map(Number);
+        const label = d.r ? RATE_META[d.r].label : d.active ? 'Actif' : 'Aucune activité';
+        return `${new Date(y, m - 1, dd).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${label}`;
+      };
+      const barVisual = d => {
+        if (d.r) {
+          const c = RATE_META[d.r].c;
+          return {
+            height: `${RATE_H[d.r] * 100}%`,
+            background: `linear-gradient(180deg, ${c}, ${c}55)`,
+            boxShadow: d.r === 'green' ? `0 0 12px ${c}3d` : 'none',
+          };
+        }
+        if (d.active) return { height: '46%', background: 'rgba(var(--theme-c1-rgb),0.34)' };
+        return { height: '8%', background: 'rgba(255,255,255,0.07)' };
       };
 
-      if (variant === 1) return (
-        <Shell glow={T.warm} style={style}>
-          <div style={{ padding: '22px 24px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <Lbl ch="streak" />
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <Num ch={streak} size={48} color={T.warm} /><Sub ch="jours" style={{ fontSize: 14 }} />
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {DAYS_S.map((d, i) => (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: '100%', aspectRatio: '1', borderRadius: 7, background: week[i] ? T.warm : 'rgba(255,255,255,0.06)', boxShadow: week[i] ? `0 0 10px ${T.warm}44` : '' }} />
-                  <Sub ch={d} style={{ fontSize: 9 }} />
+      if (variant === 1) {
+        const days = buildDays(14);
+        const counts = days.reduce((a, d) => { if (d.r) a[d.r] = (a[d.r] || 0) + 1; return a; }, {});
+        const rated = (counts.green || 0) + (counts.yellow || 0) + (counts.red || 0);
+        return (
+          <Shell glow={T.warm} style={style}>
+            <div style={{ padding: '20px 22px 16px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Lbl ch="régularité" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 22, padding: '0 10px', borderRadius: 99, background: `${T.warm}16`, border: `1px solid ${T.warm}33` }}>
+                  <span style={{ fontSize: 10, color: T.warm, lineHeight: 1 }}>▲</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: T.warm, fontVariantNumeric: 'tabular-nums' }}>{streak} j</span>
                 </div>
-              ))}
-            </div>
-            {!checkedToday && (
-              <button onClick={checkIn} style={{ marginTop: 8, background: T.warm, border: 'none', borderRadius: 10, padding: '8px', color: '#07070d', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>
-                Check-in aujourd'hui
-              </button>
-            )}
-          </div>
-        </Shell>
-      );
-
-      if (variant === 2) return (
-        <Shell style={style}>
-          <div style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, height: '100%' }}>
-            <div style={{ fontSize: 36, lineHeight: 1, fontFamily: T.display, fontWeight: 800, color: T.warm, cursor: checkedToday ? 'default' : 'pointer' }} onClick={checkIn} title={checkedToday ? '' : "Check-in aujourd'hui"}>{streak}</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>jours de suite</div>
-              <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
-                {week.map((a, i) => <div key={i} style={{ width: 22, height: 4, borderRadius: 99, background: a ? T.warm : 'rgba(255,255,255,0.08)' }} />)}
+              </div>
+              <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 4, paddingTop: 4 }}>
+                {[33, 66, 100].map(p => (
+                  <div key={p} style={{ position: 'absolute', left: 0, right: 0, bottom: `${p}%`, height: 1, background: 'rgba(255,255,255,0.045)', pointerEvents: 'none' }} />
+                ))}
+                {days.map((d, i) => (
+                  <div key={d.k} title={dayTitle(d)} style={{
+                    flex: 1, minWidth: 0, borderRadius: '5px 5px 2px 2px',
+                    transition: 'height .45s cubic-bezier(.22,1,.36,1), background .3s',
+                    outline: d.k === today ? '1px solid rgba(255,255,255,0.30)' : 'none', outlineOffset: 1,
+                    ...barVisual(d),
+                  }} />
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                <Sub ch="il y a 14 j" style={{ fontSize: 8.5, letterSpacing: '0.05em' }} />
+                <Sub ch="aujourd'hui" style={{ fontSize: 8.5, letterSpacing: '0.05em' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', minHeight: 18 }}>
+                {rated === 0 ? (
+                  <Sub ch="Évalue tes journées sur la Carte d'activité pour colorer le graphe" style={{ fontSize: 10, lineHeight: 1.45 }} />
+                ) : (
+                  ['green', 'yellow', 'red'].map(k => counts[k] ? (
+                    <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <i style={{ width: 6, height: 6, borderRadius: '50%', background: RATE_META[k].c, boxShadow: `0 0 6px ${RATE_META[k].c}55` }} />
+                      <Sub ch={`${counts[k]} ${RATE_META[k].label.toLowerCase()}`} style={{ fontSize: 10 }} />
+                    </span>
+                  ) : null)
+                )}
               </div>
             </div>
-          </div>
-        </Shell>
-      );
+          </Shell>
+        );
+      }
 
+      if (variant === 2) {
+        const days = buildDays(7);
+        return (
+          <Shell style={style}>
+            <div style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, height: '100%' }}>
+              <div style={{ fontSize: 36, lineHeight: 1, fontFamily: T.display, fontWeight: 800, color: T.warm, fontVariantNumeric: 'tabular-nums' }}>{streak}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>jours de suite</div>
+                <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-end', gap: 4, height: 18 }}>
+                  {days.map(d => (
+                    <div key={d.k} title={dayTitle(d)} style={{ width: 16, borderRadius: 3, transition: 'height .4s cubic-bezier(.22,1,.36,1)', ...barVisual(d), height: d.r ? `${RATE_H[d.r] * 100}%` : d.active ? '46%' : '14%' }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Shell>
+        );
+      }
+
+      const days = buildDays(14);
       return (
         <Shell flat style={style}>
-          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%' }}>
-            <div>
+          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, height: '100%' }}>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{streak} jours de suite</div>
               <Sub ch={checkedToday ? 'Connecté aujourd\'hui · série active' : 'Reviens chaque jour pour garder la flamme'} style={{ marginTop: 3, fontSize: 11 }} />
             </div>
-            <div style={{ display: 'flex', gap: 3 }}>
-              {week.map((a, i) => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: a ? T.warm : 'rgba(255,255,255,0.1)' }} />)}
+            <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+              {days.map(d => (
+                <div key={d.k} title={dayTitle(d)} style={{ width: 5, height: 5, borderRadius: '50%',
+                  background: d.r ? RATE_META[d.r].c : d.active ? 'rgba(var(--theme-c1-rgb),0.45)' : 'rgba(255,255,255,0.1)',
+                  boxShadow: d.r === 'green' ? `0 0 5px ${RATE_META.green.c}66` : 'none' }} />
+              ))}
             </div>
           </div>
         </Shell>
@@ -5194,7 +5193,6 @@
       tasks: (v) => React.createElement(TasksWidget, { variant: v }),
       spotify: (v) => React.createElement(AmbientWidget, { variant: v }),
       sons: (v) => React.createElement(AmbientWidget, { variant: v }),
-      goal: (v) => React.createElement(GoalWidget, { variant: v }),
       streak: (v, id, ctx) => React.createElement(StreakWidget, { variant: v, user: ctx?.user }),
       countdown: (v) => React.createElement(CountdownWidget, { variant: v }),
       links: (v, id) => React.createElement(LinksWidget, { variant: v, widgetId: id }),
@@ -5202,6 +5200,13 @@
       notes: (v) => React.createElement(NotesWidget, { variant: v }),
     };
     window.WIDGET_COMPONENTS = WIDGET_COMPONENTS;
+
+    /* Widget « Objectif » (goal) retiré du produit : on filtre les instances
+       encore présentes dans les layouts persistés (local ou cloud d'un ami)
+       pour éviter des cadres vides. */
+    window._fsStripRetiredWidgets = ws => Array.isArray(ws)
+      ? ws.filter(w => String(w?.label || w?.id || '').toLowerCase().split('_')[0] !== 'goal')
+      : ws;
 
     /* ── Session bar — Premium SaaS × Apple Design Award ────────────────────── */
     function SessionBar({ session, onEnd }) {
@@ -5662,8 +5667,7 @@
         { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
         { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
         { id: 'spotify', label: 'Sons', name: 'Sons de focus', short: 'Ambiances sonores pour se concentrer', category: 'Ambiance', desc: 'Mixe des sons d’ambiance (pluie, océan, forêt, espace…) pour te concentrer.', best: 'Concentration', icon: '♫', color: T.green, C: window.AmbientWidget, variants: [1, 5, 10] },
-        { id: 'goal', label: 'Goal', name: 'Objectif', short: 'Objectifs mesurables clairs', category: 'Progression', desc: 'Suivre un objectif mesurable avec une barre ou une jauge claire.', best: 'Objectif hebdo', icon: '◎', color: T.c1, C: window.GoalWidget, variants: [1, 2, 10] },
-        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Habitudes en chaine', category: 'Habitude', desc: 'Visualiser la série de jours actifs et garder le rythme.', best: 'Habitude focus', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
+        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Ta régularité en graphe', category: 'Habitude', desc: 'Un graphe de tes jours productifs, nourri par ta Carte d’activité.', best: 'Suivi quotidien', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
         { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous controle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
         { id: 'links', label: 'Links', name: 'Liens rapides', short: 'Raccourcis essentiels rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: '⊞', color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
         { id: 'image', label: 'Image', name: 'Image', short: 'Inspiration visuelle personnelle', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: '◈', color: T.rose, C: window.ImageWidget, variants: [1] },
@@ -5672,7 +5676,7 @@
       const TRAY = CATALOG.map(c => c.label);
       const WIDGET_FILTERS = [
         { id:'essentials', label:'Essentiels', match:['Clock','Tasks','Pomodoro','Notes'] },
-        { id:'focus', label:'Focus', match:['Pomodoro','Goal','Streak','Countdown'] },
+        { id:'focus', label:'Focus', match:['Pomodoro','Streak','Countdown'] },
         { id:'media', label:'Media', match:['Sons','Image','Links'] },
         { id:'all', label:'Tous', match:TRAY },
       ];
@@ -10877,7 +10881,7 @@
   </script>
 
   <script type="text/babel">
-    const { useState: _uPX } = React;
+    const { useState: _uPX, useRef: _uRefPX, useEffect: _uEffPX } = React;
 
     /* ── Background theme catalog ─────────────────────────────────────────────── */
     const BG_THEMES = [
@@ -11095,9 +11099,226 @@
       return <canvas ref={canvasRef} className="fsBlenderCrystalCanvas" aria-hidden="true" />;
     }
 
+    /* ── Flux d'énergie Personnalisation — canvas 2D façon VFX temps réel ────
+       Remplace l'ancien flux SVG en pointillés. Quatre courants organiques
+       relient les cartes au cristal central : rubans lumineux en fondu
+       additif qui « respirent », comètes aspirées par le cristal (accélération
+       + éclat d'absorption à l'impact), poussière d'énergie en dérive
+       sinusoïdale qui se resserre en approchant. Les positions sont mesurées
+       sur le vrai DOM (ResizeObserver) → toujours alignées sur les cartes.
+       Survoler une carte embrase son courant. Respecte reduce-motion (rendu
+       statique) et se met en pause quand l'onglet est masqué. */
+    function FluxEnergyCanvas({ layoutRef, cardRefs, stageRef, hovRef, cards }) {
+      const canvasRef = _uRefPX(null);
+      _uEffPX(() => {
+        const canvas = canvasRef.current, layout = layoutRef.current;
+        if (!canvas || !layout) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const reduced = document.documentElement.classList.contains('fs-reduce-motion')
+          || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        const hexRgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+        const readThemeVar = (name, fb) => {
+          const raw = (getComputedStyle(document.documentElement).getPropertyValue(name) || fb).trim();
+          const p = raw.split(',').map(v => Math.max(0, Math.min(255, parseFloat(v) || 0)));
+          return p.length >= 3 ? p.slice(0, 3) : fb.split(',').map(Number);
+        };
+        let theme1 = readThemeVar('--theme-c1-rgb','143,220,255'), theme2 = readThemeVar('--theme-c2-rgb','184,145,255'), nextThemeRead = 0;
+        /* Sprite de lueur pré-rendu par couleur (cœur blanc → halo teinté) :
+           bien plus rapide qu'un dégradé radial par particule par frame. */
+        const makeSprite = rgb => {
+          const s = document.createElement('canvas'); s.width = s.height = 64;
+          const c = s.getContext('2d');
+          const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+          g.addColorStop(0, 'rgba(255,255,255,0.95)');
+          g.addColorStop(0.28, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.62)`);
+          g.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+          c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+          return s;
+        };
+        const sprites = cards.map(cd => makeSprite(hexRgb(cd.c1)));
+        let W = 0, H = 0, CX = 0, CY = 0, CR = 42, streams = [];
+        const measure = () => {
+          const lr = layout.getBoundingClientRect();
+          if (lr.width < 40 || lr.height < 40) { streams = []; return; }
+          const dpr = Math.min(window.devicePixelRatio || 1, 1.35);
+          W = lr.width; H = lr.height;
+          if (canvas.width !== Math.round(W*dpr) || canvas.height !== Math.round(H*dpr)) {
+            canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr);
+          }
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          const sr = stageRef.current ? stageRef.current.getBoundingClientRect() : null;
+          CX = sr ? sr.left - lr.left + sr.width/2 : W/2;
+          CY = sr ? sr.top - lr.top + sr.height/2 : H/2;
+          CR = sr ? Math.min(sr.width, sr.height) * 0.17 : 42;
+          streams = cards.map((cd, i) => {
+            const el = cardRefs.current[i];
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            const ccx = r.left - lr.left + r.width/2, ccy = r.top - lr.top + r.height/2;
+            let dx = CX - ccx, dy = CY - ccy;
+            const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+            /* Point d'émission : sur le bord de la carte, côté cristal */
+            const tEdge = Math.min(dx ? (r.width/2)/Math.abs(dx) : 1e9, dy ? (r.height/2)/Math.abs(dy) : 1e9);
+            const x0 = ccx + dx*(tEdge+2), y0 = ccy + dy*(tEdge+2);
+            const x1 = CX - dx*CR, y1 = CY - dy*CR;
+            const sign = (i === 0 || i === 3) ? 1 : -1;
+            return { key:i, id:cd.id, col:hexRgb(cd.c1), x0, y0, x1, y1, nx:-dy*sign, ny:dx*sign, dist:Math.hypot(x1-x0, y1-y0), boost:1 };
+          });
+        };
+        /* Points de contrôle recalculés chaque frame : la courbe « respire »
+           lentement au lieu d'être un rail figé. */
+        const ctrl = (s, time) => {
+          const sw = Math.sin(time*0.45 + s.key*1.9) * s.dist*0.035;
+          const a = s.dist*0.34, b = s.dist*0.15;
+          return [
+            s.x0 + (s.x1-s.x0)*0.30 + s.nx*(a*0.5+sw),      s.y0 + (s.y1-s.y0)*0.30 + s.ny*(a*0.5+sw),
+            s.x0 + (s.x1-s.x0)*0.74 - s.nx*(b*0.5-sw*0.6),  s.y0 + (s.y1-s.y0)*0.74 - s.ny*(b*0.5-sw*0.6),
+          ];
+        };
+        const bez = (s, c, t) => {
+          const mt = 1 - t;
+          return [
+            mt*mt*mt*s.x0 + 3*mt*mt*t*c[0] + 3*mt*t*t*c[2] + t*t*t*s.x1,
+            mt*mt*mt*s.y0 + 3*mt*mt*t*c[1] + 3*mt*t*t*c[3] + t*t*t*s.y1,
+          ];
+        };
+        const comets = [], motes = [], flashes = [];
+        for (let si = 0; si < 4; si++) {
+          for (let k = 0; k < 2; k++) comets.push({ si, t: -Math.random()*1.1, v: 0.15 + Math.random()*0.06 });
+          for (let k = 0; k < 7; k++) motes.push({ si, t: Math.random(), v: 0.05 + Math.random()*0.05, amp: 5 + Math.random()*9, ph: Math.random()*6.283, sz: 1.4 + Math.random()*2.2, z: 0.6 + Math.random()*0.8 });
+        }
+        const spr = (si, x, y, size, alpha) => {
+          if (alpha <= 0.004 || size <= 0.2) return;
+          ctx.globalAlpha = Math.min(1, alpha);
+          ctx.drawImage(sprites[si], x - size, y - size, size*2, size*2);
+        };
+        const drawRibbons = time => {
+          streams.forEach(s => {
+            if (!s) return;
+            const c = ctrl(s, time);
+            const g = ctx.createLinearGradient(s.x0, s.y0, s.x1, s.y1);
+            g.addColorStop(0, `rgba(${s.col[0]},${s.col[1]},${s.col[2]},0.55)`);
+            g.addColorStop(0.62, `rgba(${theme1[0]},${theme1[1]},${theme1[2]},0.34)`);
+            g.addColorStop(1, `rgba(${theme2[0]},${theme2[1]},${theme2[2]},0.10)`);
+            const breathe = (0.72 + 0.28*Math.sin(time*0.8 + s.key*1.6)) * s.boost;
+            ctx.strokeStyle = g;
+            ctx.lineCap = 'round';
+            [[8, 0.07], [3.2, 0.13], [1.1, 0.26]].forEach(([w, a]) => {
+              ctx.globalAlpha = Math.min(1, a*breathe);
+              ctx.lineWidth = w;
+              ctx.beginPath();
+              ctx.moveTo(s.x0, s.y0);
+              ctx.bezierCurveTo(c[0], c[1], c[2], c[3], s.x1, s.y1);
+              ctx.stroke();
+            });
+          });
+          ctx.globalAlpha = 1;
+        };
+        const drawCenterGlow = time => {
+          const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, CR*2.1);
+          g.addColorStop(0, `rgba(${theme1[0]},${theme1[1]},${theme1[2]},${(0.10 + 0.05*Math.sin(time*0.9)).toFixed(3)})`);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(CX - CR*2.2, CY - CR*2.2, CR*4.4, CR*4.4);
+        };
+        let raf = 0, last = 0, lastT = 0;
+        const render = tms => {
+          raf = requestAnimationFrame(render);
+          if (document.hidden || !streams.some(Boolean)) return;
+          if (tms - last < 28) return;
+          const dt = Math.min(0.05, (tms - lastT)*0.001 || 0.016);
+          last = tms; lastT = tms;
+          if (tms > nextThemeRead) { theme1 = readThemeVar('--theme-c1-rgb','143,220,255'); theme2 = readThemeVar('--theme-c2-rgb','184,145,255'); nextThemeRead = tms + 600; }
+          const time = tms*0.001;
+          ctx.clearRect(0, 0, W, H);
+          ctx.globalCompositeOperation = 'lighter';
+          /* Survol d'une carte → son courant s'embrase progressivement */
+          streams.forEach(s => { if (s) s.boost += ((hovRef.current === s.id ? 2.4 : 1) - s.boost) * Math.min(1, dt*7); });
+          drawRibbons(time);
+          const cAll = streams.map(s => s ? ctrl(s, time) : null);
+          /* Port d'émission au bord de chaque carte */
+          streams.forEach(s => { if (s) spr(s.key, s.x0, s.y0, 5 + Math.sin(time*1.7 + s.key)*1.2, 0.4*s.boost); });
+          /* Poussière d'énergie — oscillation latérale qui se resserre */
+          motes.forEach(m => {
+            const s = streams[m.si]; if (!s) return;
+            m.t += m.v * s.boost * dt * 1.6;
+            if (m.t >= 1) { m.t -= 1; m.amp = 5 + Math.random()*9; m.ph = Math.random()*6.283; }
+            const p = bez(s, cAll[m.si], m.t);
+            const off = Math.sin(m.ph + m.t*5.4) * m.amp * (1 - m.t*0.82);
+            const a = Math.min(m.t/0.12, 1) * Math.min((1-m.t)/0.16, 1);
+            spr(m.si, p[0] + s.nx*off, p[1] + s.ny*off, m.sz*m.z*(1.25 - 0.45*m.t), a*0.62*s.boost);
+          });
+          /* Comètes — accélèrent vers le cristal, éclat à l'absorption */
+          comets.forEach(cm => {
+            const s = streams[cm.si]; if (!s) return;
+            const tc = Math.max(0, Math.min(1, cm.t));
+            cm.t += cm.v * s.boost * (0.34 + 0.9*tc*tc) * dt * 3.2;
+            if (cm.t >= 1) {
+              flashes.push({ si: cm.si, a: 1, x: s.x1, y: s.y1 });
+              cm.t = -Math.random()*1.3; cm.v = 0.15 + Math.random()*0.06;
+              return;
+            }
+            if (cm.t < 0) return;
+            for (let k = 8; k >= 1; k--) {
+              const tt = cm.t - k*0.016*(0.6 + cm.t);
+              if (tt < 0) continue;
+              const p = bez(s, cAll[cm.si], tt);
+              const f = 1 - k/9;
+              spr(cm.si, p[0], p[1], (3.4 - 1.1*cm.t)*f, f*f*0.5*s.boost);
+            }
+            const head = bez(s, cAll[cm.si], cm.t);
+            spr(cm.si, head[0], head[1], 3.8 - 1.2*cm.t, 0.85*s.boost);
+          });
+          /* Absorption au cristal : halo thème + impacts qui s'éteignent */
+          drawCenterGlow(time);
+          for (let i = flashes.length - 1; i >= 0; i--) {
+            const f = flashes[i];
+            f.a -= dt*2.6;
+            if (f.a <= 0) { flashes.splice(i, 1); continue; }
+            spr(f.si, f.x, f.y, 6 + (1 - f.a)*10, f.a*0.8);
+          }
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        };
+        const staticFrame = () => {
+          if (!streams.some(Boolean)) return;
+          ctx.clearRect(0, 0, W, H);
+          ctx.globalCompositeOperation = 'lighter';
+          drawRibbons(0);
+          drawCenterGlow(0);
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        };
+        let measureQueued = false;
+        const queueMeasure = () => {
+          if (measureQueued) return;
+          measureQueued = true;
+          requestAnimationFrame(() => { measureQueued = false; measure(); if (reduced) staticFrame(); });
+        };
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(queueMeasure) : null;
+        if (ro) ro.observe(layout); else window.addEventListener('resize', queueMeasure);
+        measure();
+        if (reduced) staticFrame();
+        else raf = requestAnimationFrame(render);
+        return () => {
+          cancelAnimationFrame(raf);
+          if (ro) ro.disconnect(); else window.removeEventListener('resize', queueMeasure);
+        };
+      }, []);
+      return <canvas ref={canvasRef} className="fsPFluxCanvas" aria-hidden="true" />;
+    }
+
     /* ── Personnalisation Hub — premium floating 3D crystal + hairline flux ─── */
     function PersonnalisationScreen({ onNavigate, bgThemeId }) {
       const [hov, setHov] = _uPX(null);
+      /* Refs mesurées par FluxEnergyCanvas (alignement DOM réel) ;
+         hovRef double le state pour être lu dans la boucle canvas sans re-render. */
+      const layoutRef = _uRefPX(null);
+      const cardRefs = _uRefPX([]);
+      const stageRef = _uRefPX(null);
+      const hovRef = _uRefPX(null);
+      const setHovBoth = id => { hovRef.current = id; setHov(id); };
       const CARDS = [
         { id:'fond',    target:'fond',         eyebrow:'Ambiance',      title:'Thèmes',  c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
         { id:'fonts',   target:'fonts',        eyebrow:'Typographie',   title:'Polices', c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
@@ -11105,12 +11326,6 @@
         { id:'notes',   target:'notes-style',  eyebrow:'Carte mentale', title:'Notes',   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
       ];
       const POS = [[1,1],[3,1],[1,3],[3,3]];
-      const FLUX = [
-        { key:'TL', d:'M 22 22 C 30 35 39 43 48 48 C 58 40 67 48 63 57 C 59 66 44 61 47 50', c:'#a5b8ff', cx:22, cy:22 },
-        { key:'TR', d:'M 78 22 C 70 35 61 43 52 48 C 42 40 33 48 37 57 C 41 66 56 61 53 50', c:'#f0c38e', cx:78, cy:22 },
-        { key:'BL', d:'M 22 78 C 31 66 40 58 48 52 C 58 60 67 52 63 43 C 59 34 44 39 47 50', c:'#4ade80', cx:22, cy:78 },
-        { key:'BR', d:'M 78 78 C 69 66 60 58 52 52 C 42 60 33 52 37 43 C 41 34 56 39 53 50', c:'#67e8f9', cx:78, cy:78 },
-      ];
       const FRAGMENTS = [
         { size: 10, x: 50, y: -4, dur: 15, delay: -1.4, color: '#e8edff', z: 18 },
         { size: 7, x: 88, y: 24, dur: 18, delay: -7.2, color: '#a5b8ff', z: 26 },
@@ -11125,12 +11340,7 @@
           <style>{`
             @keyframes fsOrbFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}
             @keyframes fsOrbHalo{0%,100%{opacity:.18;transform:scale(.98)}50%{opacity:.32;transform:scale(1.03)}}
-            @keyframes fsFluxBreathe{0%,100%{opacity:.5}50%{opacity:.95}}
-            @keyframes fsFluxDash{from{stroke-dashoffset:0}to{stroke-dashoffset:-24}}
-            @keyframes fsFluxNodePulse{0%{opacity:.75;r:1}70%{opacity:0;r:4.6}100%{opacity:0;r:4.6}}
-            .fsPFluxLine{animation:fsFluxBreathe 5s ease-in-out infinite;animation-delay:var(--fd,0s)}
-            .fsFluxFlow{stroke-dasharray:3 9;animation:fsFluxDash 2.6s linear infinite;animation-delay:var(--fd,0s)}
-            .fsFluxNodeRing{animation:fsFluxNodePulse 3.2s ease-out infinite;animation-delay:var(--fd,0s)}
+            .fsPFluxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
             @keyframes fsRingOuter{from{transform:rotateX(72deg) rotateY(8deg) rotateZ(0deg)}to{transform:rotateX(72deg) rotateY(8deg) rotateZ(360deg)}}
             @keyframes fsRingMid{from{transform:rotateY(74deg) rotateX(12deg) rotateZ(360deg)}to{transform:rotateY(74deg) rotateX(12deg) rotateZ(0deg)}}
             @keyframes fsRingInner{from{transform:rotateX(38deg) rotateY(42deg) rotateZ(0deg)}to{transform:rotateX(38deg) rotateY(42deg) rotateZ(360deg)}}
@@ -11144,7 +11354,6 @@
             @keyframes fsFragmentOrbit{from{transform:rotateZ(0deg) rotateX(64deg) rotateY(-16deg)}to{transform:rotateZ(360deg) rotateX(64deg) rotateY(-16deg)}}
             @keyframes fsFragmentCounter{from{transform:rotateZ(0deg) rotateY(0deg)}to{transform:rotateZ(-360deg) rotateY(360deg)}}
             @keyframes fsCrystalRay{0%,100%{opacity:.24}50%{opacity:.55}}
-            @keyframes fsFluxOrbitLine{from{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(0deg)}to{transform:rotate(var(--flux-angle)) rotateX(68deg) rotateZ(360deg)}}
             @keyframes fsThemeCrystalAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.94) rotate(0deg)}50%{opacity:.58;transform:translate3d(-50%,-50%,0) scale(1.04) rotate(8deg)}}
             .fsPCard{border-radius:18px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:14px;display:flex;flex-direction:column;gap:10px;transition:all .42s cubic-bezier(.22,1,.36,1);align-self:center;justify-self:center;width:100%;max-width:184px}
             .fsPLayout{flex:1;display:grid;grid-template-columns:1fr 1.55fr 1fr;grid-template-rows:1fr 1.5fr 1fr;position:relative;padding:clamp(10px,1.8vh,18px) clamp(14px,2.5vw,30px) clamp(14px,2vh,24px);min-height:0;align-items:center;justify-items:center}
@@ -11184,7 +11393,7 @@
             .fsCrystalFloor{display:none!important}
             @media(max-width:640px){
               .fsPLayout{display:grid!important;grid-template-columns:1fr 1fr!important;grid-template-rows:auto auto auto!important;gap:12px!important;padding:14px 14px 110px!important;overflow-y:auto!important;align-items:stretch!important;justify-items:stretch!important}
-              .fsPSvgOvl{display:none!important}
+              .fsPFluxCanvas{display:none!important}
               .fsPCenter{grid-column:1 / -1!important;grid-row:1!important;height:232px!important;width:100%!important;justify-self:center!important}
               .fsCrystalStageFrame{width:min(254px,84vw)!important;height:218px!important;aspect-ratio:auto!important}
               .fsThemeCrystalAura{width:172px!important;height:198px!important;filter:blur(18px) saturate(1.05)}
@@ -11203,8 +11412,7 @@
               .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
               .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
             }
-            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsFluxFlow,.fsFluxNodeRing,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
-            html.fs-reduce-motion .fsFluxFlow,html.fs-reduce-motion .fsFluxNodeRing,html.fs-reduce-motion .fsPFluxLine{animation:none!important}
+            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
           `}</style>
 
           {/* ── Header — refined typographic rhythm ── */}
@@ -11218,47 +11426,11 @@
           </div>
 
           {/* ── Radial grid layout ── */}
-          <div className="fsPLayout">
+          <div className="fsPLayout" ref={layoutRef}>
 
-            {/* SVG flux overlay — auras d'énergie en 3 couches : halo flou statique
-               (opacité animée = composité GPU), ligne cœur, et particules en
-               écoulement (stroke-dashoffset, normalisé par pathLength) qui
-               ruissellent de chaque carte vers le cristal. Les dégradés fondent
-               la couleur identitaire de la carte vers le thème actif de l'user. */}
-            <svg className="fsPSvgOvl" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:4,overflow:'visible'}} viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <filter id="fsFluxBlur" x="-60%" y="-60%" width="220%" height="220%">
-                  <feGaussianBlur stdDeviation="1.5"/>
-                </filter>
-                {FLUX.map(f => (
-                  <React.Fragment key={f.key}>
-                    <linearGradient id={`fsG${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%"   stopColor={f.c} stopOpacity=".5"/>
-                      <stop offset="60%"  style={{stopColor:'var(--theme-c1)'}} stopOpacity=".26"/>
-                      <stop offset="100%" style={{stopColor:'var(--theme-c2)'}} stopOpacity=".05"/>
-                    </linearGradient>
-                    <linearGradient id={`fsGF${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%"   stopColor={f.c} stopOpacity=".95"/>
-                      <stop offset="55%"  style={{stopColor:'var(--theme-c1)'}} stopOpacity=".65"/>
-                      <stop offset="100%" style={{stopColor:'var(--theme-c2)'}} stopOpacity=".2"/>
-                    </linearGradient>
-                  </React.Fragment>
-                ))}
-              </defs>
-              {FLUX.map((f, i) => (
-                <g key={f.key} className="fsPFluxLine" style={{'--fd':`${-i*0.7}s`}}>
-                  {/* Aura large et floue — le « volume » du flux */}
-                  <path className="fsFluxAura" d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth="3.8" fill="none" strokeLinecap="round" filter="url(#fsFluxBlur)"/>
-                  {/* Ligne cœur nette */}
-                  <path d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth=".5" fill="none" strokeLinecap="round"/>
-                  {/* Particules d'énergie en écoulement vers le cristal */}
-                  <path className="fsFluxFlow" d={f.d} pathLength="100" stroke={`url(#fsGF${f.key})`} strokeWidth="1.05" fill="none" strokeLinecap="round"/>
-                  {/* Nœud source pulsant à l'angle de la carte */}
-                  <circle className="fsFluxNode" cx={f.cx} cy={f.cy} r="1" fill={f.c}/>
-                  <circle className="fsFluxNodeRing" cx={f.cx} cy={f.cy} r="1" fill="none" stroke={f.c} strokeWidth=".35"/>
-                </g>
-              ))}
-            </svg>
+            {/* Flux d'énergie temps réel — courants VFX cartes → cristal,
+               mesurés sur le DOM réel (voir FluxEnergyCanvas plus haut). */}
+            <FluxEnergyCanvas layoutRef={layoutRef} cardRefs={cardRefs} stageRef={stageRef} hovRef={hovRef} cards={CARDS} />
 
             {/* ── 4 Compact corner cards — refined typography ── */}
             {CARDS.map((card, i) => {
@@ -11266,8 +11438,9 @@
               const h = hov === card.id;
               return (
                 <div key={card.id} className="fsPCard"
+                  ref={el => { cardRefs.current[i] = el; }}
                   onClick={() => onNavigate(card.target)}
-                  onMouseEnter={() => setHov(card.id)} onMouseLeave={() => setHov(null)}
+                  onMouseEnter={() => setHovBoth(card.id)} onMouseLeave={() => setHovBoth(null)}
                   style={{
                     gridColumn:gc, gridRow:gr,
                     background: h ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)',
@@ -11302,7 +11475,7 @@
 
             {/* ── Center: Orbital Personalization System — infinite rings + 3D crystal ── */}
             <div className="fsPCenter">
-              <div className="fsCrystalStageFrame" style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
+              <div className="fsCrystalStageFrame" ref={stageRef} style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
                 <div className="fsCrystalScene">
                   <div className="fsThemeCrystalAura" aria-hidden="true" />
                   <BlenderCrystalScene />
@@ -12293,8 +12466,7 @@
         { id:'tasks', label:'Tasks', name:'Taches', group:'essentials', short:'Actions du jour', icon:'✓', Component:TasksWidget, variants:[1,2,3] },
         { id:'notes', label:'Notes', name:'Note rapide', group:'essentials', short:'Idees capturees vite', icon:'✎', Component:NotesWidget, variants:[1,2] },
         { id:'pomodoro', label:'Pomodoro', name:'Pomodoro', group:'focus', short:'Cycles de focus', icon:'◑', Component:PomodoroWidget, variants:[1,2,9] },
-        { id:'goal', label:'Goal', name:'Objectif', group:'focus', short:'Objectifs mesurables clairs', icon:'◎', Component:GoalWidget, variants:[1,2,10] },
-        { id:'streak', label:'Streak', name:'Regularite', group:'focus', short:'Habitudes en chaine', icon:'▲', Component:StreakWidget, variants:[1,2,10] },
+        { id:'streak', label:'Streak', name:'Regularite', group:'focus', short:'Ta régularité en graphe', icon:'▲', Component:StreakWidget, variants:[1,2,10] },
         { id:'countdown', label:'Countdown', name:'Deadline', group:'focus', short:'Deadline sous controle', icon:'⏱', Component:CountdownWidget, variants:[1,10] },
         { id:'spotify', label:'Sons', name:'Sons de focus', group:'media', short:'Ambiances sonores pour se concentrer', icon:'♫', Component:AmbientWidget, variants:[1,5,10] },
         { id:'image', label:'Image', name:'Image', group:'media', short:'Inspiration visuelle personnelle', icon:'◈', Component:ImageWidget, variants:[1] },
@@ -13366,7 +13538,7 @@
       });
       const [showSession, setShowSession] = _uSC(false);
       const [widgets, setWidgets] = _uSC(() => {
-        try { return JSON.parse(localStorage.getItem('fs_widgets') || 'null') || DEFAULT_WIDGETS; } catch (e) { return DEFAULT_WIDGETS; }
+        try { return window._fsStripRetiredWidgets(JSON.parse(localStorage.getItem('fs_widgets') || 'null')) || DEFAULT_WIDGETS; } catch (e) { return DEFAULT_WIDGETS; }
       });
       _uEC(() => {
         if (!user?.id || screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
@@ -14355,7 +14527,7 @@
         const _lsGet = (k, parse) => { try { const v = localStorage.getItem(k); return v == null ? null : (parse ? JSON.parse(v) : v); } catch (_) { return null; } };
         const visualSource = remote || (authUser?.id && window._fsSnapshotLocalData ? window._fsSnapshotLocalData(authUser.id) : null);
         const lsWidgets = _lsGet('fs_widgets', true);
-        setWidgets((visualSource && visualSource.widgets) || lsWidgets || DEFAULT_WIDGETS);
+        setWidgets(window._fsStripRetiredWidgets((visualSource && visualSource.widgets) || lsWidgets) || DEFAULT_WIDGETS);
         /* Thème : localStorage réconcilié (A's theme, ou absent s'il n'en a pas —
            le seed a alors retiré fs_bgtheme, donc pas de fuite du thème de B). */
         setBgThemeId((visualSource && visualSource.bg_theme) || _lsGet('fs_bgtheme', false) || 'cosmos');
@@ -14470,7 +14642,7 @@
                    ne jamais forcer un DEFAULT si le compte a des données, sinon
                    les effets de persistance repoussent les défauts dans le cloud. */
                 const _lg = (k, p) => { try { const v = localStorage.getItem(k); return v == null ? null : (p ? JSON.parse(v) : v); } catch (_) { return null; } };
-                setWidgets((synced && synced.widgets) || _lg('fs_widgets', true) || DEFAULT_WIDGETS);
+                setWidgets(window._fsStripRetiredWidgets((synced && synced.widgets) || _lg('fs_widgets', true)) || DEFAULT_WIDGETS);
                 setBgThemeId((synced && synced.bg_theme) || _lg('fs_bgtheme', false) || 'cosmos');
                 setFontPresetId(_lg('fs_font_preset', false) || 'signature');
                 setSyncEpoch(n => n + 1);
@@ -14819,6 +14991,16 @@
       const [loadError, setLoadError] = React.useState(false);
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
+      /* Vitrine de cristaux de l'ami : déjà présente dans widget_style.showcase
+         (fetch de base) — affichée en popover au clic sur son profil, sans
+         prendre de place au dashboard. */
+      const [vitrineOpen, setVitrineOpen] = React.useState(false);
+      const vitrine = React.useMemo(() => {
+        try {
+          const sc = _fsShowcaseSanitize(data?.widget_style?.showcase);
+          return sc && sc.enabled && sc.items.length ? sc : null;
+        } catch (e) { return null; }
+      }, [data?.widget_style]);
 
       React.useEffect(() => {
         let cancelled = false;
@@ -14905,7 +15087,7 @@
       };
       const lastConnection = data?.updated_at || friend.updatedAt || friend.lastSeen || friend.addedAt;
 
-      const widgets = data?.widgets || [];
+      const widgets = (window._fsStripRetiredWidgets ? window._fsStripRetiredWidgets(data?.widgets) : data?.widgets) || [];
       const friendTheme = React.useMemo(() => {
         if (data?.bg_theme === 'custom' && data?.custom_bg && window.buildCustomTheme) {
           return window.buildCustomTheme(data.custom_bg.c1 || '#a5b8ff', data.custom_bg.c2 || '#c084fc');
@@ -14985,19 +15167,60 @@
 
             {/* Header */}
             <div style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-                <div style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, flexShrink:0, overflow:'hidden' }}>
-                  {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
+              <div role={vitrine ? 'button' : undefined} tabIndex={vitrine ? 0 : undefined}
+                aria-expanded={vitrine ? vitrineOpen : undefined}
+                title={vitrine ? (vitrineOpen ? 'Masquer la vitrine' : `Voir la vitrine de ${friend.name || friend.email.split('@')[0]}`) : undefined}
+                onClick={() => vitrine && setVitrineOpen(v => !v)}
+                onKeyDown={e => { if (vitrine && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVitrineOpen(v => !v); } }}
+                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent' }}>
+                <div style={{ position:'relative', flexShrink:0 }}>
+                  <div style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
+                    {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
+                  </div>
+                  {vitrine && (
+                    <span aria-hidden="true" style={{ position:'absolute', right:-4, bottom:-4, width:18, height:18, borderRadius:7, display:'grid', placeItems:'center', background:'#0b0a18', border:'1px solid rgba(255,255,255,0.14)', boxShadow:'0 3px 10px rgba(0,0,0,0.45)' }}>
+                      <i className="fs-showcase-facet" style={{ width:6, height:6 }} />
+                    </span>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:T.muted, marginBottom:5 }}>Aperçu du tableau de bord · Lecture seule</div>
-                  <div style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em' }}>{friend.name || friend.email.split('@')[0]}</div>
+                  <div style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em', display:'flex', alignItems:'center', gap:8 }}>
+                    {friend.name || friend.email.split('@')[0]}
+                    {vitrine && (
+                      <svg width={11} height={11} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color:T.muted, transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
+                        <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>{friend.email}</div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>
                     Dernière connexion le : <span style={{ color:T.text, fontWeight:700 }}>{formatLastConnection(lastConnection)}</span>
                   </div>
                 </div>
               </div>
+
+              {/* Popover vitrine — flotte au-dessus du dashboard, ne le déplace pas */}
+              {vitrine && vitrineOpen && (
+                <React.Fragment>
+                  <div onClick={e => { e.stopPropagation(); setVitrineOpen(false); }} style={{ position:'fixed', inset:0, zIndex:55, cursor:'default' }} />
+                  <div className="fs-friend-vitrine-pop" onClick={e => e.stopPropagation()}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 18px 10px', position:'relative' }}>
+                      <span className="fs-showcase-facet" />
+                      <span style={{ fontSize:9.5, fontWeight:850, letterSpacing:'0.14em', textTransform:'uppercase', color:'rgba(248,246,252,0.5)' }}>Vitrine de {friend.name || friend.email.split('@')[0]}</span>
+                      <span style={{ marginLeft:'auto', fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:99, background:'rgba(var(--theme-c1-rgb),0.10)', border:'1px solid rgba(var(--theme-c1-rgb),0.22)', color:'var(--theme-c1)', fontVariantNumeric:'tabular-nums' }}>{vitrine.items.length} {vitrine.items.length > 1 ? 'cristaux' : 'cristal'}</span>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'flex-end', gap:9, padding:'2px 18px 12px', overflowX:'auto', position:'relative' }}>
+                      {vitrine.items.map((it, i) => (
+                        <div key={it.id || i} className={'fs-showcase-slot' + ((it.gold || it.gradient === 'gold') ? ' gold' : '')} style={{ width:52, height:58 }}>
+                          <ShowcaseGem item={it} size={36} />
+                        </div>
+                      ))}
+                    </div>
+                    {vitrine.title ? <div style={{ padding:'0 18px 14px', fontSize:11.5, fontStyle:'italic', color:'rgba(248,246,252,0.55)', position:'relative' }}>« {vitrine.title} »</div> : null}
+                  </div>
+                </React.Fragment>
+              )}
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(74,222,128,0.09)', border:'1px solid rgba(74,222,128,0.22)', borderRadius:99, padding:'7px 14px' }}>
                   <div style={{ width:6, height:6, borderRadius:'50%', background:T.green, boxShadow:`0 0 8px ${T.green}`, animation:'livePulse 2s ease-in-out infinite' }}/>
@@ -15008,9 +15231,6 @@
                   onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}>×</button>
               </div>
             </div>
-
-            {/* Vitrine de profil de l'ami — slim, rend null si absente */}
-            {window.ShowcaseStrip && React.createElement(window.ShowcaseStrip, { friendId: friend.id })}
 
             {/* Dashboard grid */}
             <div style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
@@ -15737,9 +15957,22 @@
           display:grid; place-items:center; font-size:9px; font-weight:900; color:#070810;
           background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); }
         .fs-showcase-tile-dur { font-size:8px; font-weight:800; color:rgba(248,246,252,0.4); }
+        .fs-friend-vitrine-pop { position:absolute; top:calc(100% + 8px); left:24px; z-index:60;
+          width:min(430px, calc(100vw - 48px)); border-radius:18px; overflow:hidden;
+          background:linear-gradient(165deg, rgba(26,24,44,0.97), rgba(13,12,26,0.96));
+          border:1px solid rgba(255,255,255,0.10);
+          box-shadow:0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--theme-c1-rgb),0.08), inset 0 1px 0 rgba(255,255,255,0.07);
+          backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+          animation:fsVitrinePop .42s cubic-bezier(.22,1.28,.36,1) both; transform-origin:28px -8px; }
+        .fs-friend-vitrine-pop::before { content:''; position:absolute; inset:0; pointer-events:none;
+          background:radial-gradient(120% 80% at 18% 0%, rgba(var(--theme-c1-rgb),0.12), transparent 55%); }
+        @keyframes fsVitrinePop { from{opacity:0;transform:translateY(-8px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+        html.fs-reduce-motion .fs-friend-vitrine-pop { animation:none; }
+        @media (prefers-reduced-motion:reduce) { .fs-friend-vitrine-pop { animation:none; } }
         @media (max-width:640px) {
           .fs-showcase-strip { padding:9px 16px; }
           .fs-showcase-picker { grid-template-columns:repeat(auto-fill, minmax(56px, 1fr)); }
+          .fs-friend-vitrine-pop { left:12px; width:calc(100vw - 24px); }
         }
       `;
       document.head.appendChild(s);
@@ -15767,28 +16000,6 @@
         {sc.title ? <div className="fs-showcase-strip-title">« {sc.title} »</div> : null}
       </div>
     );
-
-    /* Vue ami : fetch ciblé de la seule clé showcase, ré-assainie avant rendu.
-       Rend null si vitrine absente/désactivée/vide → zéro encombrement. */
-    function ShowcaseStrip({ friendId }) {
-      const [sc, setSc] = React.useState(null);
-      React.useEffect(() => {
-        let dead = false;
-        (async () => {
-          try {
-            if (!window._fsSb || !friendId) return;
-            const { data } = await window._fsSb.from('user_data')
-              .select('showcase:widget_style->showcase')
-              .eq('user_id', friendId)
-              .maybeSingle();
-            if (!dead) setSc(_fsShowcaseSanitize(data?.showcase));
-          } catch(e) {}
-        })();
-        return () => { dead = true; };
-      }, [friendId]);
-      if (!sc || !sc.enabled || !sc.items.length) return null;
-      return <ShowcaseRow sc={sc} />;
-    }
 
     /* Éditeur propriétaire : sélection de cristaux, tagline, activation.
        Sauvegarde immédiate dans le blob gamification (sync cloud existante). */
@@ -15885,7 +16096,6 @@
     }
 
     window.ShowcaseEditor = ShowcaseEditor;
-    window.ShowcaseStrip = ShowcaseStrip;
 
     window.FriendsPanel = FriendsPanel;
     window.FriendCard = FriendCard;
