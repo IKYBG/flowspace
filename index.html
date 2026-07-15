@@ -8936,6 +8936,194 @@
       low: { label: 'Basse', color: '#2dd4bf', bg: 'rgba(45,212,191,0.14)' },
     };
 
+    /* ── Cristal du jour WebGL — vraie 3D façon jauge d'énergie de jeu ──────
+       Mesh facetté irrégulier (même famille que BlenderCrystalScene) éclairé
+       en diffus + rim + spéculaire. La progression remplit le cristal de bas
+       en haut dans le shader : surface liquide ondulante, ménisque lumineux,
+       scintillement interne. Chaque complétion déclenche un pulse (flash +
+       pop d'échelle) ; à 100 % le cristal respire. Trois éclats orbitent
+       autour. Pause onglet masqué ; reduce-motion → rendu statique redessiné
+       au changement de progression. */
+    function TasksCrystal3D({ progress = 0 }) {
+      const canvasRef = _uRT(null);
+      const stateRef = _uRT({ target: 0, prevTarget: 0, shown: 0, pulse: 0, redraw: null });
+      stateRef.current.target = Math.max(0, Math.min(1, progress));
+      _uEffT(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: true });
+        if (!gl) return;
+        const reduced = document.documentElement.classList.contains('fs-reduce-motion')
+          || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;varying vec3 vLocal;void main(){vec4 world=uModel*vec4(aPosition,1.0);vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;vLocal=aPosition;gl_Position=uMvp*vec4(aPosition,1.0);}`;
+        const fs = `precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;varying vec3 vLocal;uniform vec3 uLight;uniform vec3 uEye;uniform vec3 uAccent1;uniform vec3 uAccent2;uniform float uAlpha;uniform float uFill;uniform float uTime;uniform float uPulse;
+void main(){
+  vec3 n=normalize(vNormal);vec3 l=normalize(uLight-vWorld);vec3 e=normalize(uEye-vWorld);
+  float d=max(dot(n,l),0.0);
+  float rim=pow(1.0-max(dot(n,e),0.0),2.25);
+  float sp=pow(max(dot(reflect(-l,n),e),0.0),34.0);
+  float side=clamp(n.x*.5+n.z*.22+.5,0.0,1.0);
+  vec3 theme=mix(uAccent1,uAccent2,side);
+  vec3 glass=mix(theme,vec3(1.0),.18);
+  vec3 color=mix(vColor,theme,.82)*(0.30+d*0.72)+theme*rim*.72+glass*sp*.30;
+  float yFill=mix(-1.35,1.65,clamp(uFill,0.0,1.0));
+  float lvl=yFill+sin(uTime*2.1+vLocal.x*4.0+vLocal.z*3.2)*.05;
+  float inside=1.0-smoothstep(lvl-.03,lvl+.03,vLocal.y);
+  float shimmer=.78+.22*sin(uTime*2.6+vLocal.y*6.0+vLocal.x*4.0);
+  vec3 energy=mix(uAccent1,uAccent2,clamp(vLocal.y*.32+.5,0.0,1.0));
+  color=mix(color,energy*(1.08*shimmer)+vec3(.12)*shimmer,inside*.85);
+  float band=(1.0-smoothstep(0.0,.10,abs(vLocal.y-lvl)))*step(.004,uFill)*(1.0-step(.996,uFill));
+  color+=(energy*.55+vec3(.55))*band*.9;
+  color+=energy*step(.996,uFill)*(.10+.08*sin(uTime*2.3));
+  color*=1.0+uPulse*.55;
+  gl_FragColor=vec4(color,uAlpha+inside*.08+uPulse*.05);
+}`;
+        const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+        const program = gl.createProgram();
+        gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
+        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        const loc = { pos: gl.getAttribLocation(program,'aPosition'), normal: gl.getAttribLocation(program,'aNormal'), color: gl.getAttribLocation(program,'aColor'), mvp: gl.getUniformLocation(program,'uMvp'), model: gl.getUniformLocation(program,'uModel'), light: gl.getUniformLocation(program,'uLight'), eye: gl.getUniformLocation(program,'uEye'), accent1: gl.getUniformLocation(program,'uAccent1'), accent2: gl.getUniformLocation(program,'uAccent2'), alpha: gl.getUniformLocation(program,'uAlpha'), fill: gl.getUniformLocation(program,'uFill'), time: gl.getUniformLocation(program,'uTime'), pulse: gl.getUniformLocation(program,'uPulse') };
+        const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+        const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+        const norm = v => { const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
+        /* Druse compacte : prisme principal élancé + 2 satellites, graine fixe */
+        const buildCrystal = () => {
+          let _t = 40415;
+          const rng = () => {
+            _t += 0x6D2B79F5;
+            let r = Math.imul(_t ^ (_t >>> 15), 1 | _t);
+            r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+            return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+          };
+          const P = { sides: 6, tall: 2.55, girth: .58, sats: 2, belly: .40, lean: 0 };
+          const data = [];
+          const tri = (a, b, c, col) => { const n = norm(cross(sub(b, a), sub(c, a))); [a, b, c].forEach(p => data.push(...p, ...n, ...col)); };
+          const addPrism = (cx, cz, H, girth, leanX, leanZ, tone) => {
+            const sides = P.sides;
+            const apexY = H * .55, baseY = -H * .18, footY = -H * .45;
+            const bellyY = baseY + (apexY - baseY) * (P.belly + rng() * .12);
+            const angs = [], radB = [], radM = [];
+            for (let i = 0; i < sides; i++) {
+              angs.push((i / sides) * Math.PI * 2 + (rng() - .5) * .38);
+              const r = girth * (.68 + rng() * .6);
+              radB.push(r * (.76 + rng() * .2));
+              radM.push(r * (.94 + rng() * .22));
+            }
+            const apex = [cx + leanX * apexY + (rng() - .5) * girth * .5, apexY + (rng() - .5) * H * .05, cz + leanZ * apexY + (rng() - .5) * girth * .5];
+            const foot = [cx - leanX * .25, footY, cz - leanZ * .25];
+            const baseR = [], midR = [];
+            for (let i = 0; i < sides; i++) {
+              baseR.push([cx + Math.cos(angs[i]) * radB[i], baseY + (rng() - .5) * H * .04, cz + Math.sin(angs[i]) * radB[i]]);
+              const my = bellyY + (rng() - .5) * H * .06;
+              midR.push([cx + Math.cos(angs[i] + .09) * radM[i] + leanX * (my - baseY), my, cz + Math.sin(angs[i] + .09) * radM[i] + leanZ * (my - baseY)]);
+            }
+            for (let i = 0; i < sides; i++) {
+              const j = (i + 1) % sides;
+              const shade = .5 + rng() * .5;
+              const col = [tone[0] * shade, tone[1] * shade, tone[2] * shade];
+              const colB = col.map(v => v * .74);
+              tri(baseR[i], baseR[j], midR[j], colB);
+              tri(baseR[i], midR[j], midR[i], col);
+              tri(midR[i], midR[j], apex, col.map(v => Math.min(1, v * 1.26)));
+              tri(baseR[j], baseR[i], foot, colB.map(v => v * .62));
+            }
+          };
+          addPrism(0, 0, P.tall, P.girth, 0, 0, [.88, .92, 1.0]);
+          for (let s = 0; s < P.sats; s++) {
+            const a = (s / P.sats) * Math.PI * 2 + rng() * 1.4;
+            const dist = P.girth * (1.05 + rng() * .45);
+            addPrism(Math.cos(a) * dist, Math.sin(a) * dist, P.tall * (.34 + rng() * .2), P.girth * (.32 + rng() * .18), Math.cos(a) * .38, Math.sin(a) * .38, [.76, .84, 1.0]);
+          }
+          return new Float32Array(data);
+        };
+        const mesh = buildCrystal(), buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+        const stride = 36;
+        gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos,3,gl.FLOAT,false,stride,0);
+        gl.enableVertexAttribArray(loc.normal); gl.vertexAttribPointer(loc.normal,3,gl.FLOAT,false,stride,12);
+        gl.enableVertexAttribArray(loc.color); gl.vertexAttribPointer(loc.color,3,gl.FLOAT,false,stride,24);
+        const count = mesh.length / 9;
+        const ident = () => [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+        const mul = (a,b) => { const o=[]; for(let r=0;r<4;r++) for(let c=0;c<4;c++) o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3]; return o; };
+        const translate = (x,y,z) => { const m=ident(); m[12]=x;m[13]=y;m[14]=z;return m; };
+        const scale = (x,y,z) => { const m=ident(); m[0]=x;m[5]=y;m[10]=z;return m; };
+        const rotX = a => { const c=Math.cos(a),s=Math.sin(a),m=ident(); m[5]=c;m[6]=s;m[9]=-s;m[10]=c;return m; };
+        const rotY = a => { const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[2]=-s;m[8]=s;m[10]=c;return m; };
+        const rotZ = a => { const c=Math.cos(a),s=Math.sin(a),m=ident(); m[0]=c;m[1]=s;m[4]=-s;m[5]=c;return m; };
+        const perspective = (fov,aspect,near,far) => { const f=1/Math.tan(fov/2),nf=1/(near-far); return [f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,(2*far*near)*nf,0]; };
+        const lookAt = (eye,target,up) => { const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x); return [x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-x[0]*eye[0]-x[1]*eye[1]-x[2]*eye[2],-y[0]*eye[0]-y[1]*eye[1]-y[2]*eye[2],-z[0]*eye[0]-z[1]*eye[1]-z[2]*eye[2],1]; };
+        const resize = () => { const dpr=Math.min(window.devicePixelRatio||1,1.35),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight); if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);} gl.viewport(0,0,canvas.width,canvas.height); };
+        const readTheme = () => {
+          const css = getComputedStyle(document.documentElement);
+          const parse = (name, fallback) => {
+            const raw = (css.getPropertyValue(name) || fallback).trim().split(',').map(v => Math.max(0, Math.min(255, parseFloat(v) || 0)) / 255);
+            return raw.length >= 3 ? raw.slice(0,3) : fallback.split(',').map(v=>parseFloat(v)/255);
+          };
+          return [parse('--theme-c1-rgb','143,220,255'), parse('--theme-c2-rgb','184,145,255')];
+        };
+        let theme = readTheme(), nextThemeRead = 0;
+        const draw = (model, vp, alpha) => { gl.uniformMatrix4fv(loc.model,false,new Float32Array(model)); gl.uniformMatrix4fv(loc.mvp,false,new Float32Array(mul(vp,model))); gl.uniform1f(loc.alpha,alpha); gl.drawArrays(gl.TRIANGLES,0,count); };
+        const frame = (time, dt) => {
+          const st = stateRef.current;
+          if (st.target > st.prevTarget + 1e-4) st.pulse = 1;
+          st.prevTarget = st.target;
+          st.shown += (st.target - st.shown) * Math.min(1, dt * 2.6);
+          if (Math.abs(st.target - st.shown) < 0.002) st.shown = st.target;
+          st.pulse *= Math.exp(-dt * 2.8);
+          resize();
+          gl.clearColor(0,0,0,0);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          gl.enable(gl.DEPTH_TEST);
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.uniform3f(loc.light,-2.6,3.6,3.8);
+          gl.uniform3f(loc.eye,0,.1,5.4);
+          gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]);
+          gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]);
+          gl.uniform1f(loc.fill, st.shown);
+          gl.uniform1f(loc.time, time);
+          gl.uniform1f(loc.pulse, st.pulse);
+          const vp = mul(perspective(Math.PI/4, canvas.width/canvas.height, .1, 100), lookAt([0,.12,5.3],[0,0,0],[0,1,0]));
+          const bob = Math.sin(time*1.25)*.07;
+          const pop = .90*(1 + st.pulse*.07);
+          draw(mul(translate(0,bob,0),mul(rotY(time*.55),mul(rotX(-.12+Math.sin(time*.7)*.04),scale(pop,pop,pop)))),vp,.88);
+          for (let i = 0; i < 3; i++) {
+            const a = time*(.4+i*.03)+i*Math.PI*2/3, r = 1.5+(i%2)*.14, s = .11+(i%2)*.02;
+            draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.6+i)*.36+bob*.5,Math.sin(a)*.6),mul(rotY(-time*.9+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72);
+          }
+        };
+        let raf = 0, lastFrame = 0, lastT = 0;
+        if (reduced) {
+          /* Statique : une frame à la demande, remplissage instantané */
+          const drawOnce = () => {
+            const st = stateRef.current;
+            st.shown = st.target; st.prevTarget = st.target; st.pulse = 0;
+            theme = readTheme();
+            frame(8, 0.016);
+          };
+          stateRef.current.redraw = drawOnce;
+          drawOnce();
+          return () => { stateRef.current.redraw = null; };
+        }
+        const render = t => {
+          raf = requestAnimationFrame(render);
+          if (document.hidden) return;
+          if (t - lastFrame < 28) return;
+          const dt = Math.min(.06, (t - lastT)*.001 || .016);
+          lastFrame = t; lastT = t;
+          if (t > nextThemeRead) { theme = readTheme(); nextThemeRead = t + 600; }
+          frame(t*.001, dt);
+        };
+        raf = requestAnimationFrame(render);
+        return () => cancelAnimationFrame(raf);
+      }, []);
+      /* reduce-motion : redessine quand la progression change */
+      _uEffT(() => { stateRef.current.redraw && stateRef.current.redraw(); }, [progress]);
+      return <canvas ref={canvasRef} className="fs-tasks-gem3dgl" aria-hidden="true" />;
+    }
+
     function TasksScreen() {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [tasks, setTasks] = _uST(() => {
@@ -9119,30 +9307,13 @@
             .fs-task-add-btn:hover { transform: translateY(-1px) scale(1.02); box-shadow: 0 20px 42px rgba(var(--theme-c1-rgb),0.34), inset 0 1px 0 rgba(255,255,255,0.4); }
             .fs-task-add-btn:active { transform: scale(0.98); }
 
-            /* ── Cristal du jour 3D — rotation GPU pure, aucun filtre coûteux ── */
-            .fs-tasks-gem3d { position:relative; width:56px; height:68px; perspective:420px; flex-shrink:0;
+            /* ── Cristal du jour WebGL — vraie 3D, remplissage d'énergie shader ── */
+            .fs-tasks-gem3d { position:relative; width:56px; height:68px; flex-shrink:0;
               filter: drop-shadow(0 6px 14px rgba(var(--theme-c1-rgb),0.16)); transition: filter .6s ease; }
             .fs-tasks-gem3d.full { filter: drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.55)); }
-            .fs-tasks-gem3d-spin { position:absolute; inset:0; transform-style:preserve-3d;
-              animation: fsGem3dSpin 9.5s linear infinite; will-change: transform; }
-            @keyframes fsGem3dSpin { from { transform: rotateX(-9deg) rotateY(0deg); } to { transform: rotateX(-9deg) rotateY(360deg); } }
-            .fs-tasks-gem3d-facet { position:absolute; left:50%; top:50%; width:26px; height:58px; margin:-27px 0 0 -13px;
-              clip-path: polygon(50% 0%, 100% 20%, 80% 100%, 20% 100%, 0% 20%);
-              background: linear-gradient(168deg, rgba(255,255,255,0.30), rgba(var(--theme-c1-rgb),0.16) 34%, rgba(var(--theme-c1-rgb),0.05) 62%, rgba(var(--theme-c2-rgb),0.10));
-              box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
-              transform: rotateY(var(--ry)) translateZ(11px); backface-visibility: visible; overflow:hidden; }
-            .fs-tasks-gem3d-fill { position:absolute; left:0; right:0; bottom:0; height:0;
-              background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.92), rgba(var(--theme-c2-rgb),0.78));
-              transition: height .9s cubic-bezier(.22,1,.36,1); }
-            .fs-tasks-gem3d-fill::before { content:''; position:absolute; left:0; right:0; top:0; height:2px; background:rgba(255,255,255,0.55); }
-            .fs-tasks-gem3d-cap { position:absolute; left:50%; top:50%; width:24px; height:16px; margin:-36px 0 0 -12px;
-              clip-path: polygon(50% 0%, 100% 72%, 50% 100%, 0% 72%);
-              background: linear-gradient(150deg, rgba(255,255,255,0.72), rgba(var(--theme-c1-rgb),0.34));
-              transform: rotateX(58deg) translateZ(12px); opacity:.9; }
-            .fs-tasks-gem3d-floor { position:absolute; left:14%; right:14%; bottom:-5px; height:8px; border-radius:50%;
-              background: radial-gradient(ellipse, rgba(var(--theme-c1-rgb),0.38), transparent 70%); filter: blur(3px); }
-            html.fs-reduce-motion .fs-tasks-gem3d-spin { animation:none; transform: rotateX(-9deg) rotateY(24deg); }
-            @media (prefers-reduced-motion: reduce) { .fs-tasks-gem3d-spin { animation:none; transform: rotateX(-9deg) rotateY(24deg); } }
+            .fs-tasks-gem3dgl { position:absolute; left:-34%; top:-26%; width:168%; height:152%; pointer-events:none; }
+            .fs-tasks-gem3d-floor { position:absolute; left:8%; right:8%; bottom:-4px; height:9px; border-radius:50%;
+              background: radial-gradient(ellipse, rgba(var(--theme-c1-rgb),0.42), transparent 70%); filter: blur(3px); }
 
             /* ── Filtres segmentés ── */
             .fs-task-filters { display:inline-flex; gap:3px; padding:4px; border-radius:14px;
@@ -9294,15 +9465,8 @@
               {/* Cristal du jour 3D : tourne sur lui-même et se remplit à chaque tâche complétée */}
               <div className="fs-tasks-progress" style={{ display: 'flex', alignItems: 'center', gap: 13, flexShrink: 0 }} title={`${totalDone} tâche${totalDone > 1 ? 's' : ''} complétée${totalDone > 1 ? 's' : ''} sur ${tasks.length}`}>
                 <div className={'fs-tasks-gem3d' + (prog >= 1 && tasks.length > 0 ? ' full' : '')} aria-hidden="true">
-                  <div className="fs-tasks-gem3d-spin">
-                    {[0, 1, 2, 3, 4, 5].map(i => (
-                      <div key={i} className="fs-tasks-gem3d-facet" style={{ '--ry': `${i * 60}deg` }}>
-                        <div className="fs-tasks-gem3d-fill" style={{ height: `${Math.max(0, Math.min(1, prog)) * 100}%` }} />
-                      </div>
-                    ))}
-                    <div className="fs-tasks-gem3d-cap" />
-                  </div>
                   <div className="fs-tasks-gem3d-floor" />
+                  <TasksCrystal3D progress={prog} />
                 </div>
                 <div className="fs-tasks-progress-copy" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontSize: 21, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}<span style={{ fontSize: 12, opacity: 0.6 }}> %</span></span>
