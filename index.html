@@ -1195,7 +1195,8 @@
 
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
-                       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'];
+                       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
+                       'fs_showcase'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -1622,7 +1623,7 @@
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
-      'fs_font_preset', 'fs_streak',
+      'fs_font_preset', 'fs_streak', 'fs_showcase',
       'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
       'fs_ambient'
     ];
@@ -2000,7 +2001,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -2096,6 +2097,12 @@
           window._fsCurrentMapStyle = widgetStyle.noteMapStyle;
           window.dispatchEvent(new CustomEvent('fs-note-map-style'));
         }
+        /* Vitrine de profil embarquée dans widget_style.showcase */
+        try {
+          if (widgetStyle.showcase) _fsRawSet('fs_showcase', JSON.stringify(widgetStyle.showcase));
+          else if (!ownLocal) _fsRawRemove('fs_showcase');
+          window.dispatchEvent(new CustomEvent('fs-showcase-update'));
+        } catch (_) { }
       } else {
         const rememberedStyle = _fsReadRememberedWidgetStyle(userId);
         if (rememberedStyle) {
@@ -2314,6 +2321,10 @@
         const v = localStorage.getItem('fs_font_preset');
         if (v != null) r.widget_style = { ...(r.widget_style || {}), fontPresetId: v };
       } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_showcase');
+        if (v != null) r.widget_style = { ...(r.widget_style || {}), showcase: JSON.parse(v) };
+      } catch (_) { }
       try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; const base = v != null ? JSON.parse(v) : null; const g = _fsGamifWithLocalData(userId, base); if (g != null) r.gamification = g; } catch (_) { }
       return r;
     }
@@ -2398,6 +2409,10 @@
       try {
         const v = localStorage.getItem('fs_font_preset');
         if (v != null) payload.widget_style = { ...(payload.widget_style || {}), fontPresetId: v };
+      } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_showcase');
+        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), showcase: JSON.parse(v) };
       } catch (_) { }
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); const g = _fsGamifWithLocalData(u.id, v != null ? JSON.parse(v) : null); if (g != null) payload.gamification = g; } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
@@ -4162,6 +4177,42 @@
     }
     window._fsAutoStreakCheckIn = _fsAutoStreakCheckIn;
 
+    /* ── Fil d'Ariane d'onboarding « Personnalisation » ─────────────────────
+       Pastille « ! » clignotante qui guide le nouvel utilisateur :
+       Personnalisation (sidebar) → carte Widgets → bouton Apparence globale.
+       Disparaît partout dès que l'user atteint Apparence globale (persisté). */
+    window._fsPersoHintDone = () => { try { return localStorage.getItem('fs_perso_hint_done') === '1'; } catch(e) { return true; } };
+    window._fsPersoHintMark = () => {
+      try { localStorage.setItem('fs_perso_hint_done', '1'); } catch(e) {}
+      try { window.dispatchEvent(new CustomEvent('fs-perso-hint-update')); } catch(e) {}
+    };
+    if (!document.getElementById('fs-hint-dot-css')) {
+      const _hs = document.createElement('style');
+      _hs.id = 'fs-hint-dot-css';
+      _hs.textContent = `
+        .fs-hint-dot{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));color:#070810;
+          font-size:10px;font-weight:900;line-height:1;flex-shrink:0;
+          animation:fsHintBlink 1.6s ease-in-out infinite;
+          box-shadow:0 0 10px rgba(var(--theme-c1-rgb),.6);}
+        @keyframes fsHintBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.86)}}
+        html.fs-reduce-motion .fs-hint-dot{animation:none}
+        @media(prefers-reduced-motion:reduce){.fs-hint-dot{animation:none}}
+      `;
+      document.head.appendChild(_hs);
+    }
+    function FsHintDot({ style }) {
+      const [done, setDone] = _uSST(() => window._fsPersoHintDone());
+      _uEST(() => {
+        const h = () => setDone(window._fsPersoHintDone());
+        window.addEventListener('fs-perso-hint-update', h);
+        return () => window.removeEventListener('fs-perso-hint-update', h);
+      }, []);
+      if (done) return null;
+      return <span className="fs-hint-dot" style={style} aria-hidden="true">!</span>;
+    }
+    window.FsHintDot = FsHintDot;
+
     function StreakWidget({ variant = 1, style, user }) {
       const [dates, setDates] = _uSST(() => {
         try { return JSON.parse(localStorage.getItem('fs_streak') || '[]'); } catch(e) { return []; }
@@ -5471,7 +5522,7 @@
               )}
             </div>
             <div className="fs-dashboard-header-right" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, minWidth: session ? 132 : undefined, justifyContent: 'flex-end' }}>
-              {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenQuests:()=>{}, onOpenStreaks:()=>{} })}
+              {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenStreaks:()=>{} })}
               {!session && (
                 <button className="fs-dash-addwidget-btn" onClick={() => { try { window.__fsOpenPicker = true; } catch (e) {} onNavigate('edit'); }}
                   title="Ajouter un widget" aria-label="Ajouter un widget"
@@ -8233,7 +8284,6 @@
       React.useEffect(() => {
         if (unlockStage > prevStageRef.current) {
           if (unlockStage === 1) addToast({ message: 'Évolution débloquée ✦ Suis ta régularité et ta progression.', type: 'success', icon: '✦', duration: 5200 });
-          else if (unlockStage === 2) addToast({ message: 'Quêtes & Boutique débloquées ✦', type: 'success', icon: '✦', duration: 5200 });
         }
         prevStageRef.current = unlockStage;
       }, [unlockStage]);
@@ -8511,7 +8561,10 @@
           onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
           <span className="fs-icon-wrap">{item.icon}</span>
           <span className="fs-label-wrap">
-            <span className="fs-label">{item.label}</span>
+            <span className="fs-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              {item.label}
+              {item.target === 'perso' && window.FsHintDot && <window.FsHintDot />}
+            </span>
             <span className="fs-meta">{item.meta}</span>
           </span>
         </button>
@@ -8619,15 +8672,13 @@
                     </span>
                     <span className="fs-label-wrap">
                       <span className="fs-label">Évolution</span>
-                      <span className="fs-meta">{unlockStage >= 2 ? 'Quêtes, boutique, progression' : 'Régularité & progression'}</span>
+                      <span className="fs-meta">Régularité & progression</span>
                     </span>
                     <span className={'fs-nav-caret' + (evolutionMenuOpen ? ' open' : '')}>⌄</span>
                   </button>
                   <div className={'fs-nav-submenu' + (evolutionMenuOpen ? ' open' : '')} ref={evoSubRef}>
                     <div className="fs-nav-submenu-inner">
                       <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'streaks' ? ' active' : '')} onClick={() => goEvolutionTab('streaks')}>Régularité</button>
-                      {unlockStage >= 2 && <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'quests' ? ' active' : '')} onClick={() => goEvolutionTab('quests')}>Quêtes</button>}
-                      {unlockStage >= 2 && <button className={'fs-nav-subitem' + (screen === 'evolution' && currentEvolutionTab === 'store' ? ' active' : '')} onClick={() => goEvolutionTab('store')}>Boutique</button>}
                       <button className={'fs-nav-subitem' + (screen === 'progression' ? ' active' : '')} onClick={() => goEvolutionTab('progression')}>Vue d'ensemble</button>
                     </div>
                   </div>
@@ -8899,6 +8950,7 @@
         return () => window.removeEventListener('fs-remote-update', sync);
       }, []);
       const [filter, setFilter] = _uST('all');
+      const [priFilter, setPriFilter] = _uST(null);
       const [inputVal, setInputVal] = _uST('');
       const [newPri, setNewPri] = _uST('medium');
       const [animId, setAnimId] = _uST(null);
@@ -8909,7 +8961,9 @@
       const totalActive = tasks.filter(t => !t.done).length;
       const prog = tasks.length > 0 ? totalDone / tasks.length : 0;
 
-      const visible = tasks.filter(t => filter === 'active' ? !t.done : filter === 'done' ? t.done : true);
+      const visible = tasks.filter(t =>
+        (filter === 'active' ? !t.done : filter === 'done' ? t.done : true) &&
+        (!priFilter || t.priority === priFilter));
       const activeTasks = visible.filter(t => !t.done);
       const doneTasks = visible.filter(t => t.done);
       const _gFocT = () => { try { return JSON.parse(localStorage.getItem('fs_session_focus_tasks') || 'null'); } catch(e) { return null; } };
@@ -8990,7 +9044,11 @@
               )}
             </div>
             <span className="fs-task-text">{task.text}</span>
-            <span className="fs-task-pri" style={{ color: isDone ? 'rgba(248,246,252,0.22)' : p.color, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, borderColor: isDone ? 'transparent' : `${p.color}30` }}>
+            <span className="fs-task-pri" role="button" tabIndex={0}
+              title={`N'afficher que les tâches ${p.label.toLowerCase()}`}
+              onClick={() => setPriFilter(f => f === task.priority ? null : task.priority)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPriFilter(f => f === task.priority ? null : task.priority); } }}
+              style={{ cursor: 'pointer', color: isDone ? 'rgba(248,246,252,0.22)' : p.color, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, borderColor: isDone ? 'transparent' : `${p.color}30` }}>
               <i style={{ background: isDone ? 'rgba(255,255,255,0.2)' : p.color }} />
               {p.label}
             </span>
@@ -9056,6 +9114,31 @@
             }
             .fs-task-add-btn:hover { transform: translateY(-1px) scale(1.02); box-shadow: 0 20px 42px rgba(var(--theme-c1-rgb),0.34), inset 0 1px 0 rgba(255,255,255,0.4); }
             .fs-task-add-btn:active { transform: scale(0.98); }
+
+            /* ── Cristal du jour 3D — rotation GPU pure, aucun filtre coûteux ── */
+            .fs-tasks-gem3d { position:relative; width:56px; height:68px; perspective:420px; flex-shrink:0;
+              filter: drop-shadow(0 6px 14px rgba(var(--theme-c1-rgb),0.16)); transition: filter .6s ease; }
+            .fs-tasks-gem3d.full { filter: drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.55)); }
+            .fs-tasks-gem3d-spin { position:absolute; inset:0; transform-style:preserve-3d;
+              animation: fsGem3dSpin 9.5s linear infinite; will-change: transform; }
+            @keyframes fsGem3dSpin { from { transform: rotateX(-9deg) rotateY(0deg); } to { transform: rotateX(-9deg) rotateY(360deg); } }
+            .fs-tasks-gem3d-facet { position:absolute; left:50%; top:50%; width:26px; height:58px; margin:-27px 0 0 -13px;
+              clip-path: polygon(50% 0%, 100% 20%, 80% 100%, 20% 100%, 0% 20%);
+              background: linear-gradient(168deg, rgba(255,255,255,0.30), rgba(var(--theme-c1-rgb),0.16) 34%, rgba(var(--theme-c1-rgb),0.05) 62%, rgba(var(--theme-c2-rgb),0.10));
+              box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+              transform: rotateY(var(--ry)) translateZ(11px); backface-visibility: visible; overflow:hidden; }
+            .fs-tasks-gem3d-fill { position:absolute; left:0; right:0; bottom:0; height:0;
+              background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.92), rgba(var(--theme-c2-rgb),0.78));
+              transition: height .9s cubic-bezier(.22,1,.36,1); }
+            .fs-tasks-gem3d-fill::before { content:''; position:absolute; left:0; right:0; top:0; height:2px; background:rgba(255,255,255,0.55); }
+            .fs-tasks-gem3d-cap { position:absolute; left:50%; top:50%; width:24px; height:16px; margin:-36px 0 0 -12px;
+              clip-path: polygon(50% 0%, 100% 72%, 50% 100%, 0% 72%);
+              background: linear-gradient(150deg, rgba(255,255,255,0.72), rgba(var(--theme-c1-rgb),0.34));
+              transform: rotateX(58deg) translateZ(12px); opacity:.9; }
+            .fs-tasks-gem3d-floor { position:absolute; left:14%; right:14%; bottom:-5px; height:8px; border-radius:50%;
+              background: radial-gradient(ellipse, rgba(var(--theme-c1-rgb),0.38), transparent 70%); filter: blur(3px); }
+            html.fs-reduce-motion .fs-tasks-gem3d-spin { animation:none; transform: rotateX(-9deg) rotateY(24deg); }
+            @media (prefers-reduced-motion: reduce) { .fs-tasks-gem3d-spin { animation:none; transform: rotateX(-9deg) rotateY(24deg); } }
 
             /* ── Filtres segmentés ── */
             .fs-task-filters { display:inline-flex; gap:3px; padding:4px; border-radius:14px;
@@ -9154,8 +9237,8 @@
               .fs-tasks-kicker { display: none !important; }
               .fs-tasks-title { font-size: 26px !important; line-height: 0.96 !important; margin-top: 0 !important; letter-spacing: -0.035em !important; }
               .fs-tasks-stats { margin-top: 8px !important; gap: 7px !important; font-size: 12px !important; flex-wrap: wrap !important; }
-              .fs-tasks-progress { gap: 9px !important; flex-shrink: 0 !important; }
-              .fs-tasks-gemviz { width: 42px !important; height: 53px !important; }
+              .fs-tasks-progress { gap: 6px !important; flex-shrink: 0 !important; }
+              .fs-tasks-gem3d { transform: scale(0.76); transform-origin: right center; margin-left: -12px; }
               .fs-tasks-progress-copy span:first-child { font-size: 17px !important; }
               .fs-tasks-progress-copy span:last-child { display: none !important; }
               .fs-task-composer { display: grid !important; grid-template-columns: 1fr auto !important; gap: 9px !important; align-items: center !important; margin-bottom: 12px !important; }
@@ -9204,29 +9287,19 @@
                   </span>
                 </div>
               </div>
-              {/* Cristal du jour : chaque tâche complétée le remplit */}
+              {/* Cristal du jour 3D : tourne sur lui-même et se remplit à chaque tâche complétée */}
               <div className="fs-tasks-progress" style={{ display: 'flex', alignItems: 'center', gap: 13, flexShrink: 0 }} title={`${totalDone} tâche${totalDone > 1 ? 's' : ''} complétée${totalDone > 1 ? 's' : ''} sur ${tasks.length}`}>
-                <svg className="fs-tasks-gemviz" width={54} height={68} viewBox="0 0 64 80" aria-hidden="true"
-                  style={{ filter: prog >= 1 && tasks.length > 0 ? 'drop-shadow(0 0 16px rgba(var(--theme-c1-rgb),0.55))' : 'drop-shadow(0 0 6px rgba(var(--theme-c1-rgb),0.16))', transition: 'filter .6s ease' }}>
-                  <defs>
-                    <linearGradient id="fsTasksGemG" x1="0" y1="1" x2="0.55" y2="0">
-                      <stop offset="0%" stopColor="var(--theme-c2)" />
-                      <stop offset="100%" stopColor="var(--theme-c1)" />
-                    </linearGradient>
-                    <clipPath id="fsTasksGemClip">
-                      <path d="M18.25 77 7 44.4 19.5 17.8 32 3l12.5 14.8L57 44.4 45.75 77Z" />
-                    </clipPath>
-                  </defs>
-                  <path d="M18.25 77 7 44.4 19.5 17.8 32 3l12.5 14.8L57 44.4 45.75 77Z"
-                    fill="rgba(255,255,255,0.035)" stroke="rgba(255,255,255,0.17)" strokeWidth="1.4" strokeLinejoin="round" />
-                  <g clipPath="url(#fsTasksGemClip)">
-                    <rect x="0" width="64" y={3 + (1 - prog) * 74} height={Math.max(0, prog * 74)}
-                      fill="url(#fsTasksGemG)" opacity="0.92"
-                      style={{ transition: 'y .7s cubic-bezier(.4,0,.2,1), height .7s cubic-bezier(.4,0,.2,1)' }} />
-                  </g>
-                  <path d="M32 3 23.5 44.4 27 77M32 3l8.5 41.4L37 77M7 44.4h16.5M57 44.4H40.5"
-                    fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="1.1" strokeLinejoin="round" />
-                </svg>
+                <div className={'fs-tasks-gem3d' + (prog >= 1 && tasks.length > 0 ? ' full' : '')} aria-hidden="true">
+                  <div className="fs-tasks-gem3d-spin">
+                    {[0, 1, 2, 3, 4, 5].map(i => (
+                      <div key={i} className="fs-tasks-gem3d-facet" style={{ '--ry': `${i * 60}deg` }}>
+                        <div className="fs-tasks-gem3d-fill" style={{ height: `${Math.max(0, Math.min(1, prog)) * 100}%` }} />
+                      </div>
+                    ))}
+                    <div className="fs-tasks-gem3d-cap" />
+                  </div>
+                  <div className="fs-tasks-gem3d-floor" />
+                </div>
                 <div className="fs-tasks-progress-copy" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontSize: 21, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}<span style={{ fontSize: 12, opacity: 0.6 }}> %</span></span>
                   <span style={{ fontSize: 8.5, color: T.muted, fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase' }}>cristal du jour</span>
@@ -9265,7 +9338,7 @@
             </div>
 
             {/* ── Filtres ── */}
-            <div style={{ paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="fs-task-filterbar" style={{ paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div className="fs-task-filters">
                 {FILTERS.map(f => (
                   <button key={f.id} className={'fs-task-fbtn' + (filter === f.id ? ' on' : '')} onClick={() => setFilter(f.id)}>
@@ -9273,6 +9346,22 @@
                     <span>{f.count}</span>
                   </button>
                 ))}
+              </div>
+              <div className="fs-task-filters">
+                {Object.entries(PRI).map(([key, p]) => {
+                  const on = priFilter === key;
+                  const count = tasks.filter(t => t.priority === key).length;
+                  return (
+                    <button key={key} className={'fs-task-fbtn' + (on ? ' on' : '')}
+                      onClick={() => setPriFilter(f => f === key ? null : key)}
+                      title={on ? 'Retirer le filtre' : `N'afficher que les tâches ${p.label.toLowerCase()}`}
+                      style={on ? { background: p.bg, color: p.color, boxShadow: `0 6px 16px ${p.color}22, inset 0 1px 0 rgba(255,255,255,0.09)` } : null}>
+                      <i style={{ width: 6, height: 6, borderRadius: 1.5, transform: 'rotate(45deg)', display: 'block', background: p.color, opacity: on ? 1 : 0.5, boxShadow: on ? `0 0 8px ${p.color}` : 'none' }} />
+                      {p.label}
+                      <span style={on ? { background: `${p.color}26`, color: p.color } : null}>{count}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -9338,7 +9427,16 @@
                 {doneTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
               </div>
             </>}
-            {activeTasks.length === 0 && doneTasks.length === 0 && (
+            {activeTasks.length === 0 && doneTasks.length === 0 && tasks.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 180, gap: 12 }}>
+                <div style={{ fontSize: 13, color: T.muted, fontWeight: 650 }}>Aucune tâche ne correspond à ce filtre.</div>
+                <button type="button" onClick={() => { setPriFilter(null); setFilter('all'); }}
+                  style={{ border: '1px solid rgba(255,255,255,0.12)', borderRadius: 99, padding: '7px 16px', background: 'rgba(255,255,255,0.04)', color: T.text, fontSize: 11.5, fontWeight: 750, fontFamily: T.font, cursor: 'pointer' }}>
+                  Tout afficher
+                </button>
+              </div>
+            )}
+            {activeTasks.length === 0 && doneTasks.length === 0 && tasks.length === 0 && (
               <div className="fs-task-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 260, gap: 16 }}>
                 <div style={{ position: 'relative', width: 64, height: 64 }}>
                   <div style={{ position: 'absolute', inset: -14, borderRadius: '50%', background: 'radial-gradient(circle, rgba(var(--theme-c1-rgb),0.16), transparent 68%)', animation: 'fwPulse 3.2s ease-in-out infinite' }} />
@@ -9980,9 +10078,7 @@
               .fs-map-shell{display:none!important}
               .fs-map-shell.fs-mob-show{display:flex!important;flex:1!important;min-height:0!important}
               .fs-map-toolbar{height:56px!important;padding:0 14px!important}
-              .fs-map-toolbar > div:first-child > div:first-child{display:none!important}
-              .fs-map-toolbar > div:first-child > div:nth-child(2){font-size:20px!important;margin-top:0!important}
-              .fs-map-toolbar > div:first-child > div:nth-child(3){display:none!important}
+              .fs-map-title{font-size:19px!important}
               .fs-map-search{min-width:0!important;flex:1!important;height:36px!important}
               .fs-map-control{height:30px!important;padding:0 9px!important;font-size:11px!important}
               .fs-map-node{border-radius:14px!important;padding:10px 12px!important}
@@ -10002,10 +10098,8 @@
             ))}
           </div>
           <aside className={"fs-note-builder" + (mobileTab==='builder' ? ' fs-mob-show' : '')}>
-            <div style={{padding:'24px 22px 18px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-              <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>Écrire</div>
-              <div style={{fontFamily:T.display,fontWeight:850,fontSize:29,letterSpacing:'-0.045em',color:T.text,marginTop:6}}>Nouvelle note</div>
-              <div style={{fontSize:12,color:T.muted,lineHeight:1.55,marginTop:8}}>Écris librement dans une seule zone. La première ligne devient le titre. Ajoute des #tags dans le texte — la carte mentale se construit toute seule.</div>
+            <div style={{padding:'22px 22px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+              <div style={{fontFamily:T.display,fontWeight:850,fontSize:24,letterSpacing:'-0.04em',color:T.text}}>Nouvelle note</div>
             </div>
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
               {(() => {
@@ -10019,26 +10113,25 @@
                   </div>
                 );
               })()}
-              <textarea className="fs-note-field fs-note-single" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') createNote(); }} placeholder={"Écris le titre sur la première ligne…\n\nPuis développe ton idée en dessous.\n\nAstuce : [[une autre note]] pour relier · #tag pour classer"} autoFocus style={{flex:1,minHeight:240,resize:'none',padding:'15px',fontSize:14,lineHeight:1.7}} />
+              <textarea className="fs-note-field fs-note-single" value={draft.content} onChange={e=>setDraft(d=>({...d,content:e.target.value}))} onKeyDown={e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') createNote(); }} placeholder={"Ton idée — la première ligne devient le titre.\n\n#tag pour classer · [[note]] pour relier"} autoFocus style={{flex:1,minHeight:240,resize:'none',padding:'15px',fontSize:14,lineHeight:1.7}} />
               <button className="fs-note-builder-submit" onClick={createNote} style={{height:46,borderRadius:15,border:'none',background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#07070d',fontFamily:T.font,fontSize:13,fontWeight:900,cursor:'pointer',boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)',flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:8}}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-                Créer la note
+                Créer
               </button>
             </div>
           </aside>
 
           <main className={"fs-map-shell" + (mobileTab==='map' ? ' fs-mob-show' : '')}>
             <div className="fs-map-toolbar">
-              <div>
-                <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>réseau d'idées</div>
-                <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text,marginTop:2}}>Carte mentale</div>
-                <div style={{fontSize:11,color:T.muted,marginTop:4}}>{visibleNotes.length} carte{visibleNotes.length>1?'s':''} visibles · regroupées par tag principal</div>
+              <div style={{display:'flex',alignItems:'baseline',gap:10,minWidth:0}}>
+                <div className="fs-map-title" style={{fontFamily:T.display,fontWeight:850,fontSize:24,letterSpacing:'-0.04em',color:T.text,whiteSpace:'nowrap'}}>Carte mentale</div>
+                <span style={{fontSize:10,fontWeight:800,padding:'2px 9px',borderRadius:99,background:'rgba(var(--theme-c1-rgb),0.10)',border:'1px solid rgba(var(--theme-c1-rgb),0.20)',color:T.c1,fontVariantNumeric:'tabular-nums',flexShrink:0}}>{visibleNotes.length}</span>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
                 <button className="fs-map-control" onClick={()=>{window._fsMapReturn=true; window._fsCurrentMapStyle=mapStyle; onNavigate && onNavigate('notes-style');}} style={{color:T.c1,borderColor:c1(0.28),background:c1(0.10)}}>Design</button>
                 <div className="fs-map-search">
                   <svg width={15} height={15} viewBox="0 0 16 16" fill="none" style={{opacity:.38,flexShrink:0}}><circle cx={7} cy={7} r={4.8} stroke="currentColor" strokeWidth={1.7}/><path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"/></svg>
-                  <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')selectPrecise();}} placeholder="Chercher précisément une note..." style={{flex:1,minWidth:0,background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.font,fontSize:12}} />
+                  <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')selectPrecise();}} placeholder="Rechercher…" style={{flex:1,minWidth:0,background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.font,fontSize:12}} />
                   <button onClick={selectPrecise} style={{border:'none',background:c1(0.12),color:T.c1,borderRadius:10,height:28,padding:'0 10px',fontSize:10,fontWeight:850,cursor:'pointer'}}>Aller</button>
                 </div>
                 <button className="fs-map-control" onClick={()=>zoomBy(-0.12)}>−</button>
@@ -10112,13 +10205,7 @@
                     </div>
                   </div>
                   <input className="fs-note-edit-title" value={editingNote.title} onChange={e=>persistNote(editingNote.id,{title:e.target.value})} placeholder="Titre de la note" style={{width:'100%',background:'none',border:'none',outline:'none',color:T.text,fontFamily:T.display,fontSize:34,fontWeight:850,letterSpacing:'-0.05em',lineHeight:1.05}} />
-                  <div style={{color:T.muted,fontSize:11,marginTop:8,display:'flex',gap:12,flexWrap:'wrap'}}>
-                    <span>Modifiée {fmtDate(editingNote.updatedAt)}</span>
-                    <span>·</span>
-                    <span>{noteWords(editingNote)} mots</span>
-                    <span>·</span>
-                    <span style={{opacity:.6}}>Markdown · [[liens internes]] · #tags</span>
-                  </div>
+                  <div style={{color:T.muted,fontSize:11,marginTop:8}}>Modifiée {fmtDate(editingNote.updatedAt)}</div>
                 </div>
                 <div className="fs-note-edit-body" style={{flex:1,overflow:'hidden',padding:'22px 28px 20px',display:'flex',flexDirection:'column',gap:0}}>
                   {previewModal ? (
@@ -10129,17 +10216,13 @@
                     <textarea
                       value={editingNote.content}
                       onChange={e=>persistNote(editingNote.id,{content:e.target.value})}
-                      placeholder={"Commence à écrire...\n\n# Titre\n\n- Point important\n- Relie avec [[Nom d'une note]] ou #tag\n\nLes notes longues sont maintenant faciles à lire ici."}
+                      placeholder={"Commence à écrire…\n\n#tag pour classer · [[note]] pour relier"}
                       autoFocus
                       style={{flex:1,width:'100%',resize:'none',outline:'none',border:'none',background:'transparent',color:'rgba(248,246,252,0.88)',padding:'0',boxSizing:'border-box',fontFamily:T.font,fontSize:15,lineHeight:1.9,caretColor:'var(--mineral-cyan)',scrollbarWidth:'thin',scrollbarColor:'rgba(255,255,255,0.12) transparent',letterSpacing:'-0.006em'}}
                     />
                   )}
-                  <div style={{flexShrink:0,marginTop:14,paddingTop:12,borderTop:'1px solid rgba(255,255,255,0.042)',display:'flex',gap:12,fontSize:10,color:T.muted,fontFamily:T.mono,letterSpacing:'0.04em',alignItems:'center'}}>
+                  <div style={{flexShrink:0,marginTop:14,paddingTop:12,borderTop:'1px solid rgba(255,255,255,0.042)',display:'flex',fontSize:10,color:T.muted,fontFamily:T.mono,letterSpacing:'0.04em',alignItems:'center'}}>
                     <span style={{color:T.c1,fontWeight:700}}>{noteWords(editingNote)} mots</span>
-                    <span>·</span>
-                    <span>{String(editingNote.content||'').length} caractères</span>
-                    <div style={{flex:1}}/>
-                    <span style={{opacity:.5}}>Échap ou clic en dehors pour fermer</span>
                   </div>
                 </div>
               </div>
@@ -11042,7 +11125,12 @@
           <style>{`
             @keyframes fsOrbFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}
             @keyframes fsOrbHalo{0%,100%{opacity:.18;transform:scale(.98)}50%{opacity:.32;transform:scale(1.03)}}
-            @keyframes fsFluxBreathe{0%,100%{opacity:.45}50%{opacity:.82}}
+            @keyframes fsFluxBreathe{0%,100%{opacity:.5}50%{opacity:.95}}
+            @keyframes fsFluxDash{from{stroke-dashoffset:0}to{stroke-dashoffset:-24}}
+            @keyframes fsFluxNodePulse{0%{opacity:.75;r:1}70%{opacity:0;r:4.6}100%{opacity:0;r:4.6}}
+            .fsPFluxLine{animation:fsFluxBreathe 5s ease-in-out infinite;animation-delay:var(--fd,0s)}
+            .fsFluxFlow{stroke-dasharray:3 9;animation:fsFluxDash 2.6s linear infinite;animation-delay:var(--fd,0s)}
+            .fsFluxNodeRing{animation:fsFluxNodePulse 3.2s ease-out infinite;animation-delay:var(--fd,0s)}
             @keyframes fsRingOuter{from{transform:rotateX(72deg) rotateY(8deg) rotateZ(0deg)}to{transform:rotateX(72deg) rotateY(8deg) rotateZ(360deg)}}
             @keyframes fsRingMid{from{transform:rotateY(74deg) rotateX(12deg) rotateZ(360deg)}to{transform:rotateY(74deg) rotateX(12deg) rotateZ(0deg)}}
             @keyframes fsRingInner{from{transform:rotateX(38deg) rotateY(42deg) rotateZ(0deg)}to{transform:rotateX(38deg) rotateY(42deg) rotateZ(360deg)}}
@@ -11115,7 +11203,8 @@
               .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
               .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
             }
-            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
+            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsPFluxLine,.fsFluxFlow,.fsFluxNodeRing,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
+            html.fs-reduce-motion .fsFluxFlow,html.fs-reduce-motion .fsFluxNodeRing,html.fs-reduce-motion .fsPFluxLine{animation:none!important}
           `}</style>
 
           {/* ── Header — refined typographic rhythm ── */}
@@ -11131,23 +11220,42 @@
           {/* ── Radial grid layout ── */}
           <div className="fsPLayout">
 
-            {/* SVG flux overlay — hairline gradient strokes, no particles */}
+            {/* SVG flux overlay — auras d'énergie en 3 couches : halo flou statique
+               (opacité animée = composité GPU), ligne cœur, et particules en
+               écoulement (stroke-dashoffset, normalisé par pathLength) qui
+               ruissellent de chaque carte vers le cristal. Les dégradés fondent
+               la couleur identitaire de la carte vers le thème actif de l'user. */}
             <svg className="fsPSvgOvl" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:4,overflow:'visible'}} viewBox="0 0 100 100" preserveAspectRatio="none">
               <defs>
+                <filter id="fsFluxBlur" x="-60%" y="-60%" width="220%" height="220%">
+                  <feGaussianBlur stdDeviation="1.5"/>
+                </filter>
                 {FLUX.map(f => (
-                  <linearGradient key={f.key} id={`fsG${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%"   stopColor={f.c} stopOpacity=".42"/>
-                    <stop offset="55%"  stopColor={f.c} stopOpacity=".14"/>
-                    <stop offset="100%" stopColor={f.c} stopOpacity="0"/>
-                  </linearGradient>
+                  <React.Fragment key={f.key}>
+                    <linearGradient id={`fsG${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%"   stopColor={f.c} stopOpacity=".5"/>
+                      <stop offset="60%"  style={{stopColor:'var(--theme-c1)'}} stopOpacity=".26"/>
+                      <stop offset="100%" style={{stopColor:'var(--theme-c2)'}} stopOpacity=".05"/>
+                    </linearGradient>
+                    <linearGradient id={`fsGF${f.key}`} x1={f.cx} y1={f.cy} x2="50" y2="50" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%"   stopColor={f.c} stopOpacity=".95"/>
+                      <stop offset="55%"  style={{stopColor:'var(--theme-c1)'}} stopOpacity=".65"/>
+                      <stop offset="100%" style={{stopColor:'var(--theme-c2)'}} stopOpacity=".2"/>
+                    </linearGradient>
+                  </React.Fragment>
                 ))}
               </defs>
               {FLUX.map((f, i) => (
-                <g key={f.key} className="fsPFluxLine" style={{animation:`fsFluxBreathe 5s ease-in-out infinite`,animationDelay:`${-i*0.7}s`}}>
-                  {/* Single hairline stroke */}
-                  <path d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth=".4" fill="none" strokeLinecap="round"/>
-                  {/* Tiny static endpoint dot at card corner */}
-                  <circle cx={f.cx} cy={f.cy} r=".75" fill={f.c} opacity=".55"/>
+                <g key={f.key} className="fsPFluxLine" style={{'--fd':`${-i*0.7}s`}}>
+                  {/* Aura large et floue — le « volume » du flux */}
+                  <path className="fsFluxAura" d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth="3.8" fill="none" strokeLinecap="round" filter="url(#fsFluxBlur)"/>
+                  {/* Ligne cœur nette */}
+                  <path d={f.d} stroke={`url(#fsG${f.key})`} strokeWidth=".5" fill="none" strokeLinecap="round"/>
+                  {/* Particules d'énergie en écoulement vers le cristal */}
+                  <path className="fsFluxFlow" d={f.d} pathLength="100" stroke={`url(#fsGF${f.key})`} strokeWidth="1.05" fill="none" strokeLinecap="round"/>
+                  {/* Nœud source pulsant à l'angle de la carte */}
+                  <circle className="fsFluxNode" cx={f.cx} cy={f.cy} r="1" fill={f.c}/>
+                  <circle className="fsFluxNodeRing" cx={f.cx} cy={f.cy} r="1" fill="none" stroke={f.c} strokeWidth=".35"/>
                 </g>
               ))}
             </svg>
@@ -11184,7 +11292,10 @@
                   <div style={{fontSize:9,fontWeight:600,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginTop:'auto'}}>{card.eyebrow}</div>
 
                   {/* Title — typographic hero */}
-                  <div style={{fontFamily:T.display,fontWeight:600,fontSize:'clamp(15px,1.9vh,18px)',letterSpacing:'-0.02em',color:'rgba(255,255,255,.96)',position:'relative'}}>{card.title}</div>
+                  <div style={{fontFamily:T.display,fontWeight:600,fontSize:'clamp(15px,1.9vh,18px)',letterSpacing:'-0.02em',color:'rgba(255,255,255,.96)',position:'relative',display:'flex',alignItems:'center',gap:8}}>
+                    {card.title}
+                    {card.id === 'widgets' && window.FsHintDot && <window.FsHintDot />}
+                  </div>
                 </div>
               );
             })}
@@ -12216,7 +12327,7 @@
               <div style={{ fontFamily:T.display, fontSize:'clamp(30px,4vw,48px)', lineHeight:.98, fontWeight:900, letterSpacing:'-.045em' }}>Bibliotheque de widgets.</div>
               <div style={{ marginTop:10, maxWidth:610, fontSize:13, lineHeight:1.65, color:T.muted }}>Choisis d'abord le besoin, puis un widget. Une seule decision a la fois, avec un apercu clair avant d'ajouter.</div>
             </div>
-            <button onClick={() => setAppearanceOpen(v => !v)} style={{ minHeight:44, borderRadius:15, border:'1px solid rgba(var(--theme-c1-rgb),.22)', background:appearanceOpen ? 'rgba(var(--theme-c1-rgb),.14)' : 'rgba(255,255,255,.045)', color:appearanceOpen ? T.c1 : T.text, padding:'0 15px', display:'flex', alignItems:'center', gap:9, fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:appearanceOpen ? '0 14px 34px rgba(var(--theme-c1-rgb),.12)' : 'inset 0 1px 0 rgba(255,255,255,.05)' }}><span style={{ width:22, height:22, borderRadius:9, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#070810' }}>✦</span>Apparence globale</button>
+            <button onClick={() => { setAppearanceOpen(v => !v); window._fsPersoHintMark && window._fsPersoHintMark(); }} style={{ minHeight:44, borderRadius:15, border:'1px solid rgba(var(--theme-c1-rgb),.22)', background:appearanceOpen ? 'rgba(var(--theme-c1-rgb),.14)' : 'rgba(255,255,255,.045)', color:appearanceOpen ? T.c1 : T.text, padding:'0 15px', display:'flex', alignItems:'center', gap:9, fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:appearanceOpen ? '0 14px 34px rgba(var(--theme-c1-rgb),.12)' : 'inset 0 1px 0 rgba(255,255,255,.05)' }}><span style={{ width:22, height:22, borderRadius:9, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#070810' }}>✦</span>Apparence globale{window.FsHintDot && <window.FsHintDot />}</button>
           </header>
           <main className="fs-widget-studio-scroll fs-widget-studio-shell" style={{ overflow:'auto', padding:'22px 34px 34px' }}>
             <div className="fs-widget-studio-body" style={{ display:'grid', gridTemplateColumns: appearanceOpen ? '250px minmax(0,1fr) 340px' : '250px minmax(0,1fr)', gap:18, alignItems:'start' }}>
@@ -12910,6 +13021,13 @@
                   </div>
                 </Card>
 
+                {/* VITRINE DE PROFIL */}
+                {window.ShowcaseEditor && (
+                  <Card title="Vitrine de profil" desc="Expose tes plus beaux cristaux à tes amis — c'est toi qui choisis lesquels.">
+                    {React.createElement(window.ShowcaseEditor, { user })}
+                  </Card>
+                )}
+
                 {/* APPARENCE (essentiel) */}
                 <Card title="Apparence" desc="Choisis ton thème. Le reste s'adapte tout seul.">
                   {window.ThemePicker
@@ -13256,10 +13374,17 @@
       }, [widgets, user?.id, screen]);
       /* Compteur de flamme : chaque connexion au site enregistre le jour.
          La série = nombre de jours consécutifs de connexion (un jour manqué
-         la brise). Automatique — plus besoin de check-in manuel. */
+         la brise). Automatique — plus besoin de check-in manuel.
+         Le tick périodique + visibilitychange couvrent le passage de minuit
+         quand l'onglet reste ouvert (check-in idempotent). */
       _uEC(() => {
         if (screen === 'auth' || screen === 'boot' || screen === 'onboarding') return;
-        try { window._fsAutoStreakCheckIn && window._fsAutoStreakCheckIn(user); } catch (e) {}
+        const tick = () => { try { window._fsAutoStreakCheckIn && window._fsAutoStreakCheckIn(user); } catch (e) {} };
+        tick();
+        const iv = setInterval(tick, 5 * 60 * 1000);
+        const onVis = () => { if (!document.hidden) tick(); };
+        document.addEventListener('visibilitychange', onVis);
+        return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
       }, [user?.id, screen]);
       const _restoreSession = (uid) => {
         try {
@@ -14033,7 +14158,7 @@
             localStorage.setItem(k, JSON.stringify([skinned, ...prev.slice(0, 99)]));
             window.dispatchEvent(new CustomEvent('fs-crystal-update'));
           } catch(e) {}
-          /* Process gamification (streaks, FP, quests) */
+          /* Process gamification (streaks, XP, heatmap) */
           if (window._gProcessSession) {
             window._gProcessSession(user.id, { duration: crystalData.duration || 25 }, msg => {
               addToast({ message: msg, type: 'success', duration: 4000 });
@@ -14884,6 +15009,9 @@
               </div>
             </div>
 
+            {/* Vitrine de profil de l'ami — slim, rend null si absente */}
+            {window.ShowcaseStrip && React.createElement(window.ShowcaseStrip, { friendId: friend.id })}
+
             {/* Dashboard grid */}
             <div style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
               <div style={{ position:'absolute', inset:0, background: friendBg, opacity:0.72, pointerEvents:'none' }}/>
@@ -15011,6 +15139,7 @@
         try { return JSON.parse(localStorage.getItem(storageKey)||'[]'); } catch(e) { return []; }
       });
       const [reverseFriends, setReverseFriends] = React.useState([]);
+      const [showVitrine, setShowVitrine] = React.useState(false);
       const [loaded, setLoaded] = React.useState(false);
       const [email, setEmail] = React.useState('');
       const [status, setStatus] = React.useState('idle');
@@ -15417,6 +15546,26 @@
 
             {/* Friends list */}
             <div style={{ flex:1, overflowY:'auto', padding:'12px 16px 24px' }}>
+              {/* ── Ma vitrine de profil (repliable) ── */}
+              <button type="button" onClick={() => setShowVitrine(v => !v)}
+                style={{ width:'100%', display:'flex', alignItems:'center', gap:9, padding:'11px 13px', marginBottom:10,
+                  borderRadius:14, cursor:'pointer', fontFamily:T.font,
+                  border:`1px solid ${showVitrine ? c1(0.30) : 'rgba(255,255,255,0.08)'}`,
+                  background: showVitrine ? `linear-gradient(150deg,${c1(0.11)},rgba(255,255,255,0.02))` : 'rgba(255,255,255,0.03)',
+                  color: showVitrine ? T.c1 : T.text, transition:'all .2s' }}
+                aria-expanded={showVitrine}>
+                <span className="fs-showcase-facet" />
+                <span style={{ fontSize:12, fontWeight:850 }}>Ma vitrine de profil</span>
+                <span style={{ flex:1 }} />
+                <svg width={11} height={11} viewBox="0 0 16 16" fill="none" style={{ transform: showVitrine ? 'rotate(90deg)' : 'none', transition:'transform .2s' }}>
+                  <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {showVitrine && window.ShowcaseEditor && (
+                <div style={{ padding:'14px 13px', marginBottom:14, borderRadius:16, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.022)' }}>
+                  {React.createElement(window.ShowcaseEditor, { user })}
+                </div>
+              )}
               {/* ── Demandes d'ami reçues ── */}
               {requests.length > 0 && (
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
@@ -15480,6 +15629,263 @@
         </>
       );
     }
+
+    /* ── Vitrine de profil ──────────────────────────────────────────────────
+       Chaque utilisateur choisit jusqu'à 6 cristaux à exposer sur son profil
+       (façon vitrine Discord, identité LumenOS). Seule cette sélection
+       COMPACTE et assainie est publiée dans gamification.showcase — jamais
+       l'historique complet. Côté ami, on lit uniquement la clé
+       `gamification->showcase` (select ciblé PostgREST) et on ré-assainit
+       systématiquement avant rendu (types coercés, listes whitelistées,
+       longueurs plafonnées — React échappe le texte). */
+    const FS_SHOWCASE_MAX = 6;
+    function _fsShowcaseSanitize(sc) {
+      if (!sc || typeof sc !== 'object') return null;
+      const shapeOk = id => !!(window.CRYSTAL_SHAPE_DEFS || {})[id];
+      const gradOk = id => id === 'gold' || (window.CRYSTAL_GRADIENTS || []).some(g => g.id === id);
+      const items = (Array.isArray(sc.items) ? sc.items : []).slice(0, FS_SHOWCASE_MAX)
+        .map(it => (it && typeof it === 'object') ? {
+          id: String(it.id ?? '').slice(0, 48),
+          shape: shapeOk(it.shape) ? it.shape : 'diamond',
+          gradient: gradOk(it.gradient) ? it.gradient : null,
+          gold: !!it.gold,
+          duration: Math.max(0, Math.min(600, Number(it.duration) || 0)),
+          seed: Number(it.seed) || 1,
+        } : null).filter(Boolean);
+      return { enabled: sc.enabled !== false, title: String(sc.title || '').replace(/\s+/g, ' ').slice(0, 60), items };
+    }
+    /* Stockage : vérité locale dans `fs_showcase` (clé dédiée → aucune course
+       avec les écrivains de fs_widget_style). Au push cloud, le payload
+       l'injecte sous widget_style.showcase (colonne jsonb existante, déjà
+       lisible par les amis — même motif que noteMapStyle/fontPresetId).
+       La réconciliation remote→local ré-extrait la clé au login. */
+    function _fsShowcaseRead() {
+      try { return _fsShowcaseSanitize(JSON.parse(localStorage.getItem('fs_showcase') || 'null')); } catch(e) { return null; }
+    }
+    function _fsShowcaseSave(sc) {
+      try {
+        const clean = _fsShowcaseSanitize(sc);
+        if (clean) localStorage.setItem('fs_showcase', JSON.stringify(clean));
+        else localStorage.removeItem('fs_showcase');
+        /* Réécriture à l'identique de fs_widget_style : marque la clé dirty
+           et déclenche la routine de push existante (payload = style + showcase). */
+        try {
+          const ws = localStorage.getItem('fs_widget_style');
+          localStorage.setItem('fs_widget_style', ws != null ? ws : '{}');
+        } catch(_) {}
+        try { window.dispatchEvent(new CustomEvent('fs-showcase-update')); } catch(_) {}
+      } catch(e) {}
+    }
+    window._fsShowcaseSanitize = _fsShowcaseSanitize;
+    window._fsShowcaseLocal = _fsShowcaseRead;
+
+    if (!document.getElementById('fs-showcase-css')) {
+      const s = document.createElement('style');
+      s.id = 'fs-showcase-css';
+      s.textContent = `
+        .fs-showcase-strip { display:flex; align-items:center; gap:14px; padding:10px 32px;
+          border-bottom:1px solid rgba(255,255,255,0.055); flex-shrink:0; min-height:60px;
+          background:linear-gradient(90deg, rgba(var(--theme-c1-rgb),0.05), transparent 60%); }
+        .fs-showcase-strip-label { display:flex; align-items:center; gap:7px; flex-shrink:0;
+          font-size:9px; font-weight:850; letter-spacing:0.14em; text-transform:uppercase; color:rgba(248,246,252,0.42); }
+        .fs-showcase-facet { width:7px; height:7px; border-radius:1.5px; transform:rotate(45deg); flex-shrink:0;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); box-shadow:0 0 8px rgba(var(--theme-c1-rgb),0.55); }
+        .fs-showcase-strip-gems { display:flex; align-items:flex-end; gap:8px; overflow-x:auto; scrollbar-width:none; }
+        .fs-showcase-strip-gems::-webkit-scrollbar { display:none; }
+        .fs-showcase-slot { position:relative; width:44px; height:50px; border-radius:13px; flex-shrink:0;
+          display:flex; align-items:center; justify-content:center;
+          background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+          border:1px solid rgba(255,255,255,0.08); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
+        .fs-showcase-slot::after { content:''; position:absolute; left:18%; right:18%; bottom:3px; height:4px; border-radius:50%;
+          background:radial-gradient(ellipse, rgba(var(--theme-c1-rgb),0.4), transparent 72%); filter:blur(2px); }
+        .fs-showcase-slot.gold { border-color:rgba(255,211,106,0.34);
+          background:linear-gradient(180deg, rgba(255,211,106,0.11), rgba(255,255,255,0.02));
+          box-shadow:0 0 18px rgba(255,202,75,0.16), inset 0 1px 0 rgba(255,255,255,0.10); }
+        .fs-showcase-slot.gold::after { background:radial-gradient(ellipse, rgba(255,202,75,0.5), transparent 72%); }
+        .fs-showcase-strip-title { font-size:11.5px; color:rgba(248,246,252,0.55); font-style:italic;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+
+        .fs-showcase-editor { display:flex; flex-direction:column; gap:14px; }
+        .fs-showcase-ed-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .fs-showcase-count { font-size:10px; font-weight:800; padding:2px 9px; border-radius:99px;
+          background:rgba(var(--theme-c1-rgb),0.10); border:1px solid rgba(var(--theme-c1-rgb),0.20);
+          color:var(--theme-c1); font-variant-numeric:tabular-nums; }
+        .fs-showcase-toggle { position:relative; width:40px; height:22px; border-radius:99px; border:1px solid rgba(255,255,255,0.12);
+          background:rgba(255,255,255,0.06); cursor:pointer; transition:all .22s; flex-shrink:0; padding:0; }
+        .fs-showcase-toggle.on { background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); border-color:transparent;
+          box-shadow:0 4px 14px rgba(var(--theme-c1-rgb),0.35); }
+        .fs-showcase-toggle i { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+          background:#fff; transition:transform .22s cubic-bezier(.34,1.56,.64,1); }
+        .fs-showcase-toggle.on i { transform:translateX(18px); }
+        .fs-showcase-preview { border-radius:16px; border:1px solid rgba(255,255,255,0.07); overflow:hidden;
+          background:rgba(0,0,0,0.16); }
+        .fs-showcase-preview .fs-showcase-strip { padding:10px 16px; border-bottom:none; }
+        .fs-showcase-tagline { width:100%; height:38px; border-radius:12px; padding:0 12px; box-sizing:border-box;
+          background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.08); outline:none;
+          color:var(--mineral-text); font-size:12px; }
+        .fs-showcase-tagline:focus { border-color:rgba(var(--theme-c1-rgb),0.45); }
+        .fs-showcase-picker { display:grid; grid-template-columns:repeat(auto-fill, minmax(62px, 1fr)); gap:8px; }
+        .fs-showcase-tile { position:relative; border-radius:14px; border:1px solid rgba(255,255,255,0.07);
+          background:rgba(255,255,255,0.028); cursor:pointer; padding:8px 4px 6px;
+          display:flex; flex-direction:column; align-items:center; gap:4px; transition:all .2s var(--mineral-ease); }
+        .fs-showcase-tile:hover { transform:translateY(-2px); background:rgba(255,255,255,0.055); }
+        .fs-showcase-tile.sel { border-color:rgba(var(--theme-c1-rgb),0.55);
+          background:linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.13), rgba(255,255,255,0.02));
+          box-shadow:0 0 0 1px rgba(var(--theme-c1-rgb),0.28), 0 8px 20px rgba(var(--theme-c1-rgb),0.12); }
+        .fs-showcase-tile.dim { opacity:.4; cursor:not-allowed; }
+        .fs-showcase-order { position:absolute; top:4px; right:4px; width:15px; height:15px; border-radius:50%;
+          display:grid; place-items:center; font-size:9px; font-weight:900; color:#070810;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); }
+        .fs-showcase-tile-dur { font-size:8px; font-weight:800; color:rgba(248,246,252,0.4); }
+        @media (max-width:640px) {
+          .fs-showcase-strip { padding:9px 16px; }
+          .fs-showcase-picker { grid-template-columns:repeat(auto-fill, minmax(56px, 1fr)); }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const ShowcaseGem = ({ item, size = 32 }) => {
+      const isGold = item.gold || item.gradient === 'gold';
+      const sz = size + Math.min((item.duration || 25) / 90, 1) * 8 + (isGold ? 4 : 0);
+      return window.ShapedCrystalGem
+        ? React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 })
+        : null;
+    };
+
+    /* Rendu interne de la vitrine (partagé aperçu propriétaire / vue ami). */
+    const ShowcaseRow = ({ sc }) => (
+      <div className="fs-showcase-strip">
+        <div className="fs-showcase-strip-label"><span className="fs-showcase-facet" />Vitrine</div>
+        <div className="fs-showcase-strip-gems">
+          {sc.items.map((it, i) => (
+            <div key={it.id || i} className={'fs-showcase-slot' + ((it.gold || it.gradient === 'gold') ? ' gold' : '')}>
+              <ShowcaseGem item={it} />
+            </div>
+          ))}
+        </div>
+        {sc.title ? <div className="fs-showcase-strip-title">« {sc.title} »</div> : null}
+      </div>
+    );
+
+    /* Vue ami : fetch ciblé de la seule clé showcase, ré-assainie avant rendu.
+       Rend null si vitrine absente/désactivée/vide → zéro encombrement. */
+    function ShowcaseStrip({ friendId }) {
+      const [sc, setSc] = React.useState(null);
+      React.useEffect(() => {
+        let dead = false;
+        (async () => {
+          try {
+            if (!window._fsSb || !friendId) return;
+            const { data } = await window._fsSb.from('user_data')
+              .select('showcase:widget_style->showcase')
+              .eq('user_id', friendId)
+              .maybeSingle();
+            if (!dead) setSc(_fsShowcaseSanitize(data?.showcase));
+          } catch(e) {}
+        })();
+        return () => { dead = true; };
+      }, [friendId]);
+      if (!sc || !sc.enabled || !sc.items.length) return null;
+      return <ShowcaseRow sc={sc} />;
+    }
+
+    /* Éditeur propriétaire : sélection de cristaux, tagline, activation.
+       Sauvegarde immédiate dans le blob gamification (sync cloud existante). */
+    function ShowcaseEditor({ user }) {
+      const ckey = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
+      const readCrystals = () => { try { return (JSON.parse(localStorage.getItem(ckey) || '[]') || []).slice(0, 60); } catch(e) { return []; } };
+      const [sc, setSc] = React.useState(() => _fsShowcaseRead() || { enabled: true, title: '', items: [] });
+      const [crystals, setCrystals] = React.useState(readCrystals);
+      React.useEffect(() => {
+        const h = () => setCrystals(readCrystals());
+        window.addEventListener('fs-crystal-update', h);
+        return () => window.removeEventListener('fs-crystal-update', h);
+      }, [ckey]);
+      /* Deux éditeurs peuvent être montés en même temps (Paramètres + Amis) :
+         on se resynchronise sur l'événement partagé. */
+      React.useEffect(() => {
+        const h = () => setSc(prev => {
+          const fresh = _fsShowcaseRead() || { enabled: true, title: '', items: [] };
+          return JSON.stringify(fresh) === JSON.stringify(prev) ? prev : fresh;
+        });
+        window.addEventListener('fs-showcase-update', h);
+        return () => window.removeEventListener('fs-showcase-update', h);
+      }, []);
+      /* Commit fonctionnel : robuste aux clics rapides (pas d'écrasement
+         d'état par closure périmée). Sauvegarde à chaque transition. */
+      const commit = updater => setSc(prev => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        _fsShowcaseSave(next);
+        return next;
+      });
+      const isGoldC = c => c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+      const toCompact = c => ({
+        id: String(c.id), shape: c.crystalShape || 'diamond',
+        gradient: isGoldC(c) ? 'gold' : (c.crystalGradient || null),
+        gold: isGoldC(c),
+        duration: Math.min(600, Number(c.duration) || 25),
+        seed: Number(c.seed) || 1,
+      });
+      const selIds = sc.items.map(i => i.id);
+      const toggleCrystal = c => {
+        const id = String(c.id);
+        commit(prev => {
+          const has = prev.items.some(i => i.id === id);
+          if (has) return { ...prev, items: prev.items.filter(i => i.id !== id) };
+          if (prev.items.length >= FS_SHOWCASE_MAX) return prev;
+          return { ...prev, items: [...prev.items, toCompact(c)] };
+        });
+      };
+      return (
+        <div className="fs-showcase-editor">
+          <div className="fs-showcase-ed-head">
+            <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+              <span className="fs-showcase-facet" />
+              <span style={{ fontSize:12.5, fontWeight:850, color:T.text }}>Ma vitrine</span>
+              <span className="fs-showcase-count">{sc.items.length}/{FS_SHOWCASE_MAX}</span>
+            </div>
+            <button type="button" className={'fs-showcase-toggle' + (sc.enabled ? ' on' : '')}
+              onClick={() => commit(p => ({ ...p, enabled: !p.enabled }))}
+              aria-pressed={sc.enabled} aria-label={sc.enabled ? 'Désactiver la vitrine' : 'Activer la vitrine'}>
+              <i />
+            </button>
+          </div>
+          {sc.items.length > 0 && sc.enabled && (
+            <div className="fs-showcase-preview"><ShowcaseRow sc={sc} /></div>
+          )}
+          <input className="fs-showcase-tagline" value={sc.title} maxLength={60}
+            onChange={e => { const v = e.target.value.slice(0, 60); commit(p => ({ ...p, title: v })); }}
+            placeholder="Une phrase pour ta vitrine (optionnel)" />
+          {crystals.length === 0 ? (
+            <div style={{ fontSize:12, color:T.muted, lineHeight:1.6, padding:'6px 2px' }}>
+              Forge ton premier cristal en session focus — il apparaîtra ici, prêt à être exposé.
+            </div>
+          ) : (
+            <div className="fs-showcase-picker">
+              {crystals.map(c => {
+                const id = String(c.id);
+                const sel = selIds.includes(id);
+                const full = !sel && sc.items.length >= FS_SHOWCASE_MAX;
+                const durLabel = (c.duration || 0) < 1 ? `${Math.round((c.duration || 0) * 60)}s` : `${c.duration}min`;
+                return (
+                  <button type="button" key={id} className={'fs-showcase-tile' + (sel ? ' sel' : '') + (full ? ' dim' : '')}
+                    onClick={() => !full && toggleCrystal(c)}
+                    aria-pressed={sel} title={sel ? 'Retirer de la vitrine' : full ? 'Vitrine pleine (6 max)' : 'Exposer ce cristal'}>
+                    {sel && <span className="fs-showcase-order">{selIds.indexOf(id) + 1}</span>}
+                    <ShowcaseGem item={toCompact(c)} size={26} />
+                    <span className="fs-showcase-tile-dur">{isGoldC(c) ? 'Doré · ' : ''}{durLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    window.ShowcaseEditor = ShowcaseEditor;
+    window.ShowcaseStrip = ShowcaseStrip;
 
     window.FriendsPanel = FriendsPanel;
     window.FriendCard = FriendCard;
@@ -18070,8 +18476,6 @@
         to   { opacity:1; transform:translateX(0)     scale(1);    }
       }
       @keyframes barGrow    { from { transform:scaleY(0) } to { transform:scaleY(1) } }
-      @keyframes questDone  { 0%{transform:scale(1)} 40%{transform:scale(1.06)} 100%{transform:scale(1)} }
-      @keyframes fpCount    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
       .fs-gamif-panel {
         position:fixed; left:106px; top:28px; bottom:28px; width:376px;
         background:rgba(6,5,16,0.97);
@@ -18089,28 +18493,6 @@
         color:rgba(248,246,252,0.3); margin-bottom:10px; padding-top:18px;
         border-top:1px solid rgba(255,255,255,0.05); display:block;
       }
-      .gf-quest-card {
-        display:flex; flex-direction:column; gap:9px;
-        padding:14px 16px; border-radius:18px;
-        background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
-        margin-bottom:8px; transition:all 0.22s ease; position:relative; overflow:hidden;
-      }
-      .gf-quest-card.done { opacity:0.5; border-color:rgba(255,255,255,0.04); }
-      .gf-quest-card:not(.done):hover { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.13); }
-      .gf-quest-card.done::after {
-        content:''; position:absolute; inset:0;
-        background:rgba(74,222,128,0.04);
-      }
-      .gf-skin-card {
-        display:flex; flex-direction:column; align-items:center; gap:10px;
-        padding:16px 10px 14px; border-radius:22px;
-        background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07);
-        cursor:pointer; position:relative; overflow:hidden;
-        transition:all 0.28s cubic-bezier(0.34,1.56,0.64,1);
-      }
-      .gf-skin-card:hover:not(.locked) { background:rgba(255,255,255,0.065); transform:translateY(-5px) scale(1.03); }
-      .gf-skin-card.active-skin { border-width:1.5px; }
-      .gf-skin-card.locked { cursor:not-allowed; opacity:0.55; }
       .heat-cell {
         width:11px; height:11px; border-radius:3px; flex-shrink:0;
         transition:transform 0.15s, opacity 0.15s;
@@ -18148,24 +18530,12 @@
     { id:'void',     name:'Vide',          price:0,   unlockType:'streak21', a:'#7c4dff', b:'#b388ff', c:'#120030', glow:'rgba(124,77,255,0.88)', streak:21 },
   ];
 
-  window.QUEST_DEFS = {
-    daily: [
-      { id:'d_crystals', label:'Cristallise 3 gemmes',  desc:"Complète 3 sessions focus aujourd'hui", target:3,   key:'sessions', fp:50,  xp:100 },
-      { id:'d_marathon',  label:'Marathon de focus',      desc:'Une session de 45 min ou plus',          target:1,   key:'marathon', fp:80,  xp:150 },
-      { id:'d_early',     label:'Lève-tôt',               desc:'Complète une session avant 9h00',        target:1,   key:'early',    fp:60,  xp:120 },
-    ],
-    weekly: [
-      { id:'w_5h',   label:'Alchimiste du temps',  desc:'Forge 5 heures de cristaux cette semaine',   target:300, key:'minutes', fp:300, xp:500  },
-      { id:'w_7days',label:'Régularité parfaite',  desc:'7 sessions en 7 jours → gemme légendaire',   target:7,   key:'days',    fp:500, xp:1000 },
-    ],
-  };
-
   const XP_TH = [0,100,250,500,1000,2000,3500,5500,8500,13000,20000];
   window._gLevel  = xp => { for (let i=XP_TH.length-1;i>=0;i--) if(xp>=XP_TH[i]) return i+1; return 1; };
   window._gLvlPct = xp => { const l=window._gLevel(xp),ci=l-1,curr=XP_TH[ci]||0,nxt=XP_TH[ci+1]||curr*1.5; return (xp-curr)/(nxt-curr); };
   /* Déverrouillage progressif de la gamification pour les nouveaux venus.
      Palier 0 (0 session) → seulement l'essentiel. 1 (≥1 cristal) → Évolution
-     + badges Série/Niveau. 2 (≥3 cristaux) → Quêtes + Boutique.
+     + badges Série/Niveau.
      Monotone (les cristaux ne diminuent jamais) et « fail-open » (tout ouvert
      en cas d'erreur). Les utilisateurs déjà engagés (XP/FP acquis) démarrent
      directement au palier 2 pour ne rien leur retirer. */
@@ -18184,12 +18554,9 @@
   };
   window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
-  window._gMul    = (d,w) => w>=1?3.0:d>=7?2.0:d>=3?1.5:1.0;
-
   function _gDefault() {
     return { streaks:{daily:0,weekly:0,lastDate:null,weekStart:null,jokers:1,jokersUsed:0},
-      fp:0, xp:0, heatmap:{}, fpmap:{}, unlocks:['default'], activeSkin:'default',
-      quests:{daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}} };
+      xp:0, heatmap:{}, unlocks:['default'], activeSkin:'default' };
   }
   function _gPrevDateKey(key) {
     const [y,m,d] = String(key || '').split('-').map(Number);
@@ -18256,15 +18623,8 @@
     }
   };
 
-  function _gResetQuests(g) {
-    const today=window._gToday(),mon=window._gMon();
-    if(!g.quests) g.quests={daily:[],weekly:[],dailyReset:null,weeklyReset:null,weekSessions:{}};
-    if(g.quests.dailyReset!==today){ g.quests.daily=window.QUEST_DEFS.daily.map(q=>({id:q.id,progress:0,completed:false})); g.quests.dailyReset=today; }
-    if(g.quests.weeklyReset!==mon){ g.quests.weekly=window.QUEST_DEFS.weekly.map(q=>({id:q.id,progress:0,completed:false})); g.quests.weeklyReset=mon; g.quests.weekSessions={}; }
-  }
-
   window._gProcessSession = (uid, session, onToast) => {
-    const g=window._gLoad(uid), today=window._gToday(), mon=window._gMon(), dur=session?.duration||0, hr=new Date().getHours();
+    const g=window._gLoad(uid), today=window._gToday(), mon=window._gMon(), dur=session?.duration||0;
     const yest=(()=>{ const d=new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
     /* streaks */
     if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?Number(g.streaks.daily||0)+1:1; g.streaks.lastDate=today; }
@@ -18275,33 +18635,16 @@
       if (!legacy.includes(today)) localStorage.setItem('fs_streak', JSON.stringify([...legacy, today]));
       window.dispatchEvent(new CustomEvent('fs-streak-update'));
     } catch(e) {}
-    /* fp */
-    const mul=window._gMul(g.streaks.daily,g.streaks.weekly), earned=Math.round(dur*mul);
-    g.fp=(g.fp||0)+earned; g.xp=(g.xp||0)+dur*2;
-    if(!g.heatmap)g.heatmap={}; if(!g.fpmap)g.fpmap={};
+    /* xp + heatmap */
+    g.xp=(g.xp||0)+dur*2;
+    if(!g.heatmap)g.heatmap={};
     g.heatmap[today]=(g.heatmap[today]||0)+dur;
-    g.fpmap[today]=(g.fpmap[today]||0)+earned;
-    /* quests */
-    _gResetQuests(g);
-    g.quests.daily.forEach(q=>{
-      if(q.completed)return; const def=window.QUEST_DEFS.daily.find(d=>d.id===q.id); if(!def)return;
-      if(q.id==='d_crystals') q.progress=Math.min(q.progress+1,def.target);
-      if(q.id==='d_marathon'&&dur>=45) q.progress=1;
-      if(q.id==='d_early'&&hr<9) q.progress=1;
-      if(q.progress>=def.target&&!q.completed){ q.completed=true; g.fp+=def.fp; g.xp+=def.xp; onToast&&onToast(`✦ Quête : ${def.label} (+${def.fp} FP)`); }
-    });
-    g.quests.weekly.forEach(q=>{
-      if(q.completed)return; const def=window.QUEST_DEFS.weekly.find(d=>d.id===q.id); if(!def)return;
-      if(q.id==='w_5h') q.progress=Math.min((q.progress||0)+dur,def.target);
-      if(q.id==='w_7days'){ g.quests.weekSessions[today]=true; q.progress=Object.keys(g.quests.weekSessions).length; }
-      if(q.progress>=def.target&&!q.completed){ q.completed=true; g.fp+=def.fp; g.xp+=def.xp; onToast&&onToast(`🌟 Quête hebdo : ${def.label} (+${def.fp} FP)`); }
-    });
     /* skin unlocks */
     if(g.streaks.daily>=7  &&!g.unlocks.includes('obsidian')) g.unlocks.push('obsidian');
     if(g.streaks.daily>=14 &&!g.unlocks.includes('aurora'))   g.unlocks.push('aurora');
     if(g.streaks.daily>=21 &&!g.unlocks.includes('void'))     g.unlocks.push('void');
     window._gSave(uid,g);
-    return { g, earned, mul };
+    return { g };
   };
 
   /* ── useGamif hook ─────────────────────────────────────────── */
@@ -18350,7 +18693,6 @@
     };
 
     const flameScale = Math.min((streaks.daily||0) / 30, 1);
-    const mulLabel = { 1.0:'×1', 1.5:'×1.5', 2.0:'×2', 3.0:'×3' }[window._gMul(streaks.daily||0, streaks.weekly||0)] || '×1';
 
     const _streaksBody = (
           <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
@@ -18376,10 +18718,6 @@
                   {streaks.daily||0}
                 </div>
                 <div style={{fontSize:12,color:'rgba(255,210,125,0.65)',fontWeight:600,marginTop:4}}>jours consécutifs</div>
-              </div>
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,padding:'10px 14px',borderRadius:16,background:'rgba(255,210,125,0.12)',border:'1px solid rgba(255,210,125,0.22)'}}>
-                <div style={{fontSize:18,fontWeight:800,color:'#ffd27d',fontFamily:T.mono}}>{mulLabel}</div>
-                <div style={{fontSize:8,color:'rgba(255,210,125,0.6)',fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase'}}>FP/min</div>
               </div>
             </div>
 
@@ -18459,180 +18797,8 @@
     );
   }
   window.StreaksPanel = StreaksPanel;
-
   /* ─────────────────────────────────────────────────────────────
-     2. QUESTS PANEL
-  ───────────────────────────────────────────────────────────── */
-  function QuestsPanel({ open, onClose, user, embed = false }) {
-    const [g] = useGamif(user?.id);
-    if (!embed && !open) return null;
-    const { quests={}, xp=0, fp=0 } = g;
-    const lvl = window._gLevel(xp), lvlPct = window._gLvlPct(xp);
-    const dq = quests.daily||window.QUEST_DEFS.daily.map(q=>({id:q.id,progress:0,completed:false}));
-    const wq = quests.weekly||window.QUEST_DEFS.weekly.map(q=>({id:q.id,progress:0,completed:false}));
-    const pendingCount = [...dq,...wq].filter(q=>!q.completed).length;
-
-    const QuestCard = ({ q, defs }) => {
-      const def = defs.find(d=>d.id===q.id); if(!def)return null;
-      const pct = Math.min(q.progress/def.target,1);
-      const accentColor = q.completed ? T.green : T.c1;
-      return (
-        <div className={`gf-quest-card${q.completed?' done':''}`} style={{animationDuration:'0.3s',animation:q.completed?'questDone 0.4s ease':undefined}}>
-          {/* Completion glow sweep */}
-          {q.completed&&<div style={{position:'absolute',inset:0,background:`linear-gradient(90deg,transparent,rgba(74,222,128,0.06),transparent)`,pointerEvents:'none'}}/>}
-          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
-            <div style={{flex:1}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                <div style={{width:5,height:5,borderRadius:'50%',background:accentColor,boxShadow:`0 0 6px ${accentColor}`,flexShrink:0}}/>
-                <span style={{fontSize:13,fontWeight:700,color:q.completed?T.muted:T.text,letterSpacing:'-0.01em'}}>{def.label}</span>
-              </div>
-              <div style={{fontSize:11,color:T.muted,lineHeight:1.5,paddingLeft:13}}>{def.desc}</div>
-            </div>
-            {q.completed
-              ? <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:28,height:28,borderRadius:'50%',background:'rgba(74,222,128,0.15)',border:'1px solid rgba(74,222,128,0.35)',flexShrink:0}}>
-                  <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke={T.green} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
-              : <div style={{fontSize:11,fontWeight:700,color:T.muted,flexShrink:0}}>{q.progress}/{def.target}</div>
-            }
-          </div>
-          {/* Progress bar */}
-          <div style={{height:3,borderRadius:99,background:'rgba(255,255,255,0.07)',overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${pct*100}%`,background:q.completed?T.green:`linear-gradient(90deg,${T.c1},${accentColor})`,borderRadius:99,boxShadow:q.completed?`0 0 8px ${T.green}55`:`0 0 8px ${T.c1}55`,transition:'width 0.9s cubic-bezier(0.4,0,0.2,1)'}}/>
-          </div>
-          {/* Rewards */}
-          <div style={{display:'flex',gap:6}}>
-            <span className="fp-badge">+{def.fp} FP</span>
-            <span className="xp-badge">+{def.xp} XP</span>
-          </div>
-        </div>
-      );
-    };
-
-    const _questsInner = (
-      <>
-        <div style={{padding:'0 20px 6px',flexShrink:0}}>
-          <div style={{padding:'14px 16px',borderRadius:18,background:'rgba(165,184,255,0.06)',border:'1px solid rgba(165,184,255,0.14)',marginBottom:2}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
-              <div style={{display:'flex',alignItems:'baseline',gap:8}}>
-                <span style={{fontFamily:T.mono,fontSize:28,fontWeight:800,color:'#a5b8ff',letterSpacing:'-0.04em',lineHeight:1}}>Niv.{lvl}</span>
-                <span style={{fontSize:11,color:T.muted}}>· {xp.toLocaleString('fr')} XP</span>
-              </div>
-              <span style={{fontSize:10,color:T.muted}}>{Math.round(lvlPct*100)}%</span>
-            </div>
-            <div style={{height:5,borderRadius:99,background:'rgba(255,255,255,0.07)',overflow:'hidden'}}>
-              <div style={{height:'100%',width:`${lvlPct*100}%`,background:'linear-gradient(90deg,#a5b8ff,#c084fc)',borderRadius:99,boxShadow:'0 0 10px rgba(165,184,255,0.5)',transition:'width 1s ease'}}/>
-            </div>
-          </div>
-        </div>
-        <div style={{flex:1,overflowY:'auto',padding:'0 20px 28px'}}>
-          <span className="gf-sec-title">Quêtes du jour</span>
-          {dq.map(q => <QuestCard key={q.id} q={q} defs={window.QUEST_DEFS.daily}/>)}
-          <span className="gf-sec-title">Quêtes hebdomadaires</span>
-          {wq.map(q => <QuestCard key={q.id} q={q} defs={window.QUEST_DEFS.weekly}/>)}
-        </div>
-      </>
-    );
-    if (embed) return _questsInner;
-    return (
-      <>
-        <div className="fs-gamif-backdrop" onClick={onClose}/>
-        <div className="fs-gamif-panel">
-          <GfHeader title="Quêtes" sub={`${pendingCount} en cours`} onClose={onClose}/>
-          {_questsInner}
-        </div>
-      </>
-    );
-  }
-  window.QuestsPanel = QuestsPanel;
-
-  /* ─────────────────────────────────────────────────────────────
-     3. STORE PANEL  (Focus Points Economy)
-  ───────────────────────────────────────────────────────────── */
-  function StorePanel({ open, onClose, user, embed = false }) {
-    const [g, setG] = useGamif(user?.id);
-    const { addToast } = window.useToast ? window.useToast() : { addToast:()=>{} };
-    if (!embed && !open) return null;
-    const { fp=0, unlocks=[], activeSkin='default' } = g;
-
-    const buy = (skin) => {
-      if (unlocks.includes(skin.id) || fp < skin.price) return;
-      const ng = { ...g, fp: fp - skin.price, unlocks: [...unlocks, skin.id] };
-      setG(ng);
-      addToast({ message: `💎 ${skin.name} débloquée !`, type: 'success', duration: 3000 });
-    };
-
-    const equip = (skinId) => {
-      const ng = { ...g, activeSkin: skinId };
-      setG(ng);
-    };
-
-    const SkinCard = ({ skin, i }) => {
-      const owned = unlocks.includes(skin.id);
-      const equipped = activeSkin === skin.id;
-      const canBuy = skin.price > 0 && !owned && fp >= skin.price;
-      const locked = !owned && (skin.unlockType === 'fp' ? fp < skin.price : !owned);
-      return (
-        <div className={`gf-skin-card${equipped?' active-skin':''}${locked&&!canBuy?' locked':''}`}
-          style={{animationDelay:`${i*0.04}s`,borderColor:equipped?skin.a:'rgba(255,255,255,0.07)',boxShadow:equipped?`0 0 24px ${skin.glow},0 4px 16px rgba(0,0,0,0.4)`:undefined}}
-          onClick={()=>owned?equip(skin.id):canBuy?buy(skin):undefined}>
-          {equipped&&<div style={{position:'absolute',top:8,right:8,width:8,height:8,borderRadius:'50%',background:skin.a,boxShadow:`0 0 8px ${skin.a}`}}/>}
-          {skin.rainbow&&owned&&<div style={{position:'absolute',inset:0,borderRadius:22,background:'linear-gradient(135deg,rgba(255,0,128,0.06),rgba(124,77,255,0.06),rgba(0,188,212,0.06),rgba(16,185,129,0.06))',pointerEvents:'none'}}/>}
-          <window.CrystalGem progress={0.88} size={52} skin={skin.id}/>
-          <div style={{textAlign:'center',width:'100%'}}>
-            <div style={{fontSize:11,fontWeight:700,color:skin.b,letterSpacing:'-0.01em'}}>{skin.name}</div>
-            <div style={{fontSize:9,color:T.muted,marginTop:3}}>
-              {owned
-                ? equipped ? <span style={{color:skin.a}}>✦ Équipé</span> : <span style={{color:T.muted}}>Cliquer pour équiper</span>
-                : skin.price > 0
-                  ? <span style={{color:fp>=skin.price?'#ffd27d':T.muted}}>{skin.price} FP</span>
-                  : <span style={{color:T.muted}}>{skin.streak}j de streak</span>
-              }
-            </div>
-          </div>
-          {!owned&&skin.price>0&&fp>=skin.price&&(
-            <div style={{position:'absolute',bottom:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${skin.a},transparent)`,opacity:0.7}}/>
-          )}
-        </div>
-      );
-    };
-
-    const _storeInner = (
-      <>
-        <div style={{padding:'0 20px 16px',flexShrink:0}}>
-            {/* FP balance */}
-            <div style={{display:'flex',alignItems:'center',gap:16,padding:'16px 20px',borderRadius:20,background:'rgba(255,210,125,0.07)',border:'1px solid rgba(255,210,125,0.2)'}}>
-              <svg width={28} height={28} viewBox="0 0 24 24" fill="none">
-                <polygon points="12,2 15.5,8.5 22,9.5 17,14.5 18.5,21 12,17.5 5.5,21 7,14.5 2,9.5 8.5,8.5" stroke="#ffd27d" strokeWidth={1.5} fill="rgba(255,210,125,0.15)" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <div>
-                <div style={{fontFamily:T.mono,fontSize:28,fontWeight:800,color:'#ffd27d',lineHeight:1,letterSpacing:'-0.03em',animation:'fpCount 0.4s ease both'}}>{fp.toLocaleString('fr')}</div>
-                <div style={{fontSize:10,color:'rgba(255,210,125,0.6)',fontWeight:600,marginTop:2}}>Focus Points disponibles</div>
-              </div>
-            </div>
-          </div>
-          <div style={{flex:1,overflowY:'auto',padding:'0 16px 24px'}}>
-            <span className="gf-sec-title" style={{paddingLeft:4}}>Cristaux disponibles</span>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10}}>
-              {(window.SKINS||[]).map((skin,i) => <SkinCard key={skin.id} skin={skin} i={i}/>)}
-            </div>
-          </div>
-        </>
-    );
-    if (embed) return _storeInner;
-    return (
-      <>
-        <div className="fs-gamif-backdrop" onClick={onClose}/>
-        <div className="fs-gamif-panel">
-          <GfHeader title="Boutique" onClose={onClose}/>
-          {_storeInner}
-        </div>
-      </>
-    );
-  }
-  window.StorePanel = StorePanel;
-
-  /* ─────────────────────────────────────────────────────────────
-     4. PROGRESS SCREEN  (Heatmap · FP Chart · Vault)
+     4. PROGRESS SCREEN  (Heatmap · Vault)
   ───────────────────────────────────────────────────────────── */
   function FocusHeatmap({ heatmap={}, ratings={} }) {
     const RATING_C = (window.PROD_RATING_META) || { red:{c:'#fb7185'}, yellow:{c:'#fbbf24'}, green:{c:'#4ade80'} };
@@ -18722,36 +18888,10 @@
     );
   }
 
-  function FPBarChart({ fpmap={} }) {
-    const days = [];
-    for (let i=6; i>=0; i--) {
-      const d = new Date(); d.setDate(d.getDate()-i);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      const labels = ['D','L','M','M','J','V','S'];
-      days.push({ k, fp: fpmap[k]||0, label: labels[d.getDay()] });
-    }
-    const maxFP = Math.max(...days.map(d=>d.fp), 1);
-    return (
-      <div style={{display:'flex',gap:8,alignItems:'flex-end',height:80}}>
-        {days.map((day,i) => {
-          const h = Math.max((day.fp/maxFP)*72, day.fp>0?4:1);
-          const isToday = i===6;
-          return (
-            <div key={i} className="bar-col">
-              {day.fp>0&&<div style={{fontSize:8,color:T.muted,marginBottom:3}}>{day.fp}</div>}
-              <div className="bar-fill" style={{height:h,background:isToday?'linear-gradient(180deg,#ffd27d,rgba(255,210,125,0.4))':'rgba(255,255,255,0.1)',boxShadow:isToday?'0 0 12px rgba(255,210,125,0.4)':undefined,animationDelay:`${i*0.05}s`}}/>
-              <div style={{fontSize:9,color:isToday?'#ffd27d':T.muted,fontWeight:isToday?700:400,marginTop:5}}>{day.label}</div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
   function ProgressScreen({ onNavigate, user, embedded = false }) {
     const [g] = useGamif(user?.id);
     const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
-    const { heatmap={}, fpmap={}, fp=0, xp=0 } = g;
+    const { heatmap={} } = g;
     /* Notes de productivité quotidiennes (rouge/jaune/vert) — colorent la carte */
     const [ratings, setRatings] = React.useState(() => window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
     React.useEffect(() => {
@@ -18761,7 +18901,7 @@
       return () => window.removeEventListener('fs-prod-rating-update', sync);
     }, [user?.id]);
     const totalMin = Object.values(heatmap).reduce((a,b)=>a+b,0);
-    const totalFP  = Object.values(fpmap).reduce((a,b)=>a+b,0);
+    const bestStreak = Number(g.streaks?.daily || 0);
     const hasActivity = crystals.length > 0 || totalMin > 0 || Object.keys(ratings).length > 0;
     const goSession = () => { if (onNavigate) onNavigate('session'); else { try { location.hash = '#session'; } catch (e) {} } };
 
@@ -18800,7 +18940,7 @@
             {[
               { label:'Cristaux forgés', value:crystals.length, unit:'gemmes' },
               { label:'Temps total',     value:Math.round(totalMin/60*10)/10, unit:'heures' },
-              { label:'FP gagnés',       value:totalFP.toLocaleString('fr'), unit:'points' },
+              { label:'Série en cours',  value:bestStreak, unit:'jours' },
             ].map((s,i)=>(
               <div key={i} style={{padding:'16px 18px',borderRadius:20,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)'}}>
                 <div style={{fontFamily:T.mono,fontSize:24,fontWeight:800,color:T.text,letterSpacing:'-0.03em',lineHeight:1}}>{s.value}</div>
@@ -18852,7 +18992,7 @@
   window.ProgressScreen = ProgressScreen;
 
   /* ─────────────────────────────────────────────────────────────
-     ÉVOLUTION SCREEN — Régularité · Quêtes · Boutique · Progression
+     ÉVOLUTION SCREEN — Régularité · Progression
   ───────────────────────────────────────────────────────────── */
   function EvolutionScreen({ user, initialTab = null }) {
     const readInitialTab = () => {
@@ -18862,26 +19002,16 @@
     const [tab, setTab] = React.useState(readInitialTab);
     React.useEffect(() => setTab(readInitialTab()), [initialTab]);
     const [g] = useGamif(user?.id);
-    const { fp=0, xp=0, streaks={}, quests={} } = g;
+    const { xp=0, streaks={} } = g;
     const lvl = window._gLevel(xp);
-    const pending = [...(quests.daily||[]),...(quests.weekly||[])].filter(q=>!q.completed).length;
-    const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
-    const totalMin = Object.values(g.heatmap||{}).reduce((a,b)=>a+b,0);
 
-    /* Déverrouillage progressif : Quêtes + Boutique au palier 2 seulement.
-       "Progression" renommé "Vue d'ensemble" (le concept parent est Évolution). */
-    const stage = window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2;
     const TABS = [
       { id:'streaks',     label:'Régularité', meta:`${streaks.daily||0} jour${(streaks.daily||0)>1?'s':''}` },
-      ...(stage >= 2 ? [
-        { id:'quests', label:'Quêtes', meta:`${pending} en cours` },
-        { id:'store',  label:'Boutique', meta:`${fp.toLocaleString('fr')} FP` },
-      ] : []),
       { id:'progression', label:"Vue d'ensemble", meta:`Niv. ${lvl}` },
     ];
-    /* Si l'onglet courant est verrouillé (accès direct par hash), on retombe
-       sur un onglet visible. */
-    React.useEffect(() => { if (!TABS.some(t => t.id === tab)) setTab('streaks'); }, [stage, tab]);
+    /* Ancien onglet supprimé (quêtes/boutique) mémorisé dans le hash ou le
+       localStorage → on retombe sur un onglet visible. */
+    React.useEffect(() => { if (!TABS.some(t => t.id === tab)) setTab('streaks'); }, [tab]);
 
     return (
       <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
@@ -18890,14 +19020,13 @@
             <div style={{minWidth:0}}>
               <div style={{fontSize:9,fontWeight:800,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Évolution</div>
               <div className="fs-evo-title" style={{fontFamily:T.display,fontWeight:800,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Évolution</div>
-              <div className="fs-evo-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:520,lineHeight:1.55}}>Régularité, quêtes, boutique et progression réunies dans un seul espace.</div>
+              <div className="fs-evo-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:520,lineHeight:1.55}}>Régularité et progression réunies dans un seul espace.</div>
             </div>
             <div className="fs-evo-badges" style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
-              <span className="fp-badge">{fp.toLocaleString('fr')} FP</span>
               <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
             </div>
           </div>
-          <div className="fs-evo-tabs" style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+          <div className="fs-evo-tabs" style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
             {TABS.map(t => {
               const active = tab === t.id;
               return (
@@ -18920,8 +19049,6 @@
           <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
             <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column',paddingTop:20}}>
               {tab==='streaks'     && window.StreaksPanel     && React.createElement(window.StreaksPanel,     { embed:true, user })}
-              {tab==='quests'      && window.QuestsPanel      && React.createElement(window.QuestsPanel,      { embed:true, user })}
-              {tab==='store'       && window.StorePanel       && React.createElement(window.StorePanel,       { embed:true, user })}
               {tab==='progression' && window.ProgressScreen   && React.createElement(window.ProgressScreen,   { onNavigate:()=>{}, user, embedded:true })}
             </div>
           </div>
@@ -18934,13 +19061,11 @@
   /* ─────────────────────────────────────────────────────────────
      6. GAMIF MINI WIDGET  (Dashboard compact stats)
   ───────────────────────────────────────────────────────────── */
-  function GamifMiniWidget({ user, onOpenQuests, onOpenStreaks }) {
+  function GamifMiniWidget({ user, onOpenStreaks }) {
     const [g] = useGamif(user?.id);
-    const { fp=0, xp=0, streaks={}, quests={} } = g;
+    const { xp=0, streaks={} } = g;
     const lvl = window._gLevel(xp);
-    const pending = [...(quests.daily||[]),...(quests.weekly||[])].filter(q=>!q.completed).length;
-    const mul = window._gMul(streaks.daily||0, streaks.weekly||0);
-    /* Déverrouillage progressif : rien avant la 1re session, quêtes au palier 2 */
+    /* Déverrouillage progressif : rien avant la 1re session */
     const stage = window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2;
     if (stage < 1) return null;
 
@@ -18955,22 +19080,12 @@
             <path d="M18 50C8 50 2 42 2 34C2 24 9 16 18 10C18 18 22 22 26 20C22 26 30 30 30 38C30 45 25 50 18 50Z" fill="url(#mFlame)"/>
           </svg>
           <span style={{fontFamily:T.mono,fontWeight:800,fontSize:12,color:'#ffd27d'}}>{streaks.daily||0}</span>
-          {mul>1&&<span style={{fontSize:8,fontWeight:700,color:'rgba(255,210,125,0.7)',letterSpacing:'0.02em'}}>×{mul}</span>}
         </button>
         {/* Level badge */}
         <div className="fs-gamif-chip" style={{display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:12,background:'rgba(165,184,255,0.08)',border:'1px solid rgba(165,184,255,0.18)'}}>
           <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><polygon points="7,1 8.5,5 13,5.5 9.5,8.5 10.5,13 7,10.5 3.5,13 4.5,8.5 1,5.5 5.5,5" stroke="#a5b8ff" strokeWidth={1} fill="rgba(165,184,255,0.2)"/></svg>
           <span style={{fontFamily:T.mono,fontWeight:800,fontSize:11,color:'#a5b8ff'}}>Niv.{lvl}</span>
         </div>
-        {/* Quest badge — palier 2 seulement, masqué sur mobile (.fs-gamif-quest) */}
-        {stage>=2 && pending>0&&(
-          <button className="fs-gamif-chip fs-gamif-quest" onClick={onOpenQuests} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:12,background:'rgba(74,222,128,0.08)',border:'1px solid rgba(74,222,128,0.2)',cursor:'pointer',transition:'all 0.18s'}}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(74,222,128,0.15)'}
-            onMouseLeave={e=>e.currentTarget.style.background='rgba(74,222,128,0.08)'}>
-            <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><circle cx={7} cy={7} r={6} stroke={T.green} strokeWidth={1.2}/><path d="M4.5 7l2 2 3-3" stroke={T.green} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"/></svg>
-            <span style={{fontSize:10,fontWeight:700,color:T.green}}>{pending}</span>
-          </button>
-        )}
       </div>
     );
   }
