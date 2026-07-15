@@ -8932,7 +8932,7 @@
         const deleted = tasks.find(t => t.id === id);
         setTasks(ts => ts.filter(t => t.id !== id));
         if (deleted) {
-          addToast({ message: `"${deleted.text}" supprimée`, type: 'success', icon: '🗑', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, deleted]) } });
+          addToast({ message: `"${deleted.text}" supprimée`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, deleted]) } });
         }
       };
       const addTask = () => {
@@ -8950,10 +8950,8 @@
         const cleared = tasks.filter(t => t.done);
         if (!cleared.length) return;
         setTasks(ts => ts.filter(t => !t.done));
-        addToast({ message: `${cleared.length} tâche${cleared.length > 1 ? 's' : ''} effacée${cleared.length > 1 ? 's' : ''}`, type: 'success', icon: '🗑', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, ...cleared]) } });
+        addToast({ message: `${cleared.length} tâche${cleared.length > 1 ? 's' : ''} effacée${cleared.length > 1 ? 's' : ''}`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, ...cleared]) } });
       };
-
-      const r = 26, circ = 2 * Math.PI * r, filled = circ * prog;
 
       const FILTERS = [
         { id: 'all', label: 'Toutes', count: tasks.length },
@@ -9045,7 +9043,7 @@
               transition: all .2s var(--mineral-ease);
             }
             .fs-task-priority-row button:hover { transform: translateY(-1px); background: rgba(255,255,255,0.05); }
-            .fs-task-priority-row button i { width:7px; height:7px; border-radius:50%; display:block; box-shadow:0 0 8px currentColor; }
+            .fs-task-priority-row button i { width:7px; height:7px; border-radius:1.5px; transform:rotate(45deg); display:block; box-shadow:0 0 8px currentColor; }
             .fs-task-priority-row button .fs-task-pri-lbl { display:block; }
 
             .fs-task-add-btn {
@@ -9131,7 +9129,7 @@
 
             .fs-task-pri { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:800; letter-spacing:.04em;
               padding:3px 10px; border-radius:99px; border:1px solid transparent; transition: all .2s; }
-            .fs-task-pri i { width:5px; height:5px; border-radius:50%; display:block; }
+            .fs-task-pri i { width:5px; height:5px; border-radius:1px; transform:rotate(45deg); display:block; }
 
             .fs-task-del {
               width:26px; height:26px; border-radius:9px; flex-shrink:0; cursor:pointer; border:none;
@@ -9156,7 +9154,10 @@
               .fs-tasks-kicker { display: none !important; }
               .fs-tasks-title { font-size: 26px !important; line-height: 0.96 !important; margin-top: 0 !important; letter-spacing: -0.035em !important; }
               .fs-tasks-stats { margin-top: 8px !important; gap: 7px !important; font-size: 12px !important; flex-wrap: wrap !important; }
-              .fs-tasks-progress { width: 54px !important; height: 54px !important; flex-shrink: 0 !important; }
+              .fs-tasks-progress { gap: 9px !important; flex-shrink: 0 !important; }
+              .fs-tasks-gemviz { width: 42px !important; height: 53px !important; }
+              .fs-tasks-progress-copy span:first-child { font-size: 17px !important; }
+              .fs-tasks-progress-copy span:last-child { display: none !important; }
               .fs-task-composer { display: grid !important; grid-template-columns: 1fr auto !important; gap: 9px !important; align-items: center !important; margin-bottom: 12px !important; }
               .fs-task-input-wrap { grid-column: 1 / -1 !important; height: 50px !important; }
               .fs-task-input-wrap input { min-width: 0 !important; font-size: 16px !important; }
@@ -9190,7 +9191,7 @@
           <div className="fs-tasks-head" style={{ padding: '28px 32px 0', flexShrink: 0 }}>
             <div className="fs-tasks-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
               <div>
-                <div className="fs-tasks-kicker"><Lbl ch="focus queue" /></div>
+                <div className="fs-tasks-kicker"><Lbl ch="forge du jour" /></div>
                 <div className="fs-tasks-title" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 30, letterSpacing: '-0.04em', lineHeight: 1, marginTop: 8 }}>File de focus</div>
                 <div className="fs-tasks-stats" style={{ fontSize: 12, marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 11px', borderRadius: 999, background: 'rgba(var(--theme-c1-rgb),0.08)', border: '1px solid rgba(var(--theme-c1-rgb),0.18)', color: T.c1, fontWeight: 750 }}>
@@ -9203,23 +9204,32 @@
                   </span>
                 </div>
               </div>
-              {/* Progress ring */}
-              <div className="fs-tasks-progress" style={{ position: 'relative', width: 66, height: 66 }}>
-                <svg width={66} height={66} viewBox="0 0 64 64" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
+              {/* Cristal du jour : chaque tâche complétée le remplit */}
+              <div className="fs-tasks-progress" style={{ display: 'flex', alignItems: 'center', gap: 13, flexShrink: 0 }} title={`${totalDone} tâche${totalDone > 1 ? 's' : ''} complétée${totalDone > 1 ? 's' : ''} sur ${tasks.length}`}>
+                <svg className="fs-tasks-gemviz" width={54} height={68} viewBox="0 0 64 80" aria-hidden="true"
+                  style={{ filter: prog >= 1 && tasks.length > 0 ? 'drop-shadow(0 0 16px rgba(var(--theme-c1-rgb),0.55))' : 'drop-shadow(0 0 6px rgba(var(--theme-c1-rgb),0.16))', transition: 'filter .6s ease' }}>
                   <defs>
-                    <linearGradient id="fsTasksRingG" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="var(--theme-c1)" />
-                      <stop offset="100%" stopColor="var(--theme-c2)" />
+                    <linearGradient id="fsTasksGemG" x1="0" y1="1" x2="0.55" y2="0">
+                      <stop offset="0%" stopColor="var(--theme-c2)" />
+                      <stop offset="100%" stopColor="var(--theme-c1)" />
                     </linearGradient>
+                    <clipPath id="fsTasksGemClip">
+                      <path d="M18.25 77 7 44.4 19.5 17.8 32 3l12.5 14.8L57 44.4 45.75 77Z" />
+                    </clipPath>
                   </defs>
-                  <circle cx={32} cy={32} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={4} />
-                  <circle cx={32} cy={32} r={r} fill="none" stroke="url(#fsTasksRingG)" strokeWidth={4}
-                    strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
-                    style={{ filter: 'drop-shadow(0 0 7px rgba(var(--theme-c1-rgb),0.5))', transition: 'stroke-dasharray 0.7s cubic-bezier(0.4,0,0.2,1)' }} />
+                  <path d="M18.25 77 7 44.4 19.5 17.8 32 3l12.5 14.8L57 44.4 45.75 77Z"
+                    fill="rgba(255,255,255,0.035)" stroke="rgba(255,255,255,0.17)" strokeWidth="1.4" strokeLinejoin="round" />
+                  <g clipPath="url(#fsTasksGemClip)">
+                    <rect x="0" width="64" y={3 + (1 - prog) * 74} height={Math.max(0, prog * 74)}
+                      fill="url(#fsTasksGemG)" opacity="0.92"
+                      style={{ transition: 'y .7s cubic-bezier(.4,0,.2,1), height .7s cubic-bezier(.4,0,.2,1)' }} />
+                  </g>
+                  <path d="M32 3 23.5 44.4 27 77M32 3l8.5 41.4L37 77M7 44.4h16.5M57 44.4H40.5"
+                    fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="1.1" strokeLinejoin="round" />
                 </svg>
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 16, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}</span>
-                  <span style={{ fontSize: 8.5, color: T.muted, fontWeight: 750, letterSpacing: '0.08em' }}>%</span>
+                <div className="fs-tasks-progress-copy" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 21, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}<span style={{ fontSize: 12, opacity: 0.6 }}> %</span></span>
+                  <span style={{ fontSize: 8.5, color: T.muted, fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase' }}>cristal du jour</span>
                 </div>
               </div>
             </div>
@@ -9277,7 +9287,7 @@
             )}
             {hasFocus ? (<>
               {focusTasks.length > 0 && <>
-                <SectionHead label="⚡ Focus" count={focusTasks.length} accent />
+                <SectionHead label="Focus de session" count={focusTasks.length} accent />
                 <div className="fs-task-section-list">
                   {focusTasks.map((t, i) => <TaskRow key={t.id} task={t} idx={i} />)}
                 </div>
@@ -9333,14 +9343,14 @@
                 <div style={{ position: 'relative', width: 64, height: 64 }}>
                   <div style={{ position: 'absolute', inset: -14, borderRadius: '50%', background: 'radial-gradient(circle, rgba(var(--theme-c1-rgb),0.16), transparent 68%)', animation: 'fwPulse 3.2s ease-in-out infinite' }} />
                   <div style={{ position: 'relative', width: 64, height: 64, borderRadius: 22, background: 'linear-gradient(150deg, rgba(var(--theme-c1-rgb),0.14), rgba(255,255,255,0.03))', border: '1px solid rgba(var(--theme-c1-rgb),0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 18px 40px rgba(var(--theme-c1-rgb),0.14), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
-                    <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="var(--theme-c1)" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 11l3 3 8-8" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    <svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke="var(--theme-c1)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2 19.5 8.8 16.4 21H7.6L4.5 8.8 12 2Z" /><path d="M4.5 8.8h15M12 2 9.6 8.8l1.2 12.2M12 2l2.4 6.8-1.2 12.2" opacity="0.55" />
                     </svg>
                   </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontFamily: T.display, fontSize: 17, fontWeight: 800, letterSpacing: '-0.02em', color: T.text, marginBottom: 6 }}>Commence ta première tâche</div>
-                  <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 16, maxWidth: 300, lineHeight: 1.55 }}>Note ce que tu veux accomplir aujourd'hui — une action à la fois.</div>
+                  <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 16, maxWidth: 300, lineHeight: 1.55 }}>Note ce que tu veux accomplir aujourd'hui — chaque tâche complétée polit ton cristal du jour.</div>
                   <button type="button"
                     onClick={() => { try { taskInputRef.current?.focus(); setComposerPulse(true); setTimeout(() => setComposerPulse(false), 900); } catch (e) {} }}
                     style={{ border: 'none', borderRadius: 14, padding: '12px 22px', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color: '#07070d', fontSize: 13, fontWeight: 850, fontFamily: T.font, cursor: 'pointer', boxShadow: '0 14px 34px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.35)', transition: 'transform .2s var(--mineral-ease)' }}
@@ -9924,7 +9934,9 @@
         <div className="fs-notes-mind">
           <style>{`
             .fs-notes-mind{width:100%;height:100%;display:grid;grid-template-columns:360px minmax(0,1fr);overflow:hidden;font-family:${T.font};background:linear-gradient(180deg,rgba(255,255,255,0.018),rgba(255,255,255,0.006));}
-            .fs-note-builder{border-right:1px solid rgba(255,255,255,0.065);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.48),rgba(var(--mineral-bg-rgb),0.36));display:flex;flex-direction:column;min-width:0;}
+            .fs-note-builder{position:relative;border-right:1px solid rgba(255,255,255,0.065);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.48),rgba(var(--mineral-bg-rgb),0.36));display:flex;flex-direction:column;min-width:0;}
+            .fs-note-builder::before{content:'';position:absolute;left:0;right:0;top:0;height:190px;background:radial-gradient(130% 100% at 26% 0%,rgba(var(--theme-c1-rgb),0.09),transparent 62%);pointer-events:none;}
+            .fs-note-title-facet{width:7px;height:7px;border-radius:1.5px;transform:rotate(45deg);background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));box-shadow:0 0 8px rgba(var(--theme-c1-rgb),0.55);flex-shrink:0;}
             .fs-note-field{width:100%;border:1px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.04);border-radius:14px;color:${T.text};font-family:${T.font};outline:none;}
             .fs-note-field::placeholder{color:rgba(248,246,252,0.25);}
             .fs-note-field:focus{border-color:rgba(var(--theme-c1-rgb),0.42);box-shadow:0 0 0 3px rgba(var(--theme-c1-rgb),0.10);}
@@ -9968,8 +9980,9 @@
               .fs-map-shell{display:none!important}
               .fs-map-shell.fs-mob-show{display:flex!important;flex:1!important;min-height:0!important}
               .fs-map-toolbar{height:56px!important;padding:0 14px!important}
-              .fs-map-toolbar > div:first-child > div:first-child{font-size:20px!important}
-              .fs-map-toolbar > div:first-child > div:nth-child(2){display:none!important}
+              .fs-map-toolbar > div:first-child > div:first-child{display:none!important}
+              .fs-map-toolbar > div:first-child > div:nth-child(2){font-size:20px!important;margin-top:0!important}
+              .fs-map-toolbar > div:first-child > div:nth-child(3){display:none!important}
               .fs-map-search{min-width:0!important;flex:1!important;height:36px!important}
               .fs-map-control{height:30px!important;padding:0 9px!important;font-size:11px!important}
               .fs-map-node{border-radius:14px!important;padding:10px 12px!important}
@@ -9999,7 +10012,8 @@
                 const livePreview = fsNoteTitleFromContent(draft.content || '');
                 const hasBody = draft.content.trim().length > 0;
                 return (
-                  <div style={{display:'flex',alignItems:'center',gap:8,minHeight:18,flexShrink:0,opacity:hasBody?1:0,transition:'opacity 0.2s'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:9,minHeight:18,flexShrink:0,opacity:hasBody?1:0,transition:'opacity 0.2s'}}>
+                    <span className="fs-note-title-facet" />
                     <span style={{fontSize:9,fontWeight:850,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(var(--theme-c1-rgb),0.75)'}}>Titre</span>
                     <span style={{fontSize:12,fontWeight:750,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{hasBody ? livePreview : ''}</span>
                   </div>
@@ -10016,7 +10030,8 @@
           <main className={"fs-map-shell" + (mobileTab==='map' ? ' fs-mob-show' : '')}>
             <div className="fs-map-toolbar">
               <div>
-                <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text}}>Carte mentale</div>
+                <div style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted}}>réseau d'idées</div>
+                <div style={{fontFamily:T.display,fontWeight:850,fontSize:28,letterSpacing:'-0.045em',color:T.text,marginTop:2}}>Carte mentale</div>
                 <div style={{fontSize:11,color:T.muted,marginTop:4}}>{visibleNotes.length} carte{visibleNotes.length>1?'s':''} visibles · regroupées par tag principal</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
@@ -16339,14 +16354,47 @@
       return { z, verts, stalac, stalag, shade: rng() * 0.12 };
     });
 
+    /* Implantation par défaut : les cristaux poussent en AMAS (druses) le
+       long des parois, comme dans une vraie grotte minérale. Chaque amas
+       (3 cristaux max) occupe une bande de profondeur répartie au nombre
+       d'or — espacement régulier sans motif visible — et choisit UNE surface
+       et UN côté pour tout l'amas. Le centre de la galerie reste dégagé :
+       c'est le chemin du visiteur. Les dorés trônent seuls sur le chemin. */
     function _caveDefaultSpot(c, i) {
       const seed = (Number(c.seed) || (typeof c.id === 'number' ? c.id : 7)) + i * 1319;
       const rng = _caveRng(seed % 2147483647);
-      const roll = rng(), a = 0.07 + rng() * 0.86, zr = rng(), jit = rng(), tj = rng();
-      const z = 70 + Math.pow(zr, 1.18) * (CAVE_ZMAX - 90);
-      if (roll < 0.15) return { surf: 'ceil', a: 0.18 + a * 0.62, z: Math.max(220, z), rot: 180 + (jit - 0.5) * 14, tj: tj * 2.2 };
-      if (roll < 0.29) return { surf: roll < 0.22 ? 'wallL' : 'wallR', a: 0.2 + a * 0.55, z: Math.max(340, z), rot: (roll < 0.22 ? 78 : -78) + (jit - 0.5) * 12, tj: 0 };
-      return { surf: 'floor', a, z, rot: (jit - 0.5) * 17, tj: tj * 3 };
+      const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+      const cluster = Math.floor(i / 3), slot = i % 3;
+      /* propriétés partagées par l'amas (mêmes pour ses 3 membres) */
+      const cRng = _caveRng(9241 + cluster * 733);
+      const zBand = (cluster * 0.61803398875 + 0.22) % 1;
+      const zc = 120 + zBand * (CAVE_ZMAX - 240);
+      const side = cRng() < 0.5 ? 0 : 1;
+      const surfRoll = cRng();
+      const anchor = cRng();
+      /* décalages propres à ce cristal dans son amas */
+      const dz = (slot - 1) * (34 + rng() * 20) + (rng() - 0.5) * 18;
+      const da = (slot - 1) * (0.048 + rng() * 0.018) + (rng() - 0.5) * 0.014;
+      if (isGold) {
+        /* pièce maîtresse : posée au centre du chemin, légèrement penchée */
+        return { surf: 'floor', a: 0.42 + rng() * 0.16, z: Math.max(110, Math.min(CAVE_ZMAX - 80, zc)), rot: (rng() - 0.5) * 8, tj: rng() * 1.5 };
+      }
+      if (surfRoll < 0.13 && zc > 460) {
+        /* amas suspendu au plafond, uniquement en profondeur */
+        const a = Math.max(0.2, Math.min(0.8, 0.3 + anchor * 0.4 + da));
+        return { surf: 'ceil', a, z: Math.max(500, zc + dz), rot: 180 + (rng() - 0.5) * 12, tj: rng() * 2 };
+      }
+      if (surfRoll < 0.32) {
+        /* druse accrochée à mi-hauteur de paroi, inclinée vers la galerie */
+        const a = Math.max(0.12, Math.min(0.82, 0.28 + anchor * 0.34 + (slot - 1) * 0.13));
+        const rot = (side === 0 ? 1 : -1) * (58 + rng() * 12);
+        return { surf: side === 0 ? 'wallL' : 'wallR', a, z: Math.max(380, zc + dz), rot, tj: 0 };
+      }
+      /* sol : ancré au pied des parois, penché doucement vers le chemin */
+      const edge = 0.08 + anchor * 0.17 + Math.abs(da);
+      const a = Math.max(0.04, Math.min(0.96, side === 0 ? edge + da : 1 - edge + da));
+      const lean = (5 + rng() * 9) * (side === 0 ? 1 : -1) + (rng() - 0.5) * 6;
+      return { surf: 'floor', a, z: Math.max(95, Math.min(CAVE_ZMAX - 30, zc + dz)), rot: lean, tj: rng() * 2.5 };
     }
     function _caveSpotOf(c, i) {
       const cv = c && c.cave;
@@ -16555,28 +16603,45 @@
       if (pal) return { stops: [pal.b, pal.a, pal.c], glow: pal.glow };
       return { stops: ['#bfe9ff', '#8fdcff', '#4a6f9c'], glow: 'rgba(143,220,255,0.7)' };
     }
+    /* Cristal DEBOUT, ancré à sa base en (x,y) : pointe vers le haut, épaules
+       larges, pied étroit — la silhouette des cristaux de la grotte vivante.
+       rot en radians (0 = planté au sol, ±~1.1 = paroi, π = suspendu). */
     function _drawShareGem(ctx, x, y, size, colors, rot) {
       ctx.save();
       ctx.translate(x, y); ctx.rotate(rot || 0);
-      const w = size, h = size * 1.4;
-      const topY = -h * 0.5, midY = -h * 0.5 + w * 0.36, botY = h * 0.5, tW = w * 0.5, mW = w * 0.5;
+      const w = size * 0.5, h = size * 1.55;
+      const shY = -h * 0.44, nkY = -h * 0.8;
       ctx.beginPath();
-      ctx.moveTo(-tW, topY); ctx.lineTo(tW, topY); ctx.lineTo(mW, midY); ctx.lineTo(0, botY); ctx.lineTo(-mW, midY); ctx.closePath();
+      ctx.moveTo(-w * 0.55, 0);
+      ctx.lineTo(-w, shY); ctx.lineTo(-w * 0.5, nkY); ctx.lineTo(0, -h);
+      ctx.lineTo(w * 0.5, nkY); ctx.lineTo(w, shY); ctx.lineTo(w * 0.55, 0);
+      ctx.closePath();
       const st = colors.stops;
-      const g = ctx.createLinearGradient(0, topY, 0, botY);
-      g.addColorStop(0, st[0]); g.addColorStop(0.5, st[1] || st[0]); g.addColorStop(1, st[st.length - 1]);
-      ctx.shadowColor = colors.glow; ctx.shadowBlur = size * 0.95;
+      const g = ctx.createLinearGradient(0, -h, 0, 0);
+      g.addColorStop(0, st[0]); g.addColorStop(0.48, st[1] || st[0]); g.addColorStop(1, st[st.length - 1]);
+      ctx.shadowColor = colors.glow; ctx.shadowBlur = size * 0.8;
       ctx.fillStyle = g; ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(255,255,255,0.26)'; ctx.lineWidth = Math.max(1, size * 0.018);
+      /* arêtes des facettes */
+      ctx.strokeStyle = 'rgba(255,255,255,0.24)'; ctx.lineWidth = Math.max(1, size * 0.02);
       ctx.beginPath();
-      ctx.moveTo(-tW, topY); ctx.lineTo(-mW * 0.42, midY); ctx.lineTo(0, botY);
-      ctx.moveTo(tW, topY); ctx.lineTo(mW * 0.42, midY); ctx.lineTo(0, botY);
-      ctx.moveTo(-mW, midY); ctx.lineTo(mW, midY);
-      ctx.moveTo(-tW, topY); ctx.lineTo(0, midY); ctx.lineTo(tW, topY);
+      ctx.moveTo(0, -h); ctx.lineTo(-w * 0.34, shY); ctx.lineTo(-w * 0.2, 0);
+      ctx.moveTo(0, -h); ctx.lineTo(w * 0.34, shY); ctx.lineTo(w * 0.2, 0);
+      ctx.moveTo(-w, shY); ctx.lineTo(-w * 0.34, shY);
+      ctx.moveTo(w, shY); ctx.lineTo(w * 0.34, shY);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.16)';
-      ctx.beginPath(); ctx.moveTo(-tW * 0.66, topY + size * 0.04); ctx.lineTo(tW * 0.66, topY + size * 0.04); ctx.lineTo(mW * 0.36, midY * 0.86); ctx.lineTo(-mW * 0.36, midY * 0.86); ctx.closePath(); ctx.fill();
+      /* facette lumineuse (reflet) */
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.beginPath();
+      ctx.moveTo(0, -h); ctx.lineTo(-w * 0.5, nkY); ctx.lineTo(-w * 0.34, shY); ctx.lineTo(0, -h * 0.5); ctx.closePath();
+      ctx.fill();
+      /* contour net */
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = Math.max(0.8, size * 0.014);
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.55, 0);
+      ctx.lineTo(-w, shY); ctx.lineTo(-w * 0.5, nkY); ctx.lineTo(0, -h);
+      ctx.lineTo(w * 0.5, nkY); ctx.lineTo(w, shY); ctx.lineTo(w * 0.55, 0);
+      ctx.closePath(); ctx.stroke();
       ctx.restore();
     }
     function _drawLumenBrand(ctx, x, y) {
@@ -16584,9 +16649,12 @@
       ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
       ctx.globalAlpha = 0.62;
       ctx.font = '800 30px Inter, system-ui, sans-serif'; ctx.fillStyle = '#eef4ff';
-      ctx.fillText('LumenOS', x, y + 10);
+      ctx.fillText('LumenOS', x, y);
       const tw = ctx.measureText('LumenOS').width;
-      ctx.translate(x - tw - 22, y);
+      ctx.globalAlpha = 0.4;
+      ctx.font = '650 17px Inter, system-ui, sans-serif'; ctx.fillStyle = '#cfe4ff';
+      ctx.fillText('lumenos.vercel.app', x, y + 27);
+      ctx.translate(x - tw - 22, y - 10);
       ctx.globalAlpha = 0.9;
       const s = 15;
       ctx.beginPath();
@@ -16595,61 +16663,106 @@
       ctx.fillStyle = gg; ctx.shadowColor = 'rgba(143,220,255,0.8)'; ctx.shadowBlur = 12; ctx.fill();
       ctx.restore();
     }
+    /* La « photo » de la grotte : on rejoue le VRAI moteur de rendu de la
+       scène (_caveDraw — strates, concrétions, halos, brume, vignette) dans
+       un canvas hors écran, puis on dessine chaque cristal à sa position
+       réelle projetée. Résultat : l'image partagée est exactement la grotte
+       que l'utilisateur voit, signée LumenOS discrètement en bas. */
     function _buildCaveShareCanvas(crystals, userName) {
       const W = 1080, H = 1350;
       const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       const ctx = cv.getContext('2d');
+      const list = Array.isArray(crystals) ? crystals.slice(0, 60) : [];
+      /* halos des cristaux, identiques à la scène vivante */
+      const glows = list.map((c, i) => {
+        const spot = _caveSpotOf(c, i);
+        const an = _caveAnchor(spot);
+        let bucket = -2;
+        for (let r = 0; r < CAVE_RING_Z.length; r++) { if (CAVE_RING_Z[r] >= spot.z) { bucket = r; break; } }
+        return { xf: an.xf, yf: an.yf, z: spot.z, bucket, ph: 0, glow: _caveGemColors(c, i).glow, r: 110 + Math.min(Number(c.duration) || 25, 120) * 1.1 };
+      });
+      /* poussière figée : texture d'air de la grotte */
+      const rng = _caveRng(53);
+      const dust = Array.from({ length: 46 }, () => ({
+        xf: 0.04 + rng() * 0.92, yf: 0.16 + rng() * 0.66, z: 60 + rng() * 1300,
+        r: 0.8 + rng() * 2.0, sp: 0, ph: 0, a: 0.12 + rng() * 0.3,
+      }));
+      _caveDraw(ctx, W, H, 0, dust, 0, glows, { flocks: [] }, true);
+      /* cristaux projetés à leur vraie place, du fond vers l'avant */
+      const ox = W / 2, oy = H * CAVE_OY;
+      const K = z => CAVE_F / Math.max(60, CAVE_F + z);
+      const gems = list.map((c, i) => {
+        const spot = _caveSpotOf(c, i);
+        const an = _caveAnchor(spot);
+        const k = K(spot.z);
+        const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+        const sz = (46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0)) * k * (W / 700);
+        return {
+          x: ox + (an.xf * W - ox) * k, y: oy + (an.yf * H - oy) * k,
+          z: spot.z, sz, k, surf: spot.surf,
+          rot: (spot.rot || 0) * Math.PI / 180,
+          colors: _caveGemColors(c, i), isGold,
+        };
+      }).sort((a, b) => b.z - a.z);
+      gems.forEach(gm => {
+        const depthFade = Math.min(1, 0.35 + gm.k * 0.9);
+        if (gm.surf === 'floor') {
+          /* ombre de contact : le cristal est POSÉ, pas flottant */
+          ctx.save();
+          ctx.globalAlpha = 0.55 * depthFade;
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.beginPath(); ctx.ellipse(gm.x, gm.y + gm.sz * 0.04, gm.sz * 0.68, gm.sz * 0.17, 0, 0, 6.3); ctx.fill();
+          ctx.restore();
+        }
+        ctx.save();
+        ctx.globalAlpha = depthFade;
+        _drawShareGem(ctx, gm.x, gm.y, gm.sz, gm.colors, gm.rot);
+        if (gm.isGold) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.5 * depthFade;
+          const gr = gm.sz * 1.6;
+          ctx.drawImage(_caveGlowSprite('rgba(255,202,75,0.9)'), gm.x - gr, gm.y - gm.sz * 0.8 - gr, gr * 2, gr * 2);
+        }
+        ctx.restore();
+      });
+      if (!gems.length) {
+        ctx.globalAlpha = 0.9;
+        _drawShareGem(ctx, W / 2, H * 0.72, 130, _caveGemColors({}, 0), 0);
+        ctx.globalAlpha = 1;
+      }
+      /* voiles haut/bas pour la lisibilité du texte sur la photo */
+      const top = ctx.createLinearGradient(0, 0, 0, 250);
+      top.addColorStop(0, 'rgba(1,4,12,0.78)'); top.addColorStop(1, 'rgba(1,4,12,0)');
+      ctx.fillStyle = top; ctx.fillRect(0, 0, W, 250);
+      const bot = ctx.createLinearGradient(0, H - 280, 0, H);
+      bot.addColorStop(0, 'rgba(1,4,12,0)'); bot.addColorStop(1, 'rgba(1,4,12,0.82)');
+      ctx.fillStyle = bot; ctx.fillRect(0, H - 280, W, 280);
+      /* légende : sobre, comme une photo signée */
       const cs = getComputedStyle(document.documentElement);
-      const c1rgb = (cs.getPropertyValue('--theme-c1-rgb') || '143,220,255').trim();
-      const c2rgb = (cs.getPropertyValue('--theme-c2-rgb') || '192,132,252').trim();
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, '#05070f'); bg.addColorStop(0.55, '#080b18'); bg.addColorStop(1, '#04060d');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      const rg = ctx.createRadialGradient(W / 2, H * 0.7, 40, W / 2, H * 0.7, W * 0.8);
-      rg.addColorStop(0, `rgba(${c1rgb},0.30)`); rg.addColorStop(0.5, `rgba(${c2rgb},0.10)`); rg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
-      for (let i = 0; i < 130; i++) {
-        const px = Math.abs((Math.sin(i * 127.1) * 43758.5) % 1) * W;
-        const py = Math.abs((Math.sin(i * 311.7) * 12543.7) % 1) * H * 0.6;
-        const r = Math.abs(Math.sin(i * 7.3)) * 1.7 + 0.3;
-        ctx.globalAlpha = 0.55 * Math.abs(Math.cos(i)); ctx.fillStyle = '#dbeafe';
-        ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      const fg = ctx.createRadialGradient(W / 2, H * 0.82, 20, W / 2, H * 0.82, W * 0.6);
-      fg.addColorStop(0, `rgba(${c1rgb},0.30)`); fg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = fg; ctx.beginPath(); ctx.ellipse(W / 2, H * 0.82, W * 0.46, H * 0.12, 0, 0, 7); ctx.fill();
-      const items = (crystals || []).slice(0, 48).map((c, i) => {
-        const seed = (Number(c.seed) || i * 97.13);
-        const rx = (Math.abs(Math.sin(seed * 1.7)) * 2 - 1);
-        const rz = Math.abs(Math.sin(seed * 2.3));
-        const dur = Math.min(Number(c.duration) || 25, 120);
-        const size = (46 + dur / 120 * 46) * (0.6 + rz * 0.75);
-        const cx = W / 2 + rx * W * 0.33 * (0.5 + rz * 0.7);
-        const cy = H * 0.48 + rz * H * 0.3 + Math.sin(seed * 4.1) * 22;
-        return { size, cx, cy, rot: Math.sin(seed) * 0.16, colors: _caveGemColors(c, i) };
-      }).sort((a, b) => a.cy - b.cy);
-      items.forEach(it => _drawShareGem(ctx, it.cx, it.cy, it.size, it.colors, it.rot));
-      if (!items.length) {
-        ctx.globalAlpha = 0.85; _drawShareGem(ctx, W / 2, H * 0.56, 120, _caveGemColors({}, 0), 0); ctx.globalAlpha = 1;
-      }
+      const fDisp = (cs.getPropertyValue('--font-display') || '').trim() || 'Inter, system-ui, sans-serif';
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = `rgba(${c1rgb},0.9)`; ctx.font = '800 24px Inter, system-ui, sans-serif';
-      ctx.fillText('GROTTE DE CRISTAUX', 74, 116);
-      ctx.fillStyle = '#f3f7ff'; ctx.font = '800 68px Inter, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(161,232,255,0.85)'; ctx.font = '800 22px Inter, system-ui, sans-serif';
+      try { ctx.letterSpacing = '5px'; } catch (e) {}
+      ctx.fillText('GROTTE AUX CRISTAUX', 76, 108);
+      try { ctx.letterSpacing = '0px'; } catch (e) {}
+      ctx.fillStyle = '#f3f7ff'; ctx.font = `800 62px ${fDisp}`;
+      ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 18;
       const title = userName ? ('Grotte de ' + userName) : 'Ma grotte';
-      ctx.fillText(title.length > 20 ? title.slice(0, 19) + '…' : title, 72, 186);
-      const total = (crystals || []).reduce((s, c) => s + (Number(c.duration) || 0), 0);
-      ctx.font = '800 52px Inter, system-ui, sans-serif'; ctx.fillStyle = '#8ef6ff';
-      ctx.fillText(String((crystals || []).length), 76, H - 118);
-      ctx.font = '600 21px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.6)';
-      ctx.fillText('cristaux', 76, H - 86);
-      ctx.font = '800 52px Inter, system-ui, sans-serif'; ctx.fillStyle = '#e7b7ff';
-      const mx = 76 + ctx.measureText(String((crystals || []).length)).width + 70;
-      ctx.fillText(String(total), mx, H - 118);
-      ctx.font = '600 21px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.6)';
-      ctx.fillText('minutes de focus', mx, H - 86);
-      _drawLumenBrand(ctx, W - 44, H - 54);
+      ctx.fillText(title.length > 22 ? title.slice(0, 21) + '…' : title, 74, 172);
+      ctx.shadowBlur = 0;
+      const total = Math.round(list.reduce((s, c) => s + (Number(c.duration) || 0), 0));
+      ctx.font = '800 40px Inter, system-ui, sans-serif'; ctx.fillStyle = '#8ef6ff';
+      ctx.fillText(String(list.length), 78, H - 96);
+      const w1 = ctx.measureText(String(list.length)).width;
+      ctx.font = '650 20px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.66)';
+      ctx.fillText(' cristaux', 78 + w1 + 6, H - 96);
+      const w2 = ctx.measureText(' cristaux').width;
+      ctx.font = '800 40px Inter, system-ui, sans-serif'; ctx.fillStyle = '#e7b7ff';
+      ctx.fillText(String(total), 78 + w1 + w2 + 40, H - 96);
+      const w3 = ctx.measureText(String(total)).width;
+      ctx.font = '650 20px Inter, system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,231,255,0.66)';
+      ctx.fillText(' min de focus', 78 + w1 + w2 + 40 + w3 + 6, H - 96);
+      _drawLumenBrand(ctx, W - 56, H - 96);
       return cv;
     }
 
