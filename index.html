@@ -9683,7 +9683,6 @@ void main(){
         window.addEventListener('fs-remote-update', sync);
         return () => window.removeEventListener('fs-remote-update', sync);
       }, []);
-      const [filter, setFilter] = _uST('all');
       const [priFilter, setPriFilter] = _uST(null);
       const [inputVal, setInputVal] = _uST('');
       const [newPri, setNewPri] = _uST('medium');
@@ -9713,9 +9712,7 @@ void main(){
       const totalActive = tasks.filter(t => !t.done).length;
       const prog = tasks.length > 0 ? totalDone / tasks.length : 0;
 
-      const visible = tasks.filter(t =>
-        (filter === 'active' ? !t.done : filter === 'done' ? t.done : true) &&
-        (!priFilter || t.priority === priFilter));
+      const visible = tasks.filter(t => !priFilter || t.priority === priFilter);
       const activeTasks = visible.filter(t => !t.done);
       const doneTasks = visible.filter(t => t.done);
       const _gFocT = () => { try { return JSON.parse(localStorage.getItem('fs_session_focus_tasks') || 'null'); } catch(e) { return null; } };
@@ -9741,6 +9738,16 @@ void main(){
           addToast({ message: `"${deleted.text}" supprimée`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, deleted]) } });
         }
       };
+      /* Vue Focus : reporter la tâche courante en fin de file — la suivante
+         prend la lumière, la reportée reviendra après les autres. */
+      const snoozeTask = (id) => {
+        setTasks(ts => {
+          const t = ts.find(x => x.id === id);
+          if (!t) return ts;
+          return [...ts.filter(x => x.id !== id), { ...t, snoozed: Date.now() }];
+        });
+        addToast({ message: 'Reportée en fin de file', type: 'info', icon: '↓' });
+      };
       const addTask = () => {
         if (!inputVal.trim()) {
           taskInputRef.current?.focus();
@@ -9758,12 +9765,6 @@ void main(){
         setTasks(ts => ts.filter(t => !t.done));
         addToast({ message: `${cleared.length} tâche${cleared.length > 1 ? 's' : ''} effacée${cleared.length > 1 ? 's' : ''}`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setTasks(ts => [...ts, ...cleared]) } });
       };
-
-      const FILTERS = [
-        { id: 'all', label: 'Toutes', count: tasks.length },
-        { id: 'active', label: 'En cours', count: totalActive },
-        { id: 'done', label: 'Complétées', count: totalDone },
-      ];
 
       const SectionHead = ({ label, count, accent }) => (
         <div className="fs-task-sechead">
@@ -10161,16 +10162,8 @@ void main(){
               </button>
             </div>
 
-            {/* ── Filtres ── */}
+            {/* ── Filtres (priorité uniquement) ── */}
             <div className="fs-task-filterbar" style={{ paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <div className="fs-task-filters">
-                {FILTERS.map(f => (
-                  <button key={f.id} className={'fs-task-fbtn' + (filter === f.id ? ' on' : '')} onClick={() => setFilter(f.id)}>
-                    {f.label}
-                    <span>{f.count}</span>
-                  </button>
-                ))}
-              </div>
               <div className="fs-task-filters">
                 {Object.entries(PRI).map(([key, p]) => {
                   const on = priFilter === key;
@@ -10264,7 +10257,7 @@ void main(){
             {activeTasks.length === 0 && doneTasks.length === 0 && tasks.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 180, gap: 12 }}>
                 <div style={{ fontSize: 13, color: T.muted, fontWeight: 650 }}>Aucune tâche ne correspond à ce filtre.</div>
-                <button type="button" onClick={() => { setPriFilter(null); setFilter('all'); }}
+                <button type="button" onClick={() => setPriFilter(null)}
                   style={{ border: '1px solid rgba(255,255,255,0.12)', borderRadius: 99, padding: '7px 16px', background: 'rgba(255,255,255,0.04)', color: T.text, fontSize: 11.5, fontWeight: 750, fontFamily: T.font, cursor: 'pointer' }}>
                   Tout afficher
                 </button>
@@ -10339,7 +10332,13 @@ void main(){
               </div>
             ) : (() => {
               const ZW = { high: 0, medium: 1, low: 2 };
-              const queue = [...activeTasks].sort((a, b) => (ZW[a.priority] ?? 1) - (ZW[b.priority] ?? 1));
+              /* Les tâches reportées (↓) passent après les autres, dans l'ordre du report */
+              const queue = [...activeTasks].sort((a, b) => {
+                const sa = a.snoozed ? 1 : 0, sb = b.snoozed ? 1 : 0;
+                if (sa !== sb) return sa - sb;
+                if (sa) return a.snoozed - b.snoozed;
+                return (ZW[a.priority] ?? 1) - (ZW[b.priority] ?? 1);
+              });
               const cur = queue[0];
               const p = cur ? (PRI[cur.priority] || PRI.medium) : null;
               return (
@@ -10355,11 +10354,22 @@ void main(){
                         <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 750, color: T.muted, fontVariantNumeric: 'tabular-nums' }}>{queue.length} restante{queue.length > 1 ? 's' : ''}</span>
                       </div>
                       <div className="fs-task-zen-text">{cur.text}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <button type="button" className="fs-task-zen-done-btn" onClick={() => toggle(cur.id)}>
                           <svg width={13} height={11} viewBox="0 0 12 10" fill="none"><path d="M1.5 5 4.5 8l6-6.5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                           Terminée
                         </button>
+                        {queue.length > 1 && (
+                          <button type="button" onClick={() => snoozeTask(cur.id)}
+                            title="Plus tard — passe à la suivante, celle-ci revient en fin de file"
+                            aria-label="Reporter cette tâche en fin de file"
+                            style={{ height: 46, padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 15, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.045)', color: 'rgba(248,246,252,0.75)', fontFamily: T.font, fontSize: 12.5, fontWeight: 800, transition: 'all .18s var(--mineral-ease)' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(248,246,252,0.95)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.045)'; e.currentTarget.style.color = 'rgba(248,246,252,0.75)'; }}>
+                            <svg width={12} height={13} viewBox="0 0 12 14" fill="none"><path d="M6 1v11M2 8.5 6 12.5l4-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            Plus tard
+                          </button>
+                        )}
                         <button type="button" onClick={() => remove(cur.id)} aria-label={`Supprimer "${cur.text}"`}
                           style={{ height: 46, width: 46, borderRadius: 15, cursor: 'pointer', border: '1px solid rgba(251,113,133,0.22)', background: 'rgba(251,113,133,0.08)', color: 'rgba(251,113,133,0.85)', display: 'grid', placeItems: 'center' }}>
                           <svg width={12} height={12} viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 1h2M4 3l.6 7h2.8L8 3" stroke="currentColor" strokeWidth={1.45} strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -11503,7 +11513,24 @@ void main(){
           if (/Invalid login credentials|Password should be|rate limit|too many/i.test(rawMsg)) rememberAuthAttempt();
           if (/rate limit|too many/i.test(rawMsg)) setErrMsg('Trop de tentatives, reessayez dans quelques minutes');
           else if (/Email not confirmed|email_not_confirmed/i.test(rawMsg)) setErrMsg('Confirmez votre email avant de vous connecter');
-          else if (/Invalid login credentials|invalid_credentials/i.test(rawMsg)) setErrMsg('Email ou mot de passe incorrect');
+          else if (/Invalid login credentials|invalid_credentials/i.test(rawMsg)) {
+            /* Email inconnu de l'annuaire ? → bascule automatique vers
+               l'inscription, email déjà rempli (null = introuvable ;
+               undefined = annuaire indisponible → message générique). */
+            let known;
+            if (mode === 'login' && window._fsLookupUserByEmail) {
+              try { known = await window._fsLookupUserByEmail(trimmedEmail); } catch (_) { known = undefined; }
+            }
+            if (mode === 'login' && known === null) {
+              setMode('signup');
+              setPass('');
+              setUname('');
+              setErrMsg('');
+              setInfoMsg(`Aucun compte pour ${trimmedEmail} — il ne reste qu'à le créer, ton email est déjà rempli.`);
+            } else {
+              setErrMsg('Email ou mot de passe incorrect');
+            }
+          }
           else if (/Password should be|weak_password/i.test(rawMsg)) setErrMsg('Mot de passe min. 6 caracteres');
           else if (/NetworkError|Failed to fetch|fetch|timeout/i.test(rawMsg)) setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
           else setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
@@ -12247,7 +12274,15 @@ void main(){
     }
 
     /* ── Personnalisation Hub — premium floating 3D crystal + hairline flux ─── */
-    function PersonnalisationScreen({ onNavigate, bgThemeId }) {
+    /* ── Personnalisation v2 — « Studio » ────────────────────────────────────
+       Fini le hub éclaté en 5 cartes : une colonne unique, lisible en 3
+       secondes. L'état courant de CHAQUE domaine est affiché (thème, police,
+       widgets, notes, tâches) → plus d'exploration à l'aveugle ; les thèmes
+       s'appliquent en UN clic depuis la page ; le cristal 3D reste la
+       signature visuelle (desktop) et le flux d'énergie relie désormais les
+       rangées au cristal. Mobile : colonne pure, cristal et canvas coupés
+       (léger pour les petites machines). */
+    function PersonnalisationScreen({ onNavigate, bgThemeId, onApplyTheme }) {
       const [hov, setHov] = _uPX(null);
       /* Refs mesurées par FluxEnergyCanvas (alignement DOM réel) ;
          hovRef double le state pour être lu dans la boucle canvas sans re-render. */
@@ -12256,337 +12291,147 @@ void main(){
       const stageRef = _uRefPX(null);
       const hovRef = _uRefPX(null);
       const setHovBoth = id => { hovRef.current = id; setHov(id); };
+
+      /* État courant de chaque domaine — lu à chaque montage (les sous-écrans
+         démontent ce composant, le retour re-lit donc des valeurs fraîches). */
+      const themes = (window.BG_THEMES || []).filter(t => t && t.id && t.id !== 'custom');
+      const activeTheme = themes.find(t => t.id === bgThemeId);
+      const fontName = (() => {
+        try {
+          const fp = localStorage.getItem('fs_font_preset') || 'signature';
+          return ((window.FONT_PRESETS || []).find(p => p.id === fp) || {}).name || 'Signature';
+        } catch (e) { return 'Signature'; }
+      })();
+      const widgetState = (() => {
+        try {
+          const ws = window._fsReadWidgetStyle ? window._fsReadWidgetStyle() : {};
+          const parts = [`Opacité ${Math.round((ws.opacity ?? 1) * 100)} %`];
+          if ((ws.glowIntensity ?? 0) > 0) parts.push('lueur');
+          return parts.join(' · ');
+        } catch (e) { return ''; }
+      })();
+      const NOTE_STYLE_NAMES = { organic: 'Organique', blueprint: 'Blueprint', cosmos: 'Cosmos' };
+      const noteState = (() => {
+        try {
+          const ns = window._fsCurrentMapStyle || localStorage.getItem('fs_note_map_style') || 'organic';
+          return NOTE_STYLE_NAMES[ns] || (String(ns)[0].toUpperCase() + String(ns).slice(1));
+        } catch (e) { return 'Organique'; }
+      })();
+      const TASK_VIEW_NAMES = { liste: 'Liste', kanban: 'Kanban', zen: 'Focus' };
+      const taskState = (() => {
+        try { return TASK_VIEW_NAMES[localStorage.getItem('fs_task_view')] || 'Liste'; } catch (e) { return 'Liste'; }
+      })();
+
       const CARDS = [
-        { id:'fond',    target:'fond',         eyebrow:'Ambiance',      title:'Thèmes',  c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
-        { id:'fonts',   target:'fonts',        eyebrow:'Typographie',   title:'Polices', c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
-        { id:'widgets', target:'variants',     eyebrow:'Dashboard',     title:'Widgets', c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
-        { id:'notes',   target:'notes-style',  eyebrow:'Carte mentale', title:'Notes',   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
-        { id:'tasks',   target:'tasks',        eyebrow:'Organisation',  title:'Tâches',  c1:'#fb7185', icon:<path d="M9 6h11M9 12h11M9 18h11M4 5.5l1.2 1.2L7.5 4.4M4 11.5l1.2 1.2 2.3-2.3M4 17.5l1.2 1.2 2.3-2.3"/> },
+        { id:'fond',    target:'fond',        title:'Thèmes & fond',  desc:'Couleurs, dégradés et ambiance de fond',        state: activeTheme?.name || 'Cosmos', c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
+        { id:'fonts',   target:'fonts',       title:'Polices',        desc:'La voix typographique de ton espace',           state: fontName,    c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
+        { id:'widgets', target:'variants',    title:'Widgets',        desc:'Styles, variantes et apparence globale',        state: widgetState, c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
+        { id:'notes',   target:'notes-style', title:'Carte de notes', desc:'Le style visuel de ta carte mentale',           state: noteState,   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
+        { id:'tasks',   target:'tasks',       title:'Tâches',         desc:'Liste, Kanban ou Focus — ton organisation',     state: taskState,   c1:'#fb7185', icon:<path d="M9 6h11M9 12h11M9 18h11M4 5.5l1.2 1.2L7.5 4.4M4 11.5l1.2 1.2 2.3-2.3M4 17.5l1.2 1.2 2.3-2.3"/> },
       ];
-      const POS = [[1,1],[3,1],[1,3],[3,3],[2,3]];
-      const FRAGMENTS = [
-        { size: 10, x: 50, y: -4, dur: 15, delay: -1.4, color: '#e8edff', z: 18 },
-        { size: 7, x: 88, y: 24, dur: 18, delay: -7.2, color: '#a5b8ff', z: 26 },
-        { size: 13, x: 92, y: 66, dur: 21, delay: -10.4, color: '#67e8f9', z: 14 },
-        { size: 6, x: 62, y: 102, dur: 16, delay: -5.5, color: '#f0c38e', z: 20 },
-        { size: 9, x: 18, y: 76, dur: 19, delay: -12.2, color: '#c084fc', z: 16 },
-        { size: 5, x: 10, y: 32, dur: 14, delay: -8.6, color: '#ffffff', z: 28 },
-        { size: 12, x: 34, y: 6, dur: 23, delay: -16.5, color: '#b8f4ff', z: 10 },
-      ];
+
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <style>{`
-            @keyframes fsOrbFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}
-            @keyframes fsOrbHalo{0%,100%{opacity:.18;transform:scale(.98)}50%{opacity:.32;transform:scale(1.03)}}
-            .fsPFluxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
-            @keyframes fsRingOuter{from{transform:rotateX(72deg) rotateY(8deg) rotateZ(0deg)}to{transform:rotateX(72deg) rotateY(8deg) rotateZ(360deg)}}
-            @keyframes fsRingMid{from{transform:rotateY(74deg) rotateX(12deg) rotateZ(360deg)}to{transform:rotateY(74deg) rotateX(12deg) rotateZ(0deg)}}
-            @keyframes fsRingInner{from{transform:rotateX(38deg) rotateY(42deg) rotateZ(0deg)}to{transform:rotateX(38deg) rotateY(42deg) rotateZ(360deg)}}
-            @keyframes fsRingPulse{0%,100%{opacity:.7}50%{opacity:1}}
-            @keyframes fsCrystalSpin{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
-            @keyframes fsCrystalTilt{0%,100%{transform:rotateX(0deg) rotateZ(0deg)}50%{transform:rotateX(8deg) rotateZ(-2deg)}}
-            @keyframes fsCrystalGleam{0%,100%{opacity:.35;transform:scale(.95) rotate(0deg)}50%{opacity:.7;transform:scale(1.08) rotate(180deg)}}
-            @keyframes fsCrystalFloor{0%,100%{opacity:.38;transform:scaleX(.92)}50%{opacity:.68;transform:scaleX(1.08)}}
-            @keyframes fsCoreCrystalFloat{0%,100%{transform:translate3d(0,4px,0) rotateX(-8deg) rotateZ(-1.2deg)}50%{transform:translate3d(0,-10px,0) rotateX(7deg) rotateZ(1.4deg)}}
-            @keyframes fsCoreCrystalTurn{from{transform:rotateY(0deg)}to{transform:rotateY(360deg)}}
-            @keyframes fsFragmentOrbit{from{transform:rotateZ(0deg) rotateX(64deg) rotateY(-16deg)}to{transform:rotateZ(360deg) rotateX(64deg) rotateY(-16deg)}}
-            @keyframes fsFragmentCounter{from{transform:rotateZ(0deg) rotateY(0deg)}to{transform:rotateZ(-360deg) rotateY(360deg)}}
-            @keyframes fsCrystalRay{0%,100%{opacity:.24}50%{opacity:.55}}
+            .fsPFluxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
             @keyframes fsThemeCrystalAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.94) rotate(0deg)}50%{opacity:.58;transform:translate3d(-50%,-50%,0) scale(1.04) rotate(8deg)}}
-            .fsPCard{border-radius:18px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);padding:14px;display:flex;flex-direction:column;gap:10px;transition:all .42s cubic-bezier(.22,1,.36,1);align-self:center;justify-self:center;width:100%;max-width:184px}
-            .fsPLayout{flex:1;display:grid;grid-template-columns:1fr 1.55fr 1fr;grid-template-rows:1fr 1.5fr 1fr;position:relative;padding:clamp(10px,1.8vh,18px) clamp(14px,2.5vw,30px) clamp(14px,2vh,24px);min-height:0;align-items:center;justify-items:center}
-            .fsPCenter{grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;width:100%;height:100%;z-index:5}
-            .fsPHalo{display:none!important}
-            .fsRing,.fsRingNode{display:none!important}
-            .fsPFloat{display:none!important}
-            .fsCrystalStageFrame{background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible;isolation:isolate}
             .fsCrystalScene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1120px;transform-style:preserve-3d}
-            .fsThemeCrystalAura{position:absolute;left:50%;top:50%;width:clamp(150px,18vw,220px);height:clamp(170px,21vw,250px);border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.18) 42%,rgba(var(--theme-c1-rgb),.055) 67%,transparent 74%);filter:blur(20px) saturate(1.05);mix-blend-mode:screen;pointer-events:none;z-index:6;animation:fsThemeCrystalAura 7.6s cubic-bezier(.4,0,.2,1) infinite}
-            .fsThemeCrystalAura:after{content:"";position:absolute;inset:18%;border-radius:inherit;background:conic-gradient(from 130deg,rgba(var(--theme-c1-rgb),.18),transparent 26%,rgba(var(--theme-c2-rgb),.16),transparent 62%,rgba(var(--theme-c1-rgb),.12));filter:blur(10px);opacity:.72}
+            .fsThemeCrystalAura{position:absolute;left:50%;top:50%;width:72%;height:84%;border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.18) 42%,rgba(var(--theme-c1-rgb),.055) 67%,transparent 74%);filter:blur(20px) saturate(1.05);mix-blend-mode:screen;pointer-events:none;z-index:6;animation:fsThemeCrystalAura 7.6s cubic-bezier(.4,0,.2,1) infinite}
             .fsBlenderCrystalCanvas{position:absolute;inset:-12%;width:124%;height:124%;display:block;z-index:8;pointer-events:none;filter:drop-shadow(0 24px 42px rgba(var(--theme-c1-rgb),.24)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.18))}
-            .fsCrystalRays{display:none!important}
-            .fsOrbitShell{display:none!important}
-            .fsCrystalShard{position:absolute;transform-style:preserve-3d;animation:fsFragmentCounter 18s linear infinite}
-            .fsCrystalShard svg{display:none}
-            .fsShard3d{position:absolute;inset:0;transform-style:preserve-3d;filter:drop-shadow(0 8px 14px rgba(103,232,249,.22))}
-            .fsShardFace{position:absolute;left:50%;top:50%;width:100%;height:145%;margin-left:-50%;margin-top:-72.5%;clip-path:polygon(50% 0%,95% 34%,66% 100%,34% 100%,5% 34%);background:linear-gradient(150deg,rgba(255,255,255,.86),var(--shard-color),rgba(42,36,92,.42));border:1px solid rgba(255,255,255,.42);backface-visibility:visible}
-            .fsShardFace:nth-child(1){transform:rotateY(0deg) translateZ(calc(var(--shard-depth) * 1px))}
-            .fsShardFace:nth-child(2){transform:rotateY(90deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.84}
-            .fsShardFace:nth-child(3){transform:rotateY(180deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.72}
-            .fsShardFace:nth-child(4){transform:rotateY(270deg) translateZ(calc(var(--shard-depth) * 1px));opacity:.8}
-            .fsMainCrystalFloat{display:none!important}
-            .fsMainCrystalTurn{position:absolute;inset:0;transform-style:preserve-3d;animation:fsCoreCrystalTurn 10.5s linear infinite;filter:drop-shadow(0 24px 46px rgba(103,232,249,.22))}
-            .fsMainCrystalSvg{display:none}
-            .fsVolCrystal{position:absolute;left:50%;top:50%;width:132px;height:190px;margin-left:-66px;margin-top:-95px;transform-style:preserve-3d}
-            .fsVolFacet{position:absolute;left:50%;top:50%;width:44px;height:116px;margin-left:-22px;margin-top:-42px;clip-path:polygon(50% 0%,100% 16%,84% 100%,16% 100%,0% 16%);background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(184,244,255,.5) 28%,rgba(165,184,255,.34) 62%,rgba(20,18,56,.68));border:1px solid rgba(255,255,255,.44);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -22px 34px rgba(13,12,42,.34);backface-visibility:visible;transform-origin:50% 50%}
-            .fsVolFacet::after{content:"";position:absolute;left:49%;top:2%;bottom:3%;width:1px;background:linear-gradient(to bottom,rgba(255,255,255,.72),rgba(255,255,255,.12),transparent)}
-            .fsVolFacet:nth-child(1){transform:rotateY(0deg) translateZ(38px)}
-            .fsVolFacet:nth-child(2){transform:rotateY(60deg) translateZ(38px);opacity:.92}
-            .fsVolFacet:nth-child(3){transform:rotateY(120deg) translateZ(38px);opacity:.78}
-            .fsVolFacet:nth-child(4){transform:rotateY(180deg) translateZ(38px);opacity:.68}
-            .fsVolFacet:nth-child(5){transform:rotateY(240deg) translateZ(38px);opacity:.78}
-            .fsVolFacet:nth-child(6){transform:rotateY(300deg) translateZ(38px);opacity:.92}
-            .fsVolFacet:nth-child(7){width:108px;height:64px;margin-left:-54px;margin-top:-100px;clip-path:polygon(50% 0%,100% 72%,50% 100%,0% 72%);background:linear-gradient(150deg,rgba(255,255,255,.96),rgba(184,244,255,.55),rgba(126,103,255,.24));transform:rotateX(64deg) translateZ(38px);opacity:.92}
-            .fsVolFacet:nth-child(8){width:104px;height:78px;margin-left:-52px;margin-top:44px;clip-path:polygon(0% 0%,100% 0%,50% 100%);background:linear-gradient(180deg,rgba(119,145,255,.36),rgba(19,16,54,.76));transform:rotateX(-64deg) translateZ(38px);opacity:.82}
-            .fsCrystalFloor{display:none!important}
+            .fsP2Scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:clamp(18px,3vh,34px) clamp(16px,3vw,40px) 40px}
+            .fsP2Inner{max-width:840px;margin:0 auto;position:relative}
+            .fsP2Hero{display:flex;align-items:center;gap:26px;margin-bottom:24px;position:relative;z-index:1}
+            .fsP2Stage{position:relative;width:clamp(150px,17vw,200px);height:clamp(150px,17vw,200px);flex-shrink:0;margin-left:auto}
+            .fsP2Kicker{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+            .fsP2Title{font-family:var(--font-display);font-weight:700;font-size:clamp(22px,3vh,32px);letter-spacing:-.035em;line-height:1.05;color:rgba(255,255,255,.96);margin-bottom:8px}
+            .fsP2Sub{font-size:13px;color:rgba(255,255,255,.5);line-height:1.55;max-width:46ch}
+            .fsP2QuickLbl{font-size:9.5px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:18px 0 9px}
+            .fsP2Dots{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+            .fsP2Dot{width:27px;height:27px;border-radius:50%;cursor:pointer;padding:0;border:1.5px solid rgba(255,255,255,.16);transition:transform .18s var(--mineral-ease),border-color .18s,box-shadow .18s}
+            .fsP2Dot:hover{transform:scale(1.12)}
+            .fsP2Dot.on{border-color:rgba(255,255,255,.95);transform:scale(1.16);box-shadow:0 0 0 3px rgba(var(--theme-c1-rgb),.22),0 6px 16px rgba(0,0,0,.35)}
+            .fsP2DotPlus{width:27px;height:27px;border-radius:50%;cursor:pointer;border:1.5px dashed rgba(255,255,255,.28);background:transparent;color:rgba(255,255,255,.6);font-size:13px;font-weight:800;display:grid;place-items:center;transition:all .18s;font-family:inherit}
+            .fsP2DotPlus:hover{border-color:rgba(255,255,255,.6);color:#fff}
+            .fsP2Rows{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1}
+            .fsP2Row{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;border-radius:18px;cursor:pointer;text-align:left;font-family:inherit;background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.065);transition:all .24s cubic-bezier(.22,1,.36,1)}
+            .fsP2Row:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.13);transform:translateY(-1px);box-shadow:0 12px 30px rgba(0,0,0,.28)}
+            .fsP2Row:focus-visible{outline:2px solid rgba(var(--theme-c1-rgb),.65);outline-offset:2px}
+            .fsP2RowIcon{width:38px;height:38px;border-radius:13px;flex-shrink:0;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);transition:color .3s}
+            .fsP2RowTitle{font-family:var(--font-display);font-weight:650;font-size:14.5px;letter-spacing:-.015em;color:rgba(255,255,255,.95);display:flex;align-items:center;gap:8px}
+            .fsP2RowDesc{font-size:11.5px;color:rgba(255,255,255,.42);margin-top:2px;line-height:1.4;display:block}
+            .fsP2RowState{margin-left:auto;flex-shrink:0;font-size:10.5px;font-weight:800;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:rgba(248,246,252,.62);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+            .fsP2Chev{flex-shrink:0;color:rgba(255,255,255,.28);transition:all .25s}
+            .fsP2Row:hover .fsP2Chev{color:rgba(255,255,255,.7);transform:translateX(2px)}
             @media(max-width:640px){
-              .fsPLayout{display:grid!important;grid-template-columns:1fr 1fr!important;grid-template-rows:auto auto auto!important;gap:12px!important;padding:14px 14px 110px!important;overflow-y:auto!important;align-items:stretch!important;justify-items:stretch!important}
-              .fsPFluxCanvas{display:none!important}
-              .fsPCenter{grid-column:1 / -1!important;grid-row:1!important;height:232px!important;width:100%!important;justify-self:center!important}
-              .fsCrystalStageFrame{width:min(254px,84vw)!important;height:218px!important;aspect-ratio:auto!important}
-              .fsThemeCrystalAura{width:172px!important;height:198px!important;filter:blur(18px) saturate(1.05)}
-              .fsBlenderCrystalCanvas{inset:-8%!important;width:116%!important;height:116%!important}
-              .fsPCrystalCore{inset:16% 22% 18%!important;transform:scale(.9)}
-              .fsMainCrystalFloat{width:112px!important;height:160px!important;margin-left:-56px!important;margin-top:-80px!important}
-              .fsVolCrystal{width:108px!important;height:158px!important;margin-left:-54px!important;margin-top:-79px!important}
-              .fsVolFacet{width:36px!important;height:96px!important;margin-left:-18px!important;margin-top:-34px!important}
-              .fsVolFacet:nth-child(7){width:88px!important;height:52px!important;margin-left:-44px!important;margin-top:-82px!important}
-              .fsVolFacet:nth-child(8){width:84px!important;height:62px!important;margin-left:-42px!important;margin-top:36px!important}
-              .fsOrbitShell{width:82%!important;height:82%!important;margin:-41% 0 0 -41%!important}
-              .fsCrystalRays{width:52%!important}
-              .fsPCard{max-width:none!important;width:100%!important;padding:13px!important}
-              .fsPCard:nth-of-type(1){grid-column:1!important;grid-row:2!important}
-              .fsPCard:nth-of-type(2){grid-column:2!important;grid-row:2!important}
-              .fsPCard:nth-of-type(3){grid-column:1!important;grid-row:3!important}
-              .fsPCard:nth-of-type(4){grid-column:2!important;grid-row:3!important}
+              .fsP2Stage,.fsPFluxCanvas{display:none!important}
+              .fsP2Hero{margin-bottom:18px}
+              .fsP2Scroll{padding-bottom:120px}
+              .fsP2RowState{max-width:96px;font-size:9.5px;padding:4px 9px}
+              .fsP2RowDesc{display:none}
             }
-            @media(prefers-reduced-motion:reduce){.fsPFloat,.fsPHalo,.fsRing,.fsRingNode,.fsCrystalSpin,.fsCrystalTilt,.fsCrystalGleam,.fsCrystalFloor,.fsMainCrystalFloat,.fsMainCrystalTurn,.fsOrbitShell,.fsCrystalShard,.fsCrystalRays,.fsThemeCrystalAura{animation:none!important}}
+            @media(prefers-reduced-motion:reduce){.fsThemeCrystalAura{animation:none!important}}
+            html.fs-reduce-motion .fsThemeCrystalAura{animation:none!important}
           `}</style>
 
-          {/* ── Header — refined typographic rhythm ── */}
-          <div style={{padding:'clamp(18px,2.8vh,30px) clamp(20px,3vw,40px) 0',flexShrink:0}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
-              <div style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,.55)'}}/>
-              <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.18em',textTransform:'uppercase',color:'rgba(255,255,255,.55)'}}>Personnalisation</span>
-            </div>
-            <div style={{fontFamily:T.display,fontWeight:700,fontSize:'clamp(22px,2.8vh,32px)',letterSpacing:'-0.035em',lineHeight:1.05,marginBottom:10,color:'rgba(255,255,255,.96)'}}>Faites-en votre espace.</div>
-            <div style={{fontSize:13,color:'rgba(255,255,255,.5)',lineHeight:1.55,fontWeight:400,maxWidth:'42ch'}}>Quatre dimensions, un seul prisme. Ajustez ce que vous voyez, lisez et habitez.</div>
-          </div>
+          <div className="fsP2Scroll">
+            <div className="fsP2Inner" ref={layoutRef}>
+              {/* Flux d'énergie : courants rangées → cristal, mesurés sur le DOM réel */}
+              <FluxEnergyCanvas layoutRef={layoutRef} cardRefs={cardRefs} stageRef={stageRef} hovRef={hovRef} cards={CARDS} />
 
-          {/* ── Radial grid layout ── */}
-          <div className="fsPLayout" ref={layoutRef}>
-
-            {/* Flux d'énergie temps réel — courants VFX cartes → cristal,
-               mesurés sur le DOM réel (voir FluxEnergyCanvas plus haut). */}
-            <FluxEnergyCanvas layoutRef={layoutRef} cardRefs={cardRefs} stageRef={stageRef} hovRef={hovRef} cards={CARDS} />
-
-            {/* ── 4 Compact corner cards — refined typography ── */}
-            {CARDS.map((card, i) => {
-              const [gc, gr] = POS[i];
-              const h = hov === card.id;
-              return (
-                <div key={card.id} className="fsPCard"
-                  ref={el => { cardRefs.current[i] = el; }}
-                  onClick={() => {
-                    /* La carte Tâches ouvre directement le sélecteur d'affichage */
-                    if (card.id === 'tasks') window._fsOpenTaskViewPicker = true;
-                    onNavigate(card.target);
-                  }}
-                  onMouseEnter={() => setHovBoth(card.id)} onMouseLeave={() => setHovBoth(null)}
-                  style={{
-                    gridColumn:gc, gridRow:gr,
-                    background: h ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)',
-                    border:`1px solid ${h ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)'}`,
-                    boxShadow: h ? `0 12px 32px rgba(0,0,0,.36),0 0 0 .5px rgba(255,255,255,.06)` : '0 1px 8px rgba(0,0,0,.12)',
-                    transform: h ? 'translateY(-2px)' : 'translateY(0)',
-                    zIndex: h ? 10 : 2,
-                  }}
-                >
-                  {/* Whisper-thin corner glow on hover only */}
-                  <div style={{position:'absolute',inset:0,borderRadius:'inherit',background:`radial-gradient(circle at 90% 10%,${card.c1}${h?'1c':'00'},transparent 60%)`,transition:'all .5s',pointerEvents:'none'}}/>
-
-                  {/* Top row: icon (left) + arrow indicator (right) */}
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',position:'relative'}}>
-                    <div style={{width:28,height:28,borderRadius:9,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.08)',display:'flex',alignItems:'center',justifyContent:'center',color: h ? card.c1 : 'rgba(255,255,255,.65)',transition:'color .35s'}}>
-                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg>
-                    </div>
-                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color:h?'rgba(255,255,255,.7)':'rgba(255,255,255,.25)',transform:h?'translateX(2px)':'translateX(0)',transition:'all .35s cubic-bezier(.22,1,.36,1)'}}><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+              {/* ── Hero : titre + thèmes en 1 clic + cristal signature ── */}
+              <div className="fsP2Hero">
+                <div style={{minWidth:0,flex:1}}>
+                  <div className="fsP2Kicker">
+                    <div style={{width:4,height:4,borderRadius:'50%',background:'rgba(255,255,255,.55)'}}/>
+                    <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.18em',textTransform:'uppercase',color:'rgba(255,255,255,.55)'}}>Personnalisation</span>
                   </div>
-
-                  {/* Eyebrow */}
-                  <div style={{fontSize:9,fontWeight:600,letterSpacing:'0.16em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginTop:'auto'}}>{card.eyebrow}</div>
-
-                  {/* Title — typographic hero */}
-                  <div style={{fontFamily:T.display,fontWeight:600,fontSize:'clamp(15px,1.9vh,18px)',letterSpacing:'-0.02em',color:'rgba(255,255,255,.96)',position:'relative',display:'flex',alignItems:'center',gap:8}}>
-                    {card.title}
-                    {card.id === 'widgets' && window.FsHintDot && <window.FsHintDot />}
+                  <div className="fsP2Title">Ton espace, ta signature.</div>
+                  <div className="fsP2Sub">L'essentiel se règle ici en un clic — et chaque réglage affiche son état, pour ne jamais chercher.</div>
+                  {onApplyTheme && themes.length > 0 && (
+                    <React.Fragment>
+                      <div className="fsP2QuickLbl">Thème · appliqué instantanément</div>
+                      <div className="fsP2Dots">
+                        {themes.slice(0, 8).map(t => (
+                          <button key={t.id} type="button" className={'fsP2Dot' + (bgThemeId === t.id ? ' on' : '')}
+                            title={t.name} aria-label={`Thème ${t.name}`} aria-pressed={bgThemeId === t.id}
+                            onClick={() => onApplyTheme(t)}
+                            style={{background:`linear-gradient(135deg, rgb(${t.g1?.rgb || '165,184,255'}), rgb(${t.g2?.rgb || '192,132,252'}))`}} />
+                        ))}
+                        <button type="button" className="fsP2DotPlus" title="Tous les thèmes & fond personnalisé" aria-label="Tous les thèmes et fond personnalisé" onClick={() => onNavigate('fond')}>+</button>
+                      </div>
+                    </React.Fragment>
+                  )}
+                </div>
+                <div className="fsP2Stage" ref={stageRef}>
+                  <div className="fsCrystalScene">
+                    <div className="fsThemeCrystalAura" aria-hidden="true" />
+                    <BlenderCrystalScene />
                   </div>
                 </div>
-              );
-            })}
+              </div>
 
-            {/* ── Center: Orbital Personalization System — infinite rings + 3D crystal ── */}
-            <div className="fsPCenter">
-              <div className="fsCrystalStageFrame" ref={stageRef} style={{position:'relative',width:'clamp(220px,28vw,300px)',height:'clamp(220px,28vw,300px)',aspectRatio:'1'}}>
-                <div className="fsCrystalScene">
-                  <div className="fsThemeCrystalAura" aria-hidden="true" />
-                  <BlenderCrystalScene />
-                  <div className="fsPHalo" style={{position:'absolute',inset:'-12%',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
-
-                  <div className="fsOrbitShell">
-                    {FRAGMENTS.map((frag, i) => (
-                      <div key={i} className="fsCrystalShard" style={{
-                        left:`${frag.x}%`,
-                        top:`${frag.y}%`,
-                        width:frag.size,
-                        height:frag.size * 1.45,
-                        marginLeft:frag.size / -2,
-                        marginTop:(frag.size * 1.45) / -2,
-                        animationDuration:`${frag.dur}s`,
-                        animationDelay:`${frag.delay}s`,
-                        transform:`translateZ(${frag.z}px)`,
-                      }}>
-                        <div className="fsShard3d" style={{'--shard-color':frag.color,'--shard-depth':Math.max(2, frag.size * .42)}}>
-                          {[0,1,2,3].map(face => <span key={face} className="fsShardFace"/>)}
-                        </div>
-                        <svg viewBox="0 0 20 30" width={frag.size} height={frag.size * 1.45} aria-hidden="true">
-                          <polygon points="10,1 18,9 13,29 7,29 2,9" fill={frag.color} opacity=".76"/>
-                          <path d="M10 1v28M2 9h16M7 29 10 9l3 20" stroke="rgba(255,255,255,.54)" strokeWidth="1" fill="none" strokeLinecap="round"/>
-                        </svg>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="fsMainCrystalFloat">
-                    <div className="fsMainCrystalTurn">
-                      <div className="fsVolCrystal" aria-hidden="true">
-                        {[0,1,2,3,4,5,6,7].map(face => <span key={face} className="fsVolFacet"/>)}
-                      </div>
-                      <svg className="fsMainCrystalSvg" viewBox="0 0 124 178" aria-hidden="true">
-                        <defs>
-                          <linearGradient id="fsMainCrystalLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stopColor="rgba(245,248,255,.92)"/>
-                            <stop offset="38%" stopColor="rgba(165,184,255,.58)"/>
-                            <stop offset="100%" stopColor="rgba(74,65,145,.42)"/>
-                          </linearGradient>
-                          <linearGradient id="fsMainCrystalRight" x1="100%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="rgba(184,244,255,.84)"/>
-                            <stop offset="46%" stopColor="rgba(192,132,252,.5)"/>
-                            <stop offset="100%" stopColor="rgba(34,27,84,.62)"/>
-                          </linearGradient>
-                          <linearGradient id="fsMainCrystalCore" x1="50%" y1="0%" x2="50%" y2="100%">
-                            <stop offset="0%" stopColor="rgba(255,255,255,.95)"/>
-                            <stop offset="30%" stopColor="rgba(226,232,255,.74)"/>
-                            <stop offset="66%" stopColor="rgba(111,151,255,.38)"/>
-                            <stop offset="100%" stopColor="rgba(18,16,52,.72)"/>
-                          </linearGradient>
-                          <filter id="fsMainCrystalGlow" x="-45%" y="-35%" width="190%" height="180%">
-                            <feGaussianBlur stdDeviation="4" result="blur"/>
-                            <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.72 0 0 0 0 1 0 0 0 .55 0"/>
-                            <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-                          </filter>
-                        </defs>
-                        <path d="M62 4 112 42 94 134 62 174 30 134 12 42Z" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.52)" strokeWidth="1.2" filter="url(#fsMainCrystalGlow)"/>
-                        <polygon points="62,4 112,42 62,54 12,42" fill="rgba(255,255,255,.74)" opacity=".82"/>
-                        <polygon points="12,42 62,54 30,134" fill="url(#fsMainCrystalLeft)"/>
-                        <polygon points="112,42 62,54 94,134" fill="url(#fsMainCrystalRight)"/>
-                        <polygon points="62,54 94,134 62,174 30,134" fill="url(#fsMainCrystalCore)"/>
-                        <polygon points="62,4 62,54 12,42" fill="rgba(167,180,255,.38)"/>
-                        <polygon points="62,4 112,42 62,54" fill="rgba(103,232,249,.34)"/>
-                        <path d="M62 5v168M12 42l50 12 50-12M30 134l32-80 32 80M30 134h64" stroke="rgba(255,255,255,.42)" strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M44 48 62 14 82 47M42 80 61 58M83 80 64 58" stroke="rgba(255,255,255,.24)" strokeWidth=".8" fill="none" strokeLinecap="round"/>
-                      </svg>
-                    </div>
-                  </div>
-
-                  <div className="fsCrystalFloor" style={{position:'absolute',left:'23%',right:'23%',bottom:'15%',height:'8%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.36),rgba(103,232,249,.16) 42%,transparent 72%)',filter:'blur(9px)',pointerEvents:'none',zIndex:2}}/>
-                </div>
-
-                {/* Soft ambient halo */}
-                <div className="fsPHalo" style={{position:'absolute',inset:'-18%',borderRadius:'50%',background:'radial-gradient(circle,rgba(167,180,255,.16),rgba(192,132,252,.06) 50%,transparent 72%)',filter:'blur(28px)',animation:'fsOrbHalo 7s ease-in-out infinite',pointerEvents:'none'}}/>
-
-                {/* Float wrapper — gentle vertical breath */}
-                <div className="fsPFloat" style={{animation:'fsOrbFloat 6s ease-in-out infinite',width:'100%',height:'100%',position:'relative'}}>
-
-                  {/* 3D scene with perspective */}
-                  <div style={{perspective:'780px',perspectiveOrigin:'50% 50%',width:'100%',height:'100%',position:'relative',transformStyle:'preserve-3d'}}>
-
-                    {/* Drop shadow under entire system */}
-                    <div style={{position:'absolute',left:'18%',right:'18%',bottom:'-4%',height:'10%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(0,0,0,.5),transparent 65%)',filter:'blur(8px)',pointerEvents:'none'}}/>
-
-                    {/* ── Ring 1 — Outer horizontal orbit (18s) ── */}
-                    <div className="fsRing" style={{position:'absolute',inset:'-3%',borderRadius:'50%',border:'1.5px solid rgba(255,255,255,.18)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.06), 0 0 28px rgba(167,180,250,.05)',animation:'fsRingOuter 22s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
-                      {/* Satellite node */}
-                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-3,width:6,height:6,marginLeft:-3,borderRadius:'50%',background:'rgba(255,255,255,.96)',boxShadow:'0 0 10px rgba(167,180,250,.85),0 0 3px #fff',animation:'fsRingPulse 3s ease-in-out infinite'}}/>
-                      {/* Counter-satellite (opposite side) */}
-                      <div className="fsRingNode" style={{position:'absolute',left:'50%',bottom:-2,width:3,height:3,marginLeft:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.6)',boxShadow:'0 0 5px rgba(167,180,250,.5)'}}/>
-                    </div>
-
-                    {/* ── Ring 2 — Vertical orbit, reverse direction (28s) ── */}
-                    <div className="fsRing" style={{position:'absolute',inset:'7%',borderRadius:'50%',border:'1.2px solid rgba(255,255,255,.14)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.05), 0 0 22px rgba(240,195,142,.04)',animation:'fsRingMid 32s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
-                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2.5,width:5,height:5,marginLeft:-2.5,borderRadius:'50%',background:'rgba(255,255,255,.93)',boxShadow:'0 0 8px rgba(240,195,142,.75)',animation:'fsRingPulse 3.5s ease-in-out infinite',animationDelay:'-1.2s'}}/>
-                    </div>
-
-                    {/* ── Ring 3 — Diagonal orbit (24s) ── */}
-                    <div className="fsRing" style={{position:'absolute',inset:'18%',borderRadius:'50%',border:'1px solid rgba(255,255,255,.12)',boxShadow:'inset 0 0 0 .5px rgba(255,255,255,.04), 0 0 16px rgba(74,222,128,.03)',animation:'fsRingInner 26s linear infinite',transformStyle:'preserve-3d',pointerEvents:'none'}}>
-                      <div className="fsRingNode" style={{position:'absolute',left:'50%',top:-2,width:4,height:4,marginLeft:-2,borderRadius:'50%',background:'rgba(255,255,255,.9)',boxShadow:'0 0 6px rgba(103,232,249,.7)',animation:'fsRingPulse 4s ease-in-out infinite',animationDelay:'-2s'}}/>
-                      <div className="fsRingNode" style={{position:'absolute',right:-1.5,top:'50%',width:3,height:3,marginTop:-1.5,borderRadius:'50%',background:'rgba(255,255,255,.55)',boxShadow:'0 0 5px rgba(74,222,128,.5)'}}/>
-                    </div>
-
-                    {/* ── Central 3D Crystal — floating octahedron ── */}
-                    <div className="fsPCrystalCore" style={{position:'absolute',inset:'14% 18% 18%',display:'flex',alignItems:'center',justifyContent:'center',zIndex:3,transformStyle:'preserve-3d'}}>
-
-                      {/* Inner gleam halo behind crystal */}
-                      <div className="fsCrystalGleam" style={{position:'absolute',inset:'-34%',borderRadius:28,clipPath:'polygon(50% 0%,92% 28%,76% 100%,24% 100%,8% 28%)',background:'conic-gradient(from 90deg,rgba(255,255,255,.22),rgba(167,180,255,.18) 25%,transparent 50%,rgba(192,132,252,.16) 75%,rgba(255,255,255,.22))',filter:'blur(14px)',animation:'fsCrystalGleam 9s ease-in-out infinite',pointerEvents:'none'}}/>
-
-                      {/* Subtle tilt wrapper for organic motion */}
-                      <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalTilt 11s ease-in-out infinite'}}>
-                        {/* Y-axis spin */}
-                        <div style={{position:'absolute',inset:0,transformStyle:'preserve-3d',animation:'fsCrystalSpin 14s linear infinite'}}>
-
-                          {/* 8 octahedron facets — 4 top + 4 bottom, each at correct 3D position */}
-                          {[
-                            {a:45,  t:true},  {a:135, t:true},  {a:225, t:true},  {a:315, t:true},
-                            {a:45,  t:false}, {a:135, t:false}, {a:225, t:false}, {a:315, t:false},
-                          ].map((f, i) => (
-                            <svg key={i} viewBox="0 0 80 100" style={{
-                              position:'absolute',
-                              top:'50%', left:'50%',
-                              width:84, height:112,
-                              marginLeft:-42, marginTop:-56,
-                              /* Order matters: translateZ AFTER rotations so it moves along the rotated normal */
-                              transform:`translateZ(34px) rotateY(${f.a}deg) rotateX(${f.t?58:-58}deg)`,
-                              transformOrigin:'50% 50%',
-                              overflow:'visible',
-                              backfaceVisibility:'visible',
-                            }}>
-                              <defs>
-                                <linearGradient id={`fsCG${i}`} x1="50%" y1={f.t?"0%":"100%"} x2="50%" y2={f.t?"100%":"0%"}>
-                                  <stop offset="0%" stopColor="rgba(255,255,255,.55)"/>
-                                  <stop offset="22%" stopColor="rgba(220,225,255,.32)"/>
-                                  <stop offset="55%" stopColor="rgba(167,180,255,.18)"/>
-                                  <stop offset="85%" stopColor="rgba(120,100,170,.12)"/>
-                                  <stop offset="100%" stopColor="rgba(16,11,32,.6)"/>
-                                </linearGradient>
-                                <linearGradient id={`fsCE${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                                  <stop offset="0%" stopColor="rgba(255,255,255,.62)"/>
-                                  <stop offset="100%" stopColor="rgba(255,255,255,.22)"/>
-                                </linearGradient>
-                              </defs>
-                              {/* Main facet — triangle */}
-                              <polygon
-                                points={f.t ? "40,4 76,92 4,92" : "4,8 76,8 40,96"}
-                                fill={`url(#fsCG${i})`}
-                                stroke={`url(#fsCE${i})`}
-                                strokeWidth="0.9"
-                                strokeLinejoin="round"
-                              />
-                              {/* Inner spine — adds 3D facet definition */}
-                              <line
-                                x1="40" y1={f.t?"4":"96"} x2="40" y2={f.t?"92":"8"}
-                                stroke="rgba(255,255,255,.18)"
-                                strokeWidth="0.45"
-                              />
-                            </svg>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Caustic glow underneath — subtle ground hint */}
-                      <div className="fsCrystalFloor" style={{position:'absolute',left:'8%',right:'8%',bottom:'-12%',height:'13%',borderRadius:'50%',background:'radial-gradient(ellipse,rgba(167,180,255,.34),rgba(103,232,249,.14) 42%,transparent 70%)',filter:'blur(8px)',pointerEvents:'none'}}/>
-                    </div>
-                  </div>
-                </div>
+              {/* ── Domaines : une rangée = un réglage, état courant visible ── */}
+              <div className="fsP2Rows">
+                {CARDS.map((card, i) => (
+                  <button key={card.id} type="button" className="fsP2Row"
+                    ref={el => { cardRefs.current[i] = el; }}
+                    onClick={() => {
+                      /* La rangée Tâches ouvre directement le sélecteur d'affichage */
+                      if (card.id === 'tasks') window._fsOpenTaskViewPicker = true;
+                      onNavigate(card.target);
+                    }}
+                    onMouseEnter={() => setHovBoth(card.id)} onMouseLeave={() => setHovBoth(null)}>
+                    <span className="fsP2RowIcon" style={{color: hov === card.id ? card.c1 : 'rgba(255,255,255,.62)'}}>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{card.icon}</svg>
+                    </span>
+                    <span style={{minWidth:0}}>
+                      <span className="fsP2RowTitle">{card.title}{card.id === 'widgets' && window.FsHintDot && <window.FsHintDot />}</span>
+                      <span className="fsP2RowDesc">{card.desc}</span>
+                    </span>
+                    {card.state ? <span className="fsP2RowState" title={card.state}>{card.state}</span> : <span style={{marginLeft:'auto'}}/>}
+                    <svg className="fsP2Chev" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -15759,7 +15604,7 @@ void main(){
                 {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux' })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
-                {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} />}
+                {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} />}
                 {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} onLogout={handleLogout} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
