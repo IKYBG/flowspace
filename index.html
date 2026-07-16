@@ -853,6 +853,13 @@
       font-weight: 750;
       white-space: nowrap;
     }
+    /* 6 onglets (avec Amis) : resserre sur les petits écrans */
+    @media (max-width: 400px) {
+      .fs-mobile-nav { padding: 6px 4px; }
+      .fs-mobile-nav-btn { padding: 6px 1px; gap: 3px; }
+      .fs-mobile-nav-btn svg { width: 19px; height: 19px; }
+      .fs-mobile-nav-label { font-size: 9px; letter-spacing: -0.01em; }
+    }
     html.fs-perf-lite .fs-mobile-nav {
       box-shadow: 0 10px 28px rgba(0,0,0,0.36);
     }
@@ -1083,12 +1090,16 @@
       .fs-auth-wrap {
         padding: 20px 16px !important;
       }
-      /* Cristaux / friends panel: full-screen on mobile */
+      /* Amis : feuille basse sur mobile (poignée + animation dans le style
+         injecté du panneau — voir le bloc FriendsPanel) */
       .fs-friends-panel {
-        top: 0 !important; bottom: 60px !important;
+        top: auto !important; bottom: 0 !important;
         left: 0 !important; right: 0 !important;
-        width: 100% !important;
-        border-radius: 0 0 0 0 !important;
+        width: 100% !important; max-width: none !important;
+        height: min(86dvh, 680px) !important;
+        border-radius: 28px 28px 0 0 !important;
+        border-bottom: none !important;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
       }
       /* Account panel: bottom sheet on mobile */
       .fs-account-panel {
@@ -1196,7 +1207,7 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
-                       'fs_showcase', 'fs_text_widgets'];
+                       'fs_showcase', 'fs_text_widgets', 'fs_task_view'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -1703,7 +1714,7 @@
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
-      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets',
+      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets', 'fs_task_view',
       'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
       'fs_ambient'
     ];
@@ -2078,7 +2089,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -2190,6 +2201,11 @@
           if (widgetStyle.textWidgets) _fsRawSet('fs_text_widgets', JSON.stringify(widgetStyle.textWidgets));
           else if (!ownLocal) _fsRawRemove('fs_text_widgets');
           window.dispatchEvent(new CustomEvent('fs-text-widgets-update'));
+        } catch (_) { }
+        /* Affichage des tâches embarqué dans widget_style.taskView */
+        try {
+          if (typeof widgetStyle.taskView === 'string' && widgetStyle.taskView) _fsRawSet('fs_task_view', widgetStyle.taskView);
+          else if (!ownLocal) _fsRawRemove('fs_task_view');
         } catch (_) { }
       } else {
         const rememberedStyle = _fsReadRememberedWidgetStyle(userId);
@@ -2417,6 +2433,10 @@
         const v = localStorage.getItem('fs_text_widgets');
         if (v != null) r.widget_style = { ...(r.widget_style || {}), textWidgets: JSON.parse(v) };
       } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_task_view');
+        if (v != null) r.widget_style = { ...(r.widget_style || {}), taskView: String(v) };
+      } catch (_) { }
       try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; const base = v != null ? JSON.parse(v) : null; const g = _fsGamifWithLocalData(userId, base); if (g != null) r.gamification = g; } catch (_) { }
       return r;
     }
@@ -2509,6 +2529,10 @@
       try {
         const v = localStorage.getItem('fs_text_widgets');
         if (v != null) payload.widget_style = { ...(payload.widget_style || {}), textWidgets: JSON.parse(v) };
+      } catch (_) { }
+      try {
+        const v = localStorage.getItem('fs_task_view');
+        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), taskView: String(v) };
       } catch (_) { }
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); const g = _fsGamifWithLocalData(u.id, v != null ? JSON.parse(v) : null); if (g != null) payload.gamification = g; } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
@@ -4755,6 +4779,65 @@
         glow: src.glow != null ? !!src.glow : d.glow,
       };
     }
+    /* Styles du panneau d'édition (modal centré desktop, feuille basse mobile) */
+    if (!document.getElementById('fs-textw-css')) {
+      const s = document.createElement('style');
+      s.id = 'fs-textw-css';
+      s.textContent = `
+      .fs-textw-modal {
+        position:fixed; inset:0; z-index:10060;
+        background:rgba(4,4,12,0.66);
+        backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+        display:flex; align-items:center; justify-content:center; padding:20px;
+        animation:fsTextwFade .2s ease both;
+      }
+      @keyframes fsTextwFade { from { opacity:0; } to { opacity:1; } }
+      .fs-textw-card {
+        width:min(460px, 100%);
+        max-height:min(88dvh, 720px);
+        display:flex; flex-direction:column;
+        border-radius:26px;
+        background:
+          radial-gradient(120% 50% at 50% 0%, rgba(var(--theme-c1-rgb),0.10), transparent 60%),
+          linear-gradient(180deg, rgba(19,18,32,0.99), rgba(11,10,22,0.99));
+        border:1px solid rgba(255,255,255,0.10);
+        box-shadow:0 36px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03), 0 0 70px rgba(var(--theme-c1-rgb),0.08);
+        animation:fsTextwPop .3s cubic-bezier(0.34,1.4,0.64,1) both;
+        overflow:hidden;
+      }
+      @keyframes fsTextwPop { from { opacity:0; transform:translateY(14px) scale(.97); } to { opacity:1; transform:none; } }
+      .fs-textw-body { overflow-y:auto; padding:4px 20px 18px; display:flex; flex-direction:column; gap:15px; }
+      .fs-textw-sec { font-size:9.5px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; color:rgba(248,246,252,0.42); margin-bottom:8px; }
+      .fs-textw-chips { display:flex; gap:6px; flex-wrap:wrap; }
+      .fs-textw-chip {
+        height:34px; padding:0 13px; border-radius:11px; cursor:pointer;
+        font-size:12px; font-weight:750; letter-spacing:.01em; transition:all .16s;
+        background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.08);
+        color:rgba(248,246,252,0.62);
+      }
+      .fs-textw-chip:hover { background:rgba(255,255,255,0.08); color:rgba(248,246,252,0.9); }
+      .fs-textw-chip.on {
+        background:rgba(var(--theme-c1-rgb),0.16); border-color:rgba(var(--theme-c1-rgb),0.42);
+        color:var(--theme-c1);
+      }
+      .fs-textw-sliderrow { display:flex; align-items:center; gap:12px; }
+      .fs-textw-sliderrow input[type=range] { flex:1; min-width:0; accent-color:var(--theme-c1); height:20px; }
+      .fs-textw-sliderrow .fs-textw-val { font-size:11.5px; font-weight:800; color:rgba(248,246,252,0.55); min-width:44px; text-align:right; font-variant-numeric:tabular-nums; }
+      .fs-textw-sliderrow .fs-textw-slbl { font-size:12px; font-weight:750; color:rgba(248,246,252,0.72); min-width:88px; flex-shrink:0; }
+      @media (max-width: 560px) {
+        .fs-textw-modal { padding:0; align-items:flex-end; }
+        .fs-textw-card {
+          width:100%; max-height:92dvh;
+          border-radius:26px 26px 0 0; border-bottom:none;
+          padding-bottom:env(safe-area-inset-bottom, 0px);
+          animation:fsTextwSheet .3s cubic-bezier(0.32,0.72,0.28,1) both;
+        }
+        @keyframes fsTextwSheet { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:none; } }
+      }
+      html.fs-reduce-motion .fs-textw-modal, html.fs-reduce-motion .fs-textw-card { animation:none; }
+      `;
+      document.head.appendChild(s);
+    }
     window._fsTextWidgetsRead = () => { try { return JSON.parse(localStorage.getItem('fs_text_widgets') || '{}') || {}; } catch (e) { return {}; } };
     window._fsTextWidgetSave = (id, cfg) => {
       try {
@@ -4783,6 +4866,13 @@
         if (!readOnly) window._fsTextWidgetSave(widgetId, next);
         return next;
       });
+      /* Échap ferme le panneau d'édition */
+      _uETX(() => {
+        if (!editing) return;
+        const h = e => { if (e.key === 'Escape') setEditing(false); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+      }, [editing]);
       const fontCss = f => {
         const def = FS_TEXT_FONTS.find(x => x.id === f);
         if (def?.css) return def.css;
@@ -4800,15 +4890,15 @@
         ...(cfg.glow ? { filter: 'drop-shadow(0 0 12px rgba(var(--theme-c1-rgb),0.45))' } : {}),
       };
       const shown = cfg.text ? (cfg.upper ? cfg.text.toUpperCase() : cfg.text) : '';
-      const chip = (on) => ({
-        height: 26, padding: '0 9px', borderRadius: 9, cursor: 'pointer', fontFamily: T.font,
-        fontSize: 10.5, fontWeight: 750, letterSpacing: '0.02em', transition: 'all .15s',
-        background: on ? 'rgba(var(--theme-c1-rgb),0.16)' : 'rgba(255,255,255,0.045)',
-        border: `1px solid ${on ? 'rgba(var(--theme-c1-rgb),0.4)' : 'rgba(255,255,255,0.08)'}`,
-        color: on ? 'var(--theme-c1)' : 'rgba(248,246,252,0.6)',
-      });
-      const lblRow = { fontSize: 9, fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.muted, minWidth: 62, flexShrink: 0 };
-      const slider = { flex: 1, minWidth: 0, accentColor: 'var(--theme-c1)', height: 18 };
+      const alignIcon = a => {
+        const w = a === 'left' ? [10, 7, 9] : a === 'right' ? [10, 7, 9] : [10, 6, 8];
+        const x = i => a === 'left' ? 1 : a === 'right' ? 13 - w[i] : (14 - w[i]) / 2;
+        return (
+          <svg width={14} height={11} viewBox="0 0 14 11" fill="none" aria-hidden="true">
+            {w.map((ww, i) => <rect key={i} x={x(i)} y={i * 4} width={ww} height={2} rx={1} fill="currentColor" />)}
+          </svg>
+        );
+      };
       return (
         <Shell flat={variant === 10} style={style}>
           <div style={{ position: 'relative', height: '100%', padding: variant === 2 ? '16px 18px' : '20px 22px', display: 'flex', alignItems: 'center', overflow: 'hidden', boxSizing: 'border-box' }}>
@@ -4818,8 +4908,9 @@
             {shown ? (
               <div style={textStyle}>{shown}</div>
             ) : (
-              <div style={{ width: '100%', textAlign: 'center', fontSize: 12.5, color: T.muted, lineHeight: 1.5 }}>
-                {readOnly ? '' : 'Ton mot, ton mantra, ton titre — clique sur ✎ pour écrire.'}
+              <div onClick={() => !readOnly && setEditing(true)}
+                style={{ width: '100%', textAlign: 'center', fontSize: 12.5, color: T.muted, lineHeight: 1.5, cursor: readOnly ? 'default' : 'pointer' }}>
+                {readOnly ? '' : 'Ton mot, ton mantra, ton titre — touche ✎ pour écrire.'}
               </div>
             )}
             {variant === 10 && shown && (
@@ -4833,61 +4924,114 @@
               </button>
             )}
 
-            {editing && (
-              <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: 'rgba(9,8,18,0.97)', borderRadius: 'inherit', padding: '12px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 9 }}>
-                <textarea value={cfg.text} maxLength={400} rows={2} autoFocus
-                  onChange={e => save({ text: e.target.value })}
-                  placeholder="Écris ton texte…"
-                  style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: 44, borderRadius: 11, padding: '9px 11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', outline: 'none', color: T.text, fontSize: 13, fontFamily: T.font, lineHeight: 1.45 }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span style={lblRow}>Police</span>
-                  {FS_TEXT_FONTS.map(f => (
-                    <button key={f.id} type="button" style={{ ...chip(cfg.font === f.id), fontFamily: f.css || (f.id === 'display' ? T.display : T.font) }} onClick={() => save({ font: f.id })}>{f.label}</button>
-                  ))}
+            {/* Panneau d'édition : modal portail (feuille basse sur mobile) —
+               le widget reste petit, le panneau respire. */}
+            {editing && ReactDOM.createPortal(
+              <div className="fs-textw-modal" onClick={() => setEditing(false)}>
+                <div className="fs-textw-card" role="dialog" aria-modal="true" aria-label="Personnaliser le widget Texte" onClick={e => e.stopPropagation()}>
+                  {/* En-tête */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px 12px', flexShrink: 0 }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 11, display: 'grid', placeItems: 'center', background: 'linear-gradient(145deg, var(--theme-c1), var(--theme-c2))', color: '#070810', fontWeight: 900, fontSize: 15, fontFamily: T.display }}>T</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 17, letterSpacing: '-0.03em' }}>Widget Texte</div>
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Ton mot, ton style — tout se règle ici.</div>
+                    </div>
+                    <button type="button" onClick={() => setEditing(false)} aria-label="Fermer"
+                      style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.05)', color: T.muted, fontSize: 16, cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>×</button>
+                  </div>
+
+                  <div className="fs-textw-body">
+                    {/* Aperçu en direct */}
+                    <div style={{ borderRadius: 16, minHeight: 92, display: 'flex', alignItems: 'center', padding: '16px 18px', background: 'radial-gradient(circle at 30% 20%, rgba(var(--theme-c1-rgb),0.07), transparent 55%), rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                      {shown
+                        ? <div style={{ ...textStyle, fontSize: Math.min(cfg.size, 34) }}>{shown}</div>
+                        : <div style={{ width: '100%', textAlign: 'center', fontSize: 12, color: T.muted }}>Aperçu — écris ton texte ci-dessous</div>}
+                    </div>
+
+                    <textarea value={cfg.text} maxLength={400} rows={2} autoFocus
+                      onChange={e => save({ text: e.target.value })}
+                      placeholder="Écris ton texte…"
+                      style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: 52, borderRadius: 13, padding: '11px 13px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', outline: 'none', color: T.text, fontSize: 14, fontFamily: T.font, lineHeight: 1.5 }} />
+
+                    <div>
+                      <div className="fs-textw-sec">Police</div>
+                      <div className="fs-textw-chips">
+                        {FS_TEXT_FONTS.map(f => (
+                          <button key={f.id} type="button" className={'fs-textw-chip' + (cfg.font === f.id ? ' on' : '')}
+                            style={{ fontFamily: f.css || (f.id === 'display' ? T.display : T.font) }}
+                            onClick={() => save({ font: f.id })}>{f.label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fs-textw-sec">Taille & graisse</div>
+                      <div className="fs-textw-sliderrow" style={{ marginBottom: 10 }}>
+                        <span className="fs-textw-slbl">Taille</span>
+                        <input type="range" min={10} max={72} value={cfg.size} onChange={e => save({ size: Number(e.target.value) })} aria-label="Taille du texte" />
+                        <span className="fs-textw-val">{cfg.size} px</span>
+                      </div>
+                      <div className="fs-textw-chips">
+                        {FS_TEXT_WEIGHTS.map(w => (
+                          <button key={w.v} type="button" className={'fs-textw-chip' + (cfg.weight === w.v ? ' on' : '')} style={{ fontWeight: w.v }} onClick={() => save({ weight: w.v })}>{w.l}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fs-textw-sec">Mise en forme</div>
+                      <div className="fs-textw-chips">
+                        {['left', 'center', 'right'].map(a => (
+                          <button key={a} type="button" className={'fs-textw-chip' + (cfg.align === a ? ' on' : '')} onClick={() => save({ align: a })}
+                            aria-label={a === 'left' ? 'Aligner à gauche' : a === 'center' ? 'Centrer' : 'Aligner à droite'}
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, padding: 0 }}>
+                            {alignIcon(a)}
+                          </button>
+                        ))}
+                        <button type="button" className={'fs-textw-chip' + (cfg.italic ? ' on' : '')} style={{ fontStyle: 'italic', fontFamily: 'Georgia,serif' }} onClick={() => save({ italic: !cfg.italic })}>Italique</button>
+                        <button type="button" className={'fs-textw-chip' + (cfg.upper ? ' on' : '')} onClick={() => save({ upper: !cfg.upper })}>MAJ</button>
+                        <button type="button" className={'fs-textw-chip' + (cfg.glow ? ' on' : '')} onClick={() => save({ glow: !cfg.glow })}>✦ Lueur</button>
+                      </div>
+                      <div className="fs-textw-sliderrow" style={{ marginTop: 12 }}>
+                        <span className="fs-textw-slbl">Espacement</span>
+                        <input type="range" min={-2} max={10} step={0.5} value={cfg.spacing} onChange={e => save({ spacing: Number(e.target.value) })} aria-label="Espacement des lettres" />
+                        <span className="fs-textw-val">{cfg.spacing}</span>
+                      </div>
+                      <div className="fs-textw-sliderrow" style={{ marginTop: 8 }}>
+                        <span className="fs-textw-slbl">Interligne</span>
+                        <input type="range" min={1} max={2.2} step={0.05} value={cfg.lh} onChange={e => save({ lh: Number(e.target.value) })} aria-label="Interligne" />
+                        <span className="fs-textw-val">{cfg.lh.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="fs-textw-sec">Couleur</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        {FS_TEXT_COLORS.map(c => (
+                          <button key={c} type="button" onClick={() => save({ color: c })}
+                            aria-label={c === 'theme' ? 'Dégradé du thème' : `Couleur ${c}`}
+                            title={c === 'theme' ? 'Dégradé du thème' : c}
+                            style={{ width: 26, height: 26, borderRadius: 9, cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'transform .15s',
+                              transform: cfg.color === c ? 'scale(1.12)' : 'none',
+                              border: cfg.color === c ? '2px solid rgba(255,255,255,0.9)' : '1px solid rgba(255,255,255,0.14)',
+                              background: c === 'theme' ? 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))' : c }} />
+                        ))}
+                        <input type="color" value={/^#/.test(cfg.color) ? cfg.color : '#a5b8ff'} onChange={e => save({ color: e.target.value })} aria-label="Couleur personnalisée"
+                          style={{ width: 30, height: 30, padding: 0, border: '1px solid rgba(255,255,255,0.14)', borderRadius: 10, background: 'transparent', cursor: 'pointer' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pied : action principale */}
+                  <div style={{ padding: '12px 20px 16px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+                    <button type="button" onClick={() => setEditing(false)}
+                      style={{ width: '100%', height: 42, borderRadius: 14, border: 'none', cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 850, color: '#070810', background: 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))', boxShadow: '0 12px 28px rgba(var(--theme-c1-rgb),0.22), inset 0 1px 0 rgba(255,255,255,0.35)' }}>
+                      Terminé
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={lblRow}>Taille · {cfg.size}</span>
-                  <input type="range" min={10} max={72} value={cfg.size} onChange={e => save({ size: Number(e.target.value) })} style={slider} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span style={lblRow}>Graisse</span>
-                  {FS_TEXT_WEIGHTS.map(w => (
-                    <button key={w.v} type="button" style={{ ...chip(cfg.weight === w.v), fontWeight: w.v }} onClick={() => save({ weight: w.v })}>{w.l}</button>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span style={lblRow}>Style</span>
-                  {[['left', '⟸'], ['center', '⟺'], ['right', '⟹']].map(([a, ic]) => (
-                    <button key={a} type="button" style={chip(cfg.align === a)} onClick={() => save({ align: a })} aria-label={`Aligner ${a}`}>{ic}</button>
-                  ))}
-                  <button type="button" style={{ ...chip(cfg.italic), fontStyle: 'italic' }} onClick={() => save({ italic: !cfg.italic })}>I</button>
-                  <button type="button" style={chip(cfg.upper)} onClick={() => save({ upper: !cfg.upper })}>AA</button>
-                  <button type="button" style={chip(cfg.glow)} onClick={() => save({ glow: !cfg.glow })}>✦ Lueur</button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={lblRow}>Espacement</span>
-                  <input type="range" min={-2} max={10} step={0.5} value={cfg.spacing} onChange={e => save({ spacing: Number(e.target.value) })} style={slider} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={lblRow}>Interligne</span>
-                  <input type="range" min={1} max={2.2} step={0.05} value={cfg.lh} onChange={e => save({ lh: Number(e.target.value) })} style={slider} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={lblRow}>Couleur</span>
-                  {FS_TEXT_COLORS.map(c => (
-                    <button key={c} type="button" onClick={() => save({ color: c })} aria-label={c === 'theme' ? 'Couleur du thème' : c}
-                      style={{ width: 20, height: 20, borderRadius: 7, cursor: 'pointer', padding: 0, flexShrink: 0,
-                        border: cfg.color === c ? '2px solid rgba(255,255,255,0.85)' : '1px solid rgba(255,255,255,0.14)',
-                        background: c === 'theme' ? 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))' : c }} />
-                  ))}
-                  <input type="color" value={/^#/.test(cfg.color) ? cfg.color : '#a5b8ff'} onChange={e => save({ color: e.target.value })} aria-label="Couleur personnalisée"
-                    style={{ width: 24, height: 24, padding: 0, border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, background: 'transparent', cursor: 'pointer' }} />
-                </div>
-                <button type="button" onClick={() => setEditing(false)}
-                  style={{ marginTop: 2, alignSelf: 'flex-end', height: 30, padding: '0 16px', borderRadius: 11, border: 'none', cursor: 'pointer', fontFamily: T.font, fontSize: 11.5, fontWeight: 850, color: '#070810', background: 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))' }}>
-                  Terminé
-                </button>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         </Shell>
@@ -9186,24 +9330,32 @@
 
           {/* ── Bottom navigation (mobile only) ── */}
           <nav className="fs-mobile-nav">
-            {/* Sous-ensemble strict de la nav desktop : mêmes noms, mêmes cibles,
-                même ordre (Personnalisation et Amis omis faute de place). */}
+            {/* Sous-ensemble de la nav desktop : mêmes noms, mêmes cibles, même
+                ordre. Amis ouvre le panneau (feuille basse sur mobile). */}
             {[
               { target: 'dashboard', label: 'Dashboard', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
+              { action: 'friends',   label: 'Amis',    icon: <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
               /* Évolution masqué tant que la 1re session n'est pas terminée */
               ...(unlockStage >= 1 ? [{ target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> }] : []),
-            ].map(item => (
-              <button key={item.target}
-                className={'fs-mobile-nav-btn' + (screen === item.target ? ' active' : '')}
-                aria-current={screen === item.target ? 'page' : undefined}
-                onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(item.target); }}>
-                {item.icon}
-                <span className="fs-mobile-nav-label">{item.label}</span>
-              </button>
-            ))}
+            ].map(item => {
+              const isFriends = item.action === 'friends';
+              const isActive = isFriends ? friendsOpen : screen === item.target;
+              return (
+                <button key={item.target || item.action}
+                  className={'fs-mobile-nav-btn' + (isActive ? ' active' : '')}
+                  aria-current={!isFriends && isActive ? 'page' : undefined}
+                  onClick={e => {
+                    if (isFriends) { openFriendsPanel(e); return; }
+                    closeAllPanels(); setPopOpen(false); onNavigate(item.target);
+                  }}>
+                  {item.icon}
+                  <span className="fs-mobile-nav-label">{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </>
       );
@@ -9412,6 +9564,108 @@ void main(){
       return <canvas ref={canvasRef} className="fs-tasks-gem3dgl" aria-hidden="true" />;
     }
 
+    /* ── Affichages des tâches ─────────────────────────────────────────────
+       Trois organisations au choix (préférence `fs_task_view`, synchronisée
+       via widget_style.taskView). Un nouvel utilisateur choisit à sa première
+       visite ; le bouton « Affichage » permet d'en changer à tout moment. */
+    const TASK_VIEWS = [
+      { id: 'liste',  name: 'Liste',  desc: 'Sections claires, priorités en accent — le classique efficace.' },
+      { id: 'kanban', name: 'Kanban', desc: 'Trois colonnes par priorité — vue d’ensemble immédiate.' },
+      { id: 'zen',    name: 'Focus',  desc: 'Une seule tâche à la fois — zéro distraction.' },
+    ];
+
+    /* Mini-aperçus dessinés en pur CSS (aucune image, léger) */
+    function TaskViewPreview({ id }) {
+      if (id === 'kanban') {
+        return (
+          <div className="fs-tv-prev" aria-hidden="true">
+            {[0, 1, 2].map(c => (
+              <div key={c} className="fs-tv-kcol">
+                <i className="fs-tv-kdot" style={{ background: ['#fb7185', '#ffd27d', '#2dd4bf'][c] }} />
+                {Array.from({ length: 3 - (c === 2 ? 1 : 0) }, (_, i) => <span key={i} className="fs-tv-kcard" style={{ opacity: 1 - i * 0.28 }} />)}
+              </div>
+            ))}
+          </div>
+        );
+      }
+      if (id === 'zen') {
+        return (
+          <div className="fs-tv-prev" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5 }} aria-hidden="true">
+            <span className="fs-tv-zcard" />
+            <span className="fs-tv-zghost" style={{ width: '46%' }} />
+            <span className="fs-tv-zghost" style={{ width: '34%', opacity: .45 }} />
+          </div>
+        );
+      }
+      return (
+        <div className="fs-tv-prev" style={{ flexDirection: 'column', gap: 5, justifyContent: 'center' }} aria-hidden="true">
+          {[0, 1, 2].map(i => (
+            <span key={i} className="fs-tv-lrow" style={{ opacity: 1 - i * 0.24 }}>
+              <i style={{ background: ['#fb7185', '#ffd27d', '#2dd4bf'][i] }} />
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    /* Sélecteur d'affichage — modal (feuille basse sur mobile via CSS fs-textw) */
+    function TaskViewPicker({ current, firstRun, onPick, onClose }) {
+      const [sel, setSel] = _uST(current || 'liste');
+      _uEffT(() => {
+        const h = e => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+      }, []);
+      return ReactDOM.createPortal(
+        <div className="fs-textw-modal" onClick={onClose}>
+          <div className="fs-textw-card" role="dialog" aria-modal="true" aria-label="Choisir l'affichage des tâches" onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 20px 6px', flexShrink: 0 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 850, letterSpacing: '0.14em', textTransform: 'uppercase', color: T.muted, marginBottom: 7 }}>
+                {firstRun ? 'Bienvenue dans ta file de focus' : 'Affichage'}
+              </div>
+              <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 20, letterSpacing: '-0.03em', lineHeight: 1.15 }}>
+                {firstRun ? 'Comment veux-tu voir tes tâches ?' : 'Organisation des tâches'}
+              </div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 6, lineHeight: 1.5 }}>
+                {firstRun ? 'Choisis le style qui te ressemble — tu pourras en changer à tout moment via le bouton « Affichage ».' : 'Change de style quand tu veux, tes tâches restent les mêmes.'}
+              </div>
+            </div>
+            <div className="fs-textw-body" style={{ paddingTop: 12 }}>
+              {TASK_VIEWS.map(v => {
+                const on = sel === v.id;
+                return (
+                  <button key={v.id} type="button" onClick={() => setSel(v.id)}
+                    aria-pressed={on}
+                    className={'fs-tv-opt' + (on ? ' on' : '')}>
+                    <TaskViewPreview id={v.id} />
+                    <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.01em', color: on ? 'var(--theme-c1)' : T.text }}>{v.name}</span>
+                        {on && (
+                          <svg width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <circle cx={8} cy={8} r={7} fill="rgba(var(--theme-c1-rgb),0.18)" stroke="var(--theme-c1)" strokeWidth={1.4}/>
+                            <path d="M5 8.2 7.2 10.4 11 5.8" stroke="var(--theme-c1)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: T.muted, marginTop: 3, lineHeight: 1.45 }}>{v.desc}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ padding: '12px 20px 16px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+              <button type="button" onClick={() => onPick(sel)}
+                style={{ width: '100%', height: 42, borderRadius: 14, border: 'none', cursor: 'pointer', fontFamily: T.font, fontSize: 13, fontWeight: 850, color: '#070810', background: 'linear-gradient(135deg, var(--theme-c1), var(--theme-c2))', boxShadow: '0 12px 28px rgba(var(--theme-c1-rgb),0.22), inset 0 1px 0 rgba(255,255,255,0.35)' }}>
+                {firstRun ? 'C’est parti' : 'Appliquer'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      );
+    }
+
     function TasksScreen() {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [tasks, setTasks] = _uST(() => {
@@ -9436,6 +9690,24 @@ void main(){
       const [animId, setAnimId] = _uST(null);
       const taskInputRef = _uRT(null);
       const [composerPulse, setComposerPulse] = _uST(false);
+
+      /* Affichage choisi (null = première visite → sélecteur automatique) */
+      const [view, setViewState] = _uST(() => {
+        try { const v = localStorage.getItem('fs_task_view'); return TASK_VIEWS.some(x => x.id === v) ? v : null; } catch (e) { return null; }
+      });
+      const [viewPickerOpen, setViewPickerOpen] = _uST(false);
+      const activeView = view || 'liste';
+      const setView = v => {
+        setViewState(v);
+        try { localStorage.setItem('fs_task_view', v); } catch (e) { }
+      };
+      /* Ouverture demandée depuis Personnalisation → carte Tâches */
+      _uEffT(() => {
+        if (window._fsOpenTaskViewPicker) {
+          window._fsOpenTaskViewPicker = false;
+          setViewPickerOpen(true);
+        }
+      }, []);
 
       const totalDone = tasks.filter(t => t.done).length;
       const totalActive = tasks.filter(t => !t.done).length;
@@ -9500,6 +9772,29 @@ void main(){
           <div className="fs-task-sechead-line" />
         </div>
       );
+
+      /* Carte compacte pour la vue Kanban (la colonne porte déjà la priorité) */
+      const KanbanCard = ({ task, idx = 0 }) => {
+        const isDone = task.done;
+        return (
+          <div className={'fs-task-kcard' + (isDone ? ' done' : '')}
+            style={{ animationDelay: `${Math.min(idx, 8) * 30}ms`, opacity: animId === task.id ? 0.35 : undefined }}>
+            <div className={'fs-task-check' + (isDone ? ' on' : '')} role="checkbox" aria-checked={isDone} tabIndex={0}
+              onClick={() => toggle(task.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(task.id); } }}>
+              {isDone && (
+                <svg width={12} height={10} viewBox="0 0 12 10" fill="none">
+                  <path className="fs-task-check-path" d="M1.5 5 4.5 8l6-6.5" stroke="#07070d" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <span className="fs-task-kcard-text">{task.text}</span>
+            <button className="fs-task-del" aria-label={`Supprimer "${task.text}"`} onClick={() => remove(task.id)}>
+              <svg width={10} height={10} viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2 2 8" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
+            </button>
+          </div>
+        );
+      };
 
       const TaskRow = ({ task, idx = 0 }) => {
         const p = PRI[task.priority] || PRI.medium;
@@ -9623,6 +9918,71 @@ void main(){
               background: rgba(255,255,255,0.06); color: rgba(248,246,252,0.35); font-variant-numeric: tabular-nums; }
             .fs-task-fbtn.on span { background: rgba(var(--theme-c1-rgb),0.16); color: var(--theme-c1); }
 
+            /* ── Bouton Affichage (Liste / Kanban / Focus) ── */
+            .fs-task-viewbtn { display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 12px; border-radius:12px; cursor:pointer;
+              font-family:inherit; font-size:11.5px; font-weight:800; color:rgba(248,246,252,0.68);
+              background:rgba(255,255,255,0.035); border:1px solid rgba(255,255,255,0.08); transition:all .2s var(--mineral-ease); }
+            .fs-task-viewbtn:hover { color:var(--theme-c1); border-color:rgba(var(--theme-c1-rgb),0.34); background:rgba(var(--theme-c1-rgb),0.08); }
+            .fs-task-viewbtn span { font-size:9.5px; font-weight:850; padding:2px 8px; border-radius:99px; background:rgba(var(--theme-c1-rgb),0.12); color:var(--theme-c1); letter-spacing:.04em; text-transform:uppercase; }
+
+            /* ── Vue Kanban ── */
+            .fs-task-kanban { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
+            .fs-task-kcol { border-radius:18px; background:rgba(255,255,255,0.022); border:1px solid rgba(255,255,255,0.055); padding:12px; min-height:180px; box-sizing:border-box; }
+            .fs-task-kcol-head { display:flex; align-items:center; gap:8px; padding:2px 4px 10px; font-size:10.5px; font-weight:850; letter-spacing:.09em; text-transform:uppercase; }
+            .fs-task-kcol-head i { width:7px; height:7px; border-radius:2px; transform:rotate(45deg); display:block; flex-shrink:0; }
+            .fs-task-kcol-count { margin-left:auto; font-size:10px; font-weight:800; padding:1px 8px; border-radius:99px; background:rgba(255,255,255,0.06); color:rgba(248,246,252,0.5); font-variant-numeric:tabular-nums; }
+            .fs-task-kcol-list { display:flex; flex-direction:column; gap:8px; }
+            .fs-task-kcard { display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border-radius:14px;
+              background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.018));
+              border:1px solid rgba(255,255,255,0.06); box-shadow:inset 0 1px 0 rgba(255,255,255,0.045);
+              animation:fsTaskIn .4s cubic-bezier(.22,1,.36,1) both;
+              transition:transform .18s var(--mineral-ease), border-color .18s, opacity .2s; }
+            .fs-task-kcard:hover { transform:translateY(-1px); border-color:rgba(var(--theme-c1-rgb),0.22); }
+            .fs-task-kcard.done { opacity:.42; }
+            .fs-task-kcard.done .fs-task-kcard-text { text-decoration:line-through; color:rgba(248,246,252,0.4); }
+            .fs-task-kcard-text { flex:1; min-width:0; font-size:12.5px; font-weight:600; line-height:1.4; color:rgba(248,246,252,0.9);
+              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
+            .fs-task-kcard .fs-task-check { width:20px; height:20px; border-radius:7px; margin-top:1px; }
+            .fs-task-kcard .fs-task-del { opacity:0; }
+            .fs-task-kcard:hover .fs-task-del { opacity:1; transform:scale(1); }
+            .fs-task-kempty { padding:16px 8px; text-align:center; font-size:11px; color:rgba(248,246,252,0.25); border:1px dashed rgba(255,255,255,0.08); border-radius:12px; }
+            html.fs-reduce-motion .fs-task-kcard { animation:none; }
+
+            /* ── Vue Focus (une tâche à la fois) ── */
+            .fs-task-zen { max-width:560px; margin:2vh auto 0; width:100%; display:flex; flex-direction:column; gap:16px; }
+            .fs-task-zcard { border-radius:22px; padding:26px 26px 22px;
+              background:radial-gradient(circle at 18% 0%, rgba(var(--theme-c1-rgb),0.10), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+              border:1px solid rgba(var(--theme-c1-rgb),0.2);
+              box-shadow:0 24px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.07);
+              animation:fsTaskIn .45s cubic-bezier(.22,1,.36,1) both; }
+            html.fs-reduce-motion .fs-task-zcard { animation:none; }
+            .fs-task-zen-text { font-family:var(--font-display); font-size:clamp(19px, 2.6vw, 26px); font-weight:800; letter-spacing:-0.025em; line-height:1.25; margin:14px 0 20px; word-break:break-word; }
+            .fs-task-zen-done-btn { display:inline-flex; align-items:center; gap:9px; height:46px; padding:0 22px; border:none; border-radius:15px; cursor:pointer;
+              font-family:inherit; font-size:13.5px; font-weight:850; color:#070810;
+              background:linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+              box-shadow:0 14px 32px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.35);
+              transition:transform .2s var(--mineral-ease); }
+            .fs-task-zen-done-btn:hover { transform:translateY(-1px) scale(1.02); }
+            .fs-task-znext { border-radius:16px; padding:14px 16px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); display:flex; flex-direction:column; gap:8px; }
+            .fs-task-znext-lbl { font-size:9.5px; font-weight:850; letter-spacing:.12em; text-transform:uppercase; color:rgba(248,246,252,0.32); }
+            .fs-task-znext-row { display:flex; align-items:center; gap:9px; font-size:12.5px; color:rgba(248,246,252,0.55); min-width:0; }
+            .fs-task-znext-row i { width:6px; height:6px; border-radius:1.5px; transform:rotate(45deg); flex-shrink:0; display:block; }
+
+            /* ── Sélecteur d'affichage : options + mini-aperçus CSS ── */
+            .fs-tv-opt { display:flex; align-items:center; gap:14px; width:100%; padding:12px; border-radius:16px; cursor:pointer;
+              font-family:inherit; background:rgba(255,255,255,0.028); border:1px solid rgba(255,255,255,0.07); transition:all .18s var(--mineral-ease); }
+            .fs-tv-opt:hover { background:rgba(255,255,255,0.05); }
+            .fs-tv-opt.on { background:rgba(var(--theme-c1-rgb),0.10); border-color:rgba(var(--theme-c1-rgb),0.4);
+              box-shadow:0 10px 26px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.06); }
+            .fs-tv-prev { width:88px; height:58px; flex-shrink:0; border-radius:11px; background:rgba(8,8,18,0.6); border:1px solid rgba(255,255,255,0.08); display:flex; gap:5px; padding:8px; box-sizing:border-box; }
+            .fs-tv-lrow { display:flex; align-items:center; gap:5px; height:9px; border-radius:4px; background:rgba(255,255,255,0.10); padding-left:4px; }
+            .fs-tv-lrow i { width:4px; height:4px; border-radius:1px; transform:rotate(45deg); display:block; flex-shrink:0; }
+            .fs-tv-kcol { flex:1; display:flex; flex-direction:column; gap:4px; align-items:stretch; min-width:0; }
+            .fs-tv-kdot { width:5px; height:5px; border-radius:1.5px; transform:rotate(45deg); display:block; margin:0 auto 1px; }
+            .fs-tv-kcard { height:8px; border-radius:3px; background:rgba(255,255,255,0.12); display:block; }
+            .fs-tv-zcard { width:72%; height:22px; border-radius:6px; background:linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.4), rgba(var(--theme-c2-rgb),0.3)); display:block; }
+            .fs-tv-zghost { height:7px; border-radius:3px; background:rgba(255,255,255,0.10); display:block; }
+
             /* ── Sections ── */
             .fs-task-sechead { display:flex; align-items:center; gap:10px; margin:22px 0 11px; }
             .fs-task-sechead-lbl { font-size:10px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; color:rgba(248,246,252,0.30); white-space:nowrap; }
@@ -9714,6 +10074,14 @@ void main(){
               .fs-task-add-btn { height: 42px !important; min-width: 108px !important; padding: 0 16px !important; border-radius: 14px !important; box-shadow: none !important; font-size: 13px !important; }
               .fs-task-filters { display: flex !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; scrollbar-width: none !important; flex-wrap: nowrap !important; gap: 5px !important; margin-bottom: 14px !important; }
               .fs-task-filters::-webkit-scrollbar { display: none !important; }
+              .fs-task-viewbtn { height: 32px !important; padding: 0 10px !important; font-size: 11px !important; margin-left: 0 !important; margin-bottom: 14px !important; }
+              /* Kanban mobile : colonnes en défilement horizontal avec accroche */
+              .fs-task-kanban { display: flex !important; overflow-x: auto !important; scroll-snap-type: x mandatory; gap: 10px !important; -webkit-overflow-scrolling: touch; padding-bottom: 6px; scrollbar-width: none; }
+              .fs-task-kanban::-webkit-scrollbar { display: none; }
+              .fs-task-kcol { flex: 0 0 76vw; scroll-snap-align: start; }
+              .fs-task-kcard .fs-task-del { opacity: 1 !important; transform: scale(1) !important; }
+              .fs-task-zen { margin-top: 2px !important; }
+              .fs-task-zcard { padding: 20px 18px 18px !important; }
               .fs-task-fbtn { flex-shrink: 0 !important; padding: 8px 13px !important; font-size: 12px !important; }
               .fs-task-list { padding: 10px 16px 94px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
               .fs-task-section-list { gap: 8px !important; }
@@ -9819,10 +10187,20 @@ void main(){
                   );
                 })}
               </div>
+              {/* Changement d'organisation (Liste / Kanban / Focus) */}
+              <button type="button" className="fs-task-viewbtn" onClick={() => setViewPickerOpen(true)}
+                title="Changer l'organisation des tâches" aria-haspopup="dialog" style={{ marginLeft: 'auto' }}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="10" rx="1.5"/>
+                </svg>
+                Affichage
+                <span>{(TASK_VIEWS.find(v => v.id === activeView) || TASK_VIEWS[0]).name}</span>
+              </button>
             </div>
           </div>
 
           {/* ── Liste ── */}
+          {activeView === 'liste' && (
           <div className="fs-task-list" style={{ flex: 1, overflowY: 'auto', padding: '0 32px 28px' }}>
             {hasFocus && (
               <div style={{ margin: '16px 0 6px', padding: '10px 15px', borderRadius: 14, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.09), rgba(var(--theme-c2-rgb),0.04))', border: '1px solid rgba(var(--theme-c1-rgb),0.22)', display: 'flex', alignItems: 'center', gap: 9, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' }}>
@@ -9916,6 +10294,113 @@ void main(){
               </div>
             )}
           </div>
+          )}
+
+          {/* ── Kanban : colonnes par priorité ── */}
+          {activeView === 'kanban' && (
+          <div className="fs-task-list" style={{ flex: 1, overflowY: 'auto', padding: '16px 32px 28px' }}>
+            {tasks.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '56px 20px', color: T.muted, fontSize: 12.5, lineHeight: 1.6 }}>
+                Ajoute ta première tâche ci-dessus —<br />elle rejoindra sa colonne de priorité.
+              </div>
+            ) : (
+              <div className="fs-task-kanban">
+                {Object.entries(PRI).map(([key, p]) => {
+                  const colActive = visible.filter(t => t.priority === key && !t.done);
+                  const colDone = visible.filter(t => t.priority === key && t.done);
+                  return (
+                    <div key={key} className="fs-task-kcol">
+                      <div className="fs-task-kcol-head">
+                        <i style={{ background: p.color, boxShadow: `0 0 8px ${p.color}66` }} />
+                        <span style={{ color: p.color }}>{p.label}</span>
+                        <span className="fs-task-kcol-count">{colActive.length}</span>
+                      </div>
+                      <div className="fs-task-kcol-list">
+                        {colActive.map((t, i) => <KanbanCard key={t.id} task={t} idx={i} />)}
+                        {colDone.map((t, i) => <KanbanCard key={t.id} task={t} idx={colActive.length + i} />)}
+                        {colActive.length + colDone.length === 0 && (
+                          <div className="fs-task-kempty">Aucune tâche {p.label.toLowerCase()}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* ── Focus : une tâche à la fois ── */}
+          {activeView === 'zen' && (
+          <div className="fs-task-list" style={{ flex: 1, overflowY: 'auto', padding: '16px 32px 28px' }}>
+            {tasks.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '56px 20px', color: T.muted, fontSize: 12.5, lineHeight: 1.6 }}>
+                Ajoute ta première tâche ci-dessus —<br />elle s'affichera ici, seule, en pleine lumière.
+              </div>
+            ) : (() => {
+              const ZW = { high: 0, medium: 1, low: 2 };
+              const queue = [...activeTasks].sort((a, b) => (ZW[a.priority] ?? 1) - (ZW[b.priority] ?? 1));
+              const cur = queue[0];
+              const p = cur ? (PRI[cur.priority] || PRI.medium) : null;
+              return (
+                <div className="fs-task-zen">
+                  {cur ? (
+                    <div className="fs-task-zcard" key={cur.id} style={{ opacity: animId === cur.id ? 0.3 : 1, transition: 'opacity .2s' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 850, letterSpacing: '0.13em', textTransform: 'uppercase', color: 'rgba(var(--theme-c1-rgb),0.85)' }}>Prochaine tâche</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 99, background: p.bg, color: p.color }}>
+                          <i style={{ width: 5, height: 5, borderRadius: 1, transform: 'rotate(45deg)', display: 'block', background: p.color }} />
+                          {p.label}
+                        </span>
+                        <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 750, color: T.muted, fontVariantNumeric: 'tabular-nums' }}>{queue.length} restante{queue.length > 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="fs-task-zen-text">{cur.text}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <button type="button" className="fs-task-zen-done-btn" onClick={() => toggle(cur.id)}>
+                          <svg width={13} height={11} viewBox="0 0 12 10" fill="none"><path d="M1.5 5 4.5 8l6-6.5" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          Terminée
+                        </button>
+                        <button type="button" onClick={() => remove(cur.id)} aria-label={`Supprimer "${cur.text}"`}
+                          style={{ height: 46, width: 46, borderRadius: 15, cursor: 'pointer', border: '1px solid rgba(251,113,133,0.22)', background: 'rgba(251,113,133,0.08)', color: 'rgba(251,113,133,0.85)', display: 'grid', placeItems: 'center' }}>
+                          <svg width={12} height={12} viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 1h2M4 3l.6 7h2.8L8 3" stroke="currentColor" strokeWidth={1.45} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="fs-task-zcard" style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 30, marginBottom: 10 }} aria-hidden="true">◆</div>
+                      <div style={{ fontFamily: T.display, fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 6 }}>Tout est fait.</div>
+                      <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>{totalDone} tâche{totalDone > 1 ? 's' : ''} complétée{totalDone > 1 ? 's' : ''} — ton cristal du jour rayonne.</div>
+                    </div>
+                  )}
+                  {queue.length > 1 && (
+                    <div className="fs-task-znext">
+                      <span className="fs-task-znext-lbl">Ensuite</span>
+                      {queue.slice(1, 4).map(t => (
+                        <div key={t.id} className="fs-task-znext-row">
+                          <i style={{ background: (PRI[t.priority] || PRI.medium).color }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.text}</span>
+                        </div>
+                      ))}
+                      {queue.length > 4 && <div style={{ fontSize: 11, color: 'rgba(248,246,252,0.3)', paddingLeft: 15 }}>+ {queue.length - 4} autre{queue.length - 4 > 1 ? 's' : ''}</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+          )}
+
+          {/* Sélecteur d'affichage : première visite ou bouton « Affichage » */}
+          {(viewPickerOpen || view == null) && (
+            <TaskViewPicker current={activeView} firstRun={view == null}
+              onPick={v => {
+                setView(v);
+                setViewPickerOpen(false);
+                addToast({ message: `Affichage « ${(TASK_VIEWS.find(x => x.id === v) || TASK_VIEWS[0]).name} » activé`, type: 'success', icon: '▦' });
+              }}
+              onClose={() => { if (view == null) setView('liste'); setViewPickerOpen(false); }} />
+          )}
         </div>
       );
     }
@@ -11776,8 +12261,9 @@ void main(){
         { id:'fonts',   target:'fonts',        eyebrow:'Typographie',   title:'Polices', c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
         { id:'widgets', target:'variants',     eyebrow:'Dashboard',     title:'Widgets', c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
         { id:'notes',   target:'notes-style',  eyebrow:'Carte mentale', title:'Notes',   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
+        { id:'tasks',   target:'tasks',        eyebrow:'Organisation',  title:'Tâches',  c1:'#fb7185', icon:<path d="M9 6h11M9 12h11M9 18h11M4 5.5l1.2 1.2L7.5 4.4M4 11.5l1.2 1.2 2.3-2.3M4 17.5l1.2 1.2 2.3-2.3"/> },
       ];
-      const POS = [[1,1],[3,1],[1,3],[3,3]];
+      const POS = [[1,1],[3,1],[1,3],[3,3],[2,3]];
       const FRAGMENTS = [
         { size: 10, x: 50, y: -4, dur: 15, delay: -1.4, color: '#e8edff', z: 18 },
         { size: 7, x: 88, y: 24, dur: 18, delay: -7.2, color: '#a5b8ff', z: 26 },
@@ -11891,7 +12377,11 @@ void main(){
               return (
                 <div key={card.id} className="fsPCard"
                   ref={el => { cardRefs.current[i] = el; }}
-                  onClick={() => onNavigate(card.target)}
+                  onClick={() => {
+                    /* La carte Tâches ouvre directement le sélecteur d'affichage */
+                    if (card.id === 'tasks') window._fsOpenTaskViewPicker = true;
+                    onNavigate(card.target);
+                  }}
                   onMouseEnter={() => setHovBoth(card.id)} onMouseLeave={() => setHovBoth(null)}
                   style={{
                     gridColumn:gc, gridRow:gr,
@@ -15475,6 +15965,10 @@ void main(){
         .fs-friend-actions { display:flex; }
         .fs-friend-card { align-items:flex-start; }
       }
+      @keyframes friendsSheetUp {
+        from { opacity:0; transform:translateY(48px); }
+        to   { opacity:1; transform:translateY(0); }
+      }
       @media (max-width: 768px) {
         .fs-preview-modal {
           padding:0;
@@ -15486,6 +15980,43 @@ void main(){
           max-width:none;
           border-radius:0;
         }
+        /* ── Panneau Amis en feuille basse (idiome mobile) ── */
+        .fs-friends-panel {
+          top:auto; bottom:0; left:0; right:0;
+          width:auto; max-width:none;
+          height:min(86dvh, 680px);
+          border-radius:28px 28px 0 0;
+          border-bottom:none;
+          padding-bottom:env(safe-area-inset-bottom, 0px);
+          animation: friendsSheetUp 0.32s cubic-bezier(0.32,0.72,0.28,1) both;
+        }
+        /* Poignée de préhension à la place du liseré */
+        .fs-friends-panel::before {
+          top:8px; left:50%; right:auto; transform:translateX(-50%);
+          width:40px; height:4px; border-radius:99px;
+          background:rgba(255,255,255,0.22);
+        }
+        /* ── Aperçu du dashboard d'un ami : header compact + widgets empilés ── */
+        .fs-preview-head {
+          padding:14px 14px 12px !important;
+          flex-wrap:wrap !important;
+          gap:10px !important;
+        }
+        .fs-preview-head .fs-preview-avatar { width:42px !important; height:42px !important; font-size:17px !important; }
+        .fs-preview-head .fs-preview-name { font-size:17px !important; }
+        .fs-preview-body {
+          padding:12px 12px calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+          overflow-y:auto !important;
+          -webkit-overflow-scrolling:touch;
+        }
+        .fs-preview-grid {
+          display:flex !important;
+          flex-direction:column !important;
+          gap:12px !important;
+          height:auto !important;
+          min-height:0 !important;
+        }
+        .fs-preview-grid > div { min-height:172px; flex:none; }
       }
       `;
       document.head.appendChild(s);
@@ -15679,15 +16210,15 @@ void main(){
             <div style={{ position:'absolute', top:0, left:'20%', right:'20%', height:1, background:`linear-gradient(90deg,transparent,${fc}55,transparent)`, pointerEvents:'none' }}/>
 
             {/* Header */}
-            <div style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative' }}>
+            <div className="fs-preview-head" style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative' }}>
               <div role={vitrine ? 'button' : undefined} tabIndex={vitrine ? 0 : undefined}
                 aria-expanded={vitrine ? vitrineOpen : undefined}
                 title={vitrine ? (vitrineOpen ? 'Masquer la vitrine' : `Voir la vitrine de ${friend.name || friend.email.split('@')[0]}`) : undefined}
                 onClick={() => vitrine && setVitrineOpen(v => !v)}
                 onKeyDown={e => { if (vitrine && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVitrineOpen(v => !v); } }}
-                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent' }}>
+                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent', minWidth:0 }}>
                 <div style={{ position:'relative', flexShrink:0 }}>
-                  <div style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
+                  <div className="fs-preview-avatar" style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
                     {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
                   </div>
                   {vitrine && (
@@ -15696,9 +16227,9 @@ void main(){
                     </span>
                   )}
                 </div>
-                <div>
+                <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:T.muted, marginBottom:5 }}>Aperçu du tableau de bord · Lecture seule</div>
-                  <div style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em', display:'flex', alignItems:'center', gap:8 }}>
+                  <div className="fs-preview-name" style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em', display:'flex', alignItems:'center', gap:8 }}>
                     {friend.name || friend.email.split('@')[0]}
                     {vitrine && (
                       <svg width={11} height={11} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color:T.muted, transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
@@ -15706,7 +16237,7 @@ void main(){
                       </svg>
                     )}
                   </div>
-                  <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>{friend.email}</div>
+                  <div style={{ fontSize:11, color:T.muted, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{friend.email}</div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>
                     Dernière connexion le : <span style={{ color:T.text, fontWeight:700 }}>{formatLastConnection(lastConnection)}</span>
                   </div>
@@ -15734,19 +16265,43 @@ void main(){
                   </div>
                 </React.Fragment>
               )}
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0, flexWrap:'wrap' }}>
+                {/* Accès explicite à la vitrine : bouton visible, pas seulement
+                   l'affordance discrète sur l'avatar. État muet si non partagée. */}
+                {!loading && (vitrine ? (
+                  <button type="button" onClick={e => { e.stopPropagation(); setVitrineOpen(v => !v); }}
+                    aria-expanded={vitrineOpen}
+                    style={{ display:'flex', alignItems:'center', gap:7, height:32, padding:'0 13px', borderRadius:99, cursor:'pointer', fontFamily:T.font,
+                      background: vitrineOpen ? 'rgba(var(--theme-c1-rgb),0.20)' : 'rgba(var(--theme-c1-rgb),0.10)',
+                      border:'1px solid rgba(var(--theme-c1-rgb),0.32)', color:'var(--theme-c1)',
+                      fontSize:10, fontWeight:850, letterSpacing:'0.08em', textTransform:'uppercase', transition:'background .2s' }}>
+                    <i className="fs-showcase-facet" style={{ width:7, height:7 }} />
+                    Vitrine · {vitrine.items.length}
+                    <svg width={9} height={9} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
+                      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                ) : !loadError ? (
+                  <span title="Cet ami n'a pas encore publié de vitrine de cristaux."
+                    style={{ display:'flex', alignItems:'center', gap:6, height:32, padding:'0 12px', borderRadius:99,
+                      background:'rgba(255,255,255,0.035)', border:'1px solid rgba(255,255,255,0.07)', color:T.muted,
+                      fontSize:9.5, fontWeight:750, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+                    <i className="fs-showcase-facet" style={{ width:6, height:6, opacity:.4 }} />
+                    Vitrine non partagée
+                  </span>
+                ) : null)}
                 <div style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(74,222,128,0.09)', border:'1px solid rgba(74,222,128,0.22)', borderRadius:99, padding:'7px 14px' }}>
                   <div style={{ width:6, height:6, borderRadius:'50%', background:T.green, boxShadow:`0 0 8px ${T.green}`, animation:'livePulse 2s ease-in-out infinite' }}/>
                   <span style={{ fontSize:9, fontWeight:800, color:T.green, letterSpacing:'0.12em', textTransform:'uppercase' }}>Vue en direct</span>
                 </div>
-                <button onClick={onClose} style={{ width:36, height:36, borderRadius:'50%', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', color:T.muted, fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.18s' }}
+                <button onClick={onClose} aria-label="Fermer l'aperçu" style={{ width:36, height:36, borderRadius:'50%', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', color:T.muted, fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.18s', flexShrink:0 }}
                   onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.1)';e.currentTarget.style.color=T.text;}}
                   onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}>×</button>
               </div>
             </div>
 
             {/* Dashboard grid */}
-            <div style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
+            <div className="fs-preview-body" style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
               <div style={{ position:'absolute', inset:0, background: friendBg, opacity:0.72, pointerEvents:'none' }}/>
               {loading ? (
                 <div style={{ position:'relative', zIndex:1, height:'100%', display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12 }}>
@@ -15793,7 +16348,7 @@ void main(){
                   <div style={{ fontSize:12, color:T.muted }}>Cet espace est encore vide.</div>
                 </div>
               ) : (
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12, height:'100%', pointerEvents:'none', position:'relative', zIndex:1 }}>
+                <div className="fs-preview-grid" style={{ display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12, height:'100%', pointerEvents:'none', position:'relative', zIndex:1 }}>
                   {widgets.map((w, i) => (
                     <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'visible', borderRadius:22, padding:1, boxSizing:'border-box', background:`linear-gradient(145deg, rgba(255,255,255,0.16), ${c1(0.20)}, rgba(255,255,255,0.04))`, boxShadow:`0 14px 34px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)`, animationDelay:`${140 + i * 76}ms` }}>
                       <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:21, position:'relative' }}>
