@@ -1704,7 +1704,8 @@
         key === `fs_gamif_${userId}` ||
         key === `fs_friends_${userId}` ||
         key === `fs_crystals_${userId}` ||
-        key === `fs_session_history_${userId}`
+        key === `fs_session_history_${userId}` ||
+        key === `fs_prod_ratings_${userId}`
       ));
     }
 
@@ -1846,7 +1847,7 @@
           const v = localStorage.getItem(k);
           if (v != null) data.general[k] = v;
         });
-        [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`].forEach(k => {
+        [`fs_gamif_${userId}`, `fs_friends_${userId}`, `fs_crystals_${userId}`, `fs_session_history_${userId}`, `fs_prod_ratings_${userId}`].forEach(k => {
           const v = localStorage.getItem(k);
           if (v != null) data.scoped[k] = v;
         });
@@ -2092,7 +2093,7 @@
       if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
-      if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
+      if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_|^fs_prod_ratings_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
       return p;
     }
 
@@ -2455,10 +2456,14 @@
       try {
         const cr = localStorage.getItem(`fs_crystals_${userId}`);
         const hist = localStorage.getItem(`fs_session_history_${userId}`);
-        if (cr != null || hist != null) {
+        const prod = localStorage.getItem(`fs_prod_ratings_${userId}`);
+        if (cr != null || hist != null || prod != null) {
           g = (g && typeof g === 'object') ? { ...g } : (g || {});
           if (cr != null) { try { g.__cr = JSON.parse(cr); } catch (_) { } }
           if (hist != null) { try { g.__hist = JSON.parse(hist); } catch (_) { } }
+          /* Notes de productivité (carte d'activité / Régularité) : map date→note,
+             sans colonne cloud → embarquées comme les cristaux. */
+          if (prod != null) { try { g.__prod = JSON.parse(prod); } catch (_) { } }
         }
       } catch (_) { }
       return g;
@@ -2470,7 +2475,8 @@
       const g = { ...remoteGamif };
       const cloudCr = Array.isArray(g.__cr) ? g.__cr : null;
       const cloudHist = Array.isArray(g.__hist) ? g.__hist : null;
-      delete g.__cr; delete g.__hist;
+      const cloudProd = g.__prod && typeof g.__prod === 'object' && !Array.isArray(g.__prod) ? g.__prod : null;
+      delete g.__cr; delete g.__hist; delete g.__prod;
       if (userId && cloudCr) {
         try {
           const localCr = JSON.parse(localStorage.getItem(`fs_crystals_${userId}`) || '[]') || [];
@@ -2490,6 +2496,16 @@
           const seen = new Set(); const merged = [];
           [...cloudHist, ...localHist].forEach(h => { const k = JSON.stringify(h); if (h && !seen.has(k)) { seen.add(k); merged.push(h); } });
           _fsRawSet(`fs_session_history_${userId}`, JSON.stringify(merged.slice(0, 200)));
+        } catch (_) { }
+      }
+      if (userId && cloudProd) {
+        try {
+          /* Fusion cloud ∪ local, le local gagne sur une même date (la note
+             que l'utilisateur vient de poser sur CET appareil prime). */
+          const localProd = JSON.parse(localStorage.getItem(`fs_prod_ratings_${userId}`) || '{}') || {};
+          const merged = { ...cloudProd, ...localProd };
+          _fsRawSet(`fs_prod_ratings_${userId}`, JSON.stringify(merged));
+          try { window.dispatchEvent(new CustomEvent('fs-prod-rating-update')); } catch (_) { }
         } catch (_) { }
       }
       return g;
@@ -12333,7 +12349,6 @@ void main(){
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <style>{`
-            .fsPFluxCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
             @keyframes fsThemeCrystalAura{0%,100%{opacity:.34;transform:translate3d(-50%,-50%,0) scale(.94) rotate(0deg)}50%{opacity:.58;transform:translate3d(-50%,-50%,0) scale(1.04) rotate(8deg)}}
             .fsCrystalScene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1120px;transform-style:preserve-3d}
             .fsThemeCrystalAura{position:absolute;left:50%;top:50%;width:72%;height:84%;border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.18) 42%,rgba(var(--theme-c1-rgb),.055) 67%,transparent 74%);filter:blur(20px) saturate(1.05);mix-blend-mode:screen;pointer-events:none;z-index:6;animation:fsThemeCrystalAura 7.6s cubic-bezier(.4,0,.2,1) infinite}
@@ -12363,7 +12378,7 @@ void main(){
             .fsP2Chev{flex-shrink:0;color:rgba(255,255,255,.28);transition:all .25s}
             .fsP2Row:hover .fsP2Chev{color:rgba(255,255,255,.7);transform:translateX(2px)}
             @media(max-width:640px){
-              .fsP2Stage,.fsPFluxCanvas{display:none!important}
+              .fsP2Stage{display:none!important}
               .fsP2Hero{margin-bottom:18px}
               .fsP2Scroll{padding-bottom:120px}
               .fsP2RowState{max-width:96px;font-size:9.5px;padding:4px 9px}
@@ -12375,8 +12390,8 @@ void main(){
 
           <div className="fsP2Scroll">
             <div className="fsP2Inner" ref={layoutRef}>
-              {/* Flux d'énergie : courants rangées → cristal, mesurés sur le DOM réel */}
-              <FluxEnergyCanvas layoutRef={layoutRef} cardRefs={cardRefs} stageRef={stageRef} hovRef={hovRef} cards={CARDS} />
+              {/* Flux d'énergie retiré : les rubans traversaient les rangées et
+                 gênaient la lecture — le cristal + son aura restent la signature. */}
 
               {/* ── Hero : titre + thèmes en 1 clic + cristal signature ── */}
               <div className="fsP2Hero">
@@ -13635,6 +13650,8 @@ void main(){
       const [saved, setSaved] = React.useState(false);
       const [advanced, setAdvanced] = React.useState(false);
       const [displayName, setDisplayName] = React.useState(user?.name || user?.username || 'Utilisateur');
+      /* Vitrine de profil : accordéon dans la carte Profil (page plus courte) */
+      const [showcaseOpen, setShowcaseOpen] = React.useState(false);
       const [email] = React.useState(user?.email || '');
       const emailLocked = !!user?.email;
       const [confirmWipe, setConfirmWipe] = React.useState(false);
@@ -13963,6 +13980,24 @@ void main(){
                       <input className="fs-set-input" value={email || ''} disabled={emailLocked} readOnly={emailLocked} placeholder="email@domaine.com" />
                     </div>
                   </div>
+                  {/* Vitrine de profil — fusionnée dans Profil (accordéon) pour
+                     garder la page courte ; c'est la facette publique du profil. */}
+                  {window.ShowcaseEditor && (
+                    <div style={{ padding: '14px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <button type="button" onClick={() => setShowcaseOpen(v => !v)} aria-expanded={showcaseOpen}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}>
+                        <span className="fs-showcase-facet" style={{ width: 8, height: 8, flexShrink: 0 }} />
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span className="fs-set-row-t" style={{ display: 'block' }}>Vitrine de profil</span>
+                          <span className="fs-set-row-d" style={{ display: 'block' }}>Tes plus beaux cristaux, visibles par tes amis.</span>
+                        </span>
+                        <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color: T.muted, flexShrink: 0, transform: showcaseOpen ? 'rotate(180deg)' : 'none', transition: 'transform .22s' }}>
+                          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                      {showcaseOpen && <div style={{ marginTop: 14 }}>{React.createElement(window.ShowcaseEditor, { user })}</div>}
+                    </div>
+                  )}
                   <Field title="Page d'ouverture" desc="L'écran affiché au lancement de LumenOS.">
                     <Segmented k="startPage" options={[['dashboard', 'Dashboard'], ['tasks', 'Tasks'], ['session', 'Focus'], ['notes', 'Notes']]} />
                   </Field>
@@ -13980,13 +14015,6 @@ void main(){
                     </button>
                   </div>
                 </Card>
-
-                {/* VITRINE DE PROFIL */}
-                {window.ShowcaseEditor && (
-                  <Card title="Vitrine de profil" desc="Expose tes plus beaux cristaux à tes amis — c'est toi qui choisis lesquels.">
-                    {React.createElement(window.ShowcaseEditor, { user })}
-                  </Card>
-                )}
 
                 {/* APPARENCE (essentiel) */}
                 <Card title="Apparence" desc="Ton thème, et l'apparence de tous tes widgets.">
@@ -14011,6 +14039,27 @@ void main(){
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
                           <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Widgets</span>
                           <span style={{ fontSize: 10.5, color: T.muted }}>S'applique à tout le dashboard</span>
+                        </div>
+                        {/* Aperçu discret — branché sur les variables CSS live :
+                           il reflète opacité / arrondi / lueur pendant le réglage. */}
+                        <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 10px' }}>
+                          <div style={{
+                            width: 'min(280px, 100%)', boxSizing: 'border-box',
+                            borderRadius: 'var(--widget-radius, 22px)',
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
+                            border: '1px solid rgba(255,255,255,0.09)',
+                            boxShadow: '0 0 var(--widget-glow-size, 0px) var(--widget-glow, transparent), inset 0 1px 0 rgba(255,255,255,0.06)',
+                            opacity: 'var(--widget-opacity, 1)',
+                            padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 7,
+                            transition: 'border-radius .2s ease, box-shadow .25s ease, opacity .2s ease',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)' }} />
+                              <span style={{ fontSize: 8.5, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Aperçu widget</span>
+                            </div>
+                            <span style={{ height: 8, width: '62%', borderRadius: 4, background: 'rgba(255,255,255,0.14)' }} />
+                            <span style={{ height: 8, width: '38%', borderRadius: 4, background: 'rgba(255,255,255,0.08)' }} />
+                          </div>
                         </div>
                         <div style={rowStyle}>
                           <span style={lbl}>Opacité</span>
