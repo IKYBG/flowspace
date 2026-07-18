@@ -7104,7 +7104,20 @@
       const launch = () => {
         if (!canLaunch) return;
         const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
-        const isGoldCrystal = Math.random() < 0.05;
+        /* Tirage de rareté : ~0,5 % légendaire, sinon ~5 % rare (doré inclus).
+           Les couleurs rares/légendaires ne sont JAMAIS sélectionnables à la
+           main — elles ne s'obtiennent qu'ici, à la forge. */
+        const roll = Math.random();
+        const legendaryPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
+        const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
+        let rolledGrad = null, rolledRarity = 'standard';
+        if (roll < 0.005 && legendaryPool.length) {
+          rolledGrad = legendaryPool[Math.floor(Math.random() * legendaryPool.length)];
+          rolledRarity = 'legendary';
+        } else if (roll < 0.055 && rarePool.length) {
+          rolledGrad = rarePool[Math.floor(Math.random() * rarePool.length)];
+          rolledRarity = rolledGrad.id === 'gold' ? 'gold' : 'rare';
+        }
         /* Ensemble : amis SÉLECTIONNÉS (chemin principal, persisté en base) ou
            email (repli). Plus de dépendance au lobby broadcast : chaque ami
            choisi reçoit l'invitation via la table sessions (temps réel s'il est
@@ -7138,8 +7151,8 @@
           music: cfg.music,
           breaks: cfg.breaks,
           crystalShape,
-          crystalGradient: isGoldCrystal ? 'gold' : autoGrad,
-          crystalRarity: isGoldCrystal ? 'gold' : 'standard',
+          crystalGradient: rolledGrad ? rolledGrad.id : autoGrad,
+          crystalRarity: rolledRarity,
           focusTaskIds: focusTaskIds.length > 0 ? focusTaskIds : null,
           startTime: Date.now()
         });
@@ -9563,10 +9576,13 @@ void main(){
           drawOnce();
           return () => { stateRef.current.redraw = null; };
         }
+        /* PC modeste (perf-lite) : ~20 fps suffisent pour la respiration du
+           cristal — moitié moins de travail GPU/CPU qu'à 35 fps. */
+        const frameMs = document.documentElement.classList.contains('fs-perf-lite') ? 48 : 28;
         const render = t => {
           raf = requestAnimationFrame(render);
           if (document.hidden) return;
-          if (t - lastFrame < 28) return;
+          if (t - lastFrame < frameMs) return;
           const dt = Math.min(.06, (t - lastT)*.001 || .016);
           lastFrame = t; lastT = t;
           if (t > nextThemeRead) { theme = readTheme(); nextThemeRead = t + 600; }
@@ -12072,7 +12088,8 @@ void main(){
         let theme = readTheme(), nextThemeRead = 0;
         const draw=(model,vp,alpha)=>{ gl.uniformMatrix4fv(loc.model,false,new Float32Array(model)); gl.uniformMatrix4fv(loc.mvp,false,new Float32Array(mul(vp,model))); gl.uniform1f(loc.alpha,alpha); gl.drawArrays(gl.TRIANGLES,0,count); };
         let raf=0, lastFrame=0;
-        const render=t=>{ if(document.hidden){ raf=requestAnimationFrame(render); return; } if(t-lastFrame<28){ raf=requestAnimationFrame(render); return; } lastFrame=t; if(t>nextThemeRead){ theme=readTheme(); nextThemeRead=t+600; } resize(); const time=t*.001; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform3f(loc.light,-2.6,3.6,3.8); gl.uniform3f(loc.eye,0,.1,5.4); gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]); gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]); const vp=mul(perspective(Math.PI/4,canvas.width/canvas.height,.1,100),lookAt([0,.12,5.25],[0,0,0],[0,1,0])); const bob=Math.sin(time*1.35)*.08; draw(mul(translate(0,bob,0),mul(rotY(time*.62),mul(rotX(-.13+Math.sin(time*.8)*.045),scale(.95,1,.95)))),vp,.86); for(let i=0;i<5;i++){ const a=time*(.36+i*.025)+i*Math.PI*2/5,r=1.34+(i%3)*.1,s=.115+(i%3)*.02; draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.7+i)*.32+bob*.45,Math.sin(a)*.66),mul(rotY(-time*.95+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72); } raf=requestAnimationFrame(render); };
+        const frameMs=document.documentElement.classList.contains('fs-perf-lite')?48:28;
+        const render=t=>{ if(document.hidden){ raf=requestAnimationFrame(render); return; } if(t-lastFrame<frameMs){ raf=requestAnimationFrame(render); return; } lastFrame=t; if(t>nextThemeRead){ theme=readTheme(); nextThemeRead=t+600; } resize(); const time=t*.001; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.uniform3f(loc.light,-2.6,3.6,3.8); gl.uniform3f(loc.eye,0,.1,5.4); gl.uniform3f(loc.accent1,theme[0][0],theme[0][1],theme[0][2]); gl.uniform3f(loc.accent2,theme[1][0],theme[1][1],theme[1][2]); const vp=mul(perspective(Math.PI/4,canvas.width/canvas.height,.1,100),lookAt([0,.12,5.25],[0,0,0],[0,1,0])); const bob=Math.sin(time*1.35)*.08; draw(mul(translate(0,bob,0),mul(rotY(time*.62),mul(rotX(-.13+Math.sin(time*.8)*.045),scale(.95,1,.95)))),vp,.86); for(let i=0;i<5;i++){ const a=time*(.36+i*.025)+i*Math.PI*2/5,r=1.34+(i%3)*.1,s=.115+(i%3)*.02; draw(mul(translate(Math.cos(a)*r,Math.sin(a*1.7+i)*.32+bob*.45,Math.sin(a)*.66),mul(rotY(-time*.95+i),mul(rotZ(a*.7),scale(s,s,s)))),vp,.72); } raf=requestAnimationFrame(render); };
         raf=requestAnimationFrame(render);
         return () => cancelAnimationFrame(raf);
       }, [shape]);
@@ -13139,7 +13156,10 @@ void main(){
 
       const addToast = React.useCallback(({ message, type = 'info', duration = 4200, action, icon }) => {
         const id = Date.now() + Math.random();
-        setToasts(ts => [...ts, { id, message, type, duration, action, icon, exiting: false }]);
+        /* UNE notification à la fois : les précédentes sortent immédiatement
+           (animation de sortie) au lieu de s'empiler et de gêner la lecture. */
+        setToasts(ts => [...ts.map(t => ({ ...t, exiting: true })), { id, message, type, duration, action, icon, exiting: false }]);
+        setTimeout(() => setToasts(ts => ts.filter(t => t.id === id || !t.exiting)), 340);
         if (duration > 0) {
           timersRef.current[id] = setTimeout(() => removeToast(id), duration);
         }
@@ -16871,8 +16891,16 @@ void main(){
           background:linear-gradient(90deg, rgba(var(--theme-c1-rgb),0.05), transparent 60%); }
         .fs-showcase-strip-label { display:flex; align-items:center; gap:7px; flex-shrink:0;
           font-size:9px; font-weight:850; letter-spacing:0.14em; text-transform:uppercase; color:rgba(248,246,252,0.42); }
-        .fs-showcase-facet { width:7px; height:7px; border-radius:1.5px; transform:rotate(45deg); flex-shrink:0;
-          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); box-shadow:0 0 8px rgba(var(--theme-c1-rgb),0.55); }
+        /* Marque « vitrine » : silhouette du cristal LumenOS (pentagone facetté
+           + arête lumineuse), aux couleurs du thème — l'identité de la marque,
+           pas un losange générique. */
+        .fs-showcase-facet { width:9px; height:11px; flex-shrink:0; position:relative;
+          clip-path:polygon(50% 0%, 100% 30%, 78% 100%, 22% 100%, 0% 30%);
+          background:linear-gradient(158deg, #ffffff 0%, var(--theme-c1) 36%, var(--theme-c2) 100%);
+          filter:drop-shadow(0 0 5px rgba(var(--theme-c1-rgb),0.65)); }
+        .fs-showcase-facet::before { content:''; position:absolute; left:0; right:0; top:30%; height:1px; background:rgba(255,255,255,0.45); }
+        .fs-showcase-facet::after { content:''; position:absolute; left:48%; top:4%; bottom:4%; width:1px;
+          background:linear-gradient(to bottom, rgba(255,255,255,0.75), rgba(255,255,255,0.10)); }
         .fs-showcase-strip-gems { display:flex; align-items:flex-end; gap:8px; overflow-x:auto; scrollbar-width:none; }
         .fs-showcase-strip-gems::-webkit-scrollbar { display:none; }
         .fs-showcase-slot { position:relative; width:44px; height:50px; border-radius:13px; flex-shrink:0;
@@ -17758,7 +17786,13 @@ void main(){
 
       const handleEnd = () => {
         const crystal = progress >= 0.5 ? _buildCrystal(progress, session) : null;
-        if (crystal) addToast({ message: crystal.rarity === 'gold' ? 'Cristal doré sauvegardé ! 1 chance sur 20.' : `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(), type: 'success', duration: 3000 });
+        if (crystal) addToast({
+          message: crystal.rarity === 'legendary' ? `🌟 LÉGENDAIRE — ${pal.name} ! ≈ 1 chance sur 200.`
+            : crystal.rarity === 'gold' ? 'Cristal doré sauvegardé ! 1 chance sur 20.'
+            : crystal.rarity === 'rare' ? `✨ Cristal rare — ${pal.name} ! ≈ 1 chance sur 20.`
+            : `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(),
+          type: 'success', duration: crystal.rarity === 'legendary' ? 5000 : 3000,
+        });
         onEnd && onEnd(crystal);
       };
 
@@ -18652,7 +18686,7 @@ void main(){
               .fs-cv-base i:nth-child(3){left:47%;width:32%;height:88%;clip-path:polygon(46% 0,94% 50%,100% 100%,8% 100%,0 62%);transform:rotate(4deg)}
               .fs-cv-base i:nth-child(4){right:0;width:24%;height:60%;clip-path:polygon(50% 0,100% 70%,88% 100%,4% 100%,0 58%);transform:rotate(9deg)}
               .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(2,5,12,.92),transparent 72%)}
-              .fs-cv-gold-aura{position:absolute;left:50%;bottom:0;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,28%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
+              .fs-cv-gold-aura{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:8px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
@@ -19187,9 +19221,26 @@ void main(){
     { id:'foret2',   name:'Forêt',        stops:['#10b981','#34d399'], glow:'rgba(16,185,129,0.72)'  },
     { id:'cosmos2',  name:'Cosmos',       stops:['#818cf8','#c084fc'], glow:'rgba(129,140,248,0.75)' },
     { id:'gold',     name:'Cristal doré', stops:['#fff7b8','#ffd36a','#f59e0b'], glow:'rgba(255,202,75,0.92)', rare:true },
+    /* ── Rares (tirés au sort à la forge, ~5 % — jamais sélectionnables) ──
+       Chaque rare a SA couleur d'aura (glow) : le halo, les ombres portées et
+       la lueur de socle en découlent partout automatiquement. */
+    { id:'sang',       name:'Rubis sanguin', stops:['#ff4d6d','#a4133c'], glow:'rgba(255,77,109,0.85)',  rare:true },
+    { id:'abysse',     name:'Abysse',        stops:['#22d3ee','#0e3a8a'], glow:'rgba(34,211,238,0.82)',  rare:true },
+    { id:'obsidienne', name:'Obsidienne',    stops:['#a78bfa','#171123'], glow:'rgba(139,92,246,0.82)',  rare:true },
+    { id:'venin',      name:'Venin',         stops:['#d9f99d','#15803d'], glow:'rgba(163,230,53,0.8)',   rare:true },
+    { id:'banquise',   name:'Cœur de glace', stops:['#f0f9ff','#38bdf8'], glow:'rgba(186,230,253,0.88)', rare:true },
+    { id:'magma',      name:'Magma',         stops:['#ffb03a','#b91c1c'], glow:'rgba(255,107,53,0.85)',  rare:true },
+    { id:'nebuleuse',  name:'Nébuleuse',     stops:['#f0abfc','#4f46e5'], glow:'rgba(217,138,252,0.85)', rare:true },
+    { id:'prisme',     name:'Prisme boréal', stops:['#99f6e4','#f9a8d4'], glow:'rgba(153,246,228,0.82)', rare:true },
+    { id:'eclipse',    name:'Éclipse',       stops:['#e2e8f0','#1e293b'], glow:'rgba(203,213,225,0.72)', rare:true },
+    { id:'orage',      name:'Orage',         stops:['#e0e7ff','#7c3aed'], glow:'rgba(165,180,252,0.88)', rare:true },
+    /* ── Légendaires (~0,5 %) — aura animée multi-teintes dédiée ── */
+    { id:'astral', name:'Cristal astral', stops:['#c4b5fd','#22d3ee'], glow:'rgba(167,139,250,0.92)', legendary:true, aura:['#22d3ee','#a78bfa','#f0abfc'] },
+    { id:'phenix', name:'Cœur de phénix', stops:['#fff1b8','#ff2d95'], glow:'rgba(255,138,76,0.94)',  legendary:true, aura:['#ffd36a','#ff8a4c','#ff2d95'] },
+    { id:'neant',  name:'Éclat du néant', stops:['#e9d5ff','#1e1b4b'], glow:'rgba(168,85,247,0.92)',  legendary:true, aura:['#c084fc','#6d28d9','#312e81'] },
   ];
   window._randomGradient = () => {
-    const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare);
+    const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare && !g.legendary);
     return pool[Math.floor(Math.random() * pool.length)].id;
   };
 
@@ -19691,6 +19742,24 @@ void main(){
     };
   })();
 
+  /* Auras des cristaux rares/légendaires : halo conique tournant pour les
+     légendaires (statique en perf-lite / reduce-motion pour les petites
+     machines), simple renfort de lueur pour les rares. */
+  if (!document.getElementById('fs-rare-aura-css')) {
+    const s = document.createElement('style');
+    s.id = 'fs-rare-aura-css';
+    s.textContent = `
+      @keyframes fsLegAuraSpin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+      .fs-leg-aura { position:absolute; inset:-16%; border-radius:50%; pointer-events:none; z-index:0;
+        filter:blur(7px); opacity:.85; animation:fsLegAuraSpin 7s linear infinite; }
+      .fs-leg-aura::after { content:''; position:absolute; inset:18%; border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,0.25), transparent 65%); }
+      html.fs-perf-lite .fs-leg-aura, html.fs-reduce-motion .fs-leg-aura { animation:none; filter:blur(5px); }
+      @media (prefers-reduced-motion: reduce) { .fs-leg-aura { animation:none; } }
+    `;
+    document.head.appendChild(s);
+  }
+
   /* ── ShapedCrystalGem v3 — snapshot 3D + habillage (lueur, éclat, vie) ──
      API identique à l'ancienne version ; repli SVG legacy sans WebGL. */
   function ShapedCrystalGem(props) {
@@ -19713,20 +19782,30 @@ void main(){
     if (!src) return React.createElement(_LegacyShapedCrystalGem, props);
     const glowAlpha = (0.08 + cp * 0.64).toFixed(2);
     const rawGlow = grad.glow.replace(/[\d.]+\)$/, `${glowAlpha})`);
-    const glowPx = 2 + pr * 7 + cp * 9;
+    /* Rares : lueur renforcée · Légendaires : halo conique animé en plus.
+       Aura CENTRÉE sur le cristal : les deux drop-shadows sont sans décalage
+       (l'ancien offset vertical faisait « glisser » l'aura sous la gemme). */
+    const tierBoost = grad.legendary ? 6 : grad.rare ? 3 : 0;
+    const glowPx = 2 + pr * 7 + cp * 9 + tierBoost * cp;
     const scale = 0.88 + pr * 0.12;
     const alpha = 0.82 + pr * 0.18;
+    const auraStops = Array.isArray(grad.aura) ? grad.aura : null;
     return (
       <div style={{
         position: 'relative', width: size, height: size * 1.45, flexShrink: 0,
-        filter: `drop-shadow(0 0 ${glowPx}px ${rawGlow}) drop-shadow(0 ${(glowPx * 0.5).toFixed(1)}px ${(glowPx * 1.3).toFixed(1)}px ${rawGlow})`,
+        filter: `drop-shadow(0 0 ${glowPx}px ${rawGlow}) drop-shadow(0 0 ${(glowPx * 1.6).toFixed(1)}px ${rawGlow})`,
         transform: shattered ? 'scale(0) rotate(22deg)' : `scale(${scale})`,
         transformOrigin: '50% 65%',
         opacity: shattered ? 0 : alpha,
         transition: 'filter 2s ease, transform 0.55s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease',
         animation: animate ? 'crystalFloat 4.2s ease-in-out infinite, crystalPulse 3.2s ease-in-out infinite' : 'crystalPulse 5s ease-in-out infinite',
       }}>
-        <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
+        {grad.legendary && auraStops && cp > 0.5 && !shattered && (
+          <span className="fs-leg-aura" aria-hidden="true" style={{
+            background: `conic-gradient(from 0deg, ${auraStops[0]}66, ${auraStops[1]}22 30%, ${auraStops[2]}5c 52%, ${auraStops[1]}22 74%, ${auraStops[0]}66)`,
+          }} />
+        )}
+        <img src={src} alt="" draggable={false} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
         {pr > 0.78 && !shattered && (
           <svg viewBox="0 0 100 145" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
             <g style={{ animation: 'crystalSparkle 1.9s ease-in-out infinite' }}>
@@ -19748,8 +19827,9 @@ void main(){
   function ShapeGradientPicker({ selectedShape, onShape, selectedGradient, onGradient }) {
     const [hov, setHov] = React.useState(null);
     const shapes = Object.entries(window.CRYSTAL_SHAPE_DEFS || {}).map(([id,d]) => ({ id,...d }));
-    const grads  = window.CRYSTAL_GRADIENTS || [];
-    const activeGrad = grads.find(g => g.id === selectedGradient) || grads[0];
+    /* Rares & légendaires exclus : ils ne s'obtiennent qu'au tirage de la forge */
+    const grads  = (window.CRYSTAL_GRADIENTS || []).filter(g => !g.rare && !g.legendary);
+    const activeGrad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === selectedGradient) || grads[0];
 
     return (
       <div style={{paddingBottom:28}}>
@@ -20062,6 +20142,41 @@ void main(){
     if (!embed && !open) return null;
     const { streaks={}, unlocks=[] } = g;
     const unlockSkins = (window.SKINS||[]).filter(s => s.streak);
+    /* Couleurs de forge possédées : un cristal de cette couleur a déjà été forgé */
+    let ownedGrads = new Set();
+    try {
+      (JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`) || '[]') || []).forEach(c => {
+        if (!c) return;
+        if (c.crystalGradient) ownedGrads.add(c.crystalGradient);
+        if (c.rarity === 'gold' || c.palette === 'gold') ownedGrads.add('gold');
+      });
+    } catch (e) {}
+    const forgeRares = (window.CRYSTAL_GRADIENTS || []).filter(x => x.rare);
+    const forgeLegends = (window.CRYSTAL_GRADIENTS || []).filter(x => x.legendary);
+    const forgeBadge = (gr, legendary) => {
+      const owned = ownedGrads.has(gr.id);
+      const dimGlow = a => gr.glow.replace(/[\d.]+\)$/, `${a})`);
+      return (
+        <div key={gr.id} className={`gf-unlock-badge${owned ? ' unlocked' : ''}`}
+          style={owned ? { borderColor: dimGlow(0.4), boxShadow: `0 0 18px ${dimGlow(0.18)}` } : null}
+          title={owned ? `${gr.name} — débloqué` : `${gr.name} — ${legendary ? '≈ 0,5 %' : '≈ 5 %'} de chance à la fin d'une session`}>
+          <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', filter: owned ? 'none' : 'grayscale(1) brightness(0.62)' }}>
+            {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+              shape:'diamond', gradientId: gr.id, progress: 0.9,
+              colorProgress: owned ? 1 : 0.3, size: 32,
+              seed: gr.id.split('').reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) >>> 0,
+            })}
+            {!owned && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg width={12} height={12} viewBox="0 0 14 14" fill="none"><rect x={2.5} y={6} width={9} height={7.5} rx={2} stroke="rgba(255,255,255,0.5)" strokeWidth={1.2}/><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="rgba(255,255,255,0.5)" strokeWidth={1.2}/></svg>
+            </div>}
+          </div>
+          <div style={{ fontSize:8.5, fontWeight:750, color: owned ? gr.stops[0] : T.muted, textAlign:'center', lineHeight:1.2 }}>{gr.name}</div>
+          <div style={{ fontSize:8, fontWeight:800, color: owned ? gr.stops[0] : 'rgba(248,246,252,0.35)' }}>
+            {owned ? '✦ Débloqué' : legendary ? '≈ 0,5 %' : '≈ 5 %'}
+          </div>
+        </div>
+      );
+    };
 
     const useJoker = () => {
       if ((streaks.jokers||0) <= 0 || (streaks.jokersUsed||0) > 0) return;
@@ -20136,6 +20251,23 @@ void main(){
 
             {/* Rare unlock progression */}
             <span className="gf-sec-title">Cristaux rares à débloquer</span>
+            {/* Couleurs de forge : tirées au sort à la fin d'une session */}
+            <div style={{fontSize:10.5,color:T.muted,margin:'2px 0 10px',lineHeight:1.55}}>
+              Chaque session forgée a une chance de révéler une couleur rare
+              (<b style={{color:'#ffd27d'}}>≈ 5 %</b>) ou légendaire (<b style={{color:'#c084fc'}}>≈ 0,5 %</b>) — impossible à choisir, seulement à mériter.
+            </div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:10}}>
+              {forgeRares.map(gr => forgeBadge(gr, false))}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,margin:'2px 0 8px'}}>
+              <span style={{fontSize:9,fontWeight:850,letterSpacing:'0.12em',textTransform:'uppercase',background:'linear-gradient(90deg,#c4b5fd,#f0abfc)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}}>Légendaires</span>
+              <span style={{flex:1,height:1,background:'linear-gradient(90deg,rgba(192,132,252,0.35),transparent)'}}/>
+            </div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:14}}>
+              {forgeLegends.map(gr => forgeBadge(gr, true))}
+            </div>
+            {/* Skins d'île débloqués par la régularité */}
+            <div style={{fontSize:10.5,color:T.muted,margin:'2px 0 8px'}}>Par régularité — maintiens ta série pour débloquer :</div>
             <div style={{display:'flex',gap:8}}>
               {unlockSkins.map(skin => {
                 const unlocked=unlocks.includes(skin.id);
