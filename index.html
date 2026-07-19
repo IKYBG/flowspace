@@ -12329,6 +12329,24 @@ void main(){
          démontent ce composant, le retour re-lit donc des valeurs fraîches). */
       const themes = (window.BG_THEMES || []).filter(t => t && t.id && t.id !== 'custom');
       const activeTheme = themes.find(t => t.id === bgThemeId);
+      /* Pastilles rapides : le thème ACTIF doit toujours être visible et coché —
+         y compris un thème hors des 8 premiers ou le fond personnalisé (sinon
+         aucun indicateur ne peut apparaître). */
+      const customQuickTheme = (() => {
+        if (bgThemeId !== 'custom' || !window.buildCustomTheme) return null;
+        try {
+          const cb = JSON.parse(localStorage.getItem('fs_custom_bg') || '{}');
+          const t = window.buildCustomTheme(cb.c1 || '#a5b8ff', cb.c2 || '#c084fc');
+          return { ...t, id: 'custom', name: 'Personnalisé' };
+        } catch (e) { return null; }
+      })();
+      const quickThemes = (() => {
+        const base = themes.slice(0, 8);
+        if (customQuickTheme) return [customQuickTheme, ...base.slice(0, 7)];
+        if (activeTheme && !base.some(t => t.id === activeTheme.id)) return [activeTheme, ...base.slice(0, 7)];
+        return base;
+      })();
+      const currentThemeName = customQuickTheme ? 'Personnalisé' : (activeTheme?.name || null);
       const fontName = (() => {
         try {
           const fp = localStorage.getItem('fs_font_preset') || 'signature';
@@ -12356,7 +12374,7 @@ void main(){
       })();
 
       const CARDS = [
-        { id:'fond',    target:'fond',        title:'Thèmes & fond',  desc:'Couleurs, dégradés et ambiance de fond',        state: activeTheme?.name || 'Cosmos', c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
+        { id:'fond',    target:'fond',        title:'Thèmes & fond',  desc:'Couleurs, dégradés et ambiance de fond',        state: currentThemeName || 'Mineral OS', c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
         { id:'fonts',   target:'fonts',       title:'Polices',        desc:'La voix typographique de ton espace',           state: fontName,    c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
         { id:'widgets', target:'variants',    title:'Widgets',        desc:'Styles, variantes et apparence globale',        state: widgetState, c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
         { id:'notes',   target:'notes-style', title:'Carte de notes', desc:'Le style visuel de ta carte mentale',           state: noteState,   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
@@ -12421,14 +12439,19 @@ void main(){
                   <div className="fsP2Sub">L'essentiel se règle ici en un clic — et chaque réglage affiche son état, pour ne jamais chercher.</div>
                   {onApplyTheme && themes.length > 0 && (
                     <React.Fragment>
-                      <div className="fsP2QuickLbl">Thème · appliqué instantanément</div>
+                      <div className="fsP2QuickLbl">Thème · appliqué instantanément{currentThemeName && <span style={{color:'var(--theme-c1)',textTransform:'none',letterSpacing:'.02em'}}> — actuel : {currentThemeName}</span>}</div>
                       <div className="fsP2Dots">
-                        {themes.slice(0, 8).map(t => (
-                          <button key={t.id} type="button" className={'fsP2Dot' + (bgThemeId === t.id ? ' on' : '')}
-                            title={t.name} aria-label={`Thème ${t.name}`} aria-pressed={bgThemeId === t.id}
-                            onClick={() => onApplyTheme(t)}
-                            style={{background:`linear-gradient(135deg, rgb(${t.g1?.rgb || '165,184,255'}), rgb(${t.g2?.rgb || '192,132,252'}))`}} />
-                        ))}
+                        {quickThemes.map(t => {
+                          const on = bgThemeId === t.id;
+                          return (
+                            <button key={t.id} type="button" className={'fsP2Dot' + (on ? ' on' : '')}
+                              title={t.name + (on ? ' (actif)' : '')} aria-label={`Thème ${t.name}${on ? ' (actif)' : ''}`} aria-pressed={on}
+                              onClick={() => onApplyTheme(t)}
+                              style={{background:`linear-gradient(135deg, rgb(${t.g1?.rgb || '165,184,255'}), rgb(${t.g2?.rgb || '192,132,252'}))`,display:'grid',placeItems:'center'}}>
+                              {on && <svg width={12} height={12} viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7.4l2.6 2.6 5.4-6" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{filter:'drop-shadow(0 1px 2px rgba(0,0,0,.75))'}}/></svg>}
+                            </button>
+                          );
+                        })}
                         <button type="button" className="fsP2DotPlus" title="Tous les thèmes & fond personnalisé" aria-label="Tous les thèmes et fond personnalisé" onClick={() => onNavigate('fond')}>+</button>
                       </div>
                     </React.Fragment>
@@ -13311,7 +13334,12 @@ void main(){
       const { opacity, radius, glowColor, glowIntensity } = ws;
       const update = patch => onWidgetStyleChange(s => ({ ...s, ...patch }));
       const useVariant = v => { onUseVariant(current.id, v); addToast({ message: current.name + ' ajoute au dashboard', type:'success', icon:'✓' }); onNavigate('dashboard'); };
-      const studioCss = '.fs-widget-studio *{box-sizing:border-box}.fs-widget-studio-scroll::-webkit-scrollbar{width:0;height:0}.fs-widget-card:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),.26)!important;background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.035))!important}.fs-widget-variant:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(0,0,0,.34),0 0 28px rgba(var(--theme-c1-rgb),.10)!important}@media(max-width:900px){.fs-widget-studio-body{grid-template-columns:1fr!important}.fs-widget-studio-side{position:relative!important;top:auto!important}.fs-widget-studio-hero{grid-template-columns:1fr!important}.fs-widget-studio-groups{display:grid!important;grid-template-columns:repeat(3,1fr)!important}.fs-widget-studio-shell{padding:18px!important}}@media(max-width:560px){.fs-widget-studio-groups{grid-template-columns:1fr!important}.fs-widget-studio-variants{grid-template-columns:1fr!important}.fs-widget-studio-header{flex-direction:column!important;align-items:flex-start!important}}';
+      /* ≤1280px avec le panneau Apparence ouvert : 3 colonnes (250+1fr+340) ne
+         tiennent plus — la colonne centrale passait sous la largeur minimale du
+         héros (aperçu 310px + cartes 160px min) et l'aperçu chevauchait le texte
+         « Étape 2 » (typiquement au zoom navigateur). Le panneau bascule alors
+         en rangée pleine largeur sous le contenu. */
+      const studioCss = '.fs-widget-studio *{box-sizing:border-box}.fs-widget-studio-scroll::-webkit-scrollbar{width:0;height:0}.fs-widget-card:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),.26)!important;background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.035))!important}.fs-widget-variant:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(0,0,0,.34),0 0 28px rgba(var(--theme-c1-rgb),.10)!important}@media(max-width:1280px){.fs-widget-studio-body.fs-appearance-open{grid-template-columns:250px minmax(0,1fr)!important}.fs-widget-studio-body.fs-appearance-open .fs-widget-appearance{grid-column:1/-1!important}}@media(max-width:900px){.fs-widget-studio-body{grid-template-columns:1fr!important}.fs-widget-studio-side{position:relative!important;top:auto!important}.fs-widget-studio-hero{grid-template-columns:1fr!important}.fs-widget-studio-groups{display:grid!important;grid-template-columns:repeat(3,1fr)!important}.fs-widget-studio-shell{padding:18px!important}}@media(max-width:560px){.fs-widget-studio-groups{grid-template-columns:1fr!important}.fs-widget-studio-variants{grid-template-columns:1fr!important}.fs-widget-studio-header{flex-direction:column!important;align-items:flex-start!important}}';
       return (
         <div className="fs-widget-studio" style={{ width:'100%', height:'100%', overflow:'hidden', display:'grid', gridTemplateRows:'auto 1fr', color:T.text, fontFamily:T.font }}>
           <style>{studioCss}</style>
@@ -13325,7 +13353,7 @@ void main(){
             <button onClick={() => { setAppearanceOpen(v => !v); window._fsPersoHintMark && window._fsPersoHintMark(); }} style={{ minHeight:44, borderRadius:15, border:'1px solid rgba(var(--theme-c1-rgb),.22)', background:appearanceOpen ? 'rgba(var(--theme-c1-rgb),.14)' : 'rgba(255,255,255,.045)', color:appearanceOpen ? T.c1 : T.text, padding:'0 15px', display:'flex', alignItems:'center', gap:9, fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:appearanceOpen ? '0 14px 34px rgba(var(--theme-c1-rgb),.12)' : 'inset 0 1px 0 rgba(255,255,255,.05)' }}><span style={{ width:22, height:22, borderRadius:9, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#070810' }}>✦</span>Apparence globale{window.FsHintDot && <window.FsHintDot />}</button>
           </header>
           <main className="fs-widget-studio-scroll fs-widget-studio-shell" style={{ overflow:'auto', padding:'22px 34px 34px' }}>
-            <div className="fs-widget-studio-body" style={{ display:'grid', gridTemplateColumns: appearanceOpen ? '250px minmax(0,1fr) 340px' : '250px minmax(0,1fr)', gap:18, alignItems:'start' }}>
+            <div className={'fs-widget-studio-body' + (appearanceOpen ? ' fs-appearance-open' : '')} style={{ display:'grid', gridTemplateColumns: appearanceOpen ? '250px minmax(0,1fr) 340px' : '250px minmax(0,1fr)', gap:18, alignItems:'start' }}>
               <aside className="fs-widget-studio-side" style={{ position:'sticky', top:18, display:'grid', gap:10 }}>
                 <div style={{ borderRadius:24, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,.06)' }}>
                   <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted, margin:'4px 4px 10px' }}>Etape 1</div>
@@ -13353,7 +13381,7 @@ void main(){
                   <div className="fs-widget-studio-variants" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>{current.variants.map(v => <div key={v} className="fs-widget-variant" style={{ borderRadius:20, border:'1px solid rgba(255,255,255,.07)', background:'linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.024))', overflow:'hidden', transition:'all .22s cubic-bezier(.16,1,.3,1)', boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ height:148, overflow:'hidden', background:'rgba(0,0,0,.14)' }}>{current.Component ? React.createElement(current.Component, { variant:v, style:{ height:'100%', minHeight:148 } }) : null}</div><div style={{ padding:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ fontSize:12, fontWeight:900 }}>Style {v}</div><div style={{ marginTop:3, fontSize:10.5, color:T.muted }}>Apercu compact</div></div><button onClick={() => useVariant(v)} style={{ height:34, borderRadius:12, border:'1px solid rgba(var(--theme-c1-rgb),.25)', background:'rgba(var(--theme-c1-rgb),.12)', color:T.c1, padding:'0 12px', fontSize:10.5, fontWeight:900, fontFamily:T.font, cursor:'pointer' }}>Utiliser</button></div></div>)}</div>
                 </div>
               </section>
-              {appearanceOpen && <aside style={{ borderRadius:28, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:18, boxShadow:'0 22px 58px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)' }}>
+              {appearanceOpen && <aside className="fs-widget-appearance" style={{ borderRadius:28, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:18, boxShadow:'0 22px 58px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:16 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Apparence</div><div style={{ marginTop:5, fontSize:16, fontWeight:900 }}>Tous les widgets</div></div><button onClick={() => { update({ opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 }); addToast({ message:'Apparence reinitialisee', type:'info', icon:'↺' }); }} style={{ height:32, borderRadius:11, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 10px', fontSize:10.5, fontWeight:800, fontFamily:T.font, cursor:'pointer' }}>Reset</button></div>
                 <div style={{ display:'grid', gap:18 }}><div style={{ height:150, borderRadius:20, padding:10, background:'rgba(0,0,0,.18)', border:'1px solid rgba(255,255,255,.055)', overflow:'hidden' }}><ClockWidget variant={1} style={{ height:'100%' }} /></div><PremiumSlider label="Opacite" value={opacity} min={0.3} max={1} step={0.01} formatValue={v => Math.round(v * 100) + '%'} onChange={v => update({ opacity:v })} accent={T.c1} /><PremiumSlider label="Arrondi" value={radius} min={8} max={40} step={1} formatValue={v => v + 'px'} onChange={v => update({ radius:v })} accent={T.c2} /><PremiumSlider label="Halo" value={glowIntensity} min={0} max={1} step={0.01} formatValue={v => v < .01 ? 'Off' : Math.round(v * 100) + '%'} onChange={v => update({ glowIntensity:v })} accent={glowColor} /><div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{GLOW_PRESETS.map(p => <button key={p.color} title={p.name} onClick={() => update({ glowColor:p.color })} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid ' + (glowColor === p.color ? 'rgba(255,255,255,.9)' : 'transparent'), background:p.color, cursor:'pointer', boxShadow:glowColor === p.color ? '0 0 0 3px ' + p.color + '44, 0 0 18px ' + p.color + '66' : '0 2px 8px rgba(0,0,0,.34)' }} />)}<label style={{ width:28, height:28, borderRadius:'50%', border:'1.5px dashed rgba(255,255,255,.28)', background:'rgba(255,255,255,.05)', display:'grid', placeItems:'center', cursor:'pointer', position:'relative', overflow:'hidden' }}><span style={{ fontSize:14, color:T.muted }}>+</span><input type="color" value={glowColor} onChange={e => update({ glowColor:e.target.value })} style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer' }} /></label></div></div>
               </aside>}
@@ -16130,7 +16158,8 @@ void main(){
                 title={vitrine ? (vitrineOpen ? 'Masquer la vitrine' : `Voir la vitrine de ${friend.name || friend.email.split('@')[0]}`) : undefined}
                 onClick={() => vitrine && setVitrineOpen(v => !v)}
                 onKeyDown={e => { if (vitrine && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVitrineOpen(v => !v); } }}
-                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent', minWidth:0 }}>
+                className={'fs-vitrine-trigger' + (vitrine ? ' clickable' : '')}
+                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s, box-shadow .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent', minWidth:0 }}>
                 <div style={{ position:'relative', flexShrink:0 }}>
                   <div className="fs-preview-avatar" style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
                     {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
@@ -16162,20 +16191,36 @@ void main(){
               {vitrine && vitrineOpen && (
                 <React.Fragment>
                   <div onClick={e => { e.stopPropagation(); setVitrineOpen(false); }} style={{ position:'fixed', inset:0, zIndex:55, cursor:'default' }} />
-                  <div className="fs-friend-vitrine-pop" onClick={e => e.stopPropagation()}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 18px 10px', position:'relative' }}>
-                      <span className="fs-showcase-facet" />
-                      <span style={{ fontSize:9.5, fontWeight:850, letterSpacing:'0.14em', textTransform:'uppercase', color:'rgba(248,246,252,0.5)' }}>Vitrine de {friend.name || friend.email.split('@')[0]}</span>
-                      <span style={{ marginLeft:'auto', fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:99, background:'rgba(var(--theme-c1-rgb),0.10)', border:'1px solid rgba(var(--theme-c1-rgb),0.22)', color:'var(--theme-c1)', fontVariantNumeric:'tabular-nums' }}>{vitrine.items.length} {vitrine.items.length > 1 ? 'cristaux' : 'cristal'}</span>
+                  <div className="fs-friend-vitrine-pop" role="dialog" aria-label={`Vitrine de ${friend.name || friend.email.split('@')[0]}`} onClick={e => e.stopPropagation()}>
+                    <div className="fs-vitrine-head">
+                      <span className="fs-showcase-facet" aria-hidden="true" />
+                      <div style={{ minWidth:0 }}>
+                        <div className="fs-vitrine-eyebrow">Vitrine de cristaux</div>
+                        <div className="fs-vitrine-owner">{friend.name || friend.email.split('@')[0]}</div>
+                      </div>
+                      <span className="fs-vitrine-count"><b>{vitrine.items.length}</b><span>/ 6</span></span>
                     </div>
-                    <div style={{ display:'flex', alignItems:'flex-end', gap:9, padding:'2px 18px 12px', overflowX:'auto', position:'relative' }}>
-                      {vitrine.items.map((it, i) => (
-                        <div key={it.id || i} className={'fs-showcase-slot' + ((it.gold || it.gradient === 'gold') ? ' gold' : '')} style={{ width:52, height:58 }}>
-                          <ShowcaseGem item={it} size={36} />
-                        </div>
-                      ))}
+                    <div className="fs-vitrine-case">
+                      {vitrine.items.map((it, i) => {
+                        const gid = (it.gold || it.gradient === 'gold') ? 'gold' : it.gradient;
+                        const meta = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gid) || null;
+                        const rarity = meta?.legendary ? 'legendary' : gid === 'gold' ? 'gold' : meta?.rare ? 'rare' : null;
+                        const rarityLabel = rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : null;
+                        const glow = meta?.glow || 'rgba(var(--theme-c1-rgb),0.55)';
+                        return (
+                          <div key={it.id || i} className={'fs-vitrine-cell' + (rarity ? ' ' + rarity : '')}
+                            style={{ '--gem-glow': glow, animationDelay: `${0.08 + i * 0.055}s` }}
+                            title={(meta?.name || 'Cristal') + (it.duration ? ` · ${Math.round(it.duration)} min de focus` : '')}>
+                            <div className="fs-vitrine-gem"><ShowcaseGem item={it} size={40} /></div>
+                            <div className="fs-vitrine-name">{meta?.name || 'Cristal'}</div>
+                            {rarityLabel && <div className="fs-vitrine-rarity" style={{ color: glow }}>{rarityLabel}</div>}
+                            {it.duration > 0 && <div className="fs-vitrine-dur">{Math.round(it.duration)} min</div>}
+                          </div>
+                        );
+                      })}
                     </div>
-                    {vitrine.title ? <div style={{ padding:'0 18px 14px', fontSize:11.5, fontStyle:'italic', color:'rgba(248,246,252,0.55)', position:'relative' }}>« {vitrine.title} »</div> : null}
+                    {vitrine.title ? <figure className="fs-vitrine-quote" style={{ margin:'12px 18px 0' }}>« {vitrine.title} »</figure> : null}
+                    <div className="fs-vitrine-foot"><span className="fs-showcase-facet" aria-hidden="true" />Cristaux forgés en session · LumenOS</div>
                   </div>
                 </React.Fragment>
               )}
@@ -16185,12 +16230,10 @@ void main(){
                 {!loading && (vitrine ? (
                   <button type="button" onClick={e => { e.stopPropagation(); setVitrineOpen(v => !v); }}
                     aria-expanded={vitrineOpen}
-                    style={{ display:'flex', alignItems:'center', gap:7, height:32, padding:'0 13px', borderRadius:99, cursor:'pointer', fontFamily:T.font,
-                      background: vitrineOpen ? 'rgba(var(--theme-c1-rgb),0.20)' : 'rgba(var(--theme-c1-rgb),0.10)',
-                      border:'1px solid rgba(var(--theme-c1-rgb),0.32)', color:'var(--theme-c1)',
-                      fontSize:10, fontWeight:850, letterSpacing:'0.08em', textTransform:'uppercase', transition:'background .2s' }}>
-                    <i className="fs-showcase-facet" style={{ width:7, height:7 }} />
-                    Vitrine · {vitrine.items.length}
+                    className={'fs-vitrine-btn' + (vitrineOpen ? ' open' : '')}>
+                    <i className="fs-showcase-facet" style={{ width:8, height:9 }} />
+                    Vitrine
+                    <span className="n">{vitrine.items.length}</span>
                     <svg width={9} height={9} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
                       <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -16948,22 +16991,91 @@ void main(){
           display:grid; place-items:center; font-size:9px; font-weight:900; color:#070810;
           background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); }
         .fs-showcase-tile-dur { font-size:8px; font-weight:800; color:rgba(248,246,252,0.4); }
-        .fs-friend-vitrine-pop { position:absolute; top:calc(100% + 8px); left:24px; z-index:60;
-          width:min(430px, calc(100vw - 48px)); border-radius:18px; overflow:hidden;
-          background:linear-gradient(165deg, rgba(26,24,44,0.97), rgba(13,12,26,0.96));
-          border:1px solid rgba(255,255,255,0.10);
-          box-shadow:0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--theme-c1-rgb),0.08), inset 0 1px 0 rgba(255,255,255,0.07);
-          backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-          animation:fsVitrinePop .42s cubic-bezier(.22,1.28,.36,1) both; transform-origin:28px -8px; }
+        /* ── Vitrine d'ami : écrin premium LumenOS ─────────────────────────
+           Un présentoir de verre : verrière teintée thème, cellules-socles avec
+           halo par cristal (couleur de rareté), entrée des gemmes en cascade,
+           citation en exergue, signature discrète. */
+        .fs-friend-vitrine-pop { position:absolute; top:calc(100% + 10px); left:24px; z-index:60;
+          width:min(480px, calc(100vw - 48px)); border-radius:22px; overflow:hidden;
+          background:
+            radial-gradient(130% 90% at 18% -12%, rgba(var(--theme-c1-rgb),0.17), transparent 52%),
+            radial-gradient(110% 85% at 90% 112%, rgba(var(--theme-c2-rgb),0.11), transparent 56%),
+            linear-gradient(168deg, rgba(var(--mineral-surface-2-rgb),0.97), rgba(var(--mineral-bg-rgb),0.985));
+          border:1px solid rgba(255,255,255,0.11);
+          box-shadow:0 42px 110px rgba(0,0,0,0.62), 0 0 70px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.10);
+          backdrop-filter:blur(24px) saturate(1.18); -webkit-backdrop-filter:blur(24px) saturate(1.18);
+          animation:fsVitrinePop .46s cubic-bezier(.22,1.28,.36,1) both; transform-origin:28px -8px; }
         .fs-friend-vitrine-pop::before { content:''; position:absolute; inset:0; pointer-events:none;
-          background:radial-gradient(120% 80% at 18% 0%, rgba(var(--theme-c1-rgb),0.12), transparent 55%); }
+          background:linear-gradient(118deg, transparent 28%, rgba(255,255,255,0.055) 44%, transparent 60%); }
+        .fs-vitrine-head { display:flex; align-items:center; gap:11px; padding:16px 18px 13px; position:relative; }
+        .fs-vitrine-head .fs-showcase-facet { width:12px; height:14px; }
+        .fs-vitrine-eyebrow { font-size:8.5px; font-weight:850; letter-spacing:0.17em; text-transform:uppercase;
+          color:rgba(var(--theme-c1-rgb),0.95); }
+        .fs-vitrine-owner { margin-top:3px; font-family:var(--font-display); font-size:17px; font-weight:850;
+          letter-spacing:-0.02em; line-height:1.1; color:var(--mineral-text);
+          max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .fs-vitrine-count { margin-left:auto; flex-shrink:0; display:inline-flex; align-items:baseline; gap:3px;
+          padding:5px 11px; border-radius:99px; background:rgba(var(--theme-c1-rgb),0.10);
+          border:1px solid rgba(var(--theme-c1-rgb),0.24); font-variant-numeric:tabular-nums; }
+        .fs-vitrine-count b { font-size:12.5px; font-weight:900; color:var(--theme-c1); }
+        .fs-vitrine-count span { font-size:9px; font-weight:800; color:rgba(248,246,252,0.42); letter-spacing:0.04em; }
+        .fs-vitrine-case { position:relative; margin:0 15px; padding:14px 8px 8px; border-radius:17px;
+          border:1px solid rgba(255,255,255,0.07);
+          background:linear-gradient(180deg, rgba(255,255,255,0.038), rgba(0,0,0,0.17));
+          box-shadow:inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -20px 32px rgba(0,0,0,0.20);
+          display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px 4px; }
+        .fs-vitrine-cell { --gem-glow:rgba(var(--theme-c1-rgb),0.55); position:relative; min-width:0;
+          display:flex; flex-direction:column; align-items:center; padding:8px 4px 9px; border-radius:13px;
+          animation:fsVitrineGemIn .55s cubic-bezier(.22,1.28,.36,1) both; transition:background .2s; }
+        .fs-vitrine-cell:hover { background:rgba(255,255,255,0.045); }
+        .fs-vitrine-cell.legendary::before { content:''; position:absolute; left:12%; right:12%; top:4px; height:58px;
+          border-radius:50%; background:radial-gradient(55% 60% at 50% 42%, var(--gem-glow), transparent 72%);
+          opacity:.30; filter:blur(9px); pointer-events:none; animation:fsVitrineAura 3.2s ease-in-out infinite; }
+        @keyframes fsVitrineAura { 0%,100%{opacity:.22;transform:scale(.94)} 50%{opacity:.42;transform:scale(1.06)} }
+        .fs-vitrine-gem { position:relative; height:56px; display:grid; place-items:center;
+          filter:drop-shadow(0 10px 16px rgba(0,0,0,0.45)); }
+        .fs-vitrine-gem::after { content:''; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
+          width:36px; height:7px; border-radius:50%;
+          background:radial-gradient(ellipse, var(--gem-glow), transparent 74%); filter:blur(2.5px); opacity:.85; }
+        .fs-vitrine-name { margin-top:9px; font-size:9.5px; font-weight:850; letter-spacing:0.02em;
+          color:rgba(248,246,252,0.82); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .fs-vitrine-rarity { margin-top:2px; font-size:7.5px; font-weight:900; letter-spacing:0.16em; text-transform:uppercase; }
+        .fs-vitrine-dur { margin-top:2px; font-size:8.5px; font-weight:750; color:rgba(248,246,252,0.38);
+          font-variant-numeric:tabular-nums; }
+        .fs-vitrine-quote { margin:12px 18px 0; padding:9px 14px; border-left:2px solid rgba(var(--theme-c1-rgb),0.55);
+          border-radius:0 12px 12px 0; background:rgba(255,255,255,0.03);
+          font-size:12px; font-style:italic; line-height:1.55; color:rgba(248,246,252,0.72); }
+        .fs-vitrine-foot { display:flex; align-items:center; gap:7px; padding:12px 18px 14px;
+          font-size:8.5px; font-weight:850; letter-spacing:0.15em; text-transform:uppercase; color:rgba(248,246,252,0.30); }
+        .fs-vitrine-foot .fs-showcase-facet { width:7px; height:8px; opacity:.55; }
         @keyframes fsVitrinePop { from{opacity:0;transform:translateY(-8px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
-        html.fs-reduce-motion .fs-friend-vitrine-pop { animation:none; }
-        @media (prefers-reduced-motion:reduce) { .fs-friend-vitrine-pop { animation:none; } }
+        @keyframes fsVitrineGemIn { from{opacity:0;transform:translateY(10px) scale(.82)} to{opacity:1;transform:none} }
+        /* Bouton d'accès à la vitrine (header aperçu ami) */
+        .fs-vitrine-btn { display:inline-flex; align-items:center; gap:8px; height:34px; padding:0 14px; border-radius:99px;
+          cursor:pointer; font-family:var(--font-body); font-size:10px; font-weight:900; letter-spacing:0.09em;
+          text-transform:uppercase; color:var(--theme-c1);
+          border:1px solid rgba(var(--theme-c1-rgb),0.30);
+          background:linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.13), rgba(var(--theme-c2-rgb),0.055));
+          box-shadow:inset 0 1px 0 rgba(255,255,255,0.08); transition:all .2s var(--mineral-ease); }
+        .fs-vitrine-btn:hover { transform:translateY(-1px); border-color:rgba(var(--theme-c1-rgb),0.50);
+          box-shadow:0 10px 26px rgba(var(--theme-c1-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.10); }
+        .fs-vitrine-btn.open { background:linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.24), rgba(var(--theme-c2-rgb),0.12));
+          border-color:rgba(var(--theme-c1-rgb),0.55); box-shadow:0 12px 30px rgba(var(--theme-c1-rgb),0.20); }
+        .fs-vitrine-btn .n { min-width:18px; height:18px; padding:0 5px; border-radius:99px; display:grid; place-items:center;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); color:#070810;
+          font-size:9.5px; font-weight:900; letter-spacing:0; }
+        /* Zone profil cliquable (« onglet » vitrine) : affordance nette au survol */
+        .fs-vitrine-trigger.clickable:hover { background:rgba(255,255,255,0.05) !important;
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08); }
+        html.fs-reduce-motion .fs-friend-vitrine-pop, html.fs-reduce-motion .fs-vitrine-cell,
+        html.fs-reduce-motion .fs-vitrine-cell.legendary::before { animation:none; }
+        @media (prefers-reduced-motion:reduce) { .fs-friend-vitrine-pop, .fs-vitrine-cell,
+          .fs-vitrine-cell.legendary::before { animation:none; } }
         @media (max-width:640px) {
           .fs-showcase-strip { padding:9px 16px; }
           .fs-showcase-picker { grid-template-columns:repeat(auto-fill, minmax(56px, 1fr)); }
           .fs-friend-vitrine-pop { left:12px; width:calc(100vw - 24px); }
+          .fs-vitrine-owner { max-width:170px; }
         }
       `;
       document.head.appendChild(s);
@@ -18886,6 +18998,14 @@ void main(){
     function SessionWaitRoom({ pending, user, onStart, onCancel, isGuest = false, hostName = '' }) {
       const joined = pending.joined || [];
       const declined = pending.declined || [];
+      /* Roster AFFICHÉ : côté invité, `invited` contient déjà [hôte, Toi]
+         (lobby-sync). Côté hôte, `invited` = amis seulement → on se préfixe
+         soi-même pour que les deux salles d'attente montrent les MÊMES
+         participants. */
+      const roster = isGuest ? pending.invited : [
+        { id: '__self-host', name: 'Toi (hôte)', initial: ((user?.name || user?.email || 'T')[0] || 'T').toUpperCase(), color: 'var(--theme-c1)', host: true },
+        ...pending.invited,
+      ];
       const allDeclined = pending.invited.length > 0 && pending.invited.every(f => declined.includes(f.id));
       const anyJoined = joined.length > 0;
       const [elapsed, setElapsed] = React.useState(() => Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000)));
@@ -18923,7 +19043,7 @@ void main(){
             @keyframes fsWaitPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
             .fs-wait-title{margin-top:10px;font-family:var(--font-display);font-size:22px;font-weight:850;letter-spacing:-0.03em;color:var(--mineral-text)}
             .fs-wait-sub{margin-top:6px;font-size:12.5px;line-height:1.55;color:rgba(244,246,251,0.55)}
-            .fs-wait-row{display:flex;justify-content:center;gap:18px;margin:22px 0 6px}
+            .fs-wait-row{display:flex;justify-content:center;flex-wrap:wrap;gap:18px;margin:22px 0 6px}
             .fs-wait-friend{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:64px}
             .fs-wait-av{position:relative;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
               font-family:var(--font-display);font-weight:900;font-size:17px;color:#071018;
@@ -18954,12 +19074,17 @@ void main(){
             <div className="fs-wait-title">{title}</div>
             <div className="fs-wait-sub">{subtitle}</div>
             <div className="fs-wait-row">
-              {pending.invited.map(f => {
-                const ok = joined.includes(f.id);
-                const no = declined.includes(f.id);
+              {roster.map(f => {
+                const ok = !!f.host || joined.includes(f.id);
+                const no = !f.host && declined.includes(f.id);
+                /* `color` peut être une variable CSS (hôte) : `${color}bb` serait
+                   invalide → dégradé thème complet dans ce cas. */
+                const avBg = (f.color || '').startsWith('var(')
+                  ? 'linear-gradient(145deg, var(--theme-c1), var(--theme-c2))'
+                  : `linear-gradient(145deg, ${f.color}, ${f.color}bb)`;
                 return (
                   <div key={f.id} className={'fs-wait-friend' + (no ? ' off' : '')}>
-                    <div className="fs-wait-av" style={{ background: `linear-gradient(145deg, ${f.color}, ${f.color}bb)` }}>
+                    <div className="fs-wait-av" style={{ background: avBg }}>
                       {!ok && !no && <span className="fs-wait-ring" />}
                       {f.initial}
                       {ok && (
