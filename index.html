@@ -2915,7 +2915,25 @@
         .eq('to_id', userId).eq('status', 'pending')
         .order('created_at', { ascending: false });
       if (error) { if (!_fsIsMissingTableErr(error)) console.warn('[fs] friend requests fetch failed', error); return []; }
-      return data || [];
+      const rows = data || [];
+      /* Ré-ajout après suppression UNILATÉRALE : si l'expéditeur est DÉJÀ dans ma
+         liste d'amis, sa « demande » est un artefact — je l'auto-accepte en
+         silence (rétablit la symétrie des deux côtés) au lieu d'afficher une
+         demande fantôme. */
+      try {
+        let mine = [];
+        try { mine = JSON.parse(localStorage.getItem('fs_friends_' + userId) || '[]') || []; } catch (_) {}
+        const friendIds = new Set((Array.isArray(mine) ? mine : []).map(f => f && f.id).filter(Boolean));
+        const known = rows.filter(r => r && friendIds.has(r.from_id));
+        if (known.length) {
+          for (const r of known) {
+            try { await _fsAnswerFriendRequest(r.id, true); } catch (_) {}
+            try { await _fsAddFriendEntry(userId, { id: r.from_id, name: r.from_name, email: r.from_email }); } catch (_) {}
+          }
+          return rows.filter(r => r && !friendIds.has(r.from_id));
+        }
+      } catch (_) {}
+      return rows;
     }
     /* → { sent:true } | { legacy:true } (table absente → ajout direct)
          | { duplicate:true } | { error } */
@@ -3231,7 +3249,33 @@
       );
     }
 
-    Object.assign(window, { elev, Shell, Lbl, Num, Sub, Ring, Bar, Check, Pill, FsCrystalMark, FsWidgetIcon });
+    /* Logo LumenOS : cristal taillé (couronne facettée + pavillon + arêtes de
+       taille). Rendu comme une VRAIE gemme, pas un pentagone plat — remplace
+       logo.png partout. `tone` : 'brand' (dégradé thème) ou 'dark' (découpe
+       sombre sur fond coloré). */
+    function FsLogoMark({ size = 44, tone = 'brand', style }) {
+      const gid = React.useMemo(() => 'fslg' + Math.random().toString(36).slice(2, 7), []);
+      const fill = tone === 'dark' ? '#070810' : `url(#${gid})`;
+      const line = tone === 'dark' ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.42)';
+      const topline = tone === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.72)';
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', ...style }}>
+          {tone !== 'dark' && (
+            <defs>
+              <linearGradient id={gid} x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+                <stop offset="0" style={{ stopColor: 'var(--theme-c1)' }} />
+                <stop offset="1" style={{ stopColor: 'var(--theme-c2)' }} />
+              </linearGradient>
+            </defs>
+          )}
+          <path d="M6 3.2h12l4 5.5L12 22.2 2 8.7z" fill={fill} />
+          <path d="M2 8.7h20M8.6 3.2 10.6 8.7 12 22.2M15.4 3.2 13.4 8.7 12 22.2M10.6 8.7h2.8" stroke={line} strokeWidth="0.85" strokeLinejoin="round" />
+          <path d="M6 3.2h12" stroke={topline} strokeWidth="1" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    Object.assign(window, { elev, Shell, Lbl, Num, Sub, Ring, Bar, Check, Pill, FsCrystalMark, FsWidgetIcon, FsLogoMark });
   </script>
 
   <script type="text/babel">
@@ -4983,6 +5027,16 @@
         window.addEventListener('keydown', h);
         return () => window.removeEventListener('keydown', h);
       }, [editing]);
+      /* Déclencheur global : en mode Édition, le contenu du widget est rendu
+         non-interactif (pointerEvents:none) → le crayon interne est inatteignable.
+         On expose donc l'ouverture de l'éditeur pour que l'overlay d'édition
+         puisse la déclencher (même motif que le widget Image). */
+      _uETX(() => {
+        if (readOnly) return;
+        const key = 'fs_text_trigger_' + widgetId;
+        window[key] = () => setEditing(true);
+        return () => { if (window[key]) try { delete window[key]; } catch (_) { window[key] = undefined; } };
+      }, [widgetId, readOnly]);
       const fontCss = f => {
         const def = FS_TEXT_FONTS.find(x => x.id === f);
         if (def?.css) return def.css;
@@ -6055,10 +6109,10 @@
             /* ── Topbar : hiérarchie nette, un seul cluster de contrôles ── */
             .fs-dhx-anim{animation:fsDhxIn .55s var(--mineral-ease) both}
             @keyframes fsDhxIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
-            .fs-dhx-brandchip{position:relative;width:32px;height:32px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;
-              background:linear-gradient(145deg,var(--theme-c1),var(--theme-c2));
-              box-shadow:inset 0 1px 0 rgba(255,255,255,.42),0 8px 22px rgba(var(--theme-c1-rgb),.20)}
-            .fs-dhx-brandchip i{width:12px;height:16px;clip-path:polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%);background:#070810;display:block}
+            .fs-dhx-brandchip{position:relative;width:34px;height:34px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;
+              background:linear-gradient(150deg,var(--theme-c1),var(--theme-c2));
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.46),0 8px 22px rgba(var(--theme-c1-rgb),.22)}
+            .fs-dhx-brandchip svg{display:block;filter:drop-shadow(0 1px 1px rgba(255,255,255,.28))}
             .fs-dhx-group{display:flex;align-items:stretch;height:42px;border-radius:15px;overflow:hidden;flex-shrink:0;
               background:rgba(var(--mineral-surface-rgb),.62);border:1px solid rgba(255,255,255,.07);
               box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
@@ -6095,7 +6149,13 @@
               ) : (
                 <>
               <div className="fs-dhx-anim" style={{ display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0 }}>
-                <div className="fs-dhx-brandchip"><i /></div>
+                <div className="fs-dhx-brandchip">
+                  {/* Cristal taillé : couronne (facettes hautes) + pavillon (pointe), arêtes de taille — lisible comme une gemme, pas un pentagone. */}
+                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 3.4h12l4 5.4L12 22 2 8.8z" fill="#070810"/>
+                    <path d="M2 8.8h20M8.7 3.4 10.6 8.8 12 22M15.3 3.4 13.4 8.8 12 22M10.6 8.8h2.8" stroke="rgba(255,255,255,0.22)" strokeWidth="0.85" strokeLinejoin="round"/>
+                  </svg>
+                </div>
                 <span className="fs-dh-wordmark" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 14.5, letterSpacing: '-0.02em' }}>LumenOS</span>
               </div>
               <div className="fs-dh-sep" style={{ width: 1, height: 26, background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.10), transparent)', flexShrink: 0 }} />
@@ -6811,6 +6871,20 @@
                             Photo
                           </button>
                         )}
+                        {/* Édition de texte — le crayon interne étant hors d'atteinte
+                            (contenu non-interactif), on le rejoue ici. */}
+                        {w.label.toLowerCase() === 'text' && (
+                          <button
+                            onMouseDown={e => e.stopPropagation()}
+                            onClick={e => { e.stopPropagation(); window[`fs_text_trigger_${w.id}`]?.(); }}
+                            aria-label="Modifier le texte" title="Modifier le texte"
+                            style={{position:'absolute',top:8,left:8,height:28,borderRadius:10,border:'1px solid rgba(var(--theme-c1-rgb),0.28)',background:'rgba(var(--mineral-bg-rgb),0.82)',backdropFilter:'blur(12px)',cursor:'pointer',color:T.c1,display:'flex',alignItems:'center',gap:6,padding:'0 11px',fontSize:10,fontWeight:800,fontFamily:T.font,zIndex:50,transition:'all 0.18s'}}
+                            onMouseEnter={e=>{e.currentTarget.style.background='rgba(var(--theme-c1-rgb),0.18)';e.currentTarget.style.borderColor='rgba(var(--theme-c1-rgb),0.5)';}}
+                            onMouseLeave={e=>{e.currentTarget.style.background='rgba(var(--mineral-bg-rgb),0.82)';e.currentTarget.style.borderColor='rgba(var(--theme-c1-rgb),0.28)';}}>
+                            <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                            Texte
+                          </button>
+                        )}
                         {/* Delete button — always visible */}
                         <button
                           onMouseDown={e => e.stopPropagation()}
@@ -6908,6 +6982,9 @@
                         {w.label.toLowerCase() === 'image' && (
                           <button onClick={() => window[`fs_img_trigger_${w.id}`]?.()} style={{ ...btn, width: 'auto', padding: '0 13px', fontSize: 11.5, fontWeight: 800 }}>Photo</button>
                         )}
+                        {w.label.toLowerCase() === 'text' && (
+                          <button onClick={() => window[`fs_text_trigger_${w.id}`]?.()} style={{ ...btn, width: 'auto', padding: '0 13px', fontSize: 11.5, fontWeight: 800, color: T.c1, borderColor: 'rgba(var(--theme-c1-rgb),0.28)' }}>Texte</button>
+                        )}
                         <button onClick={() => { setPickerWidget(w.label); setShowPicker(false); }} style={{ ...btn, width: 'auto', padding: '0 13px', fontSize: 11.5, fontWeight: 800 }}>Styles</button>
                         <span style={{ flex: 1 }} />
                         <button aria-label="Supprimer" onClick={() => removeWidgetMobile(w.id)} style={{ ...btn, color: T.rose, borderColor: 'rgba(251,113,133,0.28)', background: 'rgba(251,113,133,0.08)' }}>
@@ -6919,6 +6996,13 @@
                       {w.label.toLowerCase() === 'image' && (
                         <div style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', left: -9999 }} aria-hidden="true">
                           {window.WIDGET_COMPONENTS?.image ? window.WIDGET_COMPONENTS.image(w.variant || 1, w.id, { performanceMode: 'edit' }) : null}
+                        </div>
+                      )}
+                      {/* Widget texte : monté (invisible) pour exposer fs_text_trigger_
+                          → le bouton « Texte » ouvre l'éditeur (portail). */}
+                      {w.label.toLowerCase() === 'text' && (
+                        <div style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', left: -9999 }} aria-hidden="true">
+                          {window.WIDGET_COMPONENTS?.text ? window.WIDGET_COMPONENTS.text(w.variant || 1, w.id, { performanceMode: 'edit' }) : null}
                         </div>
                       )}
                     </div>
@@ -8862,7 +8946,13 @@
         const onIncoming = e => {
           load();
           const d = e.detail;
-          if (d?.from_name) addToast({ message: d.from_name + " t'a envoyé une demande d'ami", type: 'info', icon: '!', duration: 5200 });
+          /* Pas de toast si c'est un ré-ajout d'un ami déjà présent (auto-accepté). */
+          let alreadyFriend = false;
+          try {
+            const mine = JSON.parse(localStorage.getItem('fs_friends_' + user.id) || '[]') || [];
+            alreadyFriend = Array.isArray(mine) && mine.some(f => f && f.id === d?.from_id);
+          } catch (_) {}
+          if (d?.from_name && !alreadyFriend) addToast({ message: d.from_name + " t'a envoyé une demande d'ami", type: 'info', icon: '!', duration: 5200 });
         };
         const onAnswer = e => {
           const d = e.detail;
@@ -9187,7 +9277,7 @@
             <div>
               <div className="fs-brand">
                 <div className="fs-brand-mark">
-                  <img src="logo.png" alt="LumenOS" className="fs-brand-logo" style={{ objectFit:'contain' }}/>
+                  {window.FsLogoMark ? React.createElement(window.FsLogoMark, { size: 20, tone: 'dark', style: { position: 'relative', zIndex: 1 } }) : <img src="logo.png" alt="LumenOS" className="fs-brand-logo" style={{ objectFit:'contain' }}/>}
                 </div>
                 <div className="fs-brand-copy">
                   <div className="fs-brand-title">LumenOS</div>
@@ -11587,6 +11677,52 @@ void main(){
 
     function AuthScreen({ onAuth }) {
       const [mode, setMode] = _uSAuth(window.__fsRecovery ? 'recovery' : 'login');
+      /* Choix de langue du nouvel utilisateur : FR par défaut (ou langue du
+         navigateur si EN), persisté dans fs_lang + reflété sur <html lang>.
+         L'écran de connexion — 1re impression — est entièrement bilingue. */
+      const [lang, setLang] = _uSAuth(() => {
+        try {
+          const s = localStorage.getItem('fs_lang');
+          if (s === 'fr' || s === 'en') return s;
+          return (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'fr';
+        } catch (_) { return 'fr'; }
+      });
+      React.useEffect(() => {
+        try { localStorage.setItem('fs_lang', lang); window._fsLang = lang; document.documentElement.lang = lang; } catch (_) {}
+      }, [lang]);
+      const AUTH_I18N = {
+        fr: {
+          t_login: 'Bon retour', t_signup: 'Créer ton espace', t_forgot: 'Mot de passe oublié', t_recovery: 'Nouveau mot de passe',
+          s_login: 'Connecte-toi pour retrouver ton dashboard.', s_signup: 'Lance ton cockpit de focus synchronisé.', s_forgot: "Entre ton email : on t'envoie un lien pour le réinitialiser.", s_recovery: 'Choisis un nouveau mot de passe pour ton compte.',
+          google: 'Continuer avec Google', emailAccess: 'Accès email',
+          username: "Nom d'utilisateur", email: 'Email', password: 'Mot de passe', newPassword: 'Nouveau mot de passe',
+          forgotLink: 'Mot de passe oublié ?', resend: "Renvoyer l'email de confirmation",
+          submit_login: 'Entrer dans LumenOS', submit_signup: 'Créer mon cockpit', submit_forgot: 'Envoyer le lien', submit_recovery: 'Mettre à jour le mot de passe',
+          ok_welcome: 'Bienvenue', ok_updated: 'Mot de passe mis à jour',
+          switch_login_q: 'Nouveau ici ?', switch_signup_q: 'Déjà un compte ?', switch_login_a: 'Créer un compte', switch_signup_a: 'Se connecter',
+          backLogin: '← Retour à la connexion', secure: 'Connexion sécurisée. Données synchronisées.',
+          badge: 'Dashboard de productivité · Gratuit', heroTitle: 'Un espace de travail fait pour la concentration.',
+          heroSub: 'Réunis tâches, notes et sessions focus dans un seul dashboard personnalisable — et transforme ton temps de travail en progression visible.',
+          f1a: 'Notes & idées', f1b: 'Capture rapide', f2a: 'Tâches du jour', f2b: 'Priorités claires', f3a: 'Sessions focus', f3b: 'Progression suivie',
+          tagline: 'OS personnel de productivité',
+        },
+        en: {
+          t_login: 'Welcome back', t_signup: 'Create your space', t_forgot: 'Forgot password', t_recovery: 'New password',
+          s_login: 'Sign in to get back to your dashboard.', s_signup: 'Launch your synced focus cockpit.', s_forgot: 'Enter your email: we’ll send a reset link.', s_recovery: 'Choose a new password for your account.',
+          google: 'Continue with Google', emailAccess: 'Email access',
+          username: 'Username', email: 'Email', password: 'Password', newPassword: 'New password',
+          forgotLink: 'Forgot password?', resend: 'Resend confirmation email',
+          submit_login: 'Enter LumenOS', submit_signup: 'Create my cockpit', submit_forgot: 'Send the link', submit_recovery: 'Update password',
+          ok_welcome: 'Welcome', ok_updated: 'Password updated',
+          switch_login_q: 'New here?', switch_signup_q: 'Already have an account?', switch_login_a: 'Create an account', switch_signup_a: 'Sign in',
+          backLogin: '← Back to sign in', secure: 'Secure connection. Data synced.',
+          badge: 'Productivity dashboard · Free', heroTitle: 'A workspace built for deep focus.',
+          heroSub: 'Bring tasks, notes and focus sessions into one customizable dashboard — and turn your work time into visible progress.',
+          f1a: 'Notes & ideas', f1b: 'Quick capture', f2a: 'Today’s tasks', f2b: 'Clear priorities', f3a: 'Focus sessions', f3b: 'Tracked progress',
+          tagline: 'Personal productivity OS',
+        },
+      };
+      const t = k => (AUTH_I18N[lang] || AUTH_I18N.fr)[k] || AUTH_I18N.fr[k] || k;
       const [uname, setUname] = _uSAuth('');
       const [email, setEmail] = _uSAuth('');
       const [pass, setPass] = _uSAuth('');
@@ -11829,24 +11965,23 @@ void main(){
                 <div style={{position:'relative',zIndex:2,maxWidth:560}}>
                   <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:44}}>
                     <div style={{width:48,height:48,borderRadius:18,flexShrink:0,position:'relative',background:'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))',boxShadow:'inset 0 1px 0 rgba(255,255,255,.36),0 18px 38px rgba(217,43,214,.34)',display:'grid',placeItems:'center'}}>
-                      <img src="logo.png" alt="LumenOS" style={{width:29,height:29,objectFit:'contain',position:'relative',zIndex:1}}/>
-                      <div style={{position:'absolute',inset:10,borderRadius:13,border:'1px solid rgba(255,255,255,.42)'}} />
+                      {window.FsLogoMark ? React.createElement(window.FsLogoMark, { size: 27, tone: 'dark', style: { position: 'relative', zIndex: 1 } }) : <img src="logo.png" alt="LumenOS" style={{width:29,height:29,objectFit:'contain',position:'relative',zIndex:1}}/>}
                     </div>
                     <div>
                       <div style={{fontFamily:"'Plus Jakarta Sans', 'Inter', sans-serif",fontWeight:850,fontSize:17,letterSpacing:0}}>LumenOS</div>
-                      <div style={{fontSize:11,color:'rgba(248,246,252,.68)',marginTop:3}}>OS personnel de productivité</div>
+                      <div style={{fontSize:11,color:'rgba(248,246,252,.68)',marginTop:3}}>{t('tagline')}</div>
                     </div>
                   </div>
 
                   <div style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 11px',borderRadius:999,background:'rgba(217,43,214,.12)',border:'1px solid rgba(214,162,255,.24)',color:'rgb(230,190,255)',fontSize:10,fontWeight:900,letterSpacing:0,textTransform:'uppercase',marginBottom:18}}>
                     <span className="fs-auth-dot" />
-                    Dashboard de productivité · Gratuit
+                    {t('badge')}
                   </div>
                   <div className="fs-auth-title">
-                    Un espace de travail fait pour la concentration.
+                    {t('heroTitle')}
                   </div>
                   <div className="fs-auth-subtitle">
-                    Réunis tâches, notes et sessions focus dans un seul dashboard personnalisable — et transforme ton temps de travail en progression visible.
+                    {t('heroSub')}
                   </div>
                 </div>
 
@@ -11886,9 +12021,9 @@ void main(){
 
                 <div className="fs-auth-feature-grid">
                   {[
-                    ['Notes & idées','Capture rapide'],
-                    ['Tâches du jour','Priorités claires'],
-                    ['Sessions focus','Progression suivie']
+                    [t('f1a'),t('f1b')],
+                    [t('f2a'),t('f2b')],
+                    [t('f3a'),t('f3b')]
                   ].map(([k,v])=>(
                     <div key={k} style={{borderRadius:18,padding:'13px 14px',background:'rgba(255,255,255,.055)',border:'1px solid rgba(255,255,255,.09)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'}}>
                       <div style={{fontSize:11,fontWeight:900,color:'rgba(248,246,252,.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{k}</div>
@@ -11900,41 +12035,50 @@ void main(){
 
               <section className="fs-auth-form-pane">
               <div style={{position:'relative',zIndex:1}}>
+              {/* Sélecteur de langue — visible dès la 1re impression */}
+              <div style={{position:'absolute',top:-6,right:0,display:'flex',gap:2,padding:3,borderRadius:999,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',zIndex:5}}>
+                {['fr','en'].map(lg => (
+                  <button key={lg} type="button" onClick={() => setLang(lg)} aria-pressed={lang===lg}
+                    style={{border:'none',cursor:'pointer',borderRadius:999,padding:'4px 11px',fontSize:11,fontWeight:800,fontFamily:T.font,letterSpacing:'.03em',transition:'all .18s',
+                      background: lang===lg ? 'linear-gradient(135deg,rgb(214,162,255),rgb(217,43,214))' : 'transparent',
+                      color: lang===lg ? '#0a0512' : 'rgba(248,246,252,.6)'}}>{lg.toUpperCase()}</button>
+                ))}
+              </div>
               <div style={{marginBottom:22}}>
                 <div style={{fontFamily:"'Plus Jakarta Sans', 'Inter', sans-serif",fontSize:27,fontWeight:850,letterSpacing:0,lineHeight:1}}>
-                  {mode === 'login' ? 'Bon retour' : mode === 'signup' ? 'Créer ton espace' : mode === 'forgot' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
+                  {t('t_' + mode)}
                 </div>
                 <div style={{fontSize:12,color:'rgba(248,246,252,.68)',marginTop:8,lineHeight:1.5}}>
-                  {mode === 'login' ? 'Connecte-toi pour retrouver ton dashboard.' : mode === 'signup' ? 'Lance ton cockpit de focus synchronisé.' : mode === 'forgot' ? "Entre ton email : on t'envoie un lien pour le réinitialiser." : 'Choisis un nouveau mot de passe pour ton compte.'}
+                  {t('s_' + mode)}
                 </div>
               </div>
 
               {(mode === 'login' || mode === 'signup') && (<>
               <button className="fs-auth-alt-btn" onClick={() => signInWithProvider('google')} disabled={busy} style={{width:'100%',marginBottom:14}}>
                 <svg width={17} height={17} viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.3 9.14 5.38 12 5.38z"/></svg>
-                Continuer avec Google
+                {t('google')}
               </button>
               <div style={{display:'flex',alignItems:'center',gap:10,margin:'0 0 16px',color:'rgba(248,246,252,.55)',fontSize:10,fontWeight:800,letterSpacing:0,textTransform:'uppercase'}}>
-                <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} /> Accès email <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} />
+                <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} /> {t('emailAccess')} <span style={{height:1,flex:1,background:'rgba(255,255,255,.10)'}} />
               </div>
               </>)}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 13, marginBottom: 18 }}>
                 {mode === 'signup' && (
                   <div className="fs-auth-field">
-                    <FL ch="Nom d'utilisateur" htmlFor="auth-username" required />
+                    <FL ch={t('username')} htmlFor="auth-username" required />
                     <input id="auth-username" className="fs-ai" type="text" placeholder="Alex" value={uname} onChange={e => setUname(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} disabled={busy} />
                   </div>
                 )}
                 {mode !== 'recovery' && (
                 <div>
-                  <FL ch="Email" htmlFor="auth-email" required />
+                  <FL ch={t('email')} htmlFor="auth-email" required />
                   <input id="auth-email" className="fs-ai" type="email" placeholder="alex@domain.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} />
                 </div>
                 )}
                 {mode !== 'forgot' && (
                 <div>
-                  <FL ch={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} htmlFor="auth-password" required />
+                  <FL ch={mode === 'recovery' ? t('newPassword') : t('password')} htmlFor="auth-password" required />
                   <div style={{ position: 'relative' }}>
                     <input id="auth-password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} style={{ paddingRight: 48 }} />
                     <button onClick={() => setShowPw(v => !v)} disabled={busy}
@@ -11952,7 +12096,7 @@ void main(){
                 <div style={{ textAlign: 'right', marginTop: -4, marginBottom: 14 }}>
                   <button onClick={() => goMode('forgot')} disabled={busy}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(230,190,255,0.85)', fontSize: 12, fontWeight: 700, fontFamily: T.font }}>
-                    Mot de passe oublié ?
+                    {t('forgotLink')}
                   </button>
                 </div>
               )}
@@ -11966,7 +12110,7 @@ void main(){
 
               {awaitingConfirm && (
                 <button onClick={resendConfirmation} disabled={busy} className="fs-auth-alt-btn" style={{ width: '100%', marginBottom: 16, height: 42, fontSize: 12 }}>
-                  Renvoyer l'email de confirmation
+                  {t('resend')}
                 </button>
               )}
 
@@ -12008,18 +12152,18 @@ void main(){
                     <path d="M5 12l5 5 9-9" />
                   </svg>
                 )}
-                {!busy && (mode === 'login' ? 'Entrer dans LumenOS' : mode === 'signup' ? 'Créer mon cockpit' : mode === 'forgot' ? 'Envoyer le lien' : 'Mettre à jour le mot de passe')}
-                {isOk && <span style={{ position: 'relative' }}>{mode === 'recovery' ? 'Mot de passe mis à jour' : 'Bienvenue'}</span>}
+                {!busy && t('submit_' + mode)}
+                {isOk && <span style={{ position: 'relative' }}>{mode === 'recovery' ? t('ok_updated') : t('ok_welcome')}</span>}
               </button>
 
               {(mode === 'login' || mode === 'signup') && (
                 <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(248,246,252,0.62)' }}>
-                  {mode === 'login' ? 'Nouveau ici ?' : 'Déjà un compte ?'}{' '}
+                  {mode === 'login' ? t('switch_login_q') : t('switch_signup_q')}{' '}
                   <button onClick={switchMode}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 850, fontFamily: T.font, fontSize: 13, opacity: 0.94, transition: 'opacity 0.18s' }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={e => e.currentTarget.style.opacity = '0.94'}>
-                    {mode === 'login' ? 'Créer un compte' : 'Se connecter'}
+                    {mode === 'login' ? t('switch_login_a') : t('switch_signup_a')}
                   </button>
                 </div>
               )}
@@ -12027,13 +12171,13 @@ void main(){
                 <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13 }}>
                   <button onClick={() => goMode('login')}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 800, fontFamily: T.font, fontSize: 13 }}>
-                    ← Retour à la connexion
+                    {t('backLogin')}
                   </button>
                 </div>
               )}
               <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,marginTop:16,color:'rgba(248,246,252,0.58)',fontSize:10,lineHeight:1.4}}>
                 <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-                Connexion sécurisée. Données synchronisées.
+                {t('secure')}
               </div>
               </div>
               </section>
@@ -13320,7 +13464,7 @@ void main(){
           <div className="cr-halo-wrap">
             <div ref={haloRef} className="cr-halo" />
             <div ref={logoRef} className="cr-logo-wrap">
-              <img src="logo.png" alt="LumenOS" className="cr-logo" style={{ objectFit: 'contain' }}/>
+              {window.FsLogoMark ? React.createElement(window.FsLogoMark, { size: 46, tone: 'brand', style: { filter: 'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.4))' } }) : <img src="logo.png" alt="LumenOS" className="cr-logo" style={{ objectFit: 'contain' }}/>}
               <span className="cr-wordmark">LumenOS</span>
             </div>
           </div>
@@ -14707,6 +14851,24 @@ void main(){
           return _restoreSession(u?.id);
         } catch(e) { return null; }
       });
+      /* Cristal récupéré à la fin d'une session → pop-up de célébration. */
+      const [sessionResult, setSessionResult] = _uSC(null);
+      /* Résout le NOM d'un participant par id : session (friendUsers / friendUser)
+         puis liste d'amis persistée — pour ne PLUS afficher « ton ami » quand on
+         connaît son nom (départ détecté par la DB, sans nom dans la ligne). */
+      const _friendNameById = React.useCallback((session, id) => {
+        if (!id) return null;
+        const fu = (session?.friendUsers || []).find(f => f && f.id === id);
+        if (fu?.name) return fu.name;
+        if (session?.friendUser?.name && (session.friendId === id || !session.friendId)) return session.friendUser.name;
+        try {
+          const list = JSON.parse(localStorage.getItem(user?.id ? 'fs_friends_' + user.id : 'fs_friends') || '[]');
+          const f = (Array.isArray(list) ? list : []).find(x => x && x.id === id);
+          if (f?.name) return f.name;
+          if (f?.email) return f.email.split('@')[0];
+        } catch (e) {}
+        return null;
+      }, [user?.id]);
       const readSessionHistory = uid => {
         try { return JSON.parse(localStorage.getItem(`fs_session_history_${uid || 'guest'}`) || '[]'); } catch (e) { return []; }
       };
@@ -15355,7 +15517,7 @@ void main(){
           const ids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
           if (p.sessionId && !ids.includes(p.sessionId)) return;
           if ((a.leftIds || []).includes(p.friend.id)) return;
-          addToast({ message: `${p.friend.name || 'Ton ami'} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
+          addToast({ message: `${p.friend.name || _friendNameById(a, p.friend.id) || 'Ton ami'} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
           setActiveSession(cur => {
             if (!cur) return cur;
             const next = { ...cur, leftIds: [...(cur.leftIds || []), p.friend.id] };
@@ -15394,7 +15556,7 @@ void main(){
           const ids = (a.broadcastIds && a.broadcastIds.length ? a.broadcastIds : [a.broadcastId]).filter(Boolean);
           if (!ids.includes(row.id)) return;
           if ((a.leftIds || []).includes(row.friend_id)) return;
-          const fname = (a.friendUsers || []).find(f => f.id === row.friend_id)?.name || 'Ton ami';
+          const fname = _friendNameById(a, row.friend_id) || 'Ton ami';
           addToast({ message: `${fname} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
           setActiveSession(cur => {
             if (!cur || (cur.leftIds || []).includes(row.friend_id)) return cur;
@@ -15443,7 +15605,7 @@ void main(){
               if (row.active !== false || !row.friend_id) return;
               const cur = activeSessionRef.current;
               if (!cur || (cur.leftIds || []).includes(row.friend_id)) return;
-              const fname = (cur.friendUsers || []).find(f => f.id === row.friend_id)?.name || 'Ton ami';
+              const fname = _friendNameById(cur, row.friend_id) || 'Ton ami';
               addToast({ message: `${fname} a quitté la session`, type: 'info', icon: '→', duration: 4200 });
               setActiveSession(c => {
                 if (!c || (c.leftIds || []).includes(row.friend_id)) return c;
@@ -15478,6 +15640,14 @@ void main(){
           && typeof crystalData === 'object'
           && Object.prototype.hasOwnProperty.call(crystalData, 'completedAt');
 
+        /* Pop-up de célébration : cristal récupéré + durée réellement
+           concentrée (temps écoulé, plafonné à la durée prévue). */
+        if (hasCrystalData) {
+          const planned = crystalData.duration || activeSession?.duration || 25;
+          const elapsedMin = Math.round(((Date.now() - (activeSession?.startTime || Date.now())) / 60000));
+          const focusMinutes = Math.max(1, Math.min(planned, elapsedMin || planned));
+          setSessionResult({ crystal: crystalData, focusMinutes });
+        }
         if (hasCrystalData && user?.id) {
           try {
             const k = `fs_crystals_${user.id}`;
@@ -15931,7 +16101,7 @@ void main(){
           {screen === 'boot' && (
             <div key="boot" className="fs-boot-wrap" style={{ width: '100%', height: '100%', minHeight:'100dvh', display:'grid', placeItems:'center', boxSizing:'border-box', animation: 'scaleIn 0.25s cubic-bezier(0.4,0,0.2,1) both' }}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, fontFamily:T.font, color:T.text }}>
-                <img src="logo.png" alt="LumenOS" style={{ width:54, height:54, objectFit:'contain', filter:'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.28))' }} />
+                {window.FsLogoMark ? React.createElement(window.FsLogoMark, { size: 54, tone: 'brand', style: { filter: 'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.28))' } }) : <img src="logo.png" alt="LumenOS" style={{ width:54, height:54, objectFit:'contain', filter:'drop-shadow(0 0 18px rgba(var(--theme-c1-rgb),0.28))' }} />}
                 <div style={{ fontFamily:T.display, fontWeight:850, fontSize:24, letterSpacing:'-0.035em' }}>LumenOS</div>
                 <div style={{ fontSize:12, color:T.muted }}>Chargement de ton espace...</div>
               </div>
@@ -15970,6 +16140,7 @@ void main(){
           {isApp && pendingSession && !activeSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: pendingSession, user, onStart: () => startPendingSession(), onCancel: cancelPendingSession })}
           {isApp && guestLobby && !activeSession && !pendingSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: guestLobby, user, isGuest: true, hostName: (guestLobby.host?.name || '').replace(' (hôte)', ''), onCancel: leaveGuestLobby })}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
+          {isApp && sessionResult && window.SessionCompleteModal && React.createElement(window.SessionCompleteModal, { result: sessionResult, onClose: () => setSessionResult(null), onOpenCave: () => { setSessionResult(null); go('cristaux'); } })}
         </>
       );
     }
@@ -18212,12 +18383,14 @@ void main(){
         return () => clearInterval(id);
       }, [session, phase, totalMs]);
 
-      /* Auto-save on complete */
+      /* Complétion naturelle : on laisse jouer l'animation « complete » du
+         disque (~1,6 s) puis on remonte le cristal — la célébration (nom,
+         durée, aura) est prise en charge par la pop-up de fin de session, plus
+         par un toast. */
       React.useEffect(() => {
         if (phase !== 'complete') return;
         const crystal = _buildCrystal(1, session);
-        addToast({ message: crystal?.rarity === 'gold' ? 'Cristal doré forgé ! Ultra rare.' : '✦ Diamant forgé ! Magnifique concentration.', type: 'success', duration: 5000 });
-        const t = setTimeout(() => onEnd && onEnd(crystal), 2800);
+        const t = setTimeout(() => onEnd && onEnd(crystal), 1600);
         return () => clearTimeout(t);
       }, [phase]);
 
@@ -18228,6 +18401,12 @@ void main(){
       const progress  = Math.min(elapsed / totalMs, 1);
       const si        = phase === 'complete' ? 3 : _cStateIdx(progress);
       const isGold = session?.crystalRarity === 'gold' || session?.crystalGradient === 'gold';
+      /* Rareté effective : le tirage de la forge (session.crystalRarity) prime,
+         sinon on déduit depuis le dégradé (rare/legendary) — pilote l'aura. */
+      const _gradRar = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === session?.crystalGradient) || null;
+      const rarity = (session?.crystalRarity && session.crystalRarity !== 'standard')
+        ? session.crystalRarity
+        : _gradRar?.legendary ? 'legendary' : (_gradRar?.rare || isGold) ? 'rare' : 'standard';
       /* Use session gradient if available, otherwise fall back to CRYSTAL_PALETTES */
       const sessionGrad = session?.crystalGradient && window.CRYSTAL_GRADIENTS
         ? window.CRYSTAL_GRADIENTS.find(g => g.id === session.crystalGradient)
@@ -18289,10 +18468,16 @@ void main(){
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
               boxShadow: `0 16px 48px rgba(0,0,0,0.6), 0 0 32px ${pal.glow}`,
             }}>
-              {/* State name */}
-              <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.13em', textTransform:'uppercase',
-                color: pal.a }}>
-                {phase==='complete' ? '✦ Cristal forgé !' : phase==='shattered' ? '✧ Brisé' : pal.name}
+              {/* Rareté (petite capitale) + nom du cristal (lisible, gros) */}
+              {rarity !== 'standard' && phase !== 'complete' && (
+                <div style={{ fontSize:8.5, fontWeight:900, letterSpacing:'0.16em', textTransform:'uppercase',
+                  color: rarity === 'legendary' ? '#f0abfc' : pal.a }}>
+                  {rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : 'Rare'}
+                </div>
+              )}
+              <div style={{ fontFamily:T.display, fontSize:15, fontWeight:800, letterSpacing:'-0.01em', lineHeight:1.1,
+                textAlign:'center', color: phase==='complete' ? pal.b : '#f4f6fb', whiteSpace:'nowrap' }}>
+                {phase==='complete' ? 'Cristal forgé' : phase==='shattered' ? 'Brisé' : pal.name}
               </div>
               {/* Time */}
               {phase === 'growing' && (
@@ -18321,8 +18506,13 @@ void main(){
           </div>
 
           {/* ── Compact disc (always visible) ── */}
+          <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
+          {/* Aura de rareté : rayonne DERRIÈRE le disque (rare/légendaire). */}
+          {window.CrystalAura && (rarity === 'rare' || rarity === 'gold' || rarity === 'legendary')
+            ? React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 80, intensity: 0.5 + progress * 0.5 })
+            : null}
           <div style={{
-            width: 80, height: 80, borderRadius: '50%', position: 'relative',
+            width: 80, height: 80, borderRadius: '50%', position: 'relative', zIndex: 1,
             cursor: 'pointer',
             background: 'rgba(7,6,17,0.88)',
             backdropFilter: 'blur(24px)',
@@ -18359,6 +18549,7 @@ void main(){
               }
             </div>
           </div>
+          </div>
         </div>
       );
     }
@@ -18387,6 +18578,94 @@ void main(){
       };
     }
     window.FocusCrystalOverlay = FocusCrystalOverlay;
+
+    /* ── Pop-up de fin de session ────────────────────────────────────────────
+       Célébration : cristal forgé (avec son aura de rareté), rareté, nom lisible
+       et durée réellement concentrée. Remplace le chrono négatif d'avant. */
+    function SessionCompleteModal({ result, onClose, onOpenCave }) {
+      const crystal = result?.crystal || null;
+      const focusMin = result?.focusMinutes || crystal?.duration || 0;
+      React.useEffect(() => {
+        const onKey = e => { if (e.key === 'Escape') onClose && onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+      if (!crystal) return null;
+      const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === crystal.crystalGradient) || null;
+      const rarity = crystal.rarity || 'standard';
+      const isLeg = rarity === 'legendary';
+      const isRare = rarity === 'rare' || rarity === 'gold';
+      const accent = grad ? grad.stops[0] : '#a5b8ff';
+      const accent2 = grad ? grad.stops[grad.stops.length - 1] : '#c084fc';
+      const rarLabel = isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal';
+      const rarColor = isLeg ? '#f0abfc' : accent;
+      return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
+          background: 'rgba(4,4,11,0.72)', backdropFilter: 'blur(20px) saturate(1.1)', WebkitBackdropFilter: 'blur(20px) saturate(1.1)',
+          animation: 'fsScmVeil .34s ease both' }}>
+          <style>{`
+            @keyframes fsScmVeil{from{opacity:0}to{opacity:1}}
+            @keyframes fsScmCard{from{opacity:0;transform:translateY(22px) scale(.94)}to{opacity:1;transform:none}}
+            @keyframes fsScmGem{0%{opacity:0;transform:scale(.4) translateY(10px)}60%{transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
+            @keyframes fsScmRay{to{transform:rotate(360deg)}}
+            .fs-scm-card{position:relative;width:min(400px,100%);border-radius:28px;overflow:hidden;text-align:center;
+              padding:34px 28px 26px;background:linear-gradient(180deg,rgba(20,19,34,.98),rgba(10,10,19,.99));
+              border:1px solid rgba(255,255,255,.09);box-shadow:0 40px 110px rgba(0,0,0,.66),inset 0 1px 0 rgba(255,255,255,.06);
+              animation:fsScmCard .6s cubic-bezier(.22,1.28,.36,1) both}
+            .fs-scm-btn{flex:1;height:46px;border-radius:14px;font:800 12.5px var(--font-body);cursor:pointer;transition:transform .16s var(--mineral-ease),box-shadow .2s,background .2s}
+            .fs-scm-btn:active{transform:scale(.97)}
+            .fs-scm-primary{border:none;color:#070810}
+            .fs-scm-ghost{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(244,246,251,.82)}
+            .fs-scm-ghost:hover{background:rgba(255,255,255,.1)}
+            html.fs-reduce-motion .fs-scm-card,html.fs-reduce-motion .fs-scm-gem{animation:none!important}
+          `}</style>
+          <div className="fs-scm-card" onClick={e => e.stopPropagation()}
+            style={{ boxShadow: isRare ? `0 40px 110px rgba(0,0,0,.66), 0 0 60px ${grad ? grad.glow : 'transparent'}, inset 0 1px 0 rgba(255,255,255,.06)` : undefined }}>
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(120% 70% at 50% -6%, ${accent}22, transparent 58%)` }} />
+            <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>Session terminée</div>
+
+            {/* Cristal + aura */}
+            <div style={{ position: 'relative', height: 168, display: 'grid', placeItems: 'center', margin: '10px 0 4px' }}>
+              {window.CrystalAura && (isRare || isLeg) && React.createElement(window.CrystalAura, { gradientId: crystal.crystalGradient, rarity, size: 120, intensity: 1 })}
+              <div className="fs-scm-gem" style={{ position: 'relative', zIndex: 1, animation: 'fsScmGem .7s cubic-bezier(.22,1.4,.36,1) both' }}>
+                {window.ShapedCrystalGem
+                  ? React.createElement(window.ShapedCrystalGem, { shape: crystal.crystalShape || 'diamond', gradientId: rarity === 'gold' ? 'gold' : crystal.crystalGradient, progress: 1, colorProgress: 1, size: 104, seed: crystal.seed || 1 })
+                  : null}
+              </div>
+            </div>
+
+            {/* Rareté + nom */}
+            {rarity !== 'standard' && (
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 99, marginBottom: 8,
+                background: `${rarColor}1a`, border: `1px solid ${rarColor}44` }}>
+                <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', color: rarColor }}>{rarLabel}</span>
+                {isLeg && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(240,171,252,0.7)' }}>≈ 1/200</span>}
+                {rarity === 'rare' && <span style={{ fontSize: 9, fontWeight: 800, color: `${rarColor}b3` }}>≈ 1/20</span>}
+              </div>
+            )}
+            <div style={{ position: 'relative', fontFamily: T.display, fontSize: 26, fontWeight: 850, letterSpacing: '-0.03em', color: '#f4f6fb', lineHeight: 1.05 }}>
+              {crystal.name || 'Cristal forgé'}
+            </div>
+
+            {/* Durée de concentration */}
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14,
+              padding: '9px 16px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 2.2"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 750, color: 'rgba(244,246,251,0.9)' }}>
+                <b style={{ fontWeight: 900, color: '#fff' }}>{focusMin} min</b> de concentration
+              </span>
+            </div>
+
+            <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 22 }}>
+              <button type="button" className="fs-scm-btn fs-scm-ghost" onClick={onOpenCave}>Voir ma grotte</button>
+              <button type="button" className="fs-scm-btn fs-scm-primary" onClick={onClose}
+                style={{ background: `linear-gradient(135deg, ${accent}, ${accent2})`, boxShadow: `0 14px 32px ${grad ? grad.glow : 'rgba(165,184,255,0.3)'}` }}>Continuer</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.SessionCompleteModal = SessionCompleteModal;
 
     /* ── Mes Cristaux Panel ──────────────────────────────────────────────── */
     /* ── Grotte aux cristaux — chambre organique (v3) ────────────────────────
@@ -18457,8 +18736,15 @@ void main(){
       const cluster = Math.floor(i / 3), slot = i % 3;
       /* propriétés partagées par l'amas (mêmes pour ses 3 membres) */
       const cRng = _caveRng(9241 + cluster * 733);
+      /* Profondeur ADAPTATIVE : la galerie s'allonge avec le nombre d'amas pour
+         garder une densité ~constante — au-delà d'une grotte pleine, les
+         cristaux s'étalent en profondeur (on avance pour les voir) au lieu de
+         s'empiler en un amas illisible. */
+      const _caveN = Math.max(1, window._fsCaveN || 1);
+      const _clusters = Math.max(1, Math.ceil(_caveN / 3));
+      const depthMax = Math.max(CAVE_ZMAX, 240 + _clusters * 150);
       const zBand = (cluster * 0.61803398875 + 0.22) % 1;
-      const zc = 120 + zBand * (CAVE_ZMAX - 240);
+      const zc = 120 + zBand * (depthMax - 240);
       const side = cRng() < 0.5 ? 0 : 1;
       const surfRoll = cRng();
       const anchor = cRng();
@@ -18467,7 +18753,7 @@ void main(){
       const da = (slot - 1) * (0.048 + rng() * 0.018) + (rng() - 0.5) * 0.014;
       if (isGold) {
         /* pièce maîtresse : posée au centre du chemin, légèrement penchée */
-        return { surf: 'floor', a: 0.42 + rng() * 0.16, z: Math.max(110, Math.min(CAVE_ZMAX - 80, zc)), rot: (rng() - 0.5) * 8, tj: rng() * 1.5 };
+        return { surf: 'floor', a: 0.42 + rng() * 0.16, z: Math.max(110, Math.min(depthMax - 80, zc)), rot: (rng() - 0.5) * 8, tj: rng() * 1.5 };
       }
       if (surfRoll < 0.13 && zc > 460) {
         /* amas suspendu au plafond, uniquement en profondeur */
@@ -18484,7 +18770,7 @@ void main(){
       const edge = 0.08 + anchor * 0.17 + Math.abs(da);
       const a = Math.max(0.04, Math.min(0.96, side === 0 ? edge + da : 1 - edge + da));
       const lean = (5 + rng() * 9) * (side === 0 ? 1 : -1) + (rng() - 0.5) * 6;
-      return { surf: 'floor', a, z: Math.max(95, Math.min(CAVE_ZMAX - 30, zc + dz)), rot: lean, tj: rng() * 2.5 };
+      return { surf: 'floor', a, z: Math.max(95, Math.min(depthMax - 30, zc + dz)), rot: lean, tj: rng() * 2.5 };
     }
     function _caveSpotOf(c, i) {
       const cv = c && c.cave;
@@ -18911,7 +19197,15 @@ void main(){
         } catch (e) { setCrystals([]); }
       }, [open, key]);
 
+      /* Profondeur de galerie adaptée au nombre de cristaux : la caméra doit
+         pouvoir atteindre les amas les plus profonds quand la grotte se remplit. */
+      const caveDepthMax = Math.max(CAVE_ZMAX, 240 + Math.max(1, Math.ceil(crystals.length / 3)) * 150);
+      const caveCamMax = Math.max(CAVE_CAM_MAX, caveDepthMax - 250);
+      const caveCamMaxRef = React.useRef(caveCamMax);
+      caveCamMaxRef.current = caveCamMax;
+
       React.useEffect(() => {
+        window._fsCaveN = crystals.length;
         crystalsRef.current = crystals;
         const spots = {};
         glowsRef.current = crystals.map((c, i) => {
@@ -18956,7 +19250,7 @@ void main(){
         });
       };
 
-      const clampZ = z => Math.max(0, Math.min(CAVE_CAM_MAX, z));
+      const clampZ = z => Math.max(0, Math.min(caveCamMaxRef.current || CAVE_CAM_MAX, z));
       const spawnFlock = t => {
         const rnd = Math.random;
         batsRef.current.flocks.push({
@@ -19578,11 +19872,12 @@ void main(){
       }, [session.startTime, session.type]);
 
       const total = session.duration * 60;
-      const remaining = total - secs;
-      const over = remaining < 0;
-      const d = Math.abs(remaining);
-      const mm = Math.floor(d / 60).toString().padStart(2, '0');
-      const ss = (d % 60).toString().padStart(2, '0');
+      /* Plus de dépassement : le chrono se fige à 00:00 (jamais de négatif) ;
+         la session se conclut alors via l'overlay → pop-up de récupération. */
+      const remaining = Math.max(0, total - secs);
+      const over = false;
+      const mm = Math.floor(remaining / 60).toString().padStart(2, '0');
+      const ss = (remaining % 60).toString().padStart(2, '0');
       const progress = Math.min(1, secs / total);
       const isTogether = session.type === 'together';
       const partnerName = session.isGuest
@@ -19642,41 +19937,39 @@ void main(){
           <style>{`
             .fs-session-bar{opacity:0;}
             /* ── Cockpit de session : panneau rectangulaire structuré, plus une pilule. ── */
-            /* Ligne d'accent supérieure : la signature du cockpit — dégradé thème + spot lumineux qui balaie lentement. */
+            /* Ligne d'accent supérieure : statique, respiration lente — pas de gadget qui balaie. */
             .fs-sb-accent{position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;
-              background:linear-gradient(90deg,transparent,rgba(var(--theme-c1-rgb),.85) 16%,rgba(var(--theme-c2-rgb),.85) 84%,transparent);}
-            .fs-sb-accent i{position:absolute;top:-1.5px;width:64px;height:5px;border-radius:99px;
-              background:radial-gradient(ellipse,rgba(255,255,255,.85),transparent 70%);filter:blur(2px);
-              animation:fsSbScan 5.6s ease-in-out infinite alternate;}
-            @keyframes fsSbScan{from{left:3%}to{left:calc(97% - 64px)}}
-            .fs-sb-accent.over{background:linear-gradient(90deg,transparent,rgba(255,107,138,.9) 16%,rgba(255,107,138,.9) 84%,transparent);}
-            /* Segments : architecture visible, hairlines verticales. */
-            .fs-sb-seg{border-left:1px solid rgba(255,255,255,.06);align-self:stretch;display:flex;align-items:center;}
-            .fs-sb-cap{font-size:9px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:rgba(207,216,235,.42);white-space:nowrap;}
-            /* LED d'état : point + onde radar — l'indicateur « live » du cockpit. */
+              background:linear-gradient(90deg,transparent,rgba(var(--theme-c1-rgb),.7) 18%,rgba(var(--theme-c2-rgb),.7) 82%,transparent);
+              animation:fsSbAccentBreath 6s ease-in-out infinite;}
+            @keyframes fsSbAccentBreath{0%,100%{opacity:.55}50%{opacity:.9}}
+            .fs-sb-accent.over{background:linear-gradient(90deg,transparent,rgba(255,107,138,.85) 18%,rgba(255,107,138,.85) 82%,transparent);}
+            /* Hairline de segment. */
+            .fs-sb-seg{width:1px;align-self:stretch;margin:15px 0;background:rgba(255,255,255,.07);flex-shrink:0;}
+            .fs-sb-cap{font-size:9.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:rgba(207,216,235,.5);white-space:nowrap;}
+            /* LED d'état : point + onde discrète. */
             .fs-sb-led{position:relative;width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-            .fs-sb-led::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid currentColor;opacity:.4;animation:fsSbPing 2.4s cubic-bezier(.16,1,.3,1) infinite;}
-            @keyframes fsSbPing{0%{transform:scale(.45);opacity:.55}70%,100%{transform:scale(1.5);opacity:0}}
-            /* Rail de progression : toute la largeur du cockpit, pointe lumineuse. */
-            .fs-sb-rail{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.045);pointer-events:none;}
+            .fs-sb-led::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid currentColor;opacity:.3;animation:fsSbPing 2.8s cubic-bezier(.16,1,.3,1) infinite;}
+            @keyframes fsSbPing{0%{transform:scale(.45);opacity:.4}70%,100%{transform:scale(1.5);opacity:0}}
+            /* Rail de progression : toute la largeur, pointe adoucie. */
+            .fs-sb-rail{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.04);pointer-events:none;}
             .fs-sb-railfill{position:relative;height:100%;transition:width 1s linear,background .4s;
-              background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),.85),var(--theme-c2));}
-            .fs-sb-railfill::after{content:'';position:absolute;right:-2px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:inherit;filter:blur(3px);}
+              background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),.8),var(--theme-c2));}
+            .fs-sb-railfill::after{content:'';position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:6px;height:6px;border-radius:50%;background:inherit;filter:blur(2px);}
             /* Zones : entrée en décalé. */
             .fs-sb-zone{animation:fsSbZoneIn .55s var(--mineral-ease) both;}
             @keyframes fsSbZoneIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-            /* Terminer : bouton rectangulaire avec libellé — fantôme au repos, rose assumé au survol. */
-            .fs-session-action{display:flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:12px;cursor:pointer;
-              border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);color:rgba(244,246,251,.6);
-              font:800 11px var(--font-body);letter-spacing:.03em;white-space:nowrap;
-              transition:all .22s var(--mineral-ease);}
-            .fs-session-action:hover{background:rgba(255,107,138,.13);border-color:rgba(255,107,138,.4);color:#ffaebd;transform:translateY(-1px);box-shadow:0 10px 26px rgba(255,107,138,.14);}
-            .fs-session-action:active{transform:translateY(0) scale(.97);}
-            .fs-session-timer .fs-sb-colon{display:inline-block;animation:colonBlink 2s step-end infinite;}
+            /* Terminer : capsule sans bordure, à la Apple — la couleur n'arrive qu'à l'intention. */
+            .fs-session-action{display:flex;align-items:center;gap:7px;height:34px;padding:0 16px;border-radius:999px;cursor:pointer;
+              border:none;background:rgba(255,255,255,.06);color:rgba(244,246,251,.74);
+              font:600 12px var(--font-body);letter-spacing:.01em;white-space:nowrap;
+              transition:background .2s var(--mineral-ease),color .2s var(--mineral-ease),transform .16s var(--mineral-ease);}
+            .fs-session-action:hover{background:rgba(255,107,138,.15);color:#ffb3c1;}
+            .fs-session-action:active{transform:scale(.96);}
+            .fs-sb-stopic{display:none;}
             @keyframes fsSessionIn{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
             @keyframes fsAvatarOut{0%{opacity:1;transform:scale(1)}28%{transform:scale(1.1)}100%{opacity:0;transform:scale(.15) translateY(10px)}}
             @keyframes fsAvatarIn{0%{opacity:0;transform:scale(.2) translateY(8px)}62%{transform:scale(1.12)}100%{opacity:1;transform:scale(1) translateY(0)}}
-            html.fs-reduce-motion .fs-sb-accent i,html.fs-reduce-motion .fs-sb-led::after,html.fs-reduce-motion .fs-sb-colon,html.fs-reduce-motion .fs-sb-zone{animation:none!important;}
+            html.fs-reduce-motion .fs-sb-accent,html.fs-reduce-motion .fs-sb-led::after,html.fs-reduce-motion .fs-sb-zone{animation:none!important;}
             @media (max-width:768px){
               .fs-session-wrap{padding:10px 10px 6px!important;}
               .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:230px!important;}
@@ -19684,9 +19977,11 @@ void main(){
               .fs-session-bar{height:60px!important;max-width:none!important;grid-template-columns:1fr auto!important;border-radius:16px!important;}
               .fs-session-status{display:none!important;}
               .fs-session-detail{display:none!important;}
-              .fs-session-timer{font-size:24px!important;letter-spacing:.02em!important;}
-              .fs-session-action{width:40px!important;height:40px!important;padding:0!important;justify-content:center!important;}
+              .fs-session-timer{font-size:24px!important;letter-spacing:-.01em!important;padding-left:18px!important;}
+              .fs-session-timer-wrap{justify-self:flex-start!important;padding:0 0 0 4px!important;}
+              .fs-session-action{width:40px!important;height:40px!important;padding:0!important;justify-content:center!important;border-radius:14px!important;}
               .fs-session-action-label{display:none!important;}
+              .fs-sb-stopic{display:block!important;}
             }
           `}</style>
           <div
@@ -19709,40 +20004,44 @@ void main(){
               animation:'fsSessionIn .72s var(--mineral-ease) both',
             }}
           >
-            {/* Ligne d'accent signature + spot lumineux en balayage lent. */}
-            <span ref={haloRef} className={'fs-sb-accent' + (over ? ' over' : '')} aria-hidden="true"><i /></span>
+            {/* Ligne d'accent signature — statique, respiration lente. */}
+            <span ref={haloRef} className={'fs-sb-accent' + (over ? ' over' : '')} aria-hidden="true" />
 
-            {/* ── Segment gauche : état + participants ── */}
-            <div className="fs-session-status fs-sb-zone" style={{position:'relative', display:'flex', alignItems:'center', gap:12, minWidth:0, maxWidth: compacting ? 0 : 300, opacity: compacting ? 0 : 1, padding: compacting ? 0 : '0 0 0 18px', transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1), padding .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden', animationDelay:'.1s'}}>
-              <span className="fs-sb-led" style={{background:over ? T.rose : col, color:over ? T.rose : col, boxShadow:`0 0 10px ${over ? T.rose : col}`}} />
-              <div style={{minWidth:0}}>
-                <div className="fs-sb-cap" style={{color: over ? 'rgba(255,143,166,.8)' : undefined}}>{over ? 'Temps dépassé' : label}</div>
-                <div className="fs-session-detail" style={{marginTop:4, color:'rgba(244,246,251,.8)', fontSize:12.5, fontWeight:750, letterSpacing:'-.01em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:168}}>{detail}</div>
+            {/* ── Segment gauche : participants d'abord, puis l'état ── */}
+            <div className="fs-session-status fs-sb-zone" style={{position:'relative', display:'flex', alignItems:'center', gap:13, minWidth:0, maxWidth: compacting ? 0 : 310, opacity: compacting ? 0 : 1, padding: compacting ? 0 : '0 0 0 16px', transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1), padding .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden', animationDelay:'.1s'}}>
+              <div style={{position:'relative', width:32 + shownFriends.length*21, height:32, flexShrink:0, transition:'width .5s cubic-bezier(.22,1.2,.36,1)'}}>
+                <div style={{position:'absolute', left:0, top:0, width:32, height:32, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:800, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.96)', boxShadow:'0 0 0 1px rgba(255,255,255,.06)', overflow:'hidden', zIndex:1}}>
+                  {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
+                </div>
+                {shownFriends.map((f, i) => (
+                  <div key={f.id} style={{position:'absolute', left:21*(i+1), top:0, width:32, height:32, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:800, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.96)', boxShadow:'0 0 0 1px rgba(255,255,255,.06)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : 'fsAvatarIn .55s cubic-bezier(.22,1.4,.36,1) both'}}>{f.initial}</div>
+                ))}
               </div>
-              <div className="fs-sb-seg fs-session-detail" style={{paddingLeft:13, marginLeft:1}}>
-                <div style={{position:'relative', width:30 + shownFriends.length*19, height:30, flexShrink:0, transition:'width .5s cubic-bezier(.22,1.2,.36,1)'}}>
-                  <div style={{position:'absolute', left:0, top:0, width:30, height:30, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:11, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', overflow:'hidden', zIndex:1}}>
-                    {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
-                  </div>
-                  {shownFriends.map((f, i) => (
-                    <div key={f.id} style={{position:'absolute', left:19*(i+1), top:0, width:30, height:30, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:11, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : 'fsAvatarIn .55s cubic-bezier(.22,1.4,.36,1) both'}}>{f.initial}</div>
-                  ))}
+              <span className="fs-sb-seg fs-session-detail" aria-hidden="true" />
+              <div style={{minWidth:0, display:'flex', alignItems:'center', gap:9}}>
+                <span className="fs-sb-led" style={{background:over ? T.rose : col, color:over ? T.rose : col, boxShadow:`0 0 8px ${over ? T.rose : col}`}} />
+                <div style={{minWidth:0}}>
+                  <div className="fs-sb-cap">{label}</div>
+                  <div className="fs-session-detail" style={{marginTop:3, color:'rgba(244,246,251,.78)', fontSize:12.5, fontWeight:650, letterSpacing:'-.01em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:160}}>{detail}</div>
                 </div>
               </div>
             </div>
 
-            {/* ── Segment centre : le temps, héros typographique ── */}
-            <div className="fs-sb-zone" style={{position:'relative', justifySelf:'center', display:'flex', alignItems:'baseline', gap:10, padding:'0 20px', animationDelay:'.18s'}}>
-              <div ref={timerRef} className="fs-session-timer" style={{fontFamily:T.mono, fontSize:compacting ? 24 : 30, fontWeight:750, lineHeight:1, letterSpacing:'.03em', fontVariantNumeric:'tabular-nums', color:over ? T.rose : T.text, transition:'font-size .36s cubic-bezier(.16,1,.3,1), color .4s'}}>
-                {over ? '+' : ''}{mm}<span className="fs-sb-colon">:</span>{ss}
+            {/* ── Segment centre : le temps, héros typographique (Inter tabulaire) ── */}
+            <div className="fs-sb-zone fs-session-timer-wrap" style={{position:'relative', justifySelf:'center', display:'flex', alignItems:'center', padding:'0 20px', animationDelay:'.18s'}}>
+              <div ref={timerRef} className="fs-session-timer" style={{fontFamily:T.font, fontSize:compacting ? 24 : 31, fontWeight:600, lineHeight:1, letterSpacing:'-.015em', fontVariantNumeric:'tabular-nums', fontFeatureSettings:'"tnum" 1', color:over ? T.rose : T.text, transition:'font-size .36s cubic-bezier(.16,1,.3,1), color .4s'}}>
+                {over ? '+' : ''}{mm}:{ss}
               </div>
-              <div className="fs-session-detail" style={{fontFamily:T.mono, fontSize:12, fontWeight:700, color: over ? 'rgba(255,143,166,.85)' : 'rgba(207,216,235,.5)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap'}}>{Math.round(progress * 100)} %</div>
             </div>
 
-            {/* ── Segment droit : Terminer ── */}
-            <div className="fs-sb-zone" style={{position:'relative', display:'flex', justifyContent:'flex-end', alignItems:'center', minWidth:0, maxWidth:compacting ? 0 : 'unset', opacity:compacting ? 0 : 1, padding: compacting ? 0 : '0 14px 0 0', overflow:'hidden', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), padding .38s cubic-bezier(.16,1,.3,1)', animationDelay:'.26s'}}>
+            {/* ── Segment droit : cristallisation + Terminer ── */}
+            <div className="fs-sb-zone" style={{position:'relative', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:compacting ? 0 : 14, minWidth:0, maxWidth:compacting ? 0 : 'unset', opacity:compacting ? 0 : 1, padding: compacting ? 0 : '0 14px 0 0', overflow:'hidden', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), padding .38s cubic-bezier(.16,1,.3,1), gap .38s cubic-bezier(.16,1,.3,1)', animationDelay:'.26s'}}>
+              <div className="fs-session-detail" style={{textAlign:'right', minWidth:0, whiteSpace:'nowrap'}}>
+                <div className="fs-sb-cap" style={{color: over ? 'rgba(255,143,166,.8)' : undefined}}>{over ? 'Temps dépassé' : 'Cristallisation'}</div>
+                <div style={{marginTop:3, fontSize:13, fontWeight:650, color:'rgba(244,246,251,.88)', fontVariantNumeric:'tabular-nums', fontFeatureSettings:'"tnum" 1'}}>{Math.round(progress * 100)} %</div>
+              </div>
               <button className="fs-session-action" onClick={() => onEnd && onEnd(null)} aria-label="Arrêter la session" title="Arrêter la session" style={{fontFamily:T.font, flexShrink:0}}>
-                <svg width={10} height={10} viewBox="0 0 15 15" fill="none" style={{flexShrink:0}}><rect x="2.5" y="2.5" width="10" height="10" rx="2.6" fill="currentColor"/></svg>
+                <svg className="fs-sb-stopic" width={10} height={10} viewBox="0 0 15 15" fill="none" style={{flexShrink:0}}><rect x="2.5" y="2.5" width="10" height="10" rx="2.6" fill="currentColor"/></svg>
                 <span className="fs-session-action-label">Terminer</span>
               </button>
             </div>
@@ -19799,6 +20098,70 @@ void main(){
     const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare && !g.legendary);
     return pool[Math.floor(Math.random() * pool.length)].id;
   };
+
+  /* ── Aura de rareté (game-feel) ───────────────────────────────────────────
+     Couche décorative placée DERRIÈRE un cristal (parent en position:relative,
+     cristal au-dessus). Rien pour un cristal standard ; halo coloré + rayons
+     tournants pour un rare/doré ; empilement multi-couches, rayons contra-
+     rotatifs, particules orbitales et pulsation pour un légendaire. La couleur
+     est tirée du dégradé du cristal (glow + stops, ou triplet `aura`). */
+  if (!document.getElementById('fs-aura-kf')) {
+    const s = document.createElement('style');
+    s.id = 'fs-aura-kf';
+    s.textContent = `
+      @keyframes fsAuraSpin{to{transform:rotate(360deg)}}
+      @keyframes fsAuraSpinR{to{transform:rotate(-360deg)}}
+      @keyframes fsAuraBreath{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.08)}}
+      @keyframes fsAuraHalo{0%,100%{opacity:.4;transform:scale(.86)}50%{opacity:.85;transform:scale(1.12)}}
+      @keyframes fsAuraOrbit{from{transform:rotate(0) translateX(var(--fs-orbit-r)) rotate(0)}to{transform:rotate(360deg) translateX(var(--fs-orbit-r)) rotate(-360deg)}}
+      @keyframes fsAuraSpark{0%,100%{opacity:.35;transform:scale(.7)}50%{opacity:1;transform:scale(1.25)}}
+      html.fs-reduce-motion .fs-aura *{animation:none!important}
+      html.fs-perf-lite .fs-aura-legendary .fs-aura-orbit{display:none}
+    `;
+    document.head.appendChild(s);
+  }
+  function CrystalAura({ gradientId, rarity, size = 120, intensity = 1 }) {
+    const g = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === gradientId) || null;
+    const tier = rarity === 'legendary' ? 'legendary' : (rarity === 'rare' || rarity === 'gold') ? 'rare' : 'standard';
+    if (tier === 'standard') return null;
+    const glow = (g && g.glow) || 'rgba(165,184,255,0.8)';
+    const cols = (g && g.aura) || (g && g.stops) || ['#a5b8ff', '#c084fc'];
+    const c0 = cols[0], c1 = cols[1] || cols[0], c2 = cols[2] || cols[1] || cols[0];
+    const k = Math.max(0, Math.min(1, intensity));
+    const box = size * (tier === 'legendary' ? 2.6 : 2.1);
+    const wrap = { position: 'absolute', left: '50%', top: '50%', width: box, height: box, transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 0 };
+    const ray = (deg, dur, colA, colB, op, anim) => ({
+      position: 'absolute', inset: 0, borderRadius: '50%',
+      background: `conic-gradient(from ${deg}deg, transparent 0deg, ${colA} 18deg, transparent 42deg, transparent 130deg, ${colB} 168deg, transparent 208deg, transparent 320deg, ${colA} 350deg, transparent 360deg)`,
+      opacity: op * k, filter: 'blur(3px)', animation: `${anim} ${dur}s linear infinite`, mixBlendMode: 'screen',
+    });
+    if (tier === 'rare') {
+      return (
+        <div className="fs-aura fs-aura-rare" style={wrap} aria-hidden="true">
+          <div style={{ position: 'absolute', inset: '14%', borderRadius: '50%', background: `radial-gradient(circle, ${glow} 0%, transparent 62%)`, filter: 'blur(10px)', opacity: 0.8 * k, animation: 'fsAuraBreath 3.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
+          <div style={ray(0, 14, c0, c1, 0.5, 'fsAuraSpin')} />
+          <div style={{ position: 'absolute', inset: '26%', borderRadius: '50%', border: `1.5px solid ${c1}`, opacity: 0.4 * k, filter: 'blur(1px)', animation: 'fsAuraHalo 3.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
+        </div>
+      );
+    }
+    /* légendaire */
+    const sparks = [0, 1, 2, 3, 4, 5];
+    return (
+      <div className="fs-aura fs-aura-legendary" style={wrap} aria-hidden="true">
+        <div style={{ position: 'absolute', inset: '8%', borderRadius: '50%', background: `radial-gradient(circle, ${c0} 0%, ${c1} 34%, transparent 66%)`, filter: 'blur(16px)', opacity: 0.7 * k, animation: 'fsAuraBreath 4.2s ease-in-out infinite', mixBlendMode: 'screen' }} />
+        <div style={ray(0, 18, c0, c2, 0.55, 'fsAuraSpin')} />
+        <div style={ray(60, 24, c1, c0, 0.45, 'fsAuraSpinR')} />
+        <div style={{ position: 'absolute', inset: '20%', borderRadius: '50%', border: `2px solid ${c2}`, opacity: 0.5 * k, filter: 'blur(1px)', animation: 'fsAuraHalo 4.2s ease-in-out infinite', mixBlendMode: 'screen' }} />
+        <div style={{ position: 'absolute', inset: '32%', borderRadius: '50%', border: `1.5px solid ${c0}`, opacity: 0.4 * k, animation: 'fsAuraHalo 3.2s ease-in-out infinite reverse', mixBlendMode: 'screen' }} />
+        {sparks.map(i => (
+          <div key={i} className="fs-aura-orbit" style={{ position: 'absolute', left: '50%', top: '50%', width: 5, height: 5, marginLeft: -2.5, marginTop: -2.5, '--fs-orbit-r': `${box * (0.30 + (i % 3) * 0.07)}px`, animation: `fsAuraOrbit ${9 + i * 1.6}s linear infinite`, opacity: k }}>
+            <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: [c0, c1, c2][i % 3], boxShadow: `0 0 8px ${[c0, c1, c2][i % 3]}`, animation: `fsAuraSpark ${2.4 + i * 0.3}s ease-in-out infinite`, mixBlendMode: 'screen' }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  window.CrystalAura = CrystalAura;
 
   /* ── Shape definitions ── */
   window.CRYSTAL_SHAPE_DEFS = {
