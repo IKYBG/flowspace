@@ -2417,6 +2417,27 @@
     }
     window._fsRetryRemoteHydration = _fsRetryRemoteHydration;
 
+    /* widget_style embarque des données SATELLITES (vitrine, widgets texte,
+       style de carte, police, vue tâches). Toute écriture de la colonne doit
+       les réinjecter : un push partiel qui l'oublie ÉCRASE la vitrine publiée
+       (l'ami voyait alors « Vitrine non partagée »). Source unique ici. */
+    function _fsWithStyleExtras(ws) {
+      let out = ws && typeof ws === 'object' ? { ...ws } : (ws == null ? {} : ws);
+      const put = (lsKey, field, parse) => {
+        try {
+          const v = localStorage.getItem(lsKey);
+          if (v != null) out = { ...out, [field]: parse ? JSON.parse(v) : String(v) };
+        } catch (_) { }
+      };
+      put('fs_note_map_style', 'noteMapStyle', false);
+      put('fs_font_preset', 'fontPresetId', false);
+      put('fs_showcase', 'showcase', true);
+      put('fs_text_widgets', 'textWidgets', true);
+      put('fs_task_view', 'taskView', false);
+      return out;
+    }
+    window._fsWithStyleExtras = _fsWithStyleExtras;
+
     function _fsSnapshotLocalData(userId = window._fsSbUser?.id) {
       const r = {};
       try { const v = localStorage.getItem('fs_tasks'); if (v != null) r.tasks = JSON.parse(v); } catch (_) { }
@@ -2427,26 +2448,7 @@
       if (bg != null) r.bg_theme = bg;
       try { const v = localStorage.getItem('fs_custom_bg'); if (v != null) r.custom_bg = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_widget_style'); if (v != null) r.widget_style = _fsNormalizeWidgetStyle(JSON.parse(v)); } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_note_map_style');
-        if (v != null) r.widget_style = { ...(r.widget_style || {}), noteMapStyle: v };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_font_preset');
-        if (v != null) r.widget_style = { ...(r.widget_style || {}), fontPresetId: v };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_showcase');
-        if (v != null) r.widget_style = { ...(r.widget_style || {}), showcase: JSON.parse(v) };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_text_widgets');
-        if (v != null) r.widget_style = { ...(r.widget_style || {}), textWidgets: JSON.parse(v) };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_task_view');
-        if (v != null) r.widget_style = { ...(r.widget_style || {}), taskView: String(v) };
-      } catch (_) { }
+      r.widget_style = _fsWithStyleExtras(r.widget_style);
       try { const v = userId ? localStorage.getItem(`fs_gamif_${userId}`) : null; const base = v != null ? JSON.parse(v) : null; const g = _fsGamifWithLocalData(userId, base); if (g != null) r.gamification = g; } catch (_) { }
       return r;
     }
@@ -2539,26 +2541,7 @@
       if (bg != null) payload.bg_theme = bg;
       try { const v = localStorage.getItem('fs_custom_bg'); if (v != null) payload.custom_bg = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_widget_style'); if (v != null) payload.widget_style = _fsNormalizeWidgetStyle(JSON.parse(v)); } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_note_map_style');
-        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), noteMapStyle: v };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_font_preset');
-        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), fontPresetId: v };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_showcase');
-        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), showcase: JSON.parse(v) };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_text_widgets');
-        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), textWidgets: JSON.parse(v) };
-      } catch (_) { }
-      try {
-        const v = localStorage.getItem('fs_task_view');
-        if (v != null) payload.widget_style = { ...(payload.widget_style || {}), taskView: String(v) };
-      } catch (_) { }
+      payload.widget_style = _fsWithStyleExtras(payload.widget_style);
       try { const v = localStorage.getItem(`fs_gamif_${u.id}`); const g = _fsGamifWithLocalData(u.id, v != null ? JSON.parse(v) : null); if (g != null) payload.gamification = g; } catch (_) { }
       try { const v = localStorage.getItem(`fs_friends_${u.id}`); if (v != null) payload.friends = JSON.parse(v); } catch (_) { }
 
@@ -2640,10 +2623,10 @@
         const p = { user_id: u.id, updated_at: new Date().toISOString() };
         if (widgetStyleObj != null) p.widget_style = _fsNormalizeWidgetStyle(widgetStyleObj);
         else p.widget_style = _fsReadWidgetStyle();
-        try {
-          const font = localStorage.getItem('fs_font_preset');
-          if (font) p.widget_style = { ...(p.widget_style || {}), fontPresetId: font };
-        } catch(_) {}
+        /* Réinjecte vitrine / widgets texte / style de carte / police / vue
+           tâches : cet upsert remplace la colonne entière, sans quoi il
+           EFFACE la vitrine publiée. */
+        p.widget_style = _fsWithStyleExtras(p.widget_style);
         _fsRememberWidgetStyle(u.id, p.widget_style);
         const v = localStorage.getItem('fs_bgtheme'); if (v) p.bg_theme = v;
         try { const custom = localStorage.getItem('fs_custom_bg'); if (custom) p.custom_bg = JSON.parse(custom); } catch(_) {}
@@ -3050,13 +3033,8 @@
       background:radial-gradient(ellipse 70% 55% at 18% 12%,rgba(143,220,255,0.075) 0%,transparent 65%),
         radial-gradient(ellipse 55% 45% at 84% 82%,rgba(184,145,255,0.06) 0%,transparent 65%),#070810}
     #fs-boot .fs-boot-scene{position:relative;width:96px;height:110px;margin:0 auto}
-    #fs-boot .fs-boot-gem{position:absolute;left:50%;top:0;width:58px;height:72px;transform:translateX(-50%);
-      clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
-      background:linear-gradient(158deg,#ffffff 0%,#8fdcff 34%,#b891ff 100%);
+    #fs-boot .fs-boot-gem{position:absolute;left:50%;top:4px;width:72px;height:72px;transform:translateX(-50%);
       animation:fsBootBreath 2.3s ease-in-out infinite}
-    #fs-boot .fs-boot-gem::before{content:'';position:absolute;left:0;right:0;top:30%;height:1px;background:rgba(255,255,255,0.5)}
-    #fs-boot .fs-boot-gem::after{content:'';position:absolute;left:48%;top:5%;bottom:5%;width:1px;
-      background:linear-gradient(to bottom,rgba(255,255,255,0.8),rgba(255,255,255,0.08))}
     #fs-boot .fs-boot-halo{position:absolute;left:50%;top:8px;width:100px;height:100px;transform:translateX(-50%);
       border-radius:50%;background:radial-gradient(circle,rgba(143,220,255,0.28) 0%,transparent 65%);
       filter:blur(14px);animation:fsBootBreath 2.3s ease-in-out infinite}
@@ -3079,7 +3057,16 @@
   </style>
   <div id="root">
     <div id="fs-boot"><div style="text-align:center">
-      <div class="fs-boot-scene"><div class="fs-boot-halo"></div><div class="fs-boot-gem"></div><div class="fs-boot-floor"></div></div>
+      <div class="fs-boot-scene"><div class="fs-boot-halo"></div>
+        <svg class="fs-boot-gem" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <defs><linearGradient id="fsBootG" x1="5" y1="2" x2="21" y2="20" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#8fdcff"/><stop offset="1" stop-color="#b891ff"/></linearGradient></defs>
+          <path d="M9 2 L12.4 4.3 L12.4 14.9 L19.2 14.9 L21.8 17.4 L19.2 20 L8 20 L5.6 17.4 L5.6 4.3 Z" fill="url(#fsBootG)"/>
+          <path d="M9 2 L9 20 L8 20 L5.6 17.4 L5.6 4.3 Z" fill="rgba(255,255,255,0.26)"/>
+          <path d="M5.6 4.3H12.4M9 2V20M9 14.9h3.4M19.2 14.9V20" stroke="rgba(255,255,255,0.46)" stroke-width="0.8" stroke-linecap="round"/>
+          <path d="M9 2 L12.4 4.3" stroke="rgba(255,255,255,0.8)" stroke-width="0.95" stroke-linecap="round"/>
+        </svg>
+        <div class="fs-boot-floor"></div></div>
       <div class="fs-boot-name">Lumen<span>OS</span></div>
       <div class="fs-boot-lbl">Ton espace se cristallise&hellip;</div>
       <div class="fs-boot-track"><i></i></div>
@@ -3105,6 +3092,92 @@
     window.__fsDiagLog('boot', 'diagnostic loaded');
   </script>
 
+  <script>
+    /* ── i18n ─────────────────────────────────────────────────────────────────
+       Langue choisie à l'inscription, propagée à toute l'app. Chargé AVANT les
+       composants pour que le premier rendu soit déjà dans la bonne langue.
+       `fsT('clé')` renvoie la chaîne ; tout composant qui appelle `useFsLang()`
+       se re-rend au changement de langue (événement `fs-lang-change`). */
+    (function () {
+      var stored = null;
+      try { stored = localStorage.getItem('fs_lang'); } catch (_) {}
+      var nav = '';
+      try { nav = (navigator.language || '').toLowerCase(); } catch (_) {}
+      window._fsLang = (stored === 'en' || stored === 'fr') ? stored : (nav.indexOf('en') === 0 ? 'en' : 'fr');
+      try { document.documentElement.lang = window._fsLang; } catch (_) {}
+
+      window.FS_I18N = {
+        fr: {
+          'nav.dashboard': 'Dashboard', 'nav.tasks': 'Tâches', 'nav.notes': 'Notes',
+          'nav.meta.main': 'Vue principale', 'nav.meta.notes': 'Markdown & idées',
+          'nav.meta.focus': 'Sessions & cristaux', 'nav.meta.perso': 'Préférences',
+          'nav.meta.tasksNone': 'Aucune en cours', 'nav.meta.tasksActive': 'en cours',
+          'nav.crystals': 'Cristaux', 'nav.friends': 'Amis', 'nav.perso': 'Personnalisation',
+          'nav.settings': 'Paramètres', 'nav.focus': 'Focus', 'nav.evolution': 'Évolution',
+          'dash.greet.night': 'Encore debout ?', 'dash.greet.morning': 'Bonjour',
+          'dash.greet.afternoon': 'Bon après-midi', 'dash.greet.evening': 'Bonsoir',
+          'dash.tagline': 'Espace de focus cristallin',
+          'dash.widget': 'Widget', 'dash.start': 'Démarrer',
+          'dash.addWidget': 'Ajouter un widget', 'dash.customize': 'Personnaliser le dashboard',
+          'sess.shared': 'Focus partagé', 'sess.active': 'Session active',
+          'sess.crystallization': 'Cristallisation', 'sess.overtime': 'Temps dépassé',
+          'sess.stop': 'Terminer', 'sess.stopAria': 'Arrêter la session',
+          'sess.waiting': 'En attente de tes amis…', 'sess.friendLeft': 'Ton ami a quitté — continue !',
+          'sess.deep': 'Deep work',
+          'done.title': 'Session terminée', 'done.focus': 'de concentration',
+          'done.cave': 'Voir ma grotte', 'done.continue': 'Continuer', 'done.forged': 'Cristal forgé',
+          'rar.legendary': 'Légendaire', 'rar.gold': 'Doré', 'rar.rare': 'Rare',
+          'task.title': 'Tâches', 'task.placeholder': "Qu'est-ce qui compte aujourd'hui ?",
+          'task.add': 'Ajouter', 'task.high': 'Haute', 'task.medium': 'Moyenne', 'task.low': 'Basse',
+          'task.display': 'Affichage', 'task.view.list': 'Liste', 'task.view.kanban': 'Kanban',
+          'task.view.focus': 'Focus', 'task.changePri': 'Changer la priorité',
+          'task.delete': 'Supprimer la tâche',
+        },
+        en: {
+          'nav.dashboard': 'Dashboard', 'nav.tasks': 'Tasks', 'nav.notes': 'Notes',
+          'nav.meta.main': 'Main view', 'nav.meta.notes': 'Markdown & ideas',
+          'nav.meta.focus': 'Sessions & crystals', 'nav.meta.perso': 'Preferences',
+          'nav.meta.tasksNone': 'None active', 'nav.meta.tasksActive': 'active',
+          'nav.crystals': 'Crystals', 'nav.friends': 'Friends', 'nav.perso': 'Personalize',
+          'nav.settings': 'Settings', 'nav.focus': 'Focus', 'nav.evolution': 'Progress',
+          'dash.greet.night': 'Still up?', 'dash.greet.morning': 'Good morning',
+          'dash.greet.afternoon': 'Good afternoon', 'dash.greet.evening': 'Good evening',
+          'dash.tagline': 'Your crystal focus space',
+          'dash.widget': 'Widget', 'dash.start': 'Start',
+          'dash.addWidget': 'Add a widget', 'dash.customize': 'Customize dashboard',
+          'sess.shared': 'Shared focus', 'sess.active': 'Session active',
+          'sess.crystallization': 'Crystallizing', 'sess.overtime': 'Overtime',
+          'sess.stop': 'Finish', 'sess.stopAria': 'Stop the session',
+          'sess.waiting': 'Waiting for your friends…', 'sess.friendLeft': 'Your friend left — keep going!',
+          'sess.deep': 'Deep work',
+          'done.title': 'Session complete', 'done.focus': 'of focus',
+          'done.cave': 'See my cave', 'done.continue': 'Continue', 'done.forged': 'Crystal forged',
+          'rar.legendary': 'Legendary', 'rar.gold': 'Golden', 'rar.rare': 'Rare',
+          'task.title': 'Tasks', 'task.placeholder': 'What matters today?',
+          'task.add': 'Add', 'task.high': 'High', 'task.medium': 'Medium', 'task.low': 'Low',
+          'task.display': 'Layout', 'task.view.list': 'List', 'task.view.kanban': 'Kanban',
+          'task.view.focus': 'Focus', 'task.changePri': 'Change priority',
+          'task.delete': 'Delete task',
+        },
+      };
+
+      window.fsT = function (key) {
+        var d = window.FS_I18N[window._fsLang] || window.FS_I18N.fr;
+        if (Object.prototype.hasOwnProperty.call(d, key)) return d[key];
+        var f = window.FS_I18N.fr;
+        return Object.prototype.hasOwnProperty.call(f, key) ? f[key] : key;
+      };
+      window._fsSetLang = function (lg) {
+        if (lg !== 'fr' && lg !== 'en') return;
+        if (window._fsLang === lg) return;
+        window._fsLang = lg;
+        try { localStorage.setItem('fs_lang', lg); } catch (_) {}
+        try { document.documentElement.lang = lg; } catch (_) {}
+        try { window.dispatchEvent(new CustomEvent('fs-lang-change', { detail: lg })); } catch (_) {}
+      };
+    })();
+  </script>
+
   <script type="text/babel">
     const T = {
       accent: '#8fdcff', warm: '#f8d28b', green: '#7af6a4',
@@ -3119,6 +3192,17 @@
     function c1(a) { return 'rgba(var(--theme-c1-rgb),' + a + ')'; }
     function c2(a) { return 'rgba(var(--theme-c2-rgb),' + a + ')'; }
     window.T = T; window.c1 = c1; window.c2 = c2;
+    /* Abonne un composant à la langue : il se re-rend au changement. */
+    function useFsLang() {
+      const [, force] = React.useState(0);
+      React.useEffect(() => {
+        const h = () => force(n => n + 1);
+        window.addEventListener('fs-lang-change', h);
+        return () => window.removeEventListener('fs-lang-change', h);
+      }, []);
+      return window._fsLang;
+    }
+    window.useFsLang = useFsLang;
   </script>
 
   <script type="text/babel">
@@ -3255,22 +3339,31 @@
        sombre sur fond coloré). */
     function FsLogoMark({ size = 44, tone = 'brand', style }) {
       const gid = React.useMemo(() => 'fslg' + Math.random().toString(36).slice(2, 7), []);
-      const fill = tone === 'dark' ? '#070810' : `url(#${gid})`;
-      const line = tone === 'dark' ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.42)';
-      const topline = tone === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.72)';
+      const dark = tone === 'dark';
+      const fill = dark ? '#070810' : `url(#${gid})`;
+      /* Monogramme : la lettre L de LumenOS TAILLÉE comme une gemme — angles
+         biseautés (facettes), arête de taille centrale, facette gauche
+         éclairée. Une seule forme qui se lit à la fois « L » et « cristal ». */
+      const L_PATH = 'M9 2 L12.4 4.3 L12.4 14.9 L19.2 14.9 L21.8 17.4 L19.2 20 L8 20 L5.6 17.4 L5.6 4.3 Z';
+      const LIT = 'M9 2 L9 20 L8 20 L5.6 17.4 L5.6 4.3 Z';
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', ...style }}>
-          {tone !== 'dark' && (
+          {!dark && (
             <defs>
-              <linearGradient id={gid} x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse">
+              <linearGradient id={gid} x1="5" y1="2" x2="21" y2="20" gradientUnits="userSpaceOnUse">
                 <stop offset="0" style={{ stopColor: 'var(--theme-c1)' }} />
                 <stop offset="1" style={{ stopColor: 'var(--theme-c2)' }} />
               </linearGradient>
             </defs>
           )}
-          <path d="M6 3.2h12l4 5.5L12 22.2 2 8.7z" fill={fill} />
-          <path d="M2 8.7h20M8.6 3.2 10.6 8.7 12 22.2M15.4 3.2 13.4 8.7 12 22.2M10.6 8.7h2.8" stroke={line} strokeWidth="0.85" strokeLinejoin="round" />
-          <path d="M6 3.2h12" stroke={topline} strokeWidth="1" strokeLinecap="round" />
+          <path d={L_PATH} fill={fill} strokeLinejoin="round" />
+          {/* facette éclairée (volume) */}
+          <path d={LIT} fill={dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.26)'} />
+          {/* arêtes de taille */}
+          <path d="M5.6 4.3H12.4M9 2V20M9 14.9h3.4M19.2 14.9V20"
+            stroke={dark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.46)'} strokeWidth="0.8" strokeLinejoin="round" strokeLinecap="round" />
+          {/* éclat sommital */}
+          <path d="M9 2 L12.4 4.3" stroke={dark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.8)'} strokeWidth="0.95" strokeLinecap="round" />
         </svg>
       );
     }
@@ -6097,10 +6190,11 @@
     }
 
     function DashboardScreen({ onNavigate, widgets, session, onEndSession, user, animateWidgets = true, focusNudgeOpen = false }) {
+      useFsLang();
       const hour = new Date().getHours();
-      const greeting = hour < 5 ? 'Encore debout ?' : hour < 12 ? 'Bonjour' : hour < 17 ? 'Bon après-midi' : 'Bonsoir';
+      const greeting = hour < 5 ? fsT('dash.greet.night') : hour < 12 ? fsT('dash.greet.morning') : hour < 17 ? fsT('dash.greet.afternoon') : fsT('dash.greet.evening');
       const dateStr = (() => {
-        try { const s = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); return s.charAt(0).toUpperCase() + s.slice(1); }
+        try { const s = new Date().toLocaleDateString(window._fsLang === 'en' ? 'en-US' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); return s.charAt(0).toUpperCase() + s.slice(1); }
         catch (e) { return ''; }
       })();
       return (
@@ -6150,11 +6244,7 @@
                 <>
               <div className="fs-dhx-anim" style={{ display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0 }}>
                 <div className="fs-dhx-brandchip">
-                  {/* Cristal taillé : couronne (facettes hautes) + pavillon (pointe), arêtes de taille — lisible comme une gemme, pas un pentagone. */}
-                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M6 3.4h12l4 5.4L12 22 2 8.8z" fill="#070810"/>
-                    <path d="M2 8.8h20M8.7 3.4 10.6 8.8 12 22M15.3 3.4 13.4 8.8 12 22M10.6 8.8h2.8" stroke="rgba(255,255,255,0.22)" strokeWidth="0.85" strokeLinejoin="round"/>
-                  </svg>
+                  {window.FsLogoMark ? React.createElement(window.FsLogoMark, { size: 19, tone: 'dark' }) : null}
                 </div>
                 <span className="fs-dh-wordmark" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 14.5, letterSpacing: '-0.02em' }}>LumenOS</span>
               </div>
@@ -6166,7 +6256,7 @@
                 <div style={{ marginTop: 3, fontSize: 11, fontWeight: 650, color: 'rgba(207,216,235,.52)', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                   {dateStr}
                   <span style={{ width: 3, height: 3, borderRadius: 99, background: 'rgba(255,255,255,.28)', flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Espace de focus cristallin</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{fsT('dash.tagline')}</span>
                 </div>
               </div>
                 </>
@@ -6178,24 +6268,24 @@
                 <>
                   <div className="fs-dhx-group">
                     <button className="fs-dash-addwidget-btn fs-dhx-ghost" onClick={() => { try { window.__fsOpenPicker = true; } catch (e) {} onNavigate('edit'); }}
-                      title="Ajouter un widget" aria-label="Ajouter un widget" style={{ fontFamily: T.font }}>
+                      title={fsT('dash.addWidget')} aria-label={fsT('dash.addWidget')} style={{ fontFamily: T.font }}>
                       <span className="fs-dhx-plus"><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
-                      <span className="fs-dash-addwidget-label">Widget</span>
+                      <span className="fs-dash-addwidget-label">{fsT('dash.widget')}</span>
                     </button>
                     <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
-                      title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard" style={{ width: 46, padding: 0, fontFamily: T.font }}>
+                      title={fsT('dash.customize')} aria-label={fsT('dash.customize')} style={{ width: 46, padding: 0, fontFamily: T.font }}>
                       <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                     </button>
                   </div>
                   <button className="fs-dash-start-btn" onClick={() => onNavigate('session')} style={{ fontFamily: T.font }}>
                     <span className="fs-dhx-play"><svg width={9} height={9} viewBox="0 0 12 12"><polygon points="3.4,2.2 10,6 3.4,9.8" fill="#07070d"/></svg></span>
-                    <span className="fs-dash-start-label">Démarrer</span>
+                    <span className="fs-dash-start-label">{fsT('dash.start')}</span>
                   </button>
                 </>
               ) : (
                 <div className="fs-dhx-group">
                   <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
-                    title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard"
+                    title={fsT('dash.customize')} aria-label={fsT('dash.customize')}
                     style={{ width: 46, padding: 0, fontFamily: T.font }}>
                     <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                   </button>
@@ -9233,25 +9323,26 @@
         try { return localStorage.getItem('fs_evolution_initial_tab') || 'streaks'; } catch(e) { return 'overview'; }
       })();
 
+      useFsLang();
       const NAV = [
         {
-          target: 'dashboard', label: 'Dashboard', meta: 'Vue principale',
+          target: 'dashboard', label: fsT('nav.dashboard'), meta: fsT('nav.meta.main'),
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10.5V20h14v-9.5" /></svg>,
         },
         {
-          target: 'tasks', label: 'Tâches', meta: activeTaskCount > 0 ? `${activeTaskCount} en cours` : 'Aucune en cours',
+          target: 'tasks', label: fsT('nav.tasks'), meta: activeTaskCount > 0 ? `${activeTaskCount} ${fsT('nav.meta.tasksActive')}` : fsT('nav.meta.tasksNone'),
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3.5 6h.01" /><path d="M3.5 12h.01" /><path d="M3.5 18h.01" /></svg>,
         },
         {
-          target: 'notes', label: 'Notes', meta: 'Markdown & idées',
+          target: 'notes', label: fsT('nav.notes'), meta: fsT('nav.meta.notes'),
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z" /><path d="M15 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></svg>,
         },
         {
-          target: 'session', label: 'Focus', meta: 'Sessions & cristaux',
+          target: 'session', label: fsT('nav.focus'), meta: fsT('nav.meta.focus'),
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
         },
         {
-          target: 'perso', label: 'Personnalisation', meta: 'Préférences',
+          target: 'perso', label: fsT('nav.perso'), meta: fsT('nav.meta.perso'),
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M4 19.5V8" /><path d="M10 19.5V4" /><path d="M16 19.5v-8" /><path d="M22 19.5v-12" /></svg>,
         },
       ];
@@ -9635,10 +9726,12 @@
        un nouvel utilisateur (voir l'état vide plus bas). */
     const INIT_TASKS = [];
 
+    /* Libellés en accesseurs : ils suivent la langue courante sans avoir à
+       reconstruire l'objet (PRI est un module-level constant). */
     const PRI = {
-      high: { label: 'Haute', color: '#fb7185', bg: 'rgba(251,113,133,0.14)' },
-      medium: { label: 'Moyenne', color: '#ffd27d', bg: 'rgba(255,210,125,0.14)' },
-      low: { label: 'Basse', color: '#2dd4bf', bg: 'rgba(45,212,191,0.14)' },
+      high: { get label() { return window.fsT('task.high'); }, color: '#fb7185', bg: 'rgba(251,113,133,0.14)' },
+      medium: { get label() { return window.fsT('task.medium'); }, color: '#ffd27d', bg: 'rgba(255,210,125,0.14)' },
+      low: { get label() { return window.fsT('task.low'); }, color: '#2dd4bf', bg: 'rgba(45,212,191,0.14)' },
     };
 
     /* ── Cristal du jour WebGL — vraie 3D façon jauge d'énergie de jeu ──────
@@ -9935,6 +10028,7 @@ void main(){
     }
 
     function TasksScreen() {
+      useFsLang();
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [tasks, setTasks] = _uST(() => {
         try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || INIT_TASKS; } catch (e) { return INIT_TASKS; }
@@ -9952,6 +10046,8 @@ void main(){
         return () => window.removeEventListener('fs-remote-update', sync);
       }, []);
       const [priFilter, setPriFilter] = _uST(null);
+      /* id de la tâche dont la priorité vient de changer → animation de ressort */
+      const [priBump, setPriBump] = _uST(null);
       const [inputVal, setInputVal] = _uST('');
       const [newPri, setNewPri] = _uST('medium');
       const [animId, setAnimId] = _uST(null);
@@ -9980,7 +10076,10 @@ void main(){
       const totalActive = tasks.filter(t => !t.done).length;
       const prog = tasks.length > 0 ? totalDone / tasks.length : 0;
 
-      const visible = tasks.filter(t => !priFilter || t.priority === priFilter);
+      /* Le filtre de priorité n'existe qu'en vue Liste (masqué ailleurs) : on
+         l'ignore en Kanban/Focus pour ne pas y laisser un tri invisible actif. */
+      const priFilterActive = priFilter && view !== 'kanban' && view !== 'zen';
+      const visible = tasks.filter(t => !priFilterActive || t.priority === priFilter);
       const activeTasks = visible.filter(t => !t.done);
       const doneTasks = visible.filter(t => t.done);
       const _gFocT = () => { try { return JSON.parse(localStorage.getItem('fs_session_focus_tasks') || 'null'); } catch(e) { return null; } };
@@ -10065,6 +10164,19 @@ void main(){
         );
       };
 
+      /* Un clic sur la pastille fait passer la tâche à la priorité SUIVANTE
+         (haute → moyenne → basse → haute). Remplace l'ancien filtrage au clic. */
+      const PRI_ORDER = ['high', 'medium', 'low'];
+      const cyclePriority = id => {
+        setTasks(ts => ts.map(t => {
+          if (t.id !== id) return t;
+          const i = PRI_ORDER.indexOf(t.priority);
+          return { ...t, priority: PRI_ORDER[(i + 1) % PRI_ORDER.length] };
+        }));
+        setPriBump(id);
+        setTimeout(() => setPriBump(b => (b === id ? null : b)), 460);
+      };
+
       const TaskRow = ({ task, idx = 0 }) => {
         const p = PRI[task.priority] || PRI.medium;
         const isAnim = animId === task.id, isDone = task.done;
@@ -10088,15 +10200,16 @@ void main(){
               )}
             </div>
             <span className="fs-task-text">{task.text}</span>
-            <span className="fs-task-pri" role="button" tabIndex={0}
-              title={`N'afficher que les tâches ${p.label.toLowerCase()}`}
-              onClick={() => setPriFilter(f => f === task.priority ? null : task.priority)}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPriFilter(f => f === task.priority ? null : task.priority); } }}
-              style={{ cursor: 'pointer', color: isDone ? 'rgba(248,246,252,0.22)' : p.color, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, borderColor: isDone ? 'transparent' : `${p.color}30` }}>
+            <span className={'fs-task-pri' + (priBump === task.id ? ' bump' : '')} role="button" tabIndex={0}
+              aria-label={`Priorité ${p.label.toLowerCase()} — changer`}
+              title={fsT('task.changePri')}
+              onClick={() => cyclePriority(task.id)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cyclePriority(task.id); } }}
+              style={{ color: isDone ? 'rgba(248,246,252,0.22)' : p.color, background: isDone ? 'rgba(255,255,255,0.03)' : p.bg, borderColor: isDone ? 'transparent' : `${p.color}30` }}>
               <i style={{ background: isDone ? 'rgba(255,255,255,0.2)' : p.color }} />
-              {p.label}
+              <span className="fs-task-pri-txt" key={task.priority}>{p.label}</span>
             </span>
-            <button className="fs-task-del" onClick={() => remove(task.id)} aria-label="Supprimer la tâche">
+            <button className="fs-task-del" onClick={() => remove(task.id)} aria-label={fsT('task.delete')}>
               <svg width={12} height={12} viewBox="0 0 12 12" fill="none">
                 <path d="M2 3h8M5 1.2h2M3.6 3l.6 7.4h3.6L8.4 3" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -10279,7 +10392,8 @@ void main(){
             @keyframes fsTaskIn { from { opacity:0; transform:translateY(9px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
             html.fs-reduce-motion .fs-task-row { animation:none; }
 
-            .fs-task-accent { position:absolute; left:0; top:11px; bottom:11px; width:3px; border-radius:0 99px 99px 0; transition: box-shadow .2s; }
+            .fs-task-accent { position:absolute; left:0; top:11px; bottom:11px; width:3px; border-radius:0 99px 99px 0;
+              transition: box-shadow .34s cubic-bezier(.22,1,.36,1), background .34s cubic-bezier(.22,1,.36,1); }
             .fs-task-row.done .fs-task-accent { opacity:.3; }
 
             .fs-task-check {
@@ -10302,9 +10416,24 @@ void main(){
               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition: color .2s; }
             .fs-task-row.done .fs-task-text { color:rgba(248,246,252,0.35); text-decoration:line-through; text-decoration-color:rgba(248,246,252,0.25); font-weight:450; }
 
+            /* Pastille de priorité : un clic = priorité suivante. Ressort iOS
+               (masse + rebond), pas un simple fondu — la couleur et le libellé
+               se relaient pendant que la pastille encaisse le clic. */
             .fs-task-pri { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:800; letter-spacing:.04em;
-              padding:3px 10px; border-radius:99px; border:1px solid transparent; transition: all .2s; }
-            .fs-task-pri i { width:5px; height:5px; border-radius:1px; transform:rotate(45deg); display:block; }
+              padding:3px 10px; border-radius:99px; border:1px solid transparent; cursor:pointer; user-select:none;
+              transition: background .34s cubic-bezier(.22,1,.36,1), color .34s cubic-bezier(.22,1,.36,1),
+                          border-color .34s cubic-bezier(.22,1,.36,1), transform .18s cubic-bezier(.34,1.56,.64,1); }
+            .fs-task-pri:hover { transform:translateY(-1px); }
+            .fs-task-pri:active { transform:scale(.94); }
+            .fs-task-pri i { width:5px; height:5px; border-radius:1px; display:block;
+              transition: background .34s cubic-bezier(.22,1,.36,1), transform .5s cubic-bezier(.34,1.56,.64,1); transform:rotate(45deg); }
+            .fs-task-pri.bump { animation: fsPriBump .46s cubic-bezier(.34,1.56,.64,1); }
+            .fs-task-pri.bump i { transform:rotate(225deg) scale(1.15); }
+            .fs-task-pri.bump .fs-task-pri-txt { animation: fsPriSwap .46s cubic-bezier(.22,1,.36,1); }
+            @keyframes fsPriBump { 0%{transform:scale(.9)} 45%{transform:scale(1.14)} 100%{transform:scale(1)} }
+            @keyframes fsPriSwap { 0%{opacity:0;transform:translateY(5px)} 55%{opacity:1} 100%{opacity:1;transform:none} }
+            html.fs-reduce-motion .fs-task-pri, html.fs-reduce-motion .fs-task-pri i,
+            html.fs-reduce-motion .fs-task-pri.bump, html.fs-reduce-motion .fs-task-pri.bump .fs-task-pri-txt { animation:none!important; transition:none!important; }
 
             .fs-task-del {
               width:26px; height:26px; border-radius:9px; flex-shrink:0; cursor:pointer; border:none;
@@ -10411,7 +10540,7 @@ void main(){
                   value={inputVal}
                   onChange={e => setInputVal(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTask()}
-                  placeholder="Qu'est-ce qui compte aujourd'hui ?"
+                  placeholder={fsT('task.placeholder')}
                 />
                 <span className="fs-task-kbd">↵</span>
               </div>
@@ -10426,13 +10555,16 @@ void main(){
               </div>
               <button className="fs-task-add-btn" onClick={addTask}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                Ajouter
+                {fsT('task.add')}
               </button>
             </div>
 
-            {/* ── Filtres (priorité uniquement) ── */}
+            {/* ── Filtres (priorité uniquement) ──
+               Masqués en Kanban et Focus : le Kanban EST déjà un tri par
+               priorité (une colonne par niveau) et le Focus ne montre qu'une
+               tâche — filtrer n'y a aucun sens. */}
             <div className="fs-task-filterbar" style={{ paddingBottom: 18, borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <div className="fs-task-filters">
+              <div className="fs-task-filters" style={{ display: (view === 'kanban' || view === 'zen') ? 'none' : undefined }}>
                 {Object.entries(PRI).map(([key, p]) => {
                   const on = priFilter === key;
                   const count = tasks.filter(t => t.priority === key).length;
@@ -10454,7 +10586,7 @@ void main(){
                 <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="10" rx="1.5"/>
                 </svg>
-                Affichage
+                {fsT('task.display')}
                 <span>{(TASK_VIEWS.find(v => v.id === activeView) || TASK_VIEWS[0]).name}</span>
               </button>
             </div>
@@ -11680,16 +11812,9 @@ void main(){
       /* Choix de langue du nouvel utilisateur : FR par défaut (ou langue du
          navigateur si EN), persisté dans fs_lang + reflété sur <html lang>.
          L'écran de connexion — 1re impression — est entièrement bilingue. */
-      const [lang, setLang] = _uSAuth(() => {
-        try {
-          const s = localStorage.getItem('fs_lang');
-          if (s === 'fr' || s === 'en') return s;
-          return (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'fr';
-        } catch (_) { return 'fr'; }
-      });
-      React.useEffect(() => {
-        try { localStorage.setItem('fs_lang', lang); window._fsLang = lang; document.documentElement.lang = lang; } catch (_) {}
-      }, [lang]);
+      const [lang, setLangState] = _uSAuth(() => window._fsLang || 'fr');
+      /* Propage à TOUTE l'app (event global) — pas seulement à cet écran. */
+      const setLang = lg => { setLangState(lg); window._fsSetLang?.(lg); };
       const AUTH_I18N = {
         fr: {
           t_login: 'Bon retour', t_signup: 'Créer ton espace', t_forgot: 'Mot de passe oublié', t_recovery: 'Nouveau mot de passe',
@@ -16421,7 +16546,7 @@ void main(){
         display:flex; align-items:center; justify-content:center; padding:40px;
       }
       .fs-preview-inner {
-        width:100%; max-width:1120px; height:84vh;
+        width:100%; max-width:1360px; height:84vh;
         background:rgba(8,7,18,0.99);
         border:1px solid rgba(255,255,255,0.08);
         border-radius:34px;
@@ -16429,6 +16554,60 @@ void main(){
         box-shadow:0 52px 130px rgba(0,0,0,0.92),0 0 0 1px rgba(255,255,255,0.04);
         display:flex; flex-direction:column; overflow:hidden;
         animation:scaleIn 0.38s cubic-bezier(0.34,1.56,0.64,1) both;
+      }
+      /* ── Profil d'ami : dashboard + vitrine ─────────────────────────────── */
+      .fs-preview-split { flex:1; display:flex; min-height:0; overflow:hidden; }
+      /* Sans vitrine : le dashboard est centré et respire. */
+      .fs-preview-split:not(.has-vitrine) .fs-preview-body { max-width:1080px; margin:0 auto; width:100%; }
+      .fs-preview-vitrine {
+        width:320px; flex-shrink:0; display:flex; flex-direction:column; min-height:0;
+        border-left:1px solid rgba(255,255,255,0.07);
+        background:
+          radial-gradient(120% 60% at 50% -8%, rgba(var(--theme-c1-rgb),0.10), transparent 58%),
+          linear-gradient(180deg, rgba(255,255,255,0.028), rgba(0,0,0,0.16));
+        animation:fsPvIn .5s cubic-bezier(.22,1,.36,1) both;
+      }
+      @keyframes fsPvIn { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:none} }
+      .fs-pv-head { display:flex; align-items:center; gap:10px; padding:18px 18px 14px; flex-shrink:0;
+        border-bottom:1px solid rgba(255,255,255,0.06); }
+      .fs-pv-head .fs-showcase-facet { width:12px; height:14px; }
+      .fs-pv-owner { margin-top:3px; font-family:var(--font-display); font-size:15px; font-weight:850;
+        letter-spacing:-0.02em; color:var(--mineral-text);
+        max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .fs-pv-quote { margin:14px 18px 4px !important; }
+      .fs-pv-case { flex:1; min-height:0; overflow-y:auto; padding:12px 14px 8px; display:flex; flex-direction:column; gap:8px;
+        scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.14) transparent; }
+      .fs-pv-case::-webkit-scrollbar { width:6px; }
+      .fs-pv-case::-webkit-scrollbar-thumb { background:rgba(255,255,255,.13); border-radius:99px; }
+      .fs-pv-cell { --gem-glow:rgba(var(--theme-c1-rgb),0.5);
+        display:flex; align-items:center; gap:13px; padding:10px 12px; border-radius:16px;
+        border:1px solid rgba(255,255,255,0.06);
+        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.12));
+        animation:fsPvCellIn .5s cubic-bezier(.22,1.28,.36,1) both;
+        transition:transform .2s var(--mineral-ease), border-color .2s, background .2s; }
+      .fs-pv-cell:hover { transform:translateX(-2px); border-color:rgba(255,255,255,0.11);
+        background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.1)); }
+      @keyframes fsPvCellIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+      .fs-pv-gem { position:relative; width:56px; height:58px; flex-shrink:0; display:grid; place-items:center;
+        filter:drop-shadow(0 8px 14px rgba(0,0,0,0.45)); }
+      .fs-pv-gem::after { content:''; position:absolute; left:50%; bottom:2px; transform:translateX(-50%);
+        width:34px; height:7px; border-radius:50%;
+        background:radial-gradient(ellipse, var(--gem-glow), transparent 74%); filter:blur(2.5px); opacity:.9; }
+      .fs-pv-cell.legendary .fs-pv-gem::before { content:''; position:absolute; inset:-6px; border-radius:50%;
+        background:radial-gradient(circle, var(--gem-glow), transparent 68%); opacity:.28; filter:blur(8px);
+        animation:fsPvAura 3.4s ease-in-out infinite; }
+      @keyframes fsPvAura { 0%,100%{opacity:.2;transform:scale(.92)} 50%{opacity:.42;transform:scale(1.08)} }
+      .fs-pv-meta { min-width:0; flex:1; }
+      .fs-pv-name { font-size:12.5px; font-weight:850; letter-spacing:-0.01em; color:rgba(248,246,252,0.92);
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .fs-pv-sub { display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap; }
+      .fs-pv-rar { font-size:8.5px; font-weight:900; letter-spacing:0.15em; text-transform:uppercase; }
+      .fs-pv-dur { font-size:10px; font-weight:750; color:rgba(248,246,252,0.42); font-variant-numeric:tabular-nums; }
+      .fs-pv-foot { padding:11px 18px 14px !important; flex-shrink:0; border-top:1px solid rgba(255,255,255,0.05); }
+      html.fs-reduce-motion .fs-preview-vitrine, html.fs-reduce-motion .fs-pv-cell,
+      html.fs-reduce-motion .fs-pv-cell.legendary .fs-pv-gem::before { animation:none !important; }
+      @media (max-width:1080px) {
+        .fs-preview-vitrine { width:270px; }
       }
       @media (hover: none), (max-width: 768px) {
         .fs-friend-actions { display:flex; }
@@ -16486,6 +16665,15 @@ void main(){
           min-height:0 !important;
         }
         .fs-preview-grid > div { min-height:172px; flex:none; }
+        /* Mobile : la vitrine passe SOUS le dashboard, pleine largeur. */
+        .fs-preview-split { flex-direction:column !important; overflow-y:auto !important; -webkit-overflow-scrolling:touch; }
+        .fs-preview-body { overflow:visible !important; }
+        .fs-preview-vitrine {
+          width:auto !important; border-left:none !important;
+          border-top:1px solid rgba(255,255,255,0.08);
+          animation:none !important;
+        }
+        .fs-pv-case { overflow:visible !important; }
       }
       `;
       document.head.appendChild(s);
@@ -16680,13 +16868,7 @@ void main(){
 
             {/* Header */}
             <div className="fs-preview-head" style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative' }}>
-              <div role={vitrine ? 'button' : undefined} tabIndex={vitrine ? 0 : undefined}
-                aria-expanded={vitrine ? vitrineOpen : undefined}
-                title={vitrine ? (vitrineOpen ? 'Masquer la vitrine' : `Voir la vitrine de ${friend.name || friend.email.split('@')[0]}`) : undefined}
-                onClick={() => vitrine && setVitrineOpen(v => !v)}
-                onKeyDown={e => { if (vitrine && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setVitrineOpen(v => !v); } }}
-                className={'fs-vitrine-trigger' + (vitrine ? ' clickable' : '')}
-                style={{ display:'flex', alignItems:'center', gap:16, cursor: vitrine ? 'pointer' : 'default', borderRadius:16, padding:'4px 10px 4px 4px', margin:'-4px -10px -4px -4px', transition:'background .2s, box-shadow .2s', background: vitrineOpen ? 'rgba(255,255,255,0.045)' : 'transparent', minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:16, minWidth:0 }}>
                 <div style={{ position:'relative', flexShrink:0 }}>
                   <div className="fs-preview-avatar" style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
                     {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
@@ -16699,13 +16881,8 @@ void main(){
                 </div>
                 <div style={{ minWidth:0 }}>
                   <div style={{ fontSize:9, fontWeight:800, letterSpacing:'0.14em', textTransform:'uppercase', color:T.muted, marginBottom:5 }}>Aperçu du tableau de bord · Lecture seule</div>
-                  <div className="fs-preview-name" style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em', display:'flex', alignItems:'center', gap:8 }}>
+                  <div className="fs-preview-name" style={{ fontFamily:T.display, fontWeight:800, fontSize:22, letterSpacing:'-0.035em' }}>
                     {friend.name || friend.email.split('@')[0]}
-                    {vitrine && (
-                      <svg width={11} height={11} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color:T.muted, transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
-                        <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
                   </div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{friend.email}</div>
                   <div style={{ fontSize:11, color:T.muted, marginTop:5 }}>
@@ -16714,66 +16891,7 @@ void main(){
                 </div>
               </div>
 
-              {/* Popover vitrine — flotte au-dessus du dashboard, ne le déplace pas */}
-              {vitrine && vitrineOpen && (
-                <React.Fragment>
-                  <div onClick={e => { e.stopPropagation(); setVitrineOpen(false); }} style={{ position:'fixed', inset:0, zIndex:55, cursor:'default' }} />
-                  <div className="fs-friend-vitrine-pop" role="dialog" aria-label={`Vitrine de ${friend.name || friend.email.split('@')[0]}`} onClick={e => e.stopPropagation()}>
-                    <div className="fs-vitrine-head">
-                      <span className="fs-showcase-facet" aria-hidden="true" />
-                      <div style={{ minWidth:0 }}>
-                        <div className="fs-vitrine-eyebrow">Vitrine de cristaux</div>
-                        <div className="fs-vitrine-owner">{friend.name || friend.email.split('@')[0]}</div>
-                      </div>
-                      <span className="fs-vitrine-count"><b>{vitrine.items.length}</b><span>/ 6</span></span>
-                    </div>
-                    <div className="fs-vitrine-case">
-                      {vitrine.items.map((it, i) => {
-                        const gid = (it.gold || it.gradient === 'gold') ? 'gold' : it.gradient;
-                        const meta = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gid) || null;
-                        const rarity = meta?.legendary ? 'legendary' : gid === 'gold' ? 'gold' : meta?.rare ? 'rare' : null;
-                        const rarityLabel = rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : null;
-                        const glow = meta?.glow || 'rgba(var(--theme-c1-rgb),0.55)';
-                        return (
-                          <div key={it.id || i} className={'fs-vitrine-cell' + (rarity ? ' ' + rarity : '')}
-                            style={{ '--gem-glow': glow, animationDelay: `${0.08 + i * 0.055}s` }}
-                            title={(meta?.name || 'Cristal') + (it.duration ? ` · ${Math.round(it.duration)} min de focus` : '')}>
-                            <div className="fs-vitrine-gem"><ShowcaseGem item={it} size={40} /></div>
-                            <div className="fs-vitrine-name">{meta?.name || 'Cristal'}</div>
-                            {rarityLabel && <div className="fs-vitrine-rarity" style={{ color: glow }}>{rarityLabel}</div>}
-                            {it.duration > 0 && <div className="fs-vitrine-dur">{Math.round(it.duration)} min</div>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {vitrine.title ? <figure className="fs-vitrine-quote" style={{ margin:'12px 18px 0' }}>« {vitrine.title} »</figure> : null}
-                    <div className="fs-vitrine-foot"><span className="fs-showcase-facet" aria-hidden="true" />Cristaux forgés en session · LumenOS</div>
-                  </div>
-                </React.Fragment>
-              )}
               <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0, flexWrap:'wrap' }}>
-                {/* Accès explicite à la vitrine : bouton visible, pas seulement
-                   l'affordance discrète sur l'avatar. État muet si non partagée. */}
-                {!loading && (vitrine ? (
-                  <button type="button" onClick={e => { e.stopPropagation(); setVitrineOpen(v => !v); }}
-                    aria-expanded={vitrineOpen}
-                    className={'fs-vitrine-btn' + (vitrineOpen ? ' open' : '')}>
-                    <i className="fs-showcase-facet" style={{ width:8, height:9 }} />
-                    Vitrine
-                    <span className="n">{vitrine.items.length}</span>
-                    <svg width={9} height={9} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: vitrineOpen ? 'rotate(180deg)' : 'none', transition:'transform .25s' }}>
-                      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                ) : !loadError ? (
-                  <span title="Cet ami n'a pas encore publié de vitrine de cristaux."
-                    style={{ display:'flex', alignItems:'center', gap:6, height:32, padding:'0 12px', borderRadius:99,
-                      background:'rgba(255,255,255,0.035)', border:'1px solid rgba(255,255,255,0.07)', color:T.muted,
-                      fontSize:9.5, fontWeight:750, letterSpacing:'0.06em', textTransform:'uppercase' }}>
-                    <i className="fs-showcase-facet" style={{ width:6, height:6, opacity:.4 }} />
-                    Vitrine non partagée
-                  </span>
-                ) : null)}
                 <div style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(74,222,128,0.09)', border:'1px solid rgba(74,222,128,0.22)', borderRadius:99, padding:'7px 14px' }}>
                   <div style={{ width:6, height:6, borderRadius:'50%', background:T.green, boxShadow:`0 0 8px ${T.green}`, animation:'livePulse 2s ease-in-out infinite' }}/>
                   <span style={{ fontSize:9, fontWeight:800, color:T.green, letterSpacing:'0.12em', textTransform:'uppercase' }}>Vue en direct</span>
@@ -16784,8 +16902,11 @@ void main(){
               </div>
             </div>
 
+            {/* Deux colonnes : dashboard à gauche, vitrine à droite (si publiée).
+               Sans vitrine, le dashboard occupe toute la largeur (centré). */}
+            <div className={'fs-preview-split' + (vitrine ? ' has-vitrine' : '')}>
             {/* Dashboard grid */}
-            <div className="fs-preview-body" style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative' }}>
+            <div className="fs-preview-body" style={{ flex:1, padding:'20px 28px 28px', overflow:'hidden', position:'relative', minWidth:0 }}>
               <div style={{ position:'absolute', inset:0, background: friendBg, opacity:0.72, pointerEvents:'none' }}/>
               {loading ? (
                 <div style={{ position:'relative', zIndex:1, height:'100%', display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12 }}>
@@ -16844,6 +16965,46 @@ void main(){
               )}
               {/* Read-only overlay */}
               {!loading && <div style={{ position:'absolute', inset:0, zIndex:10, cursor:'default', pointerEvents:'none' }}/>}
+            </div>
+
+            {/* ── Colonne vitrine : l'écrin de cristaux de l'ami ── */}
+            {vitrine && (
+              <aside className="fs-preview-vitrine" aria-label={`Vitrine de ${friend.name || friend.email.split('@')[0]}`}>
+                <div className="fs-pv-head">
+                  <span className="fs-showcase-facet" aria-hidden="true" />
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div className="fs-vitrine-eyebrow">Vitrine de cristaux</div>
+                    <div className="fs-pv-owner">{friend.name || friend.email.split('@')[0]}</div>
+                  </div>
+                  <span className="fs-vitrine-count"><b>{vitrine.items.length}</b><span>/ 6</span></span>
+                </div>
+                {vitrine.title ? <figure className="fs-vitrine-quote fs-pv-quote">« {vitrine.title} »</figure> : null}
+                <div className="fs-pv-case">
+                  {vitrine.items.map((it, i) => {
+                    const gid = (it.gold || it.gradient === 'gold') ? 'gold' : it.gradient;
+                    const meta = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gid) || null;
+                    const rarity = meta?.legendary ? 'legendary' : gid === 'gold' ? 'gold' : meta?.rare ? 'rare' : null;
+                    const rarityLabel = rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : null;
+                    const glow = meta?.glow || 'rgba(var(--theme-c1-rgb),0.55)';
+                    return (
+                      <div key={it.id || i} className={'fs-pv-cell' + (rarity ? ' ' + rarity : '')}
+                        style={{ '--gem-glow': glow, animationDelay: `${0.1 + i * 0.07}s` }}
+                        title={(meta?.name || 'Cristal') + (it.duration ? ` · ${Math.round(it.duration)} min de focus` : '')}>
+                        <div className="fs-pv-gem"><ShowcaseGem item={it} size={46} /></div>
+                        <div className="fs-pv-meta">
+                          <div className="fs-pv-name">{meta?.name || 'Cristal'}</div>
+                          <div className="fs-pv-sub">
+                            {rarityLabel && <span className="fs-pv-rar" style={{ color: glow }}>{rarityLabel}</span>}
+                            {it.duration > 0 && <span className="fs-pv-dur">{Math.round(it.duration)} min</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="fs-vitrine-foot fs-pv-foot"><span className="fs-showcase-facet" aria-hidden="true" />Cristaux forgés en session</div>
+              </aside>
+            )}
             </div>
           </div>
         </div>
@@ -18583,6 +18744,7 @@ void main(){
        Célébration : cristal forgé (avec son aura de rareté), rareté, nom lisible
        et durée réellement concentrée. Remplace le chrono négatif d'avant. */
     function SessionCompleteModal({ result, onClose, onOpenCave }) {
+      useFsLang();
       const crystal = result?.crystal || null;
       const focusMin = result?.focusMinutes || crystal?.duration || 0;
       React.useEffect(() => {
@@ -18597,7 +18759,7 @@ void main(){
       const isRare = rarity === 'rare' || rarity === 'gold';
       const accent = grad ? grad.stops[0] : '#a5b8ff';
       const accent2 = grad ? grad.stops[grad.stops.length - 1] : '#c084fc';
-      const rarLabel = isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal';
+      const rarLabel = isLeg ? fsT('rar.legendary') : rarity === 'gold' ? fsT('rar.gold') : rarity === 'rare' ? fsT('rar.rare') : fsT('done.forged');
       const rarColor = isLeg ? '#f0abfc' : accent;
       return (
         <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
@@ -18622,7 +18784,7 @@ void main(){
           <div className="fs-scm-card" onClick={e => e.stopPropagation()}
             style={{ boxShadow: isRare ? `0 40px 110px rgba(0,0,0,.66), 0 0 60px ${grad ? grad.glow : 'transparent'}, inset 0 1px 0 rgba(255,255,255,.06)` : undefined }}>
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(120% 70% at 50% -6%, ${accent}22, transparent 58%)` }} />
-            <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>Session terminée</div>
+            <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>{fsT('done.title')}</div>
 
             {/* Cristal + aura */}
             <div style={{ position: 'relative', height: 168, display: 'grid', placeItems: 'center', margin: '10px 0 4px' }}>
@@ -18644,7 +18806,7 @@ void main(){
               </div>
             )}
             <div style={{ position: 'relative', fontFamily: T.display, fontSize: 26, fontWeight: 850, letterSpacing: '-0.03em', color: '#f4f6fb', lineHeight: 1.05 }}>
-              {crystal.name || 'Cristal forgé'}
+              {crystal.name || fsT('done.forged')}
             </div>
 
             {/* Durée de concentration */}
@@ -18652,14 +18814,14 @@ void main(){
               padding: '9px 16px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 2.2"/></svg>
               <span style={{ fontSize: 13, fontWeight: 750, color: 'rgba(244,246,251,0.9)' }}>
-                <b style={{ fontWeight: 900, color: '#fff' }}>{focusMin} min</b> de concentration
+                <b style={{ fontWeight: 900, color: '#fff' }}>{focusMin} min</b> {fsT('done.focus')}
               </span>
             </div>
 
             <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 22 }}>
-              <button type="button" className="fs-scm-btn fs-scm-ghost" onClick={onOpenCave}>Voir ma grotte</button>
+              <button type="button" className="fs-scm-btn fs-scm-ghost" onClick={onOpenCave}>{fsT('done.cave')}</button>
               <button type="button" className="fs-scm-btn fs-scm-primary" onClick={onClose}
-                style={{ background: `linear-gradient(135deg, ${accent}, ${accent2})`, boxShadow: `0 14px 32px ${grad ? grad.glow : 'rgba(165,184,255,0.3)'}` }}>Continuer</button>
+                style={{ background: `linear-gradient(135deg, ${accent}, ${accent2})`, boxShadow: `0 14px 32px ${grad ? grad.glow : 'rgba(165,184,255,0.3)'}` }}>{fsT('done.continue')}</button>
             </div>
           </div>
         </div>
@@ -19841,6 +20003,7 @@ void main(){
     window.SessionWaitRoom = SessionWaitRoom;
 
     function SessionBarPremium({ session, user, onEnd, focusNudgeOpen = false, embedded = false }) {
+      useFsLang();
       const [secs, setSecs] = _uS8(0);
       const [hovered, setHovered] = _uS8(false);
       const barRef = _uR8(null);
@@ -19918,12 +20081,12 @@ void main(){
       const col = session.type === 'solo' ? T.c1 : T.green;
       const R = 13;
       const circ = 2 * Math.PI * R;
-      const label = isTogether ? 'Focus partagé' : 'Session active';
+      const label = isTogether ? fsT('sess.shared') : fsT('sess.active');
       const detail = isTogether
         ? (remainingFriends.length
           ? remainingFriends[0].name + (remainingFriends.length > 1 ? ' +' + (remainingFriends.length - 1) : '')
-          : (waitingForFriends ? 'En attente de tes amis…' : 'Ton ami a quitté — continue !'))
-        : (session.music && session.music !== 'Silence' ? session.music : 'Deep work');
+          : (waitingForFriends ? fsT('sess.waiting') : fsT('sess.friendLeft')))
+        : (session.music && session.music !== 'Silence' ? session.music : fsT('sess.deep'));
       const barShift = embedded
         ? (focusNudgeOpen ? 'translateX(clamp(-430px, -34vw, -260px)) scale(.72)' : (hovered ? 'translateY(-1px)' : 'translateY(0)'))
         : (focusNudgeOpen ? 'translateX(clamp(-560px, -52vw, -290px)) scale(.86)' : (hovered ? 'translateY(-2px)' : 'translateY(0)'));
@@ -20037,12 +20200,12 @@ void main(){
             {/* ── Segment droit : cristallisation + Terminer ── */}
             <div className="fs-sb-zone" style={{position:'relative', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:compacting ? 0 : 14, minWidth:0, maxWidth:compacting ? 0 : 'unset', opacity:compacting ? 0 : 1, padding: compacting ? 0 : '0 14px 0 0', overflow:'hidden', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), padding .38s cubic-bezier(.16,1,.3,1), gap .38s cubic-bezier(.16,1,.3,1)', animationDelay:'.26s'}}>
               <div className="fs-session-detail" style={{textAlign:'right', minWidth:0, whiteSpace:'nowrap'}}>
-                <div className="fs-sb-cap" style={{color: over ? 'rgba(255,143,166,.8)' : undefined}}>{over ? 'Temps dépassé' : 'Cristallisation'}</div>
+                <div className="fs-sb-cap" style={{color: over ? 'rgba(255,143,166,.8)' : undefined}}>{over ? fsT('sess.overtime') : fsT('sess.crystallization')}</div>
                 <div style={{marginTop:3, fontSize:13, fontWeight:650, color:'rgba(244,246,251,.88)', fontVariantNumeric:'tabular-nums', fontFeatureSettings:'"tnum" 1'}}>{Math.round(progress * 100)} %</div>
               </div>
-              <button className="fs-session-action" onClick={() => onEnd && onEnd(null)} aria-label="Arrêter la session" title="Arrêter la session" style={{fontFamily:T.font, flexShrink:0}}>
+              <button className="fs-session-action" onClick={() => onEnd && onEnd(null)} aria-label={fsT('sess.stopAria')} title={fsT('sess.stopAria')} style={{fontFamily:T.font, flexShrink:0}}>
                 <svg className="fs-sb-stopic" width={10} height={10} viewBox="0 0 15 15" fill="none" style={{flexShrink:0}}><rect x="2.5" y="2.5" width="10" height="10" rx="2.6" fill="currentColor"/></svg>
-                <span className="fs-session-action-label">Terminer</span>
+                <span className="fs-session-action-label">{fsT('sess.stop')}</span>
               </button>
             </div>
 
@@ -20099,65 +20262,281 @@ void main(){
     return pool[Math.floor(Math.random() * pool.length)].id;
   };
 
-  /* ── Aura de rareté (game-feel) ───────────────────────────────────────────
-     Couche décorative placée DERRIÈRE un cristal (parent en position:relative,
-     cristal au-dessus). Rien pour un cristal standard ; halo coloré + rayons
-     tournants pour un rare/doré ; empilement multi-couches, rayons contra-
-     rotatifs, particules orbitales et pulsation pour un légendaire. La couleur
-     est tirée du dégradé du cristal (glow + stops, ou triplet `aura`). */
+  /* ── Auras de rareté — VFX de jeu ─────────────────────────────────────────
+     Couche décorative DERRIÈRE le cristal (parent en position:relative, gemme
+     au-dessus). Chaque cristal a une SIGNATURE propre, dictée par son nom :
+     Magma crache des braises, Cœur de glace projette des éclats de givre,
+     Orage claque en arcs électriques, Éclat du néant implose, Cœur de phénix
+     bat des ailes de flamme… Construction en couches additives (screen) comme
+     un vrai effet de jeu : bloom de cœur, rayons, rubans, particules, anneaux.
+     Les compteurs de particules chutent en perf-lite (PC modestes). */
+  const FS_AURA_ARCH = {
+    magma:      'ember',   braise:  'ember',
+    banquise:   'frost',   glacier2:'frost',
+    orage:      'storm',
+    neant:      'void',    obsidienne:'void',
+    astral:     'astral',  nebuleuse:'astral', cosmos2:'astral',
+    phenix:     'phoenix',
+    prisme:     'aurora',  aurora:  'aurora',
+    sang:       'blood',
+    venin:      'toxic',
+    eclipse:    'eclipse',
+    gold:       'gold',
+    abysse:     'deep',
+  };
+  /* bruit déterministe : les particules ne sautent pas d'un rendu à l'autre */
+  const _auraN = (i, s) => { const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
+
   if (!document.getElementById('fs-aura-kf')) {
     const s = document.createElement('style');
     s.id = 'fs-aura-kf';
     s.textContent = `
-      @keyframes fsAuraSpin{to{transform:rotate(360deg)}}
-      @keyframes fsAuraSpinR{to{transform:rotate(-360deg)}}
-      @keyframes fsAuraBreath{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.08)}}
-      @keyframes fsAuraHalo{0%,100%{opacity:.4;transform:scale(.86)}50%{opacity:.85;transform:scale(1.12)}}
-      @keyframes fsAuraOrbit{from{transform:rotate(0) translateX(var(--fs-orbit-r)) rotate(0)}to{transform:rotate(360deg) translateX(var(--fs-orbit-r)) rotate(-360deg)}}
-      @keyframes fsAuraSpark{0%,100%{opacity:.35;transform:scale(.7)}50%{opacity:1;transform:scale(1.25)}}
+      .fs-aura{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:0}
+      .fs-aura *{position:absolute;pointer-events:none}
+      .fs-aura .lay{inset:0;mix-blend-mode:screen}
+      @keyframes fsAuSpin{to{transform:rotate(360deg)}}
+      @keyframes fsAuSpinR{to{transform:rotate(-360deg)}}
+      @keyframes fsAuBloom{0%,100%{opacity:.5;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}
+      @keyframes fsAuRing{0%{opacity:.55;transform:scale(.5)}100%{opacity:0;transform:scale(1.5)}}
+      @keyframes fsAuRingIn{0%{opacity:0;transform:scale(1.6)}35%{opacity:.6}100%{opacity:0;transform:scale(.25)}}
+      /* embers / flammes : montée avec dérive */
+      @keyframes fsAuRise{0%{opacity:0;transform:translate(0,18%) scale(.5)}18%{opacity:1}100%{opacity:0;transform:translate(var(--dx,0),-58%) scale(1.15)}}
+      /* givre : dérive lente vers le bas */
+      @keyframes fsAuFall{0%{opacity:0;transform:translate(0,-38%) scale(.6)}22%{opacity:.95}100%{opacity:0;transform:translate(var(--dx,0),42%) scale(1)}}
+      /* étoiles */
+      @keyframes fsAuTwinkle{0%,100%{opacity:.15;transform:scale(.6)}50%{opacity:1;transform:scale(1.3)}}
+      /* éclair : flash bref et irrégulier */
+      @keyframes fsAuFlash{0%,86%,100%{opacity:0}88%{opacity:.95}90%{opacity:.25}92%{opacity:.9}96%{opacity:0}}
+      /* battement d'ailes */
+      @keyframes fsAuWing{0%,100%{transform:scaleY(.82) scaleX(1);opacity:.42}50%{transform:scaleY(1.12) scaleX(1.06);opacity:.85}}
+      /* rubans d'aurore */
+      @keyframes fsAuRibbon{0%,100%{transform:translateX(-6%) skewX(-8deg) scaleY(.92);opacity:.42}50%{transform:translateX(6%) skewX(9deg) scaleY(1.1);opacity:.8}}
+      /* battement cardiaque (double) */
+      @keyframes fsAuBeat{0%,100%{opacity:.42;transform:scale(.92)}12%{opacity:1;transform:scale(1.12)}24%{opacity:.55;transform:scale(.98)}36%{opacity:.92;transform:scale(1.06)}52%{opacity:.45;transform:scale(.94)}}
+      /* bulles toxiques */
+      @keyframes fsAuBubble{0%{opacity:0;transform:translate(0,26%) scale(.35)}25%{opacity:.9}80%{opacity:.7}100%{opacity:0;transform:translate(var(--dx,0),-40%) scale(1.25)}}
+      /* houle des abysses */
+      @keyframes fsAuWave{0%{opacity:.5;transform:scale(.45)}100%{opacity:0;transform:scale(1.35)}}
       html.fs-reduce-motion .fs-aura *{animation:none!important}
-      html.fs-perf-lite .fs-aura-legendary .fs-aura-orbit{display:none}
+      html.fs-perf-lite .fs-aura .heavy{display:none}
     `;
     document.head.appendChild(s);
   }
+
   function CrystalAura({ gradientId, rarity, size = 120, intensity = 1 }) {
     const g = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === gradientId) || null;
     const tier = rarity === 'legendary' ? 'legendary' : (rarity === 'rare' || rarity === 'gold') ? 'rare' : 'standard';
     if (tier === 'standard') return null;
-    const glow = (g && g.glow) || 'rgba(165,184,255,0.8)';
+    const lite = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-perf-lite');
+    const kind = FS_AURA_ARCH[gradientId] || (tier === 'legendary' ? 'astral' : 'gold');
     const cols = (g && g.aura) || (g && g.stops) || ['#a5b8ff', '#c084fc'];
     const c0 = cols[0], c1 = cols[1] || cols[0], c2 = cols[2] || cols[1] || cols[0];
+    const glow = (g && g.glow) || 'rgba(165,184,255,0.8)';
     const k = Math.max(0, Math.min(1, intensity));
-    const box = size * (tier === 'legendary' ? 2.6 : 2.1);
-    const wrap = { position: 'absolute', left: '50%', top: '50%', width: box, height: box, transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 0 };
-    const ray = (deg, dur, colA, colB, op, anim) => ({
-      position: 'absolute', inset: 0, borderRadius: '50%',
-      background: `conic-gradient(from ${deg}deg, transparent 0deg, ${colA} 18deg, transparent 42deg, transparent 130deg, ${colB} 168deg, transparent 208deg, transparent 320deg, ${colA} 350deg, transparent 360deg)`,
-      opacity: op * k, filter: 'blur(3px)', animation: `${anim} ${dur}s linear infinite`, mixBlendMode: 'screen',
+    const leg = tier === 'legendary';
+    const box = Math.round(size * (leg ? 2.9 : 2.35));
+    const nP = (base) => Math.max(3, Math.round(base * (lite ? 0.45 : 1)));
+    const wrap = { width: box, height: box, opacity: k };
+
+    /* ── primitives ──────────────────────────────────────────────────────── */
+    const bloom = (color, inset, blur, dur, op) => (
+      <div className="lay" key={'b' + inset} style={{
+        inset: inset + '%', borderRadius: '50%',
+        background: `radial-gradient(circle, ${color} 0%, transparent 66%)`,
+        filter: `blur(${blur}px)`, opacity: op, animation: `fsAuBloom ${dur}s ease-in-out infinite`,
+      }} />
+    );
+    const rays = (from, dur, ca, cb, op, rev, blur) => (
+      <div className="lay" key={'r' + from + dur} style={{
+        borderRadius: '50%',
+        background: `conic-gradient(from ${from}deg, transparent 0deg, ${ca} 12deg, transparent 34deg, transparent 120deg, ${cb} 152deg, transparent 186deg, transparent 300deg, ${ca} 336deg, transparent 360deg)`,
+        opacity: op, filter: `blur(${blur || 4}px)`,
+        animation: `${rev ? 'fsAuSpinR' : 'fsAuSpin'} ${dur}s linear infinite`,
+      }} />
+    );
+    const ring = (color, w, dur, delay, anim) => (
+      <div className="lay" key={'g' + delay + dur} style={{
+        inset: '18%', borderRadius: '50%', border: `${w}px solid ${color}`,
+        animation: `${anim || 'fsAuRing'} ${dur}s cubic-bezier(.2,.7,.3,1) infinite`, animationDelay: delay + 's',
+      }} />
+    );
+    const particles = (n, seed, anim, build) => (
+      Array.from({ length: n }, (_, i) => {
+        const r1 = _auraN(i, seed), r2 = _auraN(i + 40, seed), r3 = _auraN(i + 80, seed);
+        return (
+          <div key={anim + i} className={i > 4 ? 'heavy' : undefined} style={{
+            left: (12 + r1 * 76) + '%', top: (18 + r2 * 62) + '%',
+            '--dx': ((r3 - 0.5) * 60) + '%',
+            animation: `${anim} ${2.4 + r2 * 2.6}s linear infinite`,
+            animationDelay: (-r1 * 4).toFixed(2) + 's',
+            ...build(i, r1, r2, r3),
+          }} />
+        );
+      })
+    );
+    const dot = (col, sz, blur) => ({
+      width: sz, height: sz, borderRadius: '50%', background: col,
+      boxShadow: `0 0 ${sz * 2.2}px ${col}`, filter: blur ? `blur(${blur}px)` : undefined,
+      mixBlendMode: 'screen',
     });
-    if (tier === 'rare') {
-      return (
-        <div className="fs-aura fs-aura-rare" style={wrap} aria-hidden="true">
-          <div style={{ position: 'absolute', inset: '14%', borderRadius: '50%', background: `radial-gradient(circle, ${glow} 0%, transparent 62%)`, filter: 'blur(10px)', opacity: 0.8 * k, animation: 'fsAuraBreath 3.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
-          <div style={ray(0, 14, c0, c1, 0.5, 'fsAuraSpin')} />
-          <div style={{ position: 'absolute', inset: '26%', borderRadius: '50%', border: `1.5px solid ${c1}`, opacity: 0.4 * k, filter: 'blur(1px)', animation: 'fsAuraHalo 3.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
-        </div>
-      );
-    }
-    /* légendaire */
-    const sparks = [0, 1, 2, 3, 4, 5];
-    return (
-      <div className="fs-aura fs-aura-legendary" style={wrap} aria-hidden="true">
-        <div style={{ position: 'absolute', inset: '8%', borderRadius: '50%', background: `radial-gradient(circle, ${c0} 0%, ${c1} 34%, transparent 66%)`, filter: 'blur(16px)', opacity: 0.7 * k, animation: 'fsAuraBreath 4.2s ease-in-out infinite', mixBlendMode: 'screen' }} />
-        <div style={ray(0, 18, c0, c2, 0.55, 'fsAuraSpin')} />
-        <div style={ray(60, 24, c1, c0, 0.45, 'fsAuraSpinR')} />
-        <div style={{ position: 'absolute', inset: '20%', borderRadius: '50%', border: `2px solid ${c2}`, opacity: 0.5 * k, filter: 'blur(1px)', animation: 'fsAuraHalo 4.2s ease-in-out infinite', mixBlendMode: 'screen' }} />
-        <div style={{ position: 'absolute', inset: '32%', borderRadius: '50%', border: `1.5px solid ${c0}`, opacity: 0.4 * k, animation: 'fsAuraHalo 3.2s ease-in-out infinite reverse', mixBlendMode: 'screen' }} />
-        {sparks.map(i => (
-          <div key={i} className="fs-aura-orbit" style={{ position: 'absolute', left: '50%', top: '50%', width: 5, height: 5, marginLeft: -2.5, marginTop: -2.5, '--fs-orbit-r': `${box * (0.30 + (i % 3) * 0.07)}px`, animation: `fsAuraOrbit ${9 + i * 1.6}s linear infinite`, opacity: k }}>
-            <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: [c0, c1, c2][i % 3], boxShadow: `0 0 8px ${[c0, c1, c2][i % 3]}`, animation: `fsAuraSpark ${2.4 + i * 0.3}s ease-in-out infinite`, mixBlendMode: 'screen' }} />
-          </div>
+
+    /* ── signatures ──────────────────────────────────────────────────────── */
+    let layers = null;
+    if (kind === 'ember') {
+      layers = <>
+        {bloom(c1, 20, 16, 2.4, 0.75)}
+        {bloom('#fff6d8', 34, 10, 1.7, 0.4)}
+        <div className="lay heavy" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c0}44, transparent 30%, ${c2}33, transparent 62%)`, filter: 'blur(14px)', opacity: .6, animation: 'fsAuSpin 9s linear infinite' }} />
+        {particles(nP(11), 3, 'fsAuRise', (i, r1) => dot(r1 > 0.6 ? '#ffe9a8' : c0, 2 + r1 * 3, 0.4))}
+      </>;
+    } else if (kind === 'frost') {
+      layers = <>
+        {bloom(c1, 22, 18, 4.2, 0.62)}
+        {/* éclats de givre : pointes cristallines fixes qui respirent */}
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={'sh' + i} className={i > 5 ? 'heavy' : undefined} style={{
+            left: '50%', top: '50%', width: 3, height: box * 0.34, marginLeft: -1.5,
+            transformOrigin: '50% 0%', transform: `rotate(${i * 45}deg)`,
+            background: `linear-gradient(to bottom, ${c0}, transparent 78%)`,
+            filter: 'blur(1.2px)', mixBlendMode: 'screen', opacity: .55,
+            animation: `fsAuBloom ${3 + (i % 3) * 0.7}s ease-in-out infinite`, animationDelay: (-i * 0.3) + 's',
+          }} />
         ))}
+        {particles(nP(9), 7, 'fsAuFall', (i, r1) => dot('#eaf9ff', 1.6 + r1 * 2))}
+      </>;
+    } else if (kind === 'storm') {
+      layers = <>
+        {bloom(c1, 24, 16, 1.1, 0.6)}
+        {/* arcs électriques : flashs brefs et désynchronisés */}
+        {Array.from({ length: 3 }, (_, i) => (
+          <svg key={'arc' + i} className={i > 1 ? 'heavy' : undefined} viewBox="0 0 100 100" preserveAspectRatio="none"
+            style={{ inset: 0, width: '100%', height: '100%', mixBlendMode: 'screen', animation: `fsAuFlash ${1.9 + i * 0.6}s linear infinite`, animationDelay: (-i * 0.7) + 's' }}>
+            <path d={i === 0 ? 'M50 6 L44 34 L57 38 L47 94' : i === 1 ? 'M8 46 L34 44 L28 55 L92 52' : 'M16 14 L40 38 L30 44 L78 86'}
+              stroke="#f2f0ff" strokeWidth="1.6" fill="none" strokeLinejoin="round"
+              style={{ filter: `drop-shadow(0 0 5px ${c0}) drop-shadow(0 0 12px ${c1})` }} />
+          </svg>
+        ))}
+        {ring(c0 + '99', 2, 1.9, 0)}
+      </>;
+    } else if (kind === 'void') {
+      layers = <>
+        {/* cœur SOMBRE cerclé de lumière : le néant absorbe */}
+        <div className="lay" style={{ inset: '26%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(4,2,12,0.92) 42%, transparent 72%)', filter: 'blur(5px)', opacity: .9 }} />
+        {bloom(c0, 16, 20, 5, 0.6)}
+        {ring(c0 + 'cc', 2, 3.1, 0, 'fsAuRingIn')}
+        {ring(c2 + 'aa', 1.5, 3.1, 1.05, 'fsAuRingIn')}
+        <div className="lay heavy" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c1}55, transparent 22%, ${c0}44, transparent 48%, ${c2}44, transparent 76%)`, filter: 'blur(10px)', opacity: .55, animation: 'fsAuSpinR 14s linear infinite' }} />
+      </>;
+    } else if (kind === 'astral') {
+      layers = <>
+        {/* nébuleuse : deux masses colorées en rotation lente désaccordée */}
+        <div className="lay" style={{ inset: '6%', borderRadius: '50%', background: `radial-gradient(ellipse 62% 44% at 34% 40%, ${c0}, transparent 62%)`, filter: 'blur(18px)', opacity: .7, animation: 'fsAuSpin 22s linear infinite' }} />
+        <div className="lay heavy" style={{ inset: '10%', borderRadius: '50%', background: `radial-gradient(ellipse 54% 40% at 66% 58%, ${c2}, transparent 60%)`, filter: 'blur(20px)', opacity: .6, animation: 'fsAuSpinR 30s linear infinite' }} />
+        {bloom(c1, 30, 12, 4.6, 0.55)}
+        {particles(nP(14), 11, 'fsAuTwinkle', (i, r1) => dot(r1 > 0.66 ? '#ffffff' : (r1 > 0.33 ? c0 : c2), 1.5 + r1 * 2.2))}
+        {ring(c1 + '66', 1.5, 5.5, 0)}
+      </>;
+    } else if (kind === 'phoenix') {
+      layers = <>
+        {bloom('#ffd98a', 18, 18, 1.9, 0.8)}
+        {bloom(c2, 8, 26, 3.1, 0.6)}
+        {/* ailes de flamme */}
+        {[-1, 1].map(sgn => (
+          <div key={'w' + sgn} style={{
+            left: '50%', top: '46%', width: box * 0.44, height: box * 0.62,
+            marginLeft: sgn < 0 ? -box * 0.46 : box * 0.02, marginTop: -box * 0.31,
+            borderRadius: sgn < 0 ? '80% 20% 60% 40%' : '20% 80% 40% 60%',
+            background: `radial-gradient(ellipse at ${sgn < 0 ? '80%' : '20%'} 50%, ${c0}, ${c1}66 44%, transparent 72%)`,
+            filter: 'blur(10px)', mixBlendMode: 'screen', transformOrigin: sgn < 0 ? '100% 50%' : '0% 50%',
+            animation: 'fsAuWing 1.75s ease-in-out infinite', animationDelay: sgn < 0 ? '0s' : '-.12s',
+          }} />
+        ))}
+        {particles(nP(12), 17, 'fsAuRise', (i, r1) => dot(r1 > 0.5 ? '#fff3c4' : c1, 2.4 + r1 * 3.4, 0.5))}
+        {ring('#ffd98acc', 2, 2.6, 0)}
+      </>;
+    } else if (kind === 'aurora') {
+      layers = <>
+        {bloom(c1, 30, 16, 5, 0.45)}
+        {/* rubans d'aurore : bandes larges qui ondulent */}
+        {[c0, c1, c2].map((cc, i) => (
+          <div key={'rb' + i} className={i > 1 ? 'heavy' : undefined} style={{
+            left: '6%', right: '6%', top: (16 + i * 20) + '%', height: box * 0.3,
+            background: `linear-gradient(90deg, transparent, ${cc}, transparent)`,
+            filter: 'blur(13px)', mixBlendMode: 'screen', borderRadius: '50%',
+            animation: `fsAuRibbon ${4.6 + i * 1.3}s ease-in-out infinite`, animationDelay: (-i * 0.8) + 's',
+          }} />
+        ))}
+        {particles(nP(7), 23, 'fsAuTwinkle', (i, r1) => dot('#ffffff', 1.4 + r1 * 1.6))}
+      </>;
+    } else if (kind === 'blood') {
+      layers = <>
+        {/* pulsation cardiaque : double battement */}
+        <div className="lay" style={{ inset: '16%', borderRadius: '50%', background: `radial-gradient(circle, ${c0} 0%, transparent 64%)`, filter: 'blur(16px)', opacity: .85, animation: 'fsAuBeat 2.1s ease-in-out infinite' }} />
+        <div className="lay" style={{ inset: '30%', borderRadius: '50%', background: `radial-gradient(circle, #ff9db0 0%, transparent 58%)`, filter: 'blur(9px)', opacity: .5, animation: 'fsAuBeat 2.1s ease-in-out infinite', animationDelay: '-.06s' }} />
+        {ring(c0 + 'aa', 2, 2.1, 0)}
+        <div className="lay heavy" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c1}55, transparent 40%, ${c0}44, transparent 80%)`, filter: 'blur(12px)', opacity: .5, animation: 'fsAuSpin 16s linear infinite' }} />
+      </>;
+    } else if (kind === 'toxic') {
+      layers = <>
+        {bloom(c0, 22, 17, 3, 0.7)}
+        {bloom('#e6ffa8', 36, 9, 2.1, 0.4)}
+        {particles(nP(10), 29, 'fsAuBubble', (i, r1) => ({
+          width: 3 + r1 * 6, height: 3 + r1 * 6, borderRadius: '50%',
+          border: `1px solid ${c0}`, background: `radial-gradient(circle at 35% 30%, ${c0}66, transparent 70%)`,
+          mixBlendMode: 'screen',
+        }))}
+      </>;
+    } else if (kind === 'eclipse') {
+      layers = <>
+        {/* disque occultant + couronne */}
+        <div className="lay" style={{ inset: '28%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(3,4,10,0.95) 58%, transparent 76%)', filter: 'blur(3px)' }} />
+        <div className="lay" style={{ inset: '26%', borderRadius: '50%', boxShadow: `0 0 22px 3px ${c0}, inset 0 0 12px ${c0}`, border: `1.5px solid ${c0}`, opacity: .9, animation: 'fsAuBloom 4.4s ease-in-out infinite' }} />
+        <div className="lay heavy" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c0}55, transparent 18%, ${c0}44, transparent 40%, ${c0}55, transparent 66%)`, filter: 'blur(9px)', opacity: .6, animation: 'fsAuSpin 20s linear infinite' }} />
+      </>;
+    } else if (kind === 'deep') {
+      layers = <>
+        {bloom(c1, 18, 20, 5.2, 0.7)}
+        {/* caustiques : ondes concentriques lentes */}
+        {[0, 1, 2].map(i => (
+          <div key={'wv' + i} className={i > 1 ? 'heavy' : undefined} style={{
+            inset: '20%', borderRadius: '50%', border: `1.5px solid ${c0}88`,
+            mixBlendMode: 'screen', animation: `fsAuWave ${4.4}s ease-out infinite`, animationDelay: (-i * 1.47) + 's',
+          }} />
+        ))}
+        {particles(nP(7), 31, 'fsAuRise', (i, r1) => dot('#bff0ff', 1.6 + r1 * 2))}
+      </>;
+    } else { /* gold */
+      layers = <>
+        {bloom('#ffe9a8', 20, 15, 2.6, 0.8)}
+        {bloom(c2 || '#f59e0b', 8, 24, 4, 0.5)}
+        {rays(0, 13, '#fff2c0', '#ffd36a', 0.5, false, 5)}
+        {/* étoiles à 4 branches qui scintillent */}
+        {Array.from({ length: nP(7) }, (_, i) => {
+          const r1 = _auraN(i, 5), r2 = _auraN(i + 50, 5);
+          const sz = 6 + r1 * 9;
+          return (
+            <div key={'st' + i} className={i > 3 ? 'heavy' : undefined} style={{
+              left: (14 + r1 * 72) + '%', top: (14 + r2 * 72) + '%', width: sz, height: sz,
+              background: `radial-gradient(circle, #fff8dc 0%, transparent 60%)`,
+              mixBlendMode: 'screen',
+              animation: `fsAuTwinkle ${1.8 + r2 * 2}s ease-in-out infinite`, animationDelay: (-r1 * 3).toFixed(2) + 's',
+              clipPath: 'polygon(50% 0%, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0% 50%, 42% 42%)',
+            }} />
+          );
+        })}
+      </>;
+    }
+
+    return (
+      <div className={'fs-aura fs-aura-' + kind} style={wrap} aria-hidden="true">
+        {/* halo de fond commun : ancre l'effet et unifie la lumière */}
+        <div className="lay" style={{
+          inset: leg ? '2%' : '10%', borderRadius: '50%',
+          background: `radial-gradient(circle, ${glow} 0%, transparent 62%)`,
+          filter: `blur(${leg ? 26 : 20}px)`, opacity: leg ? 0.5 : 0.36,
+          animation: `fsAuBloom ${leg ? 5.4 : 4.2}s ease-in-out infinite`,
+        }} />
+        {layers}
       </div>
     );
   }
