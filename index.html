@@ -65,6 +65,14 @@
       --mineral-radius-sm: 12px;
       --mineral-radius-md: 16px;
       --mineral-radius-lg: 22px;
+      /* ── Tokens de design (source de vérité pour tout NOUVEAU code) ──
+         3 élévations, 1 style de label — les valeurs ad hoc existantes migrent
+         vers ces tokens au fil des retouches. Plancher typographique : 9px
+         (labels décoratifs), 11px (texte porteur d'information). */
+      --fs-elev-1: 0 10px 26px rgba(0, 0, 0, 0.28);
+      --fs-elev-2: 0 22px 58px rgba(0, 0, 0, 0.42);
+      --fs-elev-3: 0 42px 110px rgba(0, 0, 0, 0.6);
+      --fs-label-tracking: 0.12em;
       --font-body: 'Inter', 'DM Sans', sans-serif;
       --font-display: 'Sora', 'Syne', sans-serif;
       --font-mono: 'JetBrains Mono', 'Courier New', monospace;
@@ -2825,6 +2833,11 @@
         .on('broadcast', { event: 'session-left' }, ({ payload }) => {
           window.dispatchEvent(new CustomEvent('fs-session-left', { detail: payload }));
         })
+        /* L'hôte quitte en avance : les invités présents POURSUIVENT leur
+           session (leurs lignes restent actives) — on les prévient seulement. */
+        .on('broadcast', { event: 'host-left' }, ({ payload }) => {
+          window.dispatchEvent(new CustomEvent('fs-host-left', { detail: payload }));
+        })
         /* Salle d'attente commune : l'hôte diffuse le roster (qui a rejoint) aux
            invités, et « session-start » (crystal + départ) quand il démarre. */
         .on('broadcast', { event: 'lobby-sync' }, ({ payload }) => {
@@ -3012,14 +3025,46 @@
 
 <body>
   <style>
-    #fs-boot{position:fixed;inset:0;display:grid;place-items:center;background:#070810;z-index:1}
-    #fs-boot .fs-boot-ring{width:46px;height:46px;border-radius:50%;border:3px solid rgba(143,220,255,0.16);border-top-color:#8fdcff;margin:0 auto;animation:fsBootSpin .9s linear infinite}
-    #fs-boot .fs-boot-lbl{margin-top:18px;font:600 13px system-ui,-apple-system,sans-serif;color:rgba(207,216,235,0.58);letter-spacing:.01em}
-    @keyframes fsBootSpin{to{transform:rotate(360deg)}}
-    html.fs-reduce-motion #fs-boot .fs-boot-ring,@media (prefers-reduced-motion:reduce){#fs-boot .fs-boot-ring{animation:none}}
+    /* ── Splash de marque : cristal LumenOS en CSS pur, affiché AVANT toute
+       compilation Babel — la première impression est la marque, pas un vide. */
+    #fs-boot{position:fixed;inset:0;display:grid;place-items:center;z-index:1;
+      background:radial-gradient(ellipse 70% 55% at 18% 12%,rgba(143,220,255,0.075) 0%,transparent 65%),
+        radial-gradient(ellipse 55% 45% at 84% 82%,rgba(184,145,255,0.06) 0%,transparent 65%),#070810}
+    #fs-boot .fs-boot-scene{position:relative;width:96px;height:110px;margin:0 auto}
+    #fs-boot .fs-boot-gem{position:absolute;left:50%;top:0;width:58px;height:72px;transform:translateX(-50%);
+      clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
+      background:linear-gradient(158deg,#ffffff 0%,#8fdcff 34%,#b891ff 100%);
+      animation:fsBootBreath 2.3s ease-in-out infinite}
+    #fs-boot .fs-boot-gem::before{content:'';position:absolute;left:0;right:0;top:30%;height:1px;background:rgba(255,255,255,0.5)}
+    #fs-boot .fs-boot-gem::after{content:'';position:absolute;left:48%;top:5%;bottom:5%;width:1px;
+      background:linear-gradient(to bottom,rgba(255,255,255,0.8),rgba(255,255,255,0.08))}
+    #fs-boot .fs-boot-halo{position:absolute;left:50%;top:8px;width:100px;height:100px;transform:translateX(-50%);
+      border-radius:50%;background:radial-gradient(circle,rgba(143,220,255,0.28) 0%,transparent 65%);
+      filter:blur(14px);animation:fsBootBreath 2.3s ease-in-out infinite}
+    #fs-boot .fs-boot-floor{position:absolute;left:50%;bottom:8px;width:64px;height:10px;transform:translateX(-50%);
+      border-radius:50%;background:radial-gradient(ellipse,rgba(143,220,255,0.35),transparent 72%);
+      filter:blur(3px);animation:fsBootFloor 2.3s ease-in-out infinite}
+    #fs-boot .fs-boot-name{margin-top:20px;font:800 17px system-ui,-apple-system,sans-serif;letter-spacing:.14em;
+      text-transform:uppercase;color:rgba(238,242,252,0.92)}
+    #fs-boot .fs-boot-name span{color:#8fdcff}
+    #fs-boot .fs-boot-lbl{margin-top:9px;font:600 11.5px system-ui,-apple-system,sans-serif;color:rgba(207,216,235,0.45);letter-spacing:.04em}
+    #fs-boot .fs-boot-track{width:120px;height:2px;border-radius:99px;margin:14px auto 0;background:rgba(255,255,255,0.07);overflow:hidden}
+    #fs-boot .fs-boot-track i{display:block;width:38%;height:100%;border-radius:99px;
+      background:linear-gradient(90deg,transparent,#8fdcff,#b891ff,transparent);animation:fsBootSweep 1.4s ease-in-out infinite}
+    @keyframes fsBootBreath{0%,100%{transform:translateX(-50%) scale(1);filter:brightness(1)}50%{transform:translateX(-50%) scale(1.055);filter:brightness(1.12)}}
+    @keyframes fsBootFloor{0%,100%{opacity:.55;transform:translateX(-50%) scaleX(.9)}50%{opacity:1;transform:translateX(-50%) scaleX(1.1)}}
+    @keyframes fsBootSweep{0%{transform:translateX(-130%)}100%{transform:translateX(390%)}}
+    html.fs-reduce-motion #fs-boot .fs-boot-gem,html.fs-reduce-motion #fs-boot .fs-boot-halo,
+    html.fs-reduce-motion #fs-boot .fs-boot-floor,html.fs-reduce-motion #fs-boot .fs-boot-track i{animation:none}
+    @media (prefers-reduced-motion:reduce){#fs-boot .fs-boot-gem,#fs-boot .fs-boot-halo,#fs-boot .fs-boot-floor,#fs-boot .fs-boot-track i{animation:none}}
   </style>
   <div id="root">
-    <div id="fs-boot"><div style="text-align:center"><div class="fs-boot-ring"></div><div class="fs-boot-lbl">Chargement de LumenOS&hellip;</div></div></div>
+    <div id="fs-boot"><div style="text-align:center">
+      <div class="fs-boot-scene"><div class="fs-boot-halo"></div><div class="fs-boot-gem"></div><div class="fs-boot-floor"></div></div>
+      <div class="fs-boot-name">Lumen<span>OS</span></div>
+      <div class="fs-boot-lbl">Ton espace se cristallise&hellip;</div>
+      <div class="fs-boot-track"><i></i></div>
+    </div></div>
   </div>
 
   <script>
@@ -3137,7 +3182,55 @@
       return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 99, background: `${color}18`, fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', color, fontFamily: T.font }}>{ch}</span>;
     }
 
-    Object.assign(window, { elev, Shell, Lbl, Num, Sub, Ring, Bar, Check, Pill });
+    /* Marque cristal réutilisable (toasts, badges) : pentagone facetté aux
+       couleurs passées — remplace tout emoji Unicode dans les moments de
+       récompense. */
+    function FsCrystalMark({ a = '#8fdcff', b = '#b891ff', size = 14 }) {
+      const gid = React.useMemo(() => 'fscm' + Math.random().toString(36).slice(2, 7), []);
+      return (
+        <svg width={size} height={size * 1.18} viewBox="0 0 20 24" fill="none" aria-hidden="true" style={{ display: 'block' }}>
+          <defs>
+            <linearGradient id={gid} x1="2" y1="1" x2="18" y2="23" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#ffffff" />
+              <stop offset="0.36" stopColor={a} />
+              <stop offset="1" stopColor={b} />
+            </linearGradient>
+          </defs>
+          <path d="M10 1L19 8.2L15.6 23H4.4L1 8.2L10 1Z" fill={`url(#${gid})`} />
+          <path d="M1 8.2h18" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" />
+          <path d="M10 1v22" stroke="rgba(255,255,255,0.42)" strokeWidth="0.8" />
+        </svg>
+      );
+    }
+
+    /* Set d'icônes maison (grille 24, trait 1.9, coins arrondis) : remplace les
+       glyphes de police (◷ ✓ ✎ …) dont le rendu dépendait du système. `1em`
+       par défaut → l'icône suit la taille de texte de son conteneur. */
+    const FS_ICON_PATHS = {
+      clock: <><circle cx="12" cy="12" r="8.4" /><path d="M12 7.6V12l3 2.2" /></>,
+      tasks: <><path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10" /><path d="M4 5.6l1.3 1.3 2.2-2.4M4 11.1l1.3 1.3 2.2-2.4M4 16.6l1.3 1.3 2.2-2.4" /></>,
+      notes: <><path d="M5 19l1-4L16.5 4.5a2.12 2.12 0 013 3L9 18l-4 1z" /><path d="M14.5 6.5l3 3" /></>,
+      text: <path d="M5 7V5h14v2M12 5v14M9.5 19h5" />,
+      pomodoro: <><circle cx="12" cy="12" r="8.4" /><path d="M12 12L12 3.6A8.4 8.4 0 0117.9 17.9z" fill="currentColor" strokeWidth="0" /></>,
+      streak: <><path d="M4 17l5-6 3.5 3.5L20 7.5" /><path d="M15.5 7.5H20V12" /></>,
+      countdown: <><circle cx="12" cy="13.2" r="7.2" /><path d="M12 10v3.2l2.3 1.5M9.5 3.4h5M12 3.4v2.6" /></>,
+      spotify: <><path d="M9.2 17.4V6.8l9-2v10.3" /><circle cx="6.9" cy="17.6" r="2.3" /><circle cx="15.9" cy="15.2" r="2.3" /></>,
+      image: <><rect x="4" y="5" width="16" height="14" rx="2.5" /><circle cx="9" cy="10" r="1.6" /><path d="M4.5 16.5l4.3-3.8 3.4 2.9 3-2.5 4.3 3.6" /></>,
+      links: <><rect x="4" y="4" width="7" height="7" rx="2.2" /><rect x="13" y="4" width="7" height="7" rx="2.2" /><rect x="4" y="13" width="7" height="7" rx="2.2" /><rect x="13" y="13" width="7" height="7" rx="2.2" /></>,
+      essentials: <path d="M12 2.6l7.4 5.8L16.6 21H7.4L4.6 8.4 12 2.6z" />,
+      focus: <><circle cx="12" cy="12" r="8.4" /><circle cx="12" cy="12" r="3.2" /></>,
+      media: <><path d="M9.2 17.4V6.8l9-2v10.3" /><circle cx="6.9" cy="17.6" r="2.3" /><circle cx="15.9" cy="15.2" r="2.3" /></>,
+    };
+    function FsWidgetIcon({ type, size = '1em' }) {
+      const p = FS_ICON_PATHS[type];
+      if (!p) return null;
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block' }}>{p}</svg>
+      );
+    }
+
+    Object.assign(window, { elev, Shell, Lbl, Num, Sub, Ring, Bar, Check, Pill, FsCrystalMark, FsWidgetIcon });
   </script>
 
   <script type="text/babel">
@@ -4386,8 +4479,8 @@
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-                <Sub ch="il y a 14 j" style={{ fontSize: 8.5, letterSpacing: '0.05em' }} />
-                <Sub ch="aujourd'hui" style={{ fontSize: 8.5, letterSpacing: '0.05em' }} />
+                <Sub ch="il y a 14 j" style={{ fontSize: 9.5, letterSpacing: '0.05em' }} />
+                <Sub ch="aujourd'hui" style={{ fontSize: 9.5, letterSpacing: '0.05em' }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)', minHeight: 18 }}>
                 {rated === 0 ? (
@@ -6080,7 +6173,7 @@
         setWidgets(ws => ws.filter(x => x.id !== id));
         if (removed) {
           const nice = (CATALOG.find(c => c.label === removed.label)?.name) || removed.label;
-          addToast({ message: `${nice} retiré`, type: 'success', icon: '🗑', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
+          addToast({ message: `${nice} retiré`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
         }
       };
       /* Opened from the dashboard "+ Widget" button → jump straight into the picker. */
@@ -6107,16 +6200,16 @@
       _uEff9(() => { widgetsRef.current = widgets; }, [widgets]);
       const COLS = 12, ROWS = 4, GAP = 14;
       const CATALOG = [
-        { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: '◷', color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13] },
-        { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: '◑', color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
-        { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: '✓', color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
-        { id: 'spotify', label: 'Sons', name: 'Sons de focus', short: 'Ambiances sonores pour se concentrer', category: 'Ambiance', desc: 'Mixe des sons d’ambiance (pluie, océan, forêt, espace…) pour te concentrer.', best: 'Concentration', icon: '♫', color: T.green, C: window.AmbientWidget, variants: [1, 5, 10] },
-        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Ta régularité en graphe', category: 'Habitude', desc: 'Un graphe de tes jours productifs, nourri par ta Carte d’activité.', best: 'Suivi quotidien', icon: '▲', color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
-        { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous controle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: '⏱', color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
-        { id: 'links', label: 'Links', name: 'Liens rapides', short: 'Raccourcis essentiels rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: '⊞', color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
-        { id: 'image', label: 'Image', name: 'Image', short: 'Inspiration visuelle personnelle', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: '◈', color: T.rose, C: window.ImageWidget, variants: [1] },
-        { id: 'notes', label: 'Notes', name: 'Note rapide', short: 'Idees capturees vite', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: '✎', color: T.warm, C: window.NotesWidget, variants: [1, 2] },
-        { id: 'text', label: 'Text', name: 'Texte', short: 'Ton mot, ton style', category: 'Personnel', desc: 'Affiche un mot, un mantra ou un titre — police, taille, couleur, alignement : tout se règle.', best: 'Mantra / titre', icon: 'T', color: T.c1, C: window.TextWidget, variants: [1, 2, 10] },
+        { id: 'clock', label: 'Clock', name: 'Horloge', short: 'Temps en direct', category: 'Temps', desc: "Voir l'heure, le rythme de la journée et une ambiance temporelle.", best: 'Dashboard quotidien', icon: <FsWidgetIcon type="clock" />, color: T.c1, C: window.ClockWidget, variants: [1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13] },
+        { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: <FsWidgetIcon type="pomodoro" />, color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
+        { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: <FsWidgetIcon type="tasks" />, color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
+        { id: 'spotify', label: 'Sons', name: 'Sons de focus', short: 'Ambiances sonores pour se concentrer', category: 'Ambiance', desc: 'Mixe des sons d’ambiance (pluie, océan, forêt, espace…) pour te concentrer.', best: 'Concentration', icon: <FsWidgetIcon type="spotify" />, color: T.green, C: window.AmbientWidget, variants: [1, 5, 10] },
+        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Ta régularité en graphe', category: 'Habitude', desc: 'Un graphe de tes jours productifs, nourri par ta Carte d’activité.', best: 'Suivi quotidien', icon: <FsWidgetIcon type="streak" />, color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
+        { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous contrôle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: <FsWidgetIcon type="countdown" />, color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
+        { id: 'links', label: 'Links', name: 'Liens rapides', short: 'Raccourcis essentiels rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: <FsWidgetIcon type="links" />, color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
+        { id: 'image', label: 'Image', name: 'Image', short: 'Inspiration visuelle personnelle', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: <FsWidgetIcon type="image" />, color: T.rose, C: window.ImageWidget, variants: [1] },
+        { id: 'notes', label: 'Notes', name: 'Note rapide', short: 'Idées capturées vite', category: 'Capture', desc: 'Écrire une pensée, une idée ou une mini note sans quitter le dashboard.', best: 'Idées rapides', icon: <FsWidgetIcon type="notes" />, color: T.warm, C: window.NotesWidget, variants: [1, 2] },
+        { id: 'text', label: 'Text', name: 'Texte', short: 'Ton mot, ton style', category: 'Personnel', desc: 'Affiche un mot, un mantra ou un titre — police, taille, couleur, alignement : tout se règle.', best: 'Mantra / titre', icon: <FsWidgetIcon type="text" />, color: T.c1, C: window.TextWidget, variants: [1, 2, 10] },
       ];
       const TRAY = CATALOG.map(c => c.label);
       const WIDGET_FILTERS = [
@@ -6582,7 +6675,7 @@
               {showPicker && (
                 <div className="fs-edit-picker-sheet" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(8,8,20,0.98)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: 14, zIndex: 9999, display: 'grid', gridTemplateColumns: '1fr', gap: 9, width: 'min(390px, calc(100vw - 24px))', maxHeight: 'min(560px, calc(100dvh - 120px))', overflowY: 'auto', backdropFilter: 'blur(24px)', boxShadow: '0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)' }}>
                   <div style={{ padding: '4px 4px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 3 }}>
-                    <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.c1 }}>Bibliotheque guidee</span>
+                    <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase', color: T.c1 }}>Bibliothèque guidée</span>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 5, lineHeight: 1.45 }}>Commence par un besoin. Tu choisiras le style juste apres.</div>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:11 }}>
                       {WIDGET_FILTERS.map(f => <button key={f.id} type="button" onClick={() => setWidgetFilter(f.id)} style={{ height:28, borderRadius:999, border:`1px solid ${widgetFilter === f.id ? c1(0.34) : 'rgba(255,255,255,0.075)'}`, background:widgetFilter === f.id ? c1(0.13) : 'rgba(255,255,255,0.035)', color:widgetFilter === f.id ? T.c1 : T.muted, padding:'0 10px', fontSize:10.5, fontWeight:850, fontFamily:T.font, cursor:'pointer' }}>{f.label}</button>)}
@@ -6590,8 +6683,8 @@
                   </div>
                   {filteredCatalog.map((cat, i) => {
                     const name = cat.label;
-                    const META = { Clock: { icon: '◷', c: T.c1 }, Pomodoro: { icon: '◑', c: T.c1 }, Tasks: { icon: '✓', c: T.c1 }, Sons: { icon: '♫', c: T.c1 }, Goal: { icon: '◎', c: T.c1 }, Streak: { icon: '▲', c: T.c1 }, Countdown: { icon: '⏱', c: T.c1 }, Links: { icon: '⊞', c: T.c1 }, Image: { icon: '◈', c: T.c1 }, Notes: { icon: '✎', c: T.c1 } };
-                    const m = META[name] || { icon: '◇', c: T.c1 };
+                    const META = { Clock: { icon: <FsWidgetIcon type="clock" />, c: T.c1 }, Pomodoro: { icon: <FsWidgetIcon type="pomodoro" />, c: T.c1 }, Tasks: { icon: <FsWidgetIcon type="tasks" />, c: T.c1 }, Sons: { icon: <FsWidgetIcon type="spotify" />, c: T.c1 }, Goal: { icon: <FsWidgetIcon type="focus" />, c: T.c1 }, Streak: { icon: <FsWidgetIcon type="streak" />, c: T.c1 }, Countdown: { icon: <FsWidgetIcon type="countdown" />, c: T.c1 }, Links: { icon: <FsWidgetIcon type="links" />, c: T.c1 }, Image: { icon: <FsWidgetIcon type="image" />, c: T.c1 }, Notes: { icon: <FsWidgetIcon type="notes" />, c: T.c1 } };
+                    const m = META[name] || { icon: <FsWidgetIcon type="essentials" />, c: T.c1 };
                     const friendly = cat || { name, short: name, desc: '', best: '', category: '', color: T.c1 };
                     return (
                       <CascadeItem key={name} index={i} step={45} style={{ display: 'grid' }}>
@@ -6675,7 +6768,7 @@
                               setWidgets(ws => ws.filter(x => x.id !== w.id));
                               setSelected(null);
                               setConfirmDeleteId(null);
-                              addToast({ message: `${deleted?.label || 'Widget'} supprimé`, type: 'success', icon: '🗑', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, deleted]) } });
+                              addToast({ message: `${deleted?.label || 'Widget'} supprimé`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, deleted]) } });
                             } else {
                               setConfirmDeleteId(w.id);
                               setTimeout(() => setConfirmDeleteId(prev => prev === w.id ? null : prev), 3000);
@@ -6745,7 +6838,7 @@
                   return (
                     <div key={w.id} style={{ borderRadius: 18, border: '1px solid rgba(255,255,255,0.075)', background: 'linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.022))', padding: '12px 12px 11px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
-                        <span style={{ width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 17, color: '#070810', background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', boxShadow: `0 10px 24px ${c1(0.18)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{cat?.icon || '◇'}</span>
+                        <span style={{ width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 17, color: '#070810', background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', boxShadow: `0 10px 24px ${c1(0.18)}, inset 0 1px 0 rgba(255,255,255,0.34)` }}>{cat?.icon || <FsWidgetIcon type="essentials" />}</span>
                         <span style={{ minWidth: 0, flex: 1 }}>
                           <span style={{ display: 'block', fontSize: 13.5, fontWeight: 900, color: T.text, letterSpacing: '-0.015em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat?.name || w.label}</span>
                           <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: T.muted, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat?.short || ''}</span>
@@ -6792,10 +6885,10 @@
                 <button key={name} onClick={() => setPickerWidget(name)} title={cat?.short || name} style={{ width:190, minHeight:66, background:'linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.028))', border:'1px solid rgba(255,255,255,0.075)', borderRadius:18, padding:'10px 12px', cursor:'pointer', color:T.text, fontSize:0, fontFamily:T.font, transition:'transform .2s cubic-bezier(.16,1,.3,1), border-color .2s var(--mineral-ease), background .2s var(--mineral-ease), box-shadow .2s var(--mineral-ease)', flexShrink:0, display:'grid', gridTemplateColumns:'38px 1fr', alignItems:'center', gap:11, textAlign:'left', boxShadow:'0 12px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = `linear-gradient(145deg,${c1(0.16)},rgba(255,255,255,0.04))`; e.currentTarget.style.borderColor = `${c1(0.34)}`; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 18px 42px rgba(0,0,0,0.28), 0 0 24px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.09)`; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.028))'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.075)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 12px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06)'; }}>
-                  <span style={{width:32,height:32,borderRadius:13,display:'grid',placeItems:'center',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:15,boxShadow:`0 10px 24px ${c1(0.16)}, inset 0 1px 0 rgba(255,255,255,0.34)`}}>{cat?.icon || '◇'}</span>
+                  <span style={{width:32,height:32,borderRadius:13,display:'grid',placeItems:'center',background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:15,boxShadow:`0 10px 24px ${c1(0.16)}, inset 0 1px 0 rgba(255,255,255,0.34)`}}>{cat?.icon || <FsWidgetIcon type="essentials" />}</span>
                   <span style={{gridColumn:2,fontSize:12.5,fontWeight:900,lineHeight:1,maxWidth:118,color:'rgba(244,246,251,0.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cat?.name || name}</span>
                   <span style={{gridColumn:2,fontSize:10.6,fontWeight:650,lineHeight:1.12,maxWidth:118,color:T.muted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cat?.short || name}</span>
-                  <span style={{ color:cat?.color || T.c1 }}>{cat?.icon || '◇'}</span>{cat?.name || name}
+                  <span style={{ color:cat?.color || T.c1 }}>{cat?.icon || <FsWidgetIcon type="essentials" />}</span>{cat?.name || name}
                 </button>
               );
             })}
@@ -6835,7 +6928,7 @@
                           return (
                             <div key={`tpl-preview-${w.id}`} style={{ position:'absolute', left:`${((pc1 - 1) / COLS) * 100}%`, top:`${((pr1 - 1) / ROWS) * 100}%`, width:`${((pc2 - pc1) / COLS) * 100}%`, height:`${((pr2 - pr1) / ROWS) * 100}%`, padding:3, boxSizing:'border-box' }}>
                               <div style={{ width:'100%', height:'100%', borderRadius:10, overflow:'hidden', background:'linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.055))', border:'1px solid rgba(255,255,255,0.12)', boxShadow:`0 8px 18px rgba(0,0,0,0.28), 0 0 16px ${c1(0.05)}`, display:'grid', placeItems:'center' }}>
-                                <span style={{ fontSize:14, color:cat?.color || T.c1, opacity:0.9 }}>{cat?.icon || '◇'}</span>
+                                <span style={{ fontSize:14, color:cat?.color || T.c1, opacity:0.9 }}>{cat?.icon || <FsWidgetIcon type="essentials" />}</span>
                               </div>
                             </div>
                           );
@@ -7072,7 +7165,7 @@
       const allTasks = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || []; } catch(e) { return []; } }, []);
       const activeFocusTasks = allTasks.filter(t => !t.done).slice(0, 5);
       const SHAPES = [
-        { id:'diamond', name:'Diamant' }, { id:'shard', name:'Eclat' }, { id:'geode', name:'Geode' },
+        { id:'diamond', name:'Diamant' }, { id:'shard', name:'Éclat' }, { id:'geode', name:'Géode' },
         { id:'prism', name:'Prisme' }, { id:'cluster', name:'Grappe' }, { id:'quartz', name:'Quartz' },
       ];
       const emailTyped = email.trim().length > 0;
@@ -7201,7 +7294,7 @@
               <main className="fs-session-launch-main" style={{padding:'30px 32px 32px',minWidth:0}}>
                 <div style={{display:'inline-flex',alignItems:'center',gap:10,height:34,padding:'0 12px 0 8px',borderRadius:999,background:'linear-gradient(135deg,' + c1(.16) + ',rgba(255,255,255,.045))',border:'1px solid ' + c1(.18),fontSize:9,fontWeight:950,letterSpacing:'.14em',textTransform:'uppercase',color:'rgba(248,246,252,.88)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.08)'}}><span style={{width:20,height:20,borderRadius:8,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',boxShadow:'0 0 20px ' + c1(.52),display:'grid',placeItems:'center',color:'#06070d',fontWeight:950}}>L</span>Rituel LumenOS</div>
                 <div className="fs-session-launch-title" style={{fontFamily:T.display,fontWeight:950,fontSize:'clamp(33px,4.25vw,48px)',letterSpacing:0,lineHeight:1.01,marginTop:18}}>Lance ton focus.</div>
-                <div style={{fontSize:13.5,lineHeight:1.65,color:T.muted,maxWidth:'48ch',marginTop:10}}>Trois choix, puis tu pars. Le reste est deja pret.</div>
+                <div style={{fontSize:13.5,lineHeight:1.65,color:T.muted,maxWidth:'48ch',marginTop:10}}>Trois choix, puis tu pars. Le reste est déjà prêt.</div>
 
                 <section style={{marginTop:22}}>
                   <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Mode</span><span>{mode === 'solo' ? 'Simple et rapide' : 'Avec un ami'}</span></div>
@@ -7289,7 +7382,7 @@
                 </section>
 
                 <section style={{marginTop:22}}>
-                  <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Duree</span><span>{cfg.duration < 1 ? Math.round(cfg.duration * 60) + ' sec' : cfg.duration + ' min'}</span></div>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:10}}><span>Durée</span><span>{cfg.duration < 1 ? Math.round(cfg.duration * 60) + ' sec' : cfg.duration + ' min'}</span></div>
                   <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14,boxShadow:'inset 0 1px 0 rgba(255,255,255,.045)'}}>
                     <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
                       {pill(cfg.duration === 10/60, '10 sec (test)', ()=>setCfg(c=>({...c,duration:10/60})))}
@@ -7318,7 +7411,7 @@
                     <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span></div>
                     <div className="fs-session-launch-shapes" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:9}}>{SHAPES.map(s => <button key={s.id} type="button" onClick={()=>setCrystalShape(s.id)} style={{height:86,borderRadius:18,border:'1px solid ' + (crystalShape===s.id?c1(.34):'rgba(255,255,255,.075)'),background:crystalShape===s.id?c1(.13):'rgba(255,255,255,.035)',color:T.text,cursor:'pointer',fontFamily:T.font,fontSize:10,fontWeight:850,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:7}}>{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:s.id, gradientId:null, colorProgress:0, progress:0, size:34, seed:s.id.charCodeAt(0)*137 }) : null}<span>{s.name}</span></button>)}</div>
                   </div>
-                  <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Demarrer maintenant' : (mode === 'together' && lobby) ? 'En attente de tes amis…' : (mode === 'together' && !byEmail) ? 'Sélectionne et invite tes amis' : 'Ajoute un email valide'}</button>
+                  <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Démarrer maintenant' : (mode === 'together' && lobby) ? 'En attente de tes amis…' : (mode === 'together' && !byEmail) ? 'Sélectionne et invite tes amis' : 'Ajoute un email valide'}</button>
                 </div>
               </aside>
             </div>
@@ -10159,7 +10252,7 @@ void main(){
                 </div>
                 <div className="fs-tasks-progress-copy" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontSize: 21, fontWeight: 850, fontFamily: T.display, letterSpacing: '-0.03em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{Math.round(prog * 100)}<span style={{ fontSize: 12, opacity: 0.6 }}> %</span></span>
-                  <span style={{ fontSize: 8.5, color: T.muted, fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase' }}>cristal du jour</span>
+                  <span style={{ fontSize: 9.5, color: T.muted, fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase' }}>cristal du jour</span>
                 </div>
               </div>
             </div>
@@ -11160,8 +11253,8 @@ void main(){
                       <div style={{fontSize:12,fontWeight:850,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',letterSpacing:'-0.02em',lineHeight:1.22,marginBottom:5,position:'relative',zIndex:1}}>{n.title||'Sans titre'}</div>
                       <div style={{fontSize:10,color:isBlueprintMap?c1(0.64):isCosmosMap?c2(0.66):T.muted,lineHeight:1.45,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden',flex:1,position:'relative',zIndex:1}}>{previewText(n)}</div>
                       <div style={{display:'flex',gap:5,alignItems:'center',justifyContent:'flex-start',marginTop:8,overflow:'hidden',position:'relative',zIndex:1}}>
-                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize:8,color:isCosmosMap?T.c2:T.c1,background:isCosmosMap?c2(0.13):c1(0.13),border:`1px solid ${isCosmosMap?c2(0.24):c1(0.24)}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:116,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
-                        {n.tags?.length>1&&!isCosmosMap&&<span style={{fontSize:8,color:T.muted,opacity:.55}}>+{n.tags.length-1}</span>}
+                        {(n.tags?.length?n.tags:['sans-tag']).slice(0,1).map(t=><span key={t} style={{fontSize: 9,color:isCosmosMap?T.c2:T.c1,background:isCosmosMap?c2(0.13):c1(0.13),border:`1px solid ${isCosmosMap?c2(0.24):c1(0.24)}`,borderRadius:isBlueprintMap?3:99,padding:'2px 6px',whiteSpace:'nowrap',maxWidth:116,overflow:'hidden',textOverflow:'ellipsis'}}>{t}</span>)}
+                        {n.tags?.length>1&&!isCosmosMap&&<span style={{fontSize: 9,color:T.muted,opacity:.55}}>+{n.tags.length-1}</span>}
                       </div>
                     </button>
                   );
@@ -11563,7 +11656,7 @@ void main(){
               setErrMsg('Email ou mot de passe incorrect');
             }
           }
-          else if (/Password should be|weak_password/i.test(rawMsg)) setErrMsg('Mot de passe min. 6 caracteres');
+          else if (/Password should be|weak_password/i.test(rawMsg)) setErrMsg('Mot de passe min. 6 caractères');
           else if (/NetworkError|Failed to fetch|fetch|timeout/i.test(rawMsg)) setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
           else setErrMsg('Connexion temporairement indisponible. Reessayez dans un instant.');
         }
@@ -11712,6 +11805,29 @@ void main(){
                       <img src="bg.png" alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
                       <div className="fs-auth-product-rail" />
                     </div>
+                  </div>
+                  {/* Cristal signature : la différenciation LumenOS, visible avant même le compte */}
+                  <div className="fs-auth-gem-wrap" aria-hidden="true">
+                    <style>{`
+                      .fs-auth-gem-wrap{position:absolute;right:-3%;top:-12%;width:92px;height:112px;z-index:3;pointer-events:none;
+                        filter:drop-shadow(0 22px 34px rgba(0,0,0,.45));animation:fsAuthGemFloat 5.2s ease-in-out infinite}
+                      .fs-auth-gem{position:absolute;left:50%;top:0;width:62px;height:78px;transform:translateX(-50%);
+                        clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
+                        background:linear-gradient(158deg,#fff 0%,#8fdcff 34%,#b891ff 100%)}
+                      .fs-auth-gem::before{content:'';position:absolute;left:0;right:0;top:30%;height:1px;background:rgba(255,255,255,.5)}
+                      .fs-auth-gem::after{content:'';position:absolute;left:48%;top:5%;bottom:5%;width:1px;background:linear-gradient(to bottom,rgba(255,255,255,.8),rgba(255,255,255,.08))}
+                      .fs-auth-gem-halo{position:absolute;left:50%;top:4px;width:102px;height:102px;transform:translateX(-50%);border-radius:50%;
+                        background:radial-gradient(circle,rgba(143,220,255,.34) 0%,transparent 65%);filter:blur(15px)}
+                      .fs-auth-gem-floor{position:absolute;left:50%;bottom:4px;width:64px;height:10px;transform:translateX(-50%);border-radius:50%;
+                        background:radial-gradient(ellipse,rgba(143,220,255,.4),transparent 72%);filter:blur(3px)}
+                      @keyframes fsAuthGemFloat{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-9px) rotate(3deg)}}
+                      html.fs-reduce-motion .fs-auth-gem-wrap{animation:none}
+                      @media (prefers-reduced-motion:reduce){.fs-auth-gem-wrap{animation:none}}
+                      @media (max-width:900px){.fs-auth-gem-wrap{display:none}}
+                    `}</style>
+                    <div className="fs-auth-gem-halo"></div>
+                    <div className="fs-auth-gem"></div>
+                    <div className="fs-auth-gem-floor"></div>
                   </div>
                 </div>
 
@@ -12724,7 +12840,7 @@ void main(){
       const g2rgb = hexToRgbStr(c2hex);
       const palette = window.buildThemePalette ? window.buildThemePalette({ g1: { rgb: g1rgb }, g2: { rgb: g2rgb } }) : null;
       return {
-        id: 'custom', name: 'Custom', desc: 'Personnalisé', base: palette?.bgHex || '#07070d',
+        id: 'custom', name: 'Personnalisé', desc: 'Tes deux couleurs', base: palette?.bgHex || '#07070d',
         g1: { rgb: g1rgb, o: 0.14, x: '18%', y: '15%' },
         g2: { rgb: g2rgb, o: 0.10, x: '82%', y: '82%' }
       };
@@ -12762,7 +12878,8 @@ void main(){
       const cardH = compact ? 52 : 68;
 
       const saveCustom = (a, b) => { try { localStorage.setItem('fs_custom_bg', JSON.stringify({ c1: a, c2: b })); } catch (e) { } };
-      const apply = t => { setAppliedId(t.id); setPreviewId(t.id); onApply(t); addToast({ message: `Thème ${t.name} appliqué`, type: 'success', icon: '✓' }); };
+      /* Le toast (avec « Annuler ») est émis par applyBgTheme — pas de doublon ici. */
+      const apply = t => { setAppliedId(t.id); setPreviewId(t.id); onApply(t); };
       const handleC1 = e => { const v = e.target.value; setCustomC1(v); saveCustom(v, customC2); if (appliedId === 'custom') onApply(buildCustomTheme(v, customC2)); };
       const handleC2 = e => { const v = e.target.value; setCustomC2(v); saveCustom(customC1, v); if (appliedId === 'custom') onApply(buildCustomTheme(customC1, v)); };
 
@@ -12977,7 +13094,7 @@ void main(){
             <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted, marginBottom: 8 }}>Bibliotheque</div>
+                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted, marginBottom: 8 }}>Bibliothèque</div>
                   <div style={{ fontFamily: T.display, fontSize: 30, fontWeight: 800, letterSpacing: '-0.04em' }}>5 styles premium</div>
                 </div>
                 <div style={{ fontSize: 12, color: T.muted }}>{active?.name || 'Signature'} actif</div>
@@ -13307,21 +13424,21 @@ void main(){
       const [group, setGroup] = _uSC('essentials');
       const [appearanceOpen, setAppearanceOpen] = _uSC(false);
       const CATALOG = [
-        { id:'clock', label:'Clock', name:'Horloge', group:'essentials', short:'Temps en direct', icon:'◷', Component:ClockWidget, variants:[1,2,3,4,7,8,9,10,11,12,13] },
-        { id:'tasks', label:'Tasks', name:'Taches', group:'essentials', short:'Actions du jour', icon:'✓', Component:TasksWidget, variants:[1,2,3] },
-        { id:'notes', label:'Notes', name:'Note rapide', group:'essentials', short:'Idees capturees vite', icon:'✎', Component:NotesWidget, variants:[1,2] },
-        { id:'text', label:'Text', name:'Texte', group:'essentials', short:'Ton mot, ton style', icon:'T', Component:TextWidget, variants:[1,2,10] },
-        { id:'pomodoro', label:'Pomodoro', name:'Pomodoro', group:'focus', short:'Cycles de focus', icon:'◑', Component:PomodoroWidget, variants:[1,2,9] },
-        { id:'streak', label:'Streak', name:'Regularite', group:'focus', short:'Ta régularité en graphe', icon:'▲', Component:StreakWidget, variants:[1,2,10] },
-        { id:'countdown', label:'Countdown', name:'Deadline', group:'focus', short:'Deadline sous controle', icon:'⏱', Component:CountdownWidget, variants:[1,10] },
-        { id:'spotify', label:'Sons', name:'Sons de focus', group:'media', short:'Ambiances sonores pour se concentrer', icon:'♫', Component:AmbientWidget, variants:[1,5,10] },
-        { id:'image', label:'Image', name:'Image', group:'media', short:'Inspiration visuelle personnelle', icon:'◈', Component:ImageWidget, variants:[1] },
-        { id:'links', label:'Links', name:'Liens rapides', group:'media', short:'Raccourcis essentiels rapides', icon:'⊞', Component:LinksWidget, variants:[1,2,8] },
+        { id:'clock', label:'Clock', name:'Horloge', group:'essentials', short:'Temps en direct', icon:<FsWidgetIcon type="clock" />, Component:ClockWidget, variants:[1,2,3,4,7,8,9,10,11,12,13] },
+        { id:'tasks', label:'Tasks', name:'Tâches', group:'essentials', short:'Actions du jour', icon:<FsWidgetIcon type="tasks" />, Component:TasksWidget, variants:[1,2,3] },
+        { id:'notes', label:'Notes', name:'Note rapide', group:'essentials', short:'Idées capturées vite', icon:<FsWidgetIcon type="notes" />, Component:NotesWidget, variants:[1,2] },
+        { id:'text', label:'Text', name:'Texte', group:'essentials', short:'Ton mot, ton style', icon:<FsWidgetIcon type="text" />, Component:TextWidget, variants:[1,2,10] },
+        { id:'pomodoro', label:'Pomodoro', name:'Pomodoro', group:'focus', short:'Cycles de focus', icon:<FsWidgetIcon type="pomodoro" />, Component:PomodoroWidget, variants:[1,2,9] },
+        { id:'streak', label:'Streak', name:'Régularité', group:'focus', short:'Ta régularité en graphe', icon:<FsWidgetIcon type="streak" />, Component:StreakWidget, variants:[1,2,10] },
+        { id:'countdown', label:'Countdown', name:'Deadline', group:'focus', short:'Deadline sous contrôle', icon:<FsWidgetIcon type="countdown" />, Component:CountdownWidget, variants:[1,10] },
+        { id:'spotify', label:'Sons', name:'Sons de focus', group:'media', short:'Ambiances sonores pour se concentrer', icon:<FsWidgetIcon type="spotify" />, Component:AmbientWidget, variants:[1,5,10] },
+        { id:'image', label:'Image', name:'Image', group:'media', short:'Inspiration visuelle personnelle', icon:<FsWidgetIcon type="image" />, Component:ImageWidget, variants:[1] },
+        { id:'links', label:'Links', name:'Liens rapides', group:'media', short:'Raccourcis essentiels rapides', icon:<FsWidgetIcon type="links" />, Component:LinksWidget, variants:[1,2,8] },
       ];
       const GROUPS = [
-        { id:'essentials', label:'Essentiels', hint:'Commencer vite', icon:'◇' },
-        { id:'focus', label:'Focus', hint:'Travailler mieux', icon:'◎' },
-        { id:'media', label:'Media', hint:'Ambiance & liens', icon:'♪' },
+        { id:'essentials', label:'Essentiels', hint:'Commencer vite', icon:<FsWidgetIcon type="essentials" /> },
+        { id:'focus', label:'Focus', hint:'Travailler mieux', icon:<FsWidgetIcon type="focus" /> },
+        { id:'media', label:'Media', hint:'Ambiance & liens', icon:<FsWidgetIcon type="media" /> },
       ];
       const GLOW_PRESETS = [
         { color:'#a5b8ff', name:'Aurora' }, { color:'#4ade80', name:'Emerald' }, { color:'#c084fc', name:'Cosmic' },
@@ -13333,7 +13450,7 @@ void main(){
       const ws = widgetStyle || { opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 };
       const { opacity, radius, glowColor, glowIntensity } = ws;
       const update = patch => onWidgetStyleChange(s => ({ ...s, ...patch }));
-      const useVariant = v => { onUseVariant(current.id, v); addToast({ message: current.name + ' ajoute au dashboard', type:'success', icon:'✓' }); onNavigate('dashboard'); };
+      const useVariant = v => { onUseVariant(current.id, v); addToast({ message: current.name + ' ajouté au dashboard', type:'success', icon:'✓' }); onNavigate('dashboard'); };
       /* ≤1280px avec le panneau Apparence ouvert : 3 colonnes (250+1fr+340) ne
          tiennent plus — la colonne centrale passait sous la largeur minimale du
          héros (aperçu 310px + cartes 160px min) et l'aperçu chevauchait le texte
@@ -13347,8 +13464,8 @@ void main(){
             <div style={{ minWidth:0 }}>
               <button onClick={() => onNavigate('perso')} style={{ height:32, borderRadius:12, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 12px', fontSize:11, fontWeight:750, fontFamily:T.font, cursor:'pointer', marginBottom:14 }}>Retour</button>
               <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.16em', textTransform:'uppercase', color:'rgba(var(--theme-c1-rgb),.92)', marginBottom:8 }}>Personnalisation</div>
-              <div style={{ fontFamily:T.display, fontSize:'clamp(30px,4vw,48px)', lineHeight:.98, fontWeight:900, letterSpacing:'-.045em' }}>Bibliotheque de widgets.</div>
-              <div style={{ marginTop:10, maxWidth:610, fontSize:13, lineHeight:1.65, color:T.muted }}>Choisis d'abord le besoin, puis un widget. Une seule decision a la fois, avec un apercu clair avant d'ajouter.</div>
+              <div style={{ fontFamily:T.display, fontSize:'clamp(30px,4vw,48px)', lineHeight:.98, fontWeight:900, letterSpacing:'-.045em' }}>Bibliothèque de widgets.</div>
+              <div style={{ marginTop:10, maxWidth:610, fontSize:13, lineHeight:1.65, color:T.muted }}>Choisis d'abord le besoin, puis un widget. Une seule décision à la fois, avec un aperçu clair avant d'ajouter.</div>
             </div>
             <button onClick={() => { setAppearanceOpen(v => !v); window._fsPersoHintMark && window._fsPersoHintMark(); }} style={{ minHeight:44, borderRadius:15, border:'1px solid rgba(var(--theme-c1-rgb),.22)', background:appearanceOpen ? 'rgba(var(--theme-c1-rgb),.14)' : 'rgba(255,255,255,.045)', color:appearanceOpen ? T.c1 : T.text, padding:'0 15px', display:'flex', alignItems:'center', gap:9, fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:appearanceOpen ? '0 14px 34px rgba(var(--theme-c1-rgb),.12)' : 'inset 0 1px 0 rgba(255,255,255,.05)' }}><span style={{ width:22, height:22, borderRadius:9, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#070810' }}>✦</span>Apparence globale{window.FsHintDot && <window.FsHintDot />}</button>
           </header>
@@ -13356,7 +13473,7 @@ void main(){
             <div className={'fs-widget-studio-body' + (appearanceOpen ? ' fs-appearance-open' : '')} style={{ display:'grid', gridTemplateColumns: appearanceOpen ? '250px minmax(0,1fr) 340px' : '250px minmax(0,1fr)', gap:18, alignItems:'start' }}>
               <aside className="fs-widget-studio-side" style={{ position:'sticky', top:18, display:'grid', gap:10 }}>
                 <div style={{ borderRadius:24, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,.06)' }}>
-                  <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted, margin:'4px 4px 10px' }}>Etape 1</div>
+                  <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted, margin:'4px 4px 10px' }}>Étape 1</div>
                   <div className="fs-widget-studio-groups" style={{ display:'grid', gap:8 }}>
                     {GROUPS.map(g => {
                       const selected = group === g.id;
@@ -13371,18 +13488,18 @@ void main(){
               <section style={{ minWidth:0, display:'grid', gap:16 }}>
                 <div className="fs-widget-studio-hero" style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) 310px', gap:16, borderRadius:30, border:'1px solid rgba(var(--theme-c1-rgb),.16)', background:'radial-gradient(circle at 12% 0%,rgba(var(--theme-c1-rgb),.16),transparent 42%),linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.024))', padding:18, boxShadow:'0 24px 70px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08)' }}>
                   <div style={{ minWidth:0, display:'flex', flexDirection:'column', justifyContent:'space-between', gap:16 }}>
-                    <div><div style={{ display:'inline-flex', alignItems:'center', gap:8, height:30, padding:'0 10px', borderRadius:999, background:'rgba(var(--theme-c1-rgb),.10)', border:'1px solid rgba(var(--theme-c1-rgb),.18)', color:T.c1, fontSize:10, fontWeight:900, letterSpacing:'.10em', textTransform:'uppercase' }}>Etape 2 · Widget</div><div style={{ marginTop:14, display:'flex', alignItems:'center', gap:12 }}><div style={{ width:52, height:52, borderRadius:18, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#071018', fontSize:22, boxShadow:'0 18px 42px rgba(var(--theme-c1-rgb),.22), inset 0 1px 0 rgba(255,255,255,.36)' }}>{current.icon}</div><div style={{ minWidth:0 }}><div style={{ fontFamily:T.display, fontSize:30, lineHeight:1, fontWeight:900, letterSpacing:'-.04em' }}>{current.name}</div><div style={{ marginTop:6, fontSize:12.5, color:T.muted }}>{current.short}</div></div></div></div>
+                    <div><div style={{ display:'inline-flex', alignItems:'center', gap:8, height:30, padding:'0 10px', borderRadius:999, background:'rgba(var(--theme-c1-rgb),.10)', border:'1px solid rgba(var(--theme-c1-rgb),.18)', color:T.c1, fontSize:10, fontWeight:900, letterSpacing:'.10em', textTransform:'uppercase' }}>Étape 2 · Widget</div><div style={{ marginTop:14, display:'flex', alignItems:'center', gap:12 }}><div style={{ width:52, height:52, borderRadius:18, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#071018', fontSize:22, boxShadow:'0 18px 42px rgba(var(--theme-c1-rgb),.22), inset 0 1px 0 rgba(255,255,255,.36)' }}>{current.icon}</div><div style={{ minWidth:0 }}><div style={{ fontFamily:T.display, fontSize:30, lineHeight:1, fontWeight:900, letterSpacing:'-.04em' }}>{current.name}</div><div style={{ marginTop:6, fontSize:12.5, color:T.muted }}>{current.short}</div></div></div></div>
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:8 }}>{visible.map(c => { const selected = current.id === c.id; return <button key={c.id} className="fs-widget-card" onClick={() => setActive(c.id)} style={{ minHeight:70, borderRadius:18, border:'1px solid ' + (selected ? c1(.32) : 'rgba(255,255,255,.07)'), background:selected ? 'linear-gradient(145deg,' + c1(.13) + ',rgba(255,255,255,.03))' : 'rgba(255,255,255,.026)', color:T.text, display:'grid', gridTemplateColumns:'38px 1fr', gap:10, alignItems:'center', textAlign:'left', padding:11, cursor:'pointer', fontFamily:T.font, transition:'all .2s cubic-bezier(.16,1,.3,1)' }}><span style={{ width:38, height:38, borderRadius:14, display:'grid', placeItems:'center', background:selected ? 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))' : 'rgba(255,255,255,.055)', color:selected ? '#071018' : T.muted, fontWeight:900 }}>{c.icon}</span><span style={{ minWidth:0 }}><span style={{ display:'block', fontSize:13, fontWeight:900 }}>{c.name}</span><span style={{ display:'block', marginTop:4, fontSize:10.5, color:T.muted, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.short}</span></span></button>; })}</div>
                   </div>
                   <div style={{ minHeight:220, borderRadius:24, overflow:'hidden', border:'1px solid rgba(255,255,255,.075)', background:'rgba(0,0,0,.18)', boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}>{current.Component ? React.createElement(current.Component, { variant: current.variants[0], style:{ height:'100%', minHeight:220 } }) : null}</div>
                 </div>
                 <div style={{ borderRadius:26, border:'1px solid rgba(255,255,255,.075)', background:'rgba(255,255,255,.028)', padding:16 }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, marginBottom:14 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Etape 3</div><div style={{ marginTop:5, fontSize:15, fontWeight:900 }}>Choisis un style</div></div><div style={{ fontSize:11, color:T.muted }}>{current.variants.length} variante{current.variants.length>1?'s':''}</div></div>
-                  <div className="fs-widget-studio-variants" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>{current.variants.map(v => <div key={v} className="fs-widget-variant" style={{ borderRadius:20, border:'1px solid rgba(255,255,255,.07)', background:'linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.024))', overflow:'hidden', transition:'all .22s cubic-bezier(.16,1,.3,1)', boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ height:148, overflow:'hidden', background:'rgba(0,0,0,.14)' }}>{current.Component ? React.createElement(current.Component, { variant:v, style:{ height:'100%', minHeight:148 } }) : null}</div><div style={{ padding:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ fontSize:12, fontWeight:900 }}>Style {v}</div><div style={{ marginTop:3, fontSize:10.5, color:T.muted }}>Apercu compact</div></div><button onClick={() => useVariant(v)} style={{ height:34, borderRadius:12, border:'1px solid rgba(var(--theme-c1-rgb),.25)', background:'rgba(var(--theme-c1-rgb),.12)', color:T.c1, padding:'0 12px', fontSize:10.5, fontWeight:900, fontFamily:T.font, cursor:'pointer' }}>Utiliser</button></div></div>)}</div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, marginBottom:14 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Étape 3</div><div style={{ marginTop:5, fontSize:15, fontWeight:900 }}>Choisis un style</div></div><div style={{ fontSize:11, color:T.muted }}>{current.variants.length} variante{current.variants.length>1?'s':''}</div></div>
+                  <div className="fs-widget-studio-variants" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>{current.variants.map(v => <div key={v} className="fs-widget-variant" style={{ borderRadius:20, border:'1px solid rgba(255,255,255,.07)', background:'linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.024))', overflow:'hidden', transition:'all .22s cubic-bezier(.16,1,.3,1)', boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ height:148, overflow:'hidden', background:'rgba(0,0,0,.14)' }}>{current.Component ? React.createElement(current.Component, { variant:v, style:{ height:'100%', minHeight:148 } }) : null}</div><div style={{ padding:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ fontSize:12, fontWeight:900 }}>Style {v}</div><div style={{ marginTop:3, fontSize:10.5, color:T.muted }}>Aperçu compact</div></div><button onClick={() => useVariant(v)} style={{ height:34, borderRadius:12, border:'1px solid rgba(var(--theme-c1-rgb),.25)', background:'rgba(var(--theme-c1-rgb),.12)', color:T.c1, padding:'0 12px', fontSize:10.5, fontWeight:900, fontFamily:T.font, cursor:'pointer' }}>Utiliser</button></div></div>)}</div>
                 </div>
               </section>
               {appearanceOpen && <aside className="fs-widget-appearance" style={{ borderRadius:28, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:18, boxShadow:'0 22px 58px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:16 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Apparence</div><div style={{ marginTop:5, fontSize:16, fontWeight:900 }}>Tous les widgets</div></div><button onClick={() => { update({ opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 }); addToast({ message:'Apparence reinitialisee', type:'info', icon:'↺' }); }} style={{ height:32, borderRadius:11, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 10px', fontSize:10.5, fontWeight:800, fontFamily:T.font, cursor:'pointer' }}>Reset</button></div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:16 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Apparence</div><div style={{ marginTop:5, fontSize:16, fontWeight:900 }}>Tous les widgets</div></div><button onClick={() => { update({ opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 }); addToast({ message:'Apparence réinitialisée', type:'info', icon:'↺' }); }} style={{ height:32, borderRadius:11, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 10px', fontSize:10.5, fontWeight:800, fontFamily:T.font, cursor:'pointer' }}>Réinitialiser</button></div>
                 <div style={{ display:'grid', gap:18 }}><div style={{ height:150, borderRadius:20, padding:10, background:'rgba(0,0,0,.18)', border:'1px solid rgba(255,255,255,.055)', overflow:'hidden' }}><ClockWidget variant={1} style={{ height:'100%' }} /></div><PremiumSlider label="Opacite" value={opacity} min={0.3} max={1} step={0.01} formatValue={v => Math.round(v * 100) + '%'} onChange={v => update({ opacity:v })} accent={T.c1} /><PremiumSlider label="Arrondi" value={radius} min={8} max={40} step={1} formatValue={v => v + 'px'} onChange={v => update({ radius:v })} accent={T.c2} /><PremiumSlider label="Halo" value={glowIntensity} min={0} max={1} step={0.01} formatValue={v => v < .01 ? 'Off' : Math.round(v * 100) + '%'} onChange={v => update({ glowIntensity:v })} accent={glowColor} /><div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{GLOW_PRESETS.map(p => <button key={p.color} title={p.name} onClick={() => update({ glowColor:p.color })} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid ' + (glowColor === p.color ? 'rgba(255,255,255,.9)' : 'transparent'), background:p.color, cursor:'pointer', boxShadow:glowColor === p.color ? '0 0 0 3px ' + p.color + '44, 0 0 18px ' + p.color + '66' : '0 2px 8px rgba(0,0,0,.34)' }} />)}<label style={{ width:28, height:28, borderRadius:'50%', border:'1.5px dashed rgba(255,255,255,.28)', background:'rgba(255,255,255,.05)', display:'grid', placeItems:'center', cursor:'pointer', position:'relative', overflow:'hidden' }}><span style={{ fontSize:14, color:T.muted }}>+</span><input type="color" value={glowColor} onChange={e => update({ glowColor:e.target.value })} style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer' }} /></label></div></div>
               </aside>}
             </div>
@@ -13399,15 +13516,15 @@ void main(){
     ];
 
     const FOCUS_NUDGE_MESSAGES = [
-      'Reste concentre, tu y es presque.',
+      'Reste concentré, tu y es presque.',
       'Reviens au signal : une seule action maintenant.',
-      'Ton flow est deja lance, garde le cap.',
-      'Encore quelques minutes, tu construis ton elan.',
+      'Ton flow est déjà lancé, garde le cap.',
+      'Encore quelques minutes, tu construis ton élan.',
       'Respire, recentre-toi, reprends exactement ici.',
       'Une distraction de moins, une victoire de plus.',
       'Ton futur toi te remercie pour ce retour.',
       'Le cristal tient bon. Toi aussi.',
-      'Petit detour repere, grande concentration reprise.',
+      'Petit détour repéré, grande concentration reprise.',
       'Reviens doucement : la session continue.'
     ];
 
@@ -14028,6 +14145,22 @@ void main(){
                       <input className="fs-set-input" value={email || ''} disabled={emailLocked} readOnly={emailLocked} placeholder="email@domaine.com" />
                     </div>
                   </div>
+                  {/* Collection de cristaux : le codex complet avec cotes de tirage. */}
+                  {window.CollectionScreen && (
+                    <div style={{ padding: '14px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <button type="button" onClick={() => onNavigate('collection')}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}>
+                        {window.FsCrystalMark ? React.createElement(window.FsCrystalMark, { size: 10 }) : <span className="fs-showcase-facet" style={{ width: 8, height: 8, flexShrink: 0 }} />}
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span className="fs-set-row-t" style={{ display: 'block' }}>Collection de cristaux</span>
+                          <span className="fs-set-row-d" style={{ display: 'block' }}>Tous tes cristaux, les raretés et leurs cotes de tirage.</span>
+                        </span>
+                        <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color: T.muted, flexShrink: 0 }}>
+                          <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                   {/* Vitrine de profil — fusionnée dans Profil (accordéon) pour
                      garder la page courte ; c'est la facette publique du profil. */}
                   {window.ShowcaseEditor && (
@@ -14103,7 +14236,7 @@ void main(){
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)' }} />
-                              <span style={{ fontSize: 8.5, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Aperçu widget</span>
+                              <span style={{ fontSize: 9.5, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Aperçu widget</span>
                             </div>
                             <span style={{ height: 8, width: '62%', borderRadius: 4, background: 'rgba(255,255,255,0.14)' }} />
                             <span style={{ height: 8, width: '38%', borderRadius: 4, background: 'rgba(255,255,255,0.08)' }} />
@@ -14268,7 +14401,7 @@ void main(){
 
     const APP_ROUTE_SCREENS = new Set([
       'dashboard', 'tasks', 'cristaux', 'notes', 'edit', 'perso', 'settings', 'fond',
-      'fonts', 'notes-style', 'variants', 'session', 'evolution', 'progression'
+      'fonts', 'notes-style', 'variants', 'session', 'evolution', 'progression', 'collection'
     ]);
 
     class ScreenErrorBoundary extends React.Component {
@@ -14841,6 +14974,16 @@ void main(){
           });
           setActiveSession(a => {
             if (a && a.broadcastId === e.detail.id) {
+              /* Session EN COURS côté invité : la clôture de la ligne (l'hôte a
+                 terminé/quitté) ne coupe PLUS la session — l'invité va au bout
+                 et forge son cristal. On marque juste le départ de l'hôte. */
+              if (a.isGuest) {
+                if (a.hostLeftNotified) return a;
+                const next = { ...a, hostLeftNotified: true, leftIds: [...new Set([...(a.leftIds || []), a.hostId || 'host'])] };
+                try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(_) {}
+                addToast({ message: `${a.friendUser?.name || 'L’hôte'} a quitté — ta session continue`, type: 'info', icon: '→', duration: 4600 });
+                return next;
+              }
               saveSessionRecord(buildSessionRecord(a, false, new Date().toISOString()));
               try { localStorage.removeItem('fs_active_session'); } catch(_) {}
               return null;
@@ -15171,6 +15314,21 @@ void main(){
             try { window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).eq('id', p.sessionId).then(() => {}); } catch(_) {}
           }
         };
+        /* L'hôte a quitté en avance : l'invité CONTINUE sa session (sa ligne
+           reste active) — on retire l'avatar de l'hôte et on informe. */
+        const onHostLeft = (e) => {
+          const p = e.detail;
+          if (!p?.sessionIds) return;
+          const a = activeSessionRef.current;
+          if (!a || !a.isGuest || !p.sessionIds.includes(a.broadcastId) || a.hostLeftNotified) return;
+          addToast({ message: `${p.host?.name || a.friendUser?.name || 'L’hôte'} a quitté — ta session continue`, type: 'info', icon: '→', duration: 4600 });
+          setActiveSession(cur => {
+            if (!cur || cur.hostLeftNotified) return cur;
+            const next = { ...cur, hostLeftNotified: true, leftIds: [...new Set([...(cur.leftIds || []), cur.hostId || 'host'])] };
+            try { localStorage.setItem('fs_active_session', JSON.stringify(next)); } catch(_) {}
+            return next;
+          });
+        };
         /* Repli FIABLE (DB-backed) au broadcast « session-left » best-effort :
            quand un invité quitte, sa ligne passe active=false → l'hôte reçoit un
            postgres_changes sur ses lignes host_id → on retire son avatar de la
@@ -15246,6 +15404,7 @@ void main(){
         const leavePollTimer = setInterval(pollLeaves, 3000);
         window.addEventListener('fs-session-sync', onSync);
         window.addEventListener('fs-session-left', onLeft);
+        window.addEventListener('fs-host-left', onHostLeft);
         window.addEventListener('fs-session-start', onGuestStart);
         window.addEventListener('fs-lobby-sync', onLobbySync);
         window.addEventListener('fs-session-guest-update', onHostGuestUpdate);
@@ -15254,6 +15413,7 @@ void main(){
           clearInterval(leavePollTimer);
           window.removeEventListener('fs-session-sync', onSync);
           window.removeEventListener('fs-session-left', onLeft);
+          window.removeEventListener('fs-host-left', onHostLeft);
           window.removeEventListener('fs-session-start', onGuestStart);
           window.removeEventListener('fs-lobby-sync', onLobbySync);
           window.removeEventListener('fs-session-guest-update', onHostGuestUpdate);
@@ -15292,10 +15452,32 @@ void main(){
           } catch (e) {}
         }
         if (activeSession?.type === 'together' && (activeSession.broadcastIds?.length || activeSession.broadcastId)) {
-          try {
-            const endIds = (activeSession.broadcastIds && activeSession.broadcastIds.length ? activeSession.broadcastIds : [activeSession.broadcastId]).filter(Boolean);
-            await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).in('id', endIds);
-          } catch (e) { console.warn('[fs] session end failed', e); addToast({ message: 'Fin de session non synchronisée', type: 'warning', icon: '!' }); }
+          const endIds = (activeSession.broadcastIds && activeSession.broadcastIds.length ? activeSession.broadcastIds : [activeSession.broadcastId]).filter(Boolean);
+          /* Départ ANTICIPÉ de l'hôte avec des invités encore présents : on ne
+             ferme PAS leurs lignes — leurs sessions continuent jusqu'au bout et
+             ils forgent leur cristal. On ne clôt que les lignes des amis absents
+             (jamais rejoints / déjà partis), et on prévient les présents. */
+          const endedEarly = (Date.now() - (activeSession.startTime || 0)) < (activeSession.duration * 60000) - 5000;
+          const remainingGuests = (!activeSession.isGuest && Array.isArray(activeSession.joinedIds))
+            ? activeSession.joinedIds.filter(id => !(activeSession.leftIds || []).includes(id))
+            : [];
+          if (!activeSession.isGuest && endedEarly && remainingGuests.length) {
+            try {
+              const { data: rows } = await window._fsSb.from('sessions').select('id, friend_id').in('id', endIds);
+              const keepIds = (rows || []).filter(r => remainingGuests.includes(r.friend_id)).map(r => r.id);
+              const closeIds = endIds.filter(id => !keepIds.includes(id));
+              if (closeIds.length) await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).in('id', closeIds);
+            } catch (e) { console.warn('[fs] session handoff failed', e); }
+            const payload = { sessionIds: endIds, host: { id: user?.id, name: user?.name || user?.email?.split('@')[0] || 'L’hôte' } };
+            remainingGuests.forEach(fid => {
+              const s = () => { try { window._fsSendToUser?.(fid, 'host-left', payload); } catch (_) {} };
+              s(); [500, 1500, 3200].forEach(ms => setTimeout(s, ms));
+            });
+          } else {
+            try {
+              await window._fsSb.from('sessions').update({ active: false, ended_at: new Date().toISOString() }).in('id', endIds);
+            } catch (e) { console.warn('[fs] session end failed', e); addToast({ message: 'Fin de session non synchronisée', type: 'warning', icon: '!' }); }
+          }
         }
         saveSessionRecord(buildSessionRecord(activeSession, hasCrystalData, new Date().toISOString()));
         try { localStorage.removeItem('fs_session_focus_tasks'); window.dispatchEvent(new CustomEvent('fs-focus-tasks-update')); } catch(e) {}
@@ -15344,11 +15526,24 @@ void main(){
         applyThemeVars(theme);
       }, [bgThemeId]);
 
-      const applyBgTheme = theme => {
+      const applyBgTheme = (theme, opts = {}) => {
         document.body.style.transition = 'background 1.1s cubic-bezier(0.4,0,0.2,1)';
+        const prevId = (() => { try { return localStorage.getItem('fs_bgtheme') || 'cosmos'; } catch (e) { return 'cosmos'; } })();
         try { localStorage.setItem('fs_bgtheme', theme.id); } catch (e) { }
         applyThemeVars(theme);
         setBgThemeId(theme.id);
+        /* Application instantanée MAIS réversible : toast unique avec
+           « Annuler » qui restaure le thème précédent (y compris custom). */
+        if (!opts.silent && theme.id !== prevId) {
+          const prevTheme = prevId === 'custom'
+            ? (() => { try { const cb = JSON.parse(localStorage.getItem('fs_custom_bg') || '{}'); const t = window.buildCustomTheme ? window.buildCustomTheme(cb.c1 || '#a5b8ff', cb.c2 || '#c084fc') : null; return t ? { ...t, id: 'custom', name: 'Personnalisé' } : null; } catch (e) { return null; } })()
+            : (window.BG_THEMES || []).find(t => t.id === prevId) || null;
+          addToast({
+            message: `Thème ${theme.name || ''} appliqué`.trim(),
+            type: 'success', icon: '✓', duration: 6000,
+            action: prevTheme ? { label: 'Annuler', fn: () => applyBgTheme(prevTheme, { silent: true }) } : undefined,
+          });
+        }
       };
 
       const [fontPresetId, setFontPresetId] = _uSC(() => {
@@ -15708,6 +15903,7 @@ void main(){
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
+                {screen === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { onNavigate: go, user })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
                 {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
                 </ScreenErrorBoundary>
@@ -15794,6 +15990,113 @@ void main(){
       window.__fsDiagError(renderErr);
       try { window.__fsTrySelfHeal(); } catch (_) {}
     }
+  </script>
+
+  <script type="text/babel">
+    /* ── Collection de cristaux ──────────────────────────────────────────────
+       Le codex du jeu : chaque dégradé existant avec ses cotes de tirage ; les
+       non-découverts restent en silhouette (désir de collection). Alimentée par
+       fs_crystals_{uid} — la même source que la vitrine. */
+    const FS_COLL_TIERS = [
+      { id: 'legendary', label: 'Légendaires', odds: '≈ 1 forge sur 200', hint: 'Le tirage le plus rare de LumenOS.', tint: '#e9d5ff' },
+      { id: 'rare', label: 'Rares', odds: '≈ 1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
+      { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: 'rgba(248,246,252,0.62)' },
+    ];
+    function CollectionScreen({ onNavigate, user }) {
+      const readOwned = () => { try { return JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []; } catch (e) { return []; } };
+      const [owned, setOwned] = React.useState(readOwned);
+      React.useEffect(() => {
+        const h = () => setOwned(readOwned());
+        window.addEventListener('fs-crystal-update', h);
+        return () => window.removeEventListener('fs-crystal-update', h);
+      }, [user?.id]);
+      const grads = window.CRYSTAL_GRADIENTS || [];
+      const counts = React.useMemo(() => {
+        const m = {};
+        owned.forEach(c => { const g = c.crystalGradient; if (g) m[g] = (m[g] || 0) + 1; });
+        return m;
+      }, [owned]);
+      const tierItems = id => id === 'legendary' ? grads.filter(g => g.legendary)
+        : id === 'rare' ? grads.filter(g => g.rare && !g.legendary)
+        : grads.filter(g => !g.rare && !g.legendary);
+      const discovered = grads.filter(g => counts[g.id]).length;
+      return (
+        <div className="fs-coll" style={{ width:'100%', height:'100%', overflow:'auto', color:T.text, fontFamily:T.font }}>
+          <style>{`
+            .fs-coll::-webkit-scrollbar{width:0}
+            .fs-coll-inner{max-width:920px;margin:0 auto;padding:clamp(20px,3.5vh,36px) clamp(18px,3.5vw,40px) 48px}
+            .fs-coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
+            .fs-coll-cell{position:relative;border-radius:var(--mineral-radius-md);border:1px solid rgba(255,255,255,.07);
+              background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.14));padding:16px 10px 13px;
+              display:flex;flex-direction:column;align-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+              transition:transform .2s var(--mineral-ease),border-color .2s,box-shadow .2s}
+            .fs-coll-cell:hover{transform:translateY(-2px)}
+            .fs-coll-cell.got:hover{border-color:rgba(var(--theme-c1-rgb),.3);box-shadow:var(--fs-elev-1),inset 0 1px 0 rgba(255,255,255,.07)}
+            .fs-coll-gem{position:relative;height:60px;display:grid;place-items:center;filter:drop-shadow(0 10px 16px rgba(0,0,0,.4))}
+            .fs-coll-gem::after{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);width:38px;height:7px;
+              border-radius:50%;background:radial-gradient(ellipse,var(--gem-glow,rgba(var(--theme-c1-rgb),.4)),transparent 74%);filter:blur(2.5px)}
+            .fs-coll-cell.locked .fs-coll-gem{filter:grayscale(1) brightness(.34) drop-shadow(0 8px 12px rgba(0,0,0,.4));opacity:.7}
+            .fs-coll-cell.locked .fs-coll-gem::after{opacity:.25}
+            .fs-coll-name{margin-top:10px;font-size:11px;font-weight:850;letter-spacing:.02em;color:rgba(248,246,252,.88);
+              max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .fs-coll-cell.locked .fs-coll-name{color:rgba(248,246,252,.4)}
+            .fs-coll-sub{margin-top:3px;font-size:9.5px;font-weight:750;color:rgba(248,246,252,.4);font-variant-numeric:tabular-nums}
+            .fs-coll-badge{position:absolute;top:8px;right:8px;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
+              display:grid;place-items:center;font-size:10px;font-weight:900;color:#070810;
+              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));box-shadow:0 6px 14px rgba(var(--theme-c1-rgb),.3)}
+            .fs-coll-stat{display:inline-flex;align-items:baseline;gap:6px;padding:8px 14px;border-radius:14px;
+              border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
+            .fs-coll-stat b{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--theme-c1)}
+            .fs-coll-stat span{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(248,246,252,.45)}
+            @media(max-width:560px){.fs-coll-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}}
+          `}</style>
+          <div className="fs-coll-inner">
+            <button onClick={() => onNavigate('settings')} style={{ height:32, borderRadius:12, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 12px', fontSize:11, fontWeight:750, fontFamily:T.font, cursor:'pointer', marginBottom:16 }}>Retour</button>
+            <div style={{ fontSize:10, fontWeight:900, letterSpacing:'var(--fs-label-tracking)', textTransform:'uppercase', color:'rgba(var(--theme-c1-rgb),.92)', marginBottom:8 }}>Collection</div>
+            <div style={{ fontFamily:T.display, fontSize:'clamp(28px,3.6vw,42px)', lineHeight:1, fontWeight:900, letterSpacing:'-.04em' }}>Ta collection de cristaux.</div>
+            <div style={{ marginTop:10, maxWidth:560, fontSize:13, lineHeight:1.6, color:T.muted }}>Chaque session de focus réussie forge un cristal. Les rares et les légendaires ne s'obtiennent qu'au tirage de la forge — personne ne peut les choisir.</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:10, margin:'18px 0 26px' }}>
+              <span className="fs-coll-stat"><b>{owned.length}</b><span>forgés</span></span>
+              <span className="fs-coll-stat"><b>{discovered}/{grads.length}</b><span>découverts</span></span>
+              <span className="fs-coll-stat"><b>{owned.filter(c => c.rarity === 'rare' || c.rarity === 'gold').length}</b><span>rares</span></span>
+              <span className="fs-coll-stat"><b>{owned.filter(c => c.rarity === 'legendary').length}</b><span>légendaires</span></span>
+            </div>
+            {FS_COLL_TIERS.map(tier => {
+              const items = tierItems(tier.id);
+              if (!items.length) return null;
+              const got = items.filter(g => counts[g.id]).length;
+              return (
+                <section key={tier.id} style={{ marginBottom:28 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap', marginBottom:4 }}>
+                    <span style={{ fontSize:14.5, fontWeight:900, fontFamily:T.display, letterSpacing:'-.02em', color:tier.tint }}>{tier.label}</span>
+                    <span style={{ fontSize:10, fontWeight:850, letterSpacing:'.08em', textTransform:'uppercase', padding:'3px 9px', borderRadius:99, border:'1px solid rgba(255,255,255,.10)', background:'rgba(255,255,255,.04)', color:'rgba(248,246,252,.6)' }}>{tier.odds}</span>
+                    <span style={{ marginLeft:'auto', fontSize:10.5, color:T.muted, fontVariantNumeric:'tabular-nums' }}>{got}/{items.length}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>{tier.hint}</div>
+                  <div className="fs-coll-grid">
+                    {items.map((g, i) => {
+                      const n = counts[g.id] || 0;
+                      return (
+                        <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked')} style={{ '--gem-glow': g.glow }}
+                          title={n ? `${g.name} · ${n} forgé${n > 1 ? 's' : ''}` : `${g.name} — pas encore découvert`}>
+                          <div className="fs-coll-gem">
+                            {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:'diamond', gradientId:g.id, progress:.88, size:46, seed:i + 2 }) : null}
+                          </div>
+                          <div className="fs-coll-name">{g.name}</div>
+                          <div className="fs-coll-sub">{n ? `${n} forgé${n > 1 ? 's' : ''}` : 'Non découvert'}</div>
+                          {n > 1 && <span className="fs-coll-badge">×{n}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+    window.CollectionScreen = CollectionScreen;
   </script>
 
   <script type="text/babel">
@@ -16990,7 +17293,7 @@ void main(){
         .fs-showcase-order { position:absolute; top:4px; right:4px; width:15px; height:15px; border-radius:50%;
           display:grid; place-items:center; font-size:9px; font-weight:900; color:#070810;
           background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2)); }
-        .fs-showcase-tile-dur { font-size:8px; font-weight:800; color:rgba(248,246,252,0.4); }
+        .fs-showcase-tile-dur { font-size:9px; font-weight:800; color:rgba(248,246,252,0.4); }
         /* ── Vitrine d'ami : écrin premium LumenOS ─────────────────────────
            Un présentoir de verre : verrière teintée thème, cellules-socles avec
            halo par cristal (couleur de rareté), entrée des gemmes en cascade,
@@ -17009,7 +17312,7 @@ void main(){
           background:linear-gradient(118deg, transparent 28%, rgba(255,255,255,0.055) 44%, transparent 60%); }
         .fs-vitrine-head { display:flex; align-items:center; gap:11px; padding:16px 18px 13px; position:relative; }
         .fs-vitrine-head .fs-showcase-facet { width:12px; height:14px; }
-        .fs-vitrine-eyebrow { font-size:8.5px; font-weight:850; letter-spacing:0.17em; text-transform:uppercase;
+        .fs-vitrine-eyebrow { font-size:9.5px; font-weight:850; letter-spacing:0.17em; text-transform:uppercase;
           color:rgba(var(--theme-c1-rgb),0.95); }
         .fs-vitrine-owner { margin-top:3px; font-family:var(--font-display); font-size:17px; font-weight:850;
           letter-spacing:-0.02em; line-height:1.1; color:var(--mineral-text);
@@ -17039,14 +17342,14 @@ void main(){
           background:radial-gradient(ellipse, var(--gem-glow), transparent 74%); filter:blur(2.5px); opacity:.85; }
         .fs-vitrine-name { margin-top:9px; font-size:9.5px; font-weight:850; letter-spacing:0.02em;
           color:rgba(248,246,252,0.82); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .fs-vitrine-rarity { margin-top:2px; font-size:7.5px; font-weight:900; letter-spacing:0.16em; text-transform:uppercase; }
-        .fs-vitrine-dur { margin-top:2px; font-size:8.5px; font-weight:750; color:rgba(248,246,252,0.38);
+        .fs-vitrine-rarity { margin-top:2px; font-size:9.5px; font-weight:900; letter-spacing:0.16em; text-transform:uppercase; }
+        .fs-vitrine-dur { margin-top:2px; font-size:9.5px; font-weight:750; color:rgba(248,246,252,0.38);
           font-variant-numeric:tabular-nums; }
         .fs-vitrine-quote { margin:12px 18px 0; padding:9px 14px; border-left:2px solid rgba(var(--theme-c1-rgb),0.55);
           border-radius:0 12px 12px 0; background:rgba(255,255,255,0.03);
           font-size:12px; font-style:italic; line-height:1.55; color:rgba(248,246,252,0.72); }
         .fs-vitrine-foot { display:flex; align-items:center; gap:7px; padding:12px 18px 14px;
-          font-size:8.5px; font-weight:850; letter-spacing:0.15em; text-transform:uppercase; color:rgba(248,246,252,0.30); }
+          font-size:9.5px; font-weight:850; letter-spacing:0.15em; text-transform:uppercase; color:rgba(248,246,252,0.30); }
         .fs-vitrine-foot .fs-showcase-facet { width:7px; height:8px; opacity:.55; }
         @keyframes fsVitrinePop { from{opacity:0;transform:translateY(-8px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
         @keyframes fsVitrineGemIn { from{opacity:0;transform:translateY(10px) scale(.82)} to{opacity:1;transform:none} }
@@ -17413,7 +17716,7 @@ void main(){
         }
         .fs-cave-gold-badge {
           position:absolute;top:-8%;right:-16%;z-index:4;padding:4px 8px;border-radius:999px;
-          font-size:7.5px;font-weight:950;letter-spacing:0.1em;text-transform:uppercase;color:#1b1202;
+          font-size:9.5px;font-weight:950;letter-spacing:0.1em;text-transform:uppercase;color:#1b1202;
           background:linear-gradient(135deg,#fff8c7,#ffd36a 48%,#f59e0b);
           box-shadow:0 0 22px rgba(255,211,106,0.72),0 8px 18px rgba(0,0,0,0.34);
         }
@@ -17898,12 +18201,15 @@ void main(){
 
       const handleEnd = () => {
         const crystal = progress >= 0.5 ? _buildCrystal(progress, session) : null;
+        /* Icône = cristal SVG maison aux couleurs de la gemme forgée — la
+           récompense porte l'identité LumenOS, pas un emoji Unicode. */
         if (crystal) addToast({
-          message: crystal.rarity === 'legendary' ? `🌟 LÉGENDAIRE — ${pal.name} ! ≈ 1 chance sur 200.`
-            : crystal.rarity === 'gold' ? 'Cristal doré sauvegardé ! 1 chance sur 20.'
-            : crystal.rarity === 'rare' ? `✨ Cristal rare — ${pal.name} ! ≈ 1 chance sur 20.`
-            : `💎 Cristal ${pal.name || ''} sauvegardé !`.trim(),
+          message: crystal.rarity === 'legendary' ? `LÉGENDAIRE — ${pal.name} · ≈ 1 chance sur 200`
+            : crystal.rarity === 'gold' ? 'Cristal doré forgé · ≈ 1 chance sur 20'
+            : crystal.rarity === 'rare' ? `Cristal rare — ${pal.name} · ≈ 1 chance sur 20`
+            : `Cristal ${pal.name || ''} forgé et sauvegardé`.replace('  ', ' '),
           type: 'success', duration: crystal.rarity === 'legendary' ? 5000 : 3000,
+          icon: window.FsCrystalMark ? React.createElement(window.FsCrystalMark, { a: pal.c || pal.a, b: pal.b, size: 13 }) : undefined,
         });
         onEnd && onEnd(crystal);
       };
@@ -18007,12 +18313,18 @@ void main(){
     function _buildCrystal(progress, session) {
       const si = _cStateIdx(Math.min(progress, 1));
       const isGold = session?.crystalRarity === 'gold' || session?.crystalGradient === 'gold';
+      /* La rareté TIRÉE à la forge (rare/legendary) doit survivre dans le
+         cristal sauvegardé — sinon toast et collection la perdent. */
+      const rarity = (session?.crystalRarity && session.crystalRarity !== 'standard')
+        ? session.crystalRarity
+        : (isGold ? 'gold' : 'standard');
+      const gradMeta = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === session?.crystalGradient) || null;
       return {
         id: Date.now(),
         stateIdx: isGold ? 4 : si,
         palette: isGold ? 'gold' : CRYSTAL_PALETTES[si].id,
-        name: isGold ? 'Cristal doré' : CRYSTAL_PALETTES[si].name,
-        rarity: isGold ? 'gold' : 'standard',
+        name: rarity !== 'standard' ? (gradMeta?.name || 'Cristal doré') : CRYSTAL_PALETTES[si].name,
+        rarity,
         duration: session?.duration || 25,
         type: session?.type || 'solo',
         crystalShape: session?.crystalShape || 'diamond',
@@ -18801,7 +19113,7 @@ void main(){
               .fs-cv-gold-aura{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
-              .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:8px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
+              .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
               .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
               .fs-cv-header>*{pointer-events:auto}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -18897,11 +19209,11 @@ void main(){
                     <div className="fs-cv-stats">
                       <div className="fs-cv-stat">
                         <div style={{ fontSize: 14, fontWeight: 900, color: '#8ef6ff' }}>{crystals.length}</div>
-                        <div style={{ fontSize: 8, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cristaux</div>
+                        <div style={{ fontSize: 9, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cristaux</div>
                       </div>
                       <div className="fs-cv-stat">
                         <div style={{ fontSize: 14, fontWeight: 900, color: '#e7b7ff' }}>{totalMinutes}</div>
-                        <div style={{ fontSize: 8, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Minutes</div>
+                        <div style={{ fontSize: 9, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Minutes</div>
                       </div>
                     </div>
                   )}
@@ -18948,9 +19260,9 @@ void main(){
                     )}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: activeInfo.pal.b }}>{durLabel(active)}</div><div style={{ fontSize: 8, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>focus</div></div>
-                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: '#e7b7ff' }}>{active.type === 'together' ? 'duo' : 'solo'}</div><div style={{ fontSize: 8, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>mode</div></div>
-                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: activeInfo.isGold ? '#ffd36a' : activeInfo.pal.b, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeInfo.isGold ? 'rare' : (activeInfo.grad?.name || activeInfo.pal.name).split(' ')[0]}</div><div style={{ fontSize: 8, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>aura</div></div>
+                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: activeInfo.pal.b }}>{durLabel(active)}</div><div style={{ fontSize: 9, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>focus</div></div>
+                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: '#e7b7ff' }}>{active.type === 'together' ? 'duo' : 'solo'}</div><div style={{ fontSize: 9, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>mode</div></div>
+                    <div className="fs-cv-stat"><div style={{ fontSize: 13, fontWeight: 900, color: activeInfo.isGold ? '#ffd36a' : activeInfo.pal.b, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeInfo.isGold ? 'rare' : (activeInfo.grad?.name || activeInfo.pal.name).split(' ')[0]}</div><div style={{ fontSize: 9, color: 'rgba(220,231,255,.55)', textTransform: 'uppercase' }}>aura</div></div>
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(226,238,255,.66)', lineHeight: 1.6, marginTop: 11 }}>
                     Forgé le {fmtDate(active.completedAt)}.
@@ -19006,6 +19318,14 @@ void main(){
         { id: '__self-host', name: 'Toi (hôte)', initial: ((user?.name || user?.email || 'T')[0] || 'T').toUpperCase(), color: 'var(--theme-c1)', host: true },
         ...pending.invited,
       ];
+      /* `color` peut être une variable CSS (hôte) : `${color}bb` serait
+         invalide → dégradé thème complet dans ce cas. */
+      const avBgOf = f => (f.color || '').startsWith('var(')
+        ? 'linear-gradient(145deg, var(--theme-c1), var(--theme-c2))'
+        : `linear-gradient(145deg, ${f.color}, ${f.color}bb)`;
+      /* Réductible : la salle d'attente ne séquestre plus personne — en pilule
+         flottante, le dashboard reste utilisable pendant l'attente. */
+      const [minimized, setMinimized] = React.useState(false);
       const allDeclined = pending.invited.length > 0 && pending.invited.every(f => declined.includes(f.id));
       const anyJoined = joined.length > 0;
       const [elapsed, setElapsed] = React.useState(() => Math.max(0, Math.floor((Date.now() - pending.createdAt) / 1000)));
@@ -19021,6 +19341,48 @@ void main(){
           : allDeclined
             ? 'Tu peux quand même te lancer en solo, ou annuler.'
             : `Invitation envoyée à ${names}. Démarre quand un ami a rejoint, ou attends-les.`;
+      if (minimized) return (
+        <div style={{ position:'fixed', left:'50%', bottom:'max(18px, env(safe-area-inset-bottom))', transform:'translateX(-50%)', zIndex:5300 }}>
+          <style>{`
+            .fs-wait-pill{display:flex;align-items:center;gap:12px;height:52px;padding:0 8px 0 16px;border-radius:999px;cursor:pointer;
+              font-family:var(--font-body);border:1px solid rgba(255,255,255,0.11);
+              background:linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.94), rgba(var(--mineral-bg-rgb),0.92));
+              backdrop-filter:blur(22px) saturate(1.2);-webkit-backdrop-filter:blur(22px) saturate(1.2);
+              box-shadow:0 20px 54px rgba(0,0,0,0.5), 0 0 34px rgba(var(--theme-c1-rgb),0.12), inset 0 1px 0 rgba(255,255,255,0.09);
+              animation:fsWaitPillIn .4s cubic-bezier(.22,1.28,.36,1) both;transition:transform .2s var(--mineral-ease),box-shadow .2s}
+            .fs-wait-pill:hover{transform:translateY(-2px);box-shadow:0 24px 64px rgba(0,0,0,0.55), 0 0 44px rgba(var(--theme-c1-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.10)}
+            @keyframes fsWaitPillIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:none}}
+            .fs-wait-pill-avs{display:flex;align-items:center}
+            .fs-wait-pill-av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
+              font:900 11px var(--font-display);color:#071018;border:2px solid rgba(var(--mineral-bg-rgb),.95);margin-left:-7px}
+            .fs-wait-pill-av:first-child{margin-left:0}
+            .fs-wait-pill-txt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0}
+            .fs-wait-pill-txt b{font-size:11px;font-weight:850;color:var(--mineral-text);letter-spacing:.02em}
+            .fs-wait-pill-txt i{font-style:normal;font-size:9.5px;font-weight:700;color:rgba(244,246,251,0.5)}
+            .fs-wait-pill-go{flex-shrink:0;display:grid;place-items:center;height:36px;padding:0 15px;border-radius:999px;border:none;cursor:pointer;
+              font:800 11px var(--font-body);color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+              box-shadow:0 10px 24px rgba(var(--theme-c1-rgb),0.28)}
+            html.fs-reduce-motion .fs-wait-pill{animation:none}
+            @media (prefers-reduced-motion:reduce){.fs-wait-pill{animation:none}}
+          `}</style>
+          <div className="fs-wait-pill" role="button" tabIndex={0} aria-label="Rouvrir la salle d'attente"
+            onClick={() => setMinimized(false)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMinimized(false); } }}>
+            <span className="fs-wait-dot" style={{ width:7, height:7, borderRadius:'50%', background:'var(--theme-c1)', boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.8)', animation:'fsWaitPulse 1.4s ease-in-out infinite' }} />
+            <span className="fs-wait-pill-avs">
+              {roster.slice(0, 4).map(f => <span key={f.id} className="fs-wait-pill-av" style={{ background: avBgOf(f), opacity: declined.includes(f.id) ? .4 : 1 }}>{f.initial}</span>)}
+              {roster.length > 4 && <span className="fs-wait-pill-av" style={{ background:'rgba(255,255,255,0.10)', color:'var(--mineral-text)' }}>+{roster.length - 4}</span>}
+            </span>
+            <span className="fs-wait-pill-txt">
+              <b>Salle d'attente</b>
+              <i>{isGuest ? `En attente de ${hostName || 'l’hôte'}…` : `${joined.length}/${pending.invited.length} prêt${joined.length > 1 ? 's' : ''}`}</i>
+            </span>
+            {!isGuest && anyJoined && (
+              <button type="button" className="fs-wait-pill-go" onClick={e => { e.stopPropagation(); onStart(); }}>Démarrer</button>
+            )}
+          </div>
+        </div>
+      );
       return (
         <div className="fs-wait-veil" role="dialog" aria-label="Salle d'attente de session partagée">
           <style>{`
@@ -19070,6 +19432,16 @@ void main(){
             html.fs-reduce-motion .fs-wait-dot,html.fs-reduce-motion .fs-wait-badge{animation:none!important}
           `}</style>
           <div className="fs-wait-card">
+            <button type="button" onClick={() => setMinimized(true)} title="Réduire — continuer sur le dashboard pendant l'attente"
+              aria-label="Réduire la salle d'attente"
+              style={{ position:'absolute', right:14, top:14, zIndex:2, display:'flex', alignItems:'center', gap:6, height:28, padding:'0 11px',
+                borderRadius:99, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(255,255,255,0.05)', cursor:'pointer',
+                color:'rgba(244,246,251,0.62)', font:'750 10px var(--font-body)', letterSpacing:'.02em', transition:'all .18s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; e.currentTarget.style.color = 'var(--mineral-text)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(244,246,251,0.62)'; }}>
+              <svg width={10} height={10} viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v7M5.4 7.6L8 10.2l2.6-2.6M4 13h8" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Réduire
+            </button>
             <div className="fs-wait-eyebrow"><span className="fs-wait-dot" />Session partagée</div>
             <div className="fs-wait-title">{title}</div>
             <div className="fs-wait-sub">{subtitle}</div>
@@ -19077,14 +19449,9 @@ void main(){
               {roster.map(f => {
                 const ok = !!f.host || joined.includes(f.id);
                 const no = !f.host && declined.includes(f.id);
-                /* `color` peut être une variable CSS (hôte) : `${color}bb` serait
-                   invalide → dégradé thème complet dans ce cas. */
-                const avBg = (f.color || '').startsWith('var(')
-                  ? 'linear-gradient(145deg, var(--theme-c1), var(--theme-c2))'
-                  : `linear-gradient(145deg, ${f.color}, ${f.color}bb)`;
                 return (
                   <div key={f.id} className={'fs-wait-friend' + (no ? ' off' : '')}>
-                    <div className="fs-wait-av" style={{ background: avBg }}>
+                    <div className="fs-wait-av" style={{ background: avBgOf(f) }}>
                       {!ok && !no && <span className="fs-wait-ring" />}
                       {f.initial}
                       {ok && (
@@ -20295,8 +20662,8 @@ void main(){
               <svg width={12} height={12} viewBox="0 0 14 14" fill="none"><rect x={2.5} y={6} width={9} height={7.5} rx={2} stroke="rgba(255,255,255,0.5)" strokeWidth={1.2}/><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="rgba(255,255,255,0.5)" strokeWidth={1.2}/></svg>
             </div>}
           </div>
-          <div style={{ fontSize:8.5, fontWeight:750, color: owned ? gr.stops[0] : T.muted, textAlign:'center', lineHeight:1.2 }}>{gr.name}</div>
-          <div style={{ fontSize:8, fontWeight:800, color: owned ? gr.stops[0] : 'rgba(248,246,252,0.35)' }}>
+          <div style={{ fontSize: 9.5, fontWeight:750, color: owned ? gr.stops[0] : T.muted, textAlign:'center', lineHeight:1.2 }}>{gr.name}</div>
+          <div style={{ fontSize: 9, fontWeight:800, color: owned ? gr.stops[0] : 'rgba(248,246,252,0.35)' }}>
             {owned ? '✦ Débloqué' : legendary ? '≈ 0,5 %' : '≈ 5 %'}
           </div>
         </div>
@@ -20346,7 +20713,7 @@ void main(){
                 return (
                   <div key={w} style={{flex:1,padding:'10px 6px',borderRadius:14,background:active?'rgba(255,210,125,0.1)':'rgba(255,255,255,0.03)',border:`1px solid ${active?'rgba(255,210,125,0.28)':'rgba(255,255,255,0.07)'}`,textAlign:'center',transition:'all 0.35s'}}>
                     <div style={{fontSize:11,fontWeight:800,color:active?'#ffd27d':T.muted,marginBottom:2}}>S{w}</div>
-                    <div style={{fontSize:8,color:T.muted}}>{w*7} jours</div>
+                    <div style={{fontSize: 9,color:T.muted}}>{w*7} jours</div>
                     {active && <div style={{width:6,height:6,borderRadius:'50%',background:'#ffd27d',boxShadow:'0 0 8px #ffd27d',margin:'5px auto 0'}}/>}
                   </div>
                 );
@@ -20411,7 +20778,7 @@ void main(){
                         <div style={{height:'100%',width:`${pct*100}%`,background:`linear-gradient(90deg,${skin.a},${skin.b})`,borderRadius:99,transition:'width 0.8s ease'}}/>
                       </div>
                     )}
-                    <div style={{fontSize:8,color:T.muted}}>{unlocked?'✦ Débloqué':`${Math.min(streaks.daily||0,skin.streak)}/${skin.streak}j`}</div>
+                    <div style={{fontSize: 9,color:T.muted}}>{unlocked?'✦ Débloqué':`${Math.min(streaks.daily||0,skin.streak)}/${skin.streak}j`}</div>
                   </div>
                 );
               })}
@@ -20484,9 +20851,9 @@ void main(){
           .fs-hm-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px}
           .fs-hm-col{display:flex;flex-direction:column;gap:3px;animation:fsHmColIn .45s ease both}
           @keyframes fsHmColIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-          .fs-hm-mrow span{position:absolute;top:0;font-size:8.5px;font-weight:600;letter-spacing:.04em;color:rgba(244,246,251,0.42);text-transform:capitalize;white-space:nowrap}
+          .fs-hm-mrow span{position:absolute;top:0;font-size:9.5px;font-weight:600;letter-spacing:.04em;color:rgba(244,246,251,0.42);text-transform:capitalize;white-space:nowrap}
           .fs-hm-drow{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
-          .fs-hm-drow div{height:11px;line-height:11px;font-size:8.5px;font-weight:600;color:rgba(244,246,251,0.38);text-align:right;padding-right:7px}
+          .fs-hm-drow div{height:11px;line-height:11px;font-size:9.5px;font-weight:600;color:rgba(244,246,251,0.38);text-align:right;padding-right:7px}
           .fs-hm-tring{position:absolute;inset:-3px;border-radius:5px;border:1.5px solid var(--theme-c1);box-shadow:0 0 9px rgba(var(--theme-c1-rgb),0.55);animation:fsHmPulse 2.2s ease-in-out infinite;pointer-events:none}
           @keyframes fsHmPulse{0%,100%{opacity:1}50%{opacity:.4}}
           html.fs-reduce-motion .fs-hm-col{animation:none!important;opacity:1}
@@ -20611,7 +20978,7 @@ void main(){
                         ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold?'gold':c.crystalGradient, progress:0.88, size:sz, seed:c.seed||c.id })
                         : React.createElement(window.CrystalGem, { progress:window._cStateProgress(si), size:sz, skin:c.skin })
                       }
-                      <div style={{fontSize:8,color:isGold?'#ffd36a':T.muted,fontWeight:800}}>{isGold?'Doré · ':''}{durLabel}</div>
+                      <div style={{fontSize: 9,color:isGold?'#ffd36a':T.muted,fontWeight:800}}>{isGold?'Doré · ':''}{durLabel}</div>
                     </div>
                   );
                 })}

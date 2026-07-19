@@ -37,7 +37,9 @@ LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gra
 
 ## Conventions de code
 - Toute modif applicative se fait dans `index.html` à la racine — jamais ailleurs.
-- UI en français (`lang="fr"`).
+- UI en français (`lang="fr"`), orthotypographie soignée : accents obligatoires partout (« Tâches », « Étape », « Durée », « Aperçu »…), jamais de chaîne UI sans accent.
+- Glossaire tranché : « Dashboard » et « widget » sont des anglicismes assumés ; tout le reste en français (« Réinitialiser » pas "Reset"). Les noms de thèmes/cristaux sont des noms propres (anglais autorisé).
+- Icônes : jamais de glyphe de police (◷ ✓ ✎…) ni d'emoji dans l'UI — utiliser `FsWidgetIcon` (set SVG maison, grille 24, trait 1.9) et `FsCrystalMark` (cristal de récompense) exposés sur `window`.
 - Respecter le style local : alias privés préfixés (`_fsSb`, `_uS3`, `_uEff6`) déjà présents — réutiliser le même motif dans le scope concerné.
 - Couleurs : utiliser les variables CSS `--mineral-*` / `--theme-*` du `:root` comme source de vérité ; ne pas hardcoder de hex ailleurs.
 
