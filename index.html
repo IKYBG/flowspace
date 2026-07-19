@@ -19641,118 +19641,115 @@ void main(){
         <div className={`fs-session-wrap${focusNudgeOpen ? ' fs-session-nudge-open' : ''}${embedded ? ' fs-session-embedded' : ''}`} style={{ position:'relative', flexShrink:0, display:'flex', justifyContent:embedded ? 'center' : 'center', padding:embedded ? 0 : '14px 24px 8px', zIndex:100, width:embedded ? 'min(720px, 100%)' : undefined, minWidth:0, margin:embedded ? '0 auto' : undefined }}>
           <style>{`
             .fs-session-bar{opacity:0;}
-            /* Liseré : un seul trait dégradé, quasi subliminal — la matière parle, pas le contour. */
-            .fs-session-bar::before{content:'';position:absolute;inset:-1px;border-radius:999px;padding:1px;background:linear-gradient(120deg,rgba(var(--theme-c1-rgb),.20),rgba(255,255,255,.06) 40%,rgba(255,255,255,.04) 60%,rgba(var(--theme-c2-rgb),.14));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;}
-            .fs-session-bar::after{content:'';position:absolute;left:14%;right:14%;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);pointer-events:none;}
-            /* Balayage de verre : un reflet traverse la barre toutes les ~7 s — le seul « luxe » animé. */
-            .fs-sb-gleam{position:absolute;inset:0;border-radius:999px;overflow:hidden;pointer-events:none;}
-            .fs-sb-gleam::before{content:'';position:absolute;top:-40%;bottom:-40%;width:34%;left:-40%;transform:rotate(16deg);background:linear-gradient(100deg,transparent,rgba(255,255,255,.045) 46%,rgba(255,255,255,.075) 50%,rgba(255,255,255,.045) 54%,transparent);animation:fsSbGleam 7.2s ease-in-out infinite;}
-            @keyframes fsSbGleam{0%,58%{left:-40%;opacity:0}64%{opacity:1}86%,100%{left:120%;opacity:0}}
-            /* Zones : entrée en décalé, du statut vers l'action. */
-            .fs-sb-zone{animation:fsSbZoneIn .6s var(--mineral-ease) both;}
+            /* ── Cockpit de session : panneau rectangulaire structuré, plus une pilule. ── */
+            /* Ligne d'accent supérieure : la signature du cockpit — dégradé thème + spot lumineux qui balaie lentement. */
+            .fs-sb-accent{position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;
+              background:linear-gradient(90deg,transparent,rgba(var(--theme-c1-rgb),.85) 16%,rgba(var(--theme-c2-rgb),.85) 84%,transparent);}
+            .fs-sb-accent i{position:absolute;top:-1.5px;width:64px;height:5px;border-radius:99px;
+              background:radial-gradient(ellipse,rgba(255,255,255,.85),transparent 70%);filter:blur(2px);
+              animation:fsSbScan 5.6s ease-in-out infinite alternate;}
+            @keyframes fsSbScan{from{left:3%}to{left:calc(97% - 64px)}}
+            .fs-sb-accent.over{background:linear-gradient(90deg,transparent,rgba(255,107,138,.9) 16%,rgba(255,107,138,.9) 84%,transparent);}
+            /* Segments : architecture visible, hairlines verticales. */
+            .fs-sb-seg{border-left:1px solid rgba(255,255,255,.06);align-self:stretch;display:flex;align-items:center;}
+            .fs-sb-cap{font-size:9px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:rgba(207,216,235,.42);white-space:nowrap;}
+            /* LED d'état : point + onde radar — l'indicateur « live » du cockpit. */
+            .fs-sb-led{position:relative;width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+            .fs-sb-led::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid currentColor;opacity:.4;animation:fsSbPing 2.4s cubic-bezier(.16,1,.3,1) infinite;}
+            @keyframes fsSbPing{0%{transform:scale(.45);opacity:.55}70%,100%{transform:scale(1.5);opacity:0}}
+            /* Rail de progression : toute la largeur du cockpit, pointe lumineuse. */
+            .fs-sb-rail{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.045);pointer-events:none;}
+            .fs-sb-railfill{position:relative;height:100%;transition:width 1s linear,background .4s;
+              background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),.85),var(--theme-c2));}
+            .fs-sb-railfill::after{content:'';position:absolute;right:-2px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:inherit;filter:blur(3px);}
+            /* Zones : entrée en décalé. */
+            .fs-sb-zone{animation:fsSbZoneIn .55s var(--mineral-ease) both;}
             @keyframes fsSbZoneIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-            /* Cristallisation : fine ligne de progression fusionnée au bord bas de la pilule. */
-            .fs-sb-track{position:absolute;left:28px;right:28px;bottom:0;height:2px;border-radius:99px;background:rgba(255,255,255,.05);overflow:visible;pointer-events:none;transition:opacity .3s var(--mineral-ease);}
-            .fs-sb-fill{position:relative;height:100%;border-radius:99px;transition:width 1s linear, background .4s;}
-            .fs-sb-fill::after{content:'';position:absolute;right:-3px;top:50%;width:6px;height:6px;border-radius:50%;transform:translateY(-50%);background:inherit;filter:blur(2.5px);}
-            /* Point « live » : la seule pulsation permanente, discrète. */
-            .fs-sb-dot{animation:fsSbDot 2.4s ease-in-out infinite;}
-            @keyframes fsSbDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.78)}}
-            /* Bouton Arrêter : fantôme au repos, se révèle au survol — pas de rose criard permanent. */
-            .fs-session-action{border:1px solid rgba(255,255,255,.09)!important;background:rgba(255,255,255,.035)!important;color:rgba(244,246,251,.55)!important;}
-            .fs-session-bar:hover .fs-session-action{border-color:rgba(255,107,138,.26)!important;color:#ff8fa6!important;}
-            .fs-session-action:hover{background:rgba(255,107,138,.14)!important;border-color:rgba(255,107,138,.42)!important;color:#ffaebd!important;transform:scale(1.05);box-shadow:0 10px 26px rgba(255,107,138,.16);}
-            .fs-session-action:active{transform:scale(.96);}
+            /* Terminer : bouton rectangulaire avec libellé — fantôme au repos, rose assumé au survol. */
+            .fs-session-action{display:flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:12px;cursor:pointer;
+              border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);color:rgba(244,246,251,.6);
+              font:800 11px var(--font-body);letter-spacing:.03em;white-space:nowrap;
+              transition:all .22s var(--mineral-ease);}
+            .fs-session-action:hover{background:rgba(255,107,138,.13);border-color:rgba(255,107,138,.4);color:#ffaebd;transform:translateY(-1px);box-shadow:0 10px 26px rgba(255,107,138,.14);}
+            .fs-session-action:active{transform:translateY(0) scale(.97);}
             .fs-session-timer .fs-sb-colon{display:inline-block;animation:colonBlink 2s step-end infinite;}
             @keyframes fsSessionIn{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
             @keyframes fsAvatarOut{0%{opacity:1;transform:scale(1)}28%{transform:scale(1.1)}100%{opacity:0;transform:scale(.15) translateY(10px)}}
             @keyframes fsAvatarIn{0%{opacity:0;transform:scale(.2) translateY(8px)}62%{transform:scale(1.12)}100%{opacity:1;transform:scale(1) translateY(0)}}
-            html.fs-reduce-motion .fs-sb-gleam::before,html.fs-reduce-motion .fs-sb-dot,html.fs-reduce-motion .fs-sb-colon{animation:none!important;}
+            html.fs-reduce-motion .fs-sb-accent i,html.fs-reduce-motion .fs-sb-led::after,html.fs-reduce-motion .fs-sb-colon,html.fs-reduce-motion .fs-sb-zone{animation:none!important;}
             @media (max-width:768px){
               .fs-session-wrap{padding:10px 10px 6px!important;}
               .fs-session-wrap.fs-session-nudge-open{padding-left:0!important;padding-right:230px!important;}
               .fs-session-wrap.fs-session-nudge-open .fs-session-bar{max-width:220px!important;grid-template-columns:1fr auto!important;padding:0 8px 0 12px!important;gap:8px!important;}
-              .fs-session-bar{height:64px!important;max-width:none!important;padding:0 8px!important;grid-template-columns:auto 1fr auto!important;border-radius:24px!important;}
+              .fs-session-bar{height:60px!important;max-width:none!important;grid-template-columns:1fr auto!important;border-radius:16px!important;}
               .fs-session-status{display:none!important;}
               .fs-session-detail{display:none!important;}
-              .fs-session-timer{font-size:25px!important;letter-spacing:.015em!important;}
-              .fs-session-progress{width:32px!important;height:32px!important;}
-              .fs-session-action{width:40px!important;height:40px!important;}
+              .fs-session-timer{font-size:24px!important;letter-spacing:.02em!important;}
+              .fs-session-action{width:40px!important;height:40px!important;padding:0!important;justify-content:center!important;}
+              .fs-session-action-label{display:none!important;}
             }
           `}</style>
-          <div
-            ref={haloRef}
-            style={{
-              position:'absolute', top:embedded ? -6 : 7, width:embedded ? 'min(700px, 100%)' : 'min(740px, calc(100% - 48px))', height:embedded ? 52 : 62, borderRadius:999,
-              background:`radial-gradient(ellipse at 50% 50%, ${over ? 'rgba(255,107,138,0.16)' : c1(0.14)} 0%, transparent 68%)`,
-              filter:'blur(20px)', opacity:focusNudgeOpen ? .22 : .34, pointerEvents:'none',
-              transform: haloShift,
-              transition:'transform .42s cubic-bezier(.16,1,.3,1), opacity .32s var(--mineral-ease)',
-            }}
-          />
           <div
             ref={barRef}
             className="fs-session-bar"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-              position:'relative', width:embedded ? 'min(700px, 100%)' : 'min(760px, 100%)', maxWidth: compacting ? 160 : (embedded ? 700 : 760), height:compacting ? 58 : (embedded ? 56 : 68), borderRadius:999,
+              position:'relative', width:embedded ? 'min(700px, 100%)' : 'min(780px, 100%)', maxWidth: compacting ? 170 : (embedded ? 700 : 780), height:compacting ? 56 : (embedded ? 62 : 70), borderRadius:16,
               display:compacting ? 'flex' : 'grid', justifyContent:compacting ? 'center' : undefined, gridTemplateColumns:compacting ? undefined : 'minmax(0,1fr) auto minmax(0,1fr)', alignItems:'center',
-              gap:compacting ? 0 : 14, padding:compacting ? '0 10px' : '0 10px 0 18px',
-              background:'linear-gradient(180deg, rgba(14,17,30,0.82), rgba(6,8,16,0.88))',
-              backdropFilter:'blur(26px) saturate(1.3)', WebkitBackdropFilter:'blur(26px) saturate(1.3)',
-              border:'1px solid rgba(220,230,255,0.07)',
+              background:'linear-gradient(180deg, rgba(var(--mineral-surface-rgb),.94), rgba(var(--mineral-bg-rgb),.97))',
+              backdropFilter:'blur(20px) saturate(1.25)', WebkitBackdropFilter:'blur(20px) saturate(1.25)',
+              border:'1px solid rgba(255,255,255,.075)',
               boxShadow:hovered
-                ? `0 22px 60px rgba(0,0,0,.5), 0 0 0 1px ${over ? 'rgba(255,107,138,.08)' : c1(.07)}, inset 0 1px 0 rgba(255,255,255,.06)`
-                : `0 16px 44px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.05)`,
-              transition:'transform .46s cubic-bezier(.16,1,.3,1), max-width .46s cubic-bezier(.16,1,.3,1), height .46s cubic-bezier(.16,1,.3,1), padding .46s cubic-bezier(.16,1,.3,1), gap .46s cubic-bezier(.16,1,.3,1), box-shadow .3s var(--mineral-ease), border-color .3s var(--mineral-ease)',
+                ? '0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05)'
+                : '0 16px 44px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04)',
+              transition:'transform .46s cubic-bezier(.16,1,.3,1), max-width .46s cubic-bezier(.16,1,.3,1), height .46s cubic-bezier(.16,1,.3,1), box-shadow .3s var(--mineral-ease), border-color .3s var(--mineral-ease)',
               transform:barShift,
               overflow:'hidden',
               animation:'fsSessionIn .72s var(--mineral-ease) both',
             }}
           >
-            {/* Teinte d'ambiance unique, à peine perceptible — remplace l'empilement de lueurs. */}
-            <div style={{position:'absolute', inset:0, background:`radial-gradient(ellipse 52% 130% at 50% -34%, ${over ? 'rgba(255,107,138,.07)' : c1(.06)}, transparent 60%)`, pointerEvents:'none'}} />
-            <div className="fs-sb-gleam" aria-hidden="true" />
-            <div className="fs-session-status fs-sb-zone" style={{position:'relative', display:'flex', alignItems:'center', gap:11, minWidth:0, maxWidth: compacting ? 0 : 230, opacity: compacting ? 0 : 1, transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden', animationDelay:'.12s'}}>
-              <div style={{position:'relative', width:36 + shownFriends.length*22, height:36, flexShrink:0, transition:'width .5s cubic-bezier(.22,1.2,.36,1)'}}>
-                <div style={{position:'absolute', left:0, top:0, width:36, height:36, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', boxShadow:'0 6px 16px rgba(0,0,0,.35)', overflow:'hidden', zIndex:1}}>
-                  {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
-                </div>
-                {shownFriends.map((f, i) => (
-                  <div key={f.id} style={{position:'absolute', left:22*(i+1), top:0, width:36, height:36, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:12, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', boxShadow:'0 6px 16px rgba(0,0,0,.35)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : 'fsAvatarIn .55s cubic-bezier(.22,1.4,.36,1) both'}}>{f.initial}</div>
-                ))}
-              </div>
+            {/* Ligne d'accent signature + spot lumineux en balayage lent. */}
+            <span ref={haloRef} className={'fs-sb-accent' + (over ? ' over' : '')} aria-hidden="true"><i /></span>
+
+            {/* ── Segment gauche : état + participants ── */}
+            <div className="fs-session-status fs-sb-zone" style={{position:'relative', display:'flex', alignItems:'center', gap:12, minWidth:0, maxWidth: compacting ? 0 : 300, opacity: compacting ? 0 : 1, padding: compacting ? 0 : '0 0 0 18px', transform: compacting ? 'translateX(-12px)' : 'translateX(0)', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), transform .38s cubic-bezier(.16,1,.3,1), padding .38s cubic-bezier(.16,1,.3,1)', overflow:'hidden', animationDelay:'.1s'}}>
+              <span className="fs-sb-led" style={{background:over ? T.rose : col, color:over ? T.rose : col, boxShadow:`0 0 10px ${over ? T.rose : col}`}} />
               <div style={{minWidth:0}}>
-                <div style={{display:'flex', alignItems:'center', gap:7, color:over?T.rose:T.text, fontSize:12, fontWeight:800, letterSpacing:'-.005em', whiteSpace:'nowrap'}}>
-                  <span className="fs-sb-dot" style={{width:6, height:6, borderRadius:99, background:over?T.rose:col, boxShadow:`0 0 8px ${over?T.rose:col}`}}/>
-                  {label}
+                <div className="fs-sb-cap" style={{color: over ? 'rgba(255,143,166,.8)' : undefined}}>{over ? 'Temps dépassé' : label}</div>
+                <div className="fs-session-detail" style={{marginTop:4, color:'rgba(244,246,251,.8)', fontSize:12.5, fontWeight:750, letterSpacing:'-.01em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:168}}>{detail}</div>
+              </div>
+              <div className="fs-sb-seg fs-session-detail" style={{paddingLeft:13, marginLeft:1}}>
+                <div style={{position:'relative', width:30 + shownFriends.length*19, height:30, flexShrink:0, transition:'width .5s cubic-bezier(.22,1.2,.36,1)'}}>
+                  <div style={{position:'absolute', left:0, top:0, width:30, height:30, borderRadius:'50%', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', display:'grid', placeItems:'center', color:'#070810', fontFamily:T.display, fontWeight:900, fontSize:11, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', overflow:'hidden', zIndex:1}}>
+                    {userPhoto ? <img src={userPhoto} alt={user?.name || 'Profil'} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : userInitial}
+                  </div>
+                  {shownFriends.map((f, i) => (
+                    <div key={f.id} style={{position:'absolute', left:19*(i+1), top:0, width:30, height:30, borderRadius:'50%', background:`linear-gradient(145deg,${f.color},${f.color}bb)`, display:'grid', placeItems:'center', color:'#071018', fontFamily:T.display, fontWeight:900, fontSize:11, border:'2px solid rgba(var(--mineral-bg-rgb),.95)', transition:'left .5s cubic-bezier(.22,1.2,.36,1)', animation:leftIds.includes(f.id) ? 'fsAvatarOut .62s cubic-bezier(.55,0,.7,.4) forwards' : 'fsAvatarIn .55s cubic-bezier(.22,1.4,.36,1) both'}}>{f.initial}</div>
+                  ))}
                 </div>
-                <div className="fs-session-detail" style={{marginTop:4, color:'rgba(207,216,235,.55)', fontSize:11, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:150}}>{detail}</div>
               </div>
             </div>
-            {/* Centre déboîté : anneau + temps posés directement sur le verre — plus de pilule dans la pilule. */}
-            <div className="fs-sb-zone" style={{position:'relative', justifySelf:'center', display:'flex', alignItems:'center', gap:compacting ? 9 : 12, transition:'gap .36s cubic-bezier(.16,1,.3,1)', animationDelay:'.2s'}}>
-              <svg className="fs-session-progress" width={compacting ? 32 : 36} height={compacting ? 32 : 36} viewBox="0 0 36 36" style={{transform:'rotate(-90deg)', flexShrink:0, transition:'width .36s cubic-bezier(.16,1,.3,1), height .36s cubic-bezier(.16,1,.3,1)'}}>
-                <circle cx={18} cy={18} r={R} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth={2}/>
-                <circle cx={18} cy={18} r={R} fill="none" stroke={over?T.rose:col} strokeWidth={2} strokeDasharray={`${circ * progress} ${circ}`} strokeLinecap="round" style={{transition:'stroke-dasharray .5s linear'}}/>
-              </svg>
-              <div ref={timerRef} className="fs-session-timer" style={{fontFamily:T.mono, fontSize:compacting ? 23 : 27, fontWeight:700, lineHeight:1, letterSpacing:'.04em', fontVariantNumeric:'tabular-nums', color:over?T.rose:T.text, transition:'font-size .36s cubic-bezier(.16,1,.3,1), color .4s'}}>
+
+            {/* ── Segment centre : le temps, héros typographique ── */}
+            <div className="fs-sb-zone" style={{position:'relative', justifySelf:'center', display:'flex', alignItems:'baseline', gap:10, padding:'0 20px', animationDelay:'.18s'}}>
+              <div ref={timerRef} className="fs-session-timer" style={{fontFamily:T.mono, fontSize:compacting ? 24 : 30, fontWeight:750, lineHeight:1, letterSpacing:'.03em', fontVariantNumeric:'tabular-nums', color:over ? T.rose : T.text, transition:'font-size .36s cubic-bezier(.16,1,.3,1), color .4s'}}>
                 {over ? '+' : ''}{mm}<span className="fs-sb-colon">:</span>{ss}
               </div>
+              <div className="fs-session-detail" style={{fontFamily:T.mono, fontSize:12, fontWeight:700, color: over ? 'rgba(255,143,166,.85)' : 'rgba(207,216,235,.5)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap'}}>{Math.round(progress * 100)} %</div>
             </div>
-            <div className="fs-sb-zone" style={{position:'relative', display:'flex', justifyContent:'flex-end', alignItems:'center', gap:compacting ? 0 : 12, minWidth:0, maxWidth:compacting ? 0 : 'unset', overflow:'hidden', transition:'gap .36s cubic-bezier(.16,1,.3,1), max-width .38s cubic-bezier(.16,1,.3,1)', animationDelay:'.28s'}}>
-              <div className="fs-session-detail" style={{textAlign:'right', minWidth:0, maxWidth:compacting ? 0 : 130, opacity:compacting ? 0 : 1, transform:compacting ? 'translateX(12px)' : 'translateX(0)', overflow:'hidden', transition:'max-width .32s cubic-bezier(.16,1,.3,1), opacity .22s var(--mineral-ease), transform .32s cubic-bezier(.16,1,.3,1)'}}>
-                <div style={{fontSize:9.5, fontWeight:800, letterSpacing:'var(--fs-label-tracking)', textTransform:'uppercase', color:over?'rgba(255,143,166,.7)':'rgba(207,216,235,.45)', whiteSpace:'nowrap'}}>{over ? 'Temps dépassé' : 'Cristallisation'}</div>
-                <div style={{marginTop:3, fontSize:12.5, color:'rgba(244,246,251,.86)', fontWeight:750, fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap'}}>{Math.round(progress * 100)} %</div>
-              </div>
-              <button className="fs-session-action" onClick={() => onEnd && onEnd(null)} aria-label="Arrêter la session" title="Arrêter la session" style={{width:compacting ? 38 : 42, height:compacting ? 38 : 42, borderRadius:'50%', display:'grid', placeItems:'center', cursor:'pointer', flexShrink:0, transition:'all .28s cubic-bezier(.16,1,.3,1)'}}>
-                <svg width={13} height={13} viewBox="0 0 15 15" fill="none"><rect x="3.5" y="3.5" width="8" height="8" rx="2.4" fill="currentColor"/></svg>
+
+            {/* ── Segment droit : Terminer ── */}
+            <div className="fs-sb-zone" style={{position:'relative', display:'flex', justifyContent:'flex-end', alignItems:'center', minWidth:0, maxWidth:compacting ? 0 : 'unset', opacity:compacting ? 0 : 1, padding: compacting ? 0 : '0 14px 0 0', overflow:'hidden', transition:'max-width .38s cubic-bezier(.16,1,.3,1), opacity .24s var(--mineral-ease), padding .38s cubic-bezier(.16,1,.3,1)', animationDelay:'.26s'}}>
+              <button className="fs-session-action" onClick={() => onEnd && onEnd(null)} aria-label="Arrêter la session" title="Arrêter la session" style={{fontFamily:T.font, flexShrink:0}}>
+                <svg width={10} height={10} viewBox="0 0 15 15" fill="none" style={{flexShrink:0}}><rect x="2.5" y="2.5" width="10" height="10" rx="2.6" fill="currentColor"/></svg>
+                <span className="fs-session-action-label">Terminer</span>
               </button>
             </div>
-            {/* Ligne de cristallisation : la progression fusionnée au bord bas. */}
-            <div className="fs-sb-track" style={{opacity:compacting ? 0 : 1}} aria-hidden="true">
-              <div className="fs-sb-fill" style={{width:`${Math.min(100, progress * 100)}%`, background:over ? T.rose : `linear-gradient(90deg, ${col}, var(--theme-c2))`, boxShadow:`0 0 8px ${over ? 'rgba(255,107,138,.5)' : c1(.4)}`}} />
+
+            {/* ── Rail de progression : toute la largeur du cockpit ── */}
+            <div className="fs-sb-rail" style={{opacity:compacting ? 0 : 1}} aria-hidden="true">
+              <div className="fs-sb-railfill" style={{width:`${Math.min(100, progress * 100)}%`, background:over ? T.rose : undefined}} />
             </div>
           </div>
         </div>
