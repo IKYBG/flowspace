@@ -1336,7 +1336,13 @@
         const val = p[col];
         delete p[col];
         if (val != null && FS_EMBEDDABLE_COLS.includes(col)) {
-          p.widget_style = { ...(p.widget_style || _fsReadWidgetStyle()), [col]: val };
+          /* ATTENTION : cet upsert REMPLACE toute la colonne widget_style. Si on
+             la reconstruit depuis le seul style brut, on efface les données
+             satellites qu'elle embarque — la vitrine en tête (bug des comptes
+             anciens, chez qui `gamification` manque : chaque cristal forgé
+             déclenchait un push gamification-seul qui rasait la vitrine). */
+          const base = p.widget_style || _fsWithStyleExtras(_fsReadWidgetStyle());
+          p.widget_style = { ...base, [col]: val };
         }
       });
       return p;
@@ -2204,6 +2210,13 @@
         try {
           if (widgetStyle.showcase) _fsRawSet('fs_showcase', JSON.stringify(widgetStyle.showcase));
           else if (!ownLocal) _fsRawRemove('fs_showcase');
+          else if (localStorage.getItem('fs_showcase')) {
+            /* Réparation : le local fait foi et le cloud a PERDU la vitrine
+               (colonne widget_style écrasée par un ancien push partiel). On la
+               remet dans la file de push au lieu de la laisser invisible. */
+            window._fsDirtyKeys?.add('fs_showcase');
+            window._fsDirtyThisSession = true;
+          }
           window.dispatchEvent(new CustomEvent('fs-showcase-update'));
         } catch (_) { }
         /* Contenus des widgets Texte embarqués dans widget_style.textWidgets */
@@ -7198,7 +7211,21 @@
     function SessionModal({ onClose, onLaunch }) {
       const [mode, setMode] = _uSA('solo');
       const [email, setEmail] = _uSA('');
-      const [cfg, setCfg] = _uSA({ duration: 50, music: 'Ambient', breaks: true });
+      /* Reprend les réglages de la DERNIÈRE session : on relance presque
+         toujours le même format, autant ne pas le ressaisir à chaque fois. */
+      const [cfg, setCfg] = _uSA(() => {
+        const base = { duration: 50, music: 'Ambient', breaks: true };
+        try {
+          const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || 'null');
+          if (!last) return base;
+          const d = Number(last.duration);
+          return {
+            duration: Number.isFinite(d) && d > 0 && d <= 120 ? d : base.duration,
+            music: typeof last.music === 'string' && last.music ? last.music : base.music,
+            breaks: typeof last.breaks === 'boolean' ? last.breaks : base.breaks,
+          };
+        } catch (e) { return base; }
+      });
       const [emailUser, setEmailUser] = _uSA(null);
       const [emailLooking, setEmailLooking] = _uSA(false);
       const [crystalShape, setCrystalShape] = _uSA('diamond');
@@ -7332,6 +7359,9 @@
 
       const launch = () => {
         if (!canLaunch) return;
+        /* Mémorise le format pour présélectionner la prochaine fois (local :
+           cette clé n'est pas synchronisée, c'est une préférence d'appareil). */
+        try { localStorage.setItem('fs_last_session_cfg', JSON.stringify({ duration: cfg.duration, music: cfg.music, breaks: cfg.breaks })); } catch (e) {}
         const autoGrad = window._randomGradient ? window._randomGradient() : 'aurora';
         /* Tirage de rareté : ~0,5 % légendaire, sinon ~5 % rare (doré inclus).
            Les couleurs rares/légendaires ne sont JAMAIS sélectionnables à la
@@ -7786,7 +7816,7 @@
       );
     }
 
-    function FocusScreen({ user, sessions, onStart, initialTab = 'focus' }) {
+    function FocusScreen({ user, sessions, onStart, initialTab = 'focus', onOpenCollection }) {
       const [tab, setTab] = React.useState(initialTab);
       React.useEffect(() => setTab(initialTab), [initialTab]);
       const crystalKey = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
@@ -7840,7 +7870,7 @@
           <div className="fs-focus-screen-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
             <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
-              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true })}
+              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection })}
             </div>
           </div>
         </div>
@@ -14333,22 +14363,8 @@ void main(){
                       <input className="fs-set-input" value={email || ''} disabled={emailLocked} readOnly={emailLocked} placeholder="email@domaine.com" />
                     </div>
                   </div>
-                  {/* Collection de cristaux : le codex complet avec cotes de tirage. */}
-                  {window.CollectionScreen && (
-                    <div style={{ padding: '14px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <button type="button" onClick={() => onNavigate('collection')}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}>
-                        {window.FsCrystalMark ? React.createElement(window.FsCrystalMark, { size: 10 }) : <span className="fs-showcase-facet" style={{ width: 8, height: 8, flexShrink: 0 }} />}
-                        <span style={{ minWidth: 0, flex: 1 }}>
-                          <span className="fs-set-row-t" style={{ display: 'block' }}>Collection de cristaux</span>
-                          <span className="fs-set-row-d" style={{ display: 'block' }}>Tous tes cristaux, les raretés et leurs cotes de tirage.</span>
-                        </span>
-                        <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ color: T.muted, flexShrink: 0 }}>
-                          <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
+                  {/* La collection vit désormais dans la Grotte (Focus → Cristaux),
+                     là où l'on regarde ses gemmes — plus enterrée dans les réglages. */}
                   {/* Vitrine de profil — fusionnée dans Profil (accordéon) pour
                      garder la page courte ; c'est la facette publique du profil. */}
                   {window.ShowcaseEditor && (
@@ -16107,7 +16123,7 @@ void main(){
                 <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} />}
                 {screen === 'tasks' && <TasksScreen />}
-                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux' })}
+                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux', onOpenCollection: () => go('collection') })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} />}
@@ -16116,7 +16132,7 @@ void main(){
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
-                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true) })}
+                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), onOpenCollection: () => go('collection') })}
                 {screen === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { onNavigate: go, user })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
                 {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
@@ -16209,13 +16225,14 @@ void main(){
 
   <script type="text/babel">
     /* ── Collection de cristaux ──────────────────────────────────────────────
-       Le codex du jeu : chaque dégradé existant avec ses cotes de tirage ; les
-       non-découverts restent en silhouette (désir de collection). Alimentée par
-       fs_crystals_{uid} — la même source que la vitrine. */
+       Le codex du jeu : chaque dégradé existant avec sa cote de tirage. Les
+       cristaux non découverts restent en silhouette scellée (désir de
+       collection) ; les possédés portent la lumière de leur propre gemme.
+       Alimentée par fs_crystals_{uid} — la même source que la vitrine. */
     const FS_COLL_TIERS = [
-      { id: 'legendary', label: 'Légendaires', odds: '≈ 1 forge sur 200', hint: 'Le tirage le plus rare de LumenOS.', tint: '#e9d5ff' },
-      { id: 'rare', label: 'Rares', odds: '≈ 1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
-      { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: 'rgba(248,246,252,0.62)' },
+      { id: 'legendary', label: 'Légendaires', odds: '1 forge sur 200', hint: 'Le tirage le plus rare de LumenOS.', tint: '#e9d5ff' },
+      { id: 'rare', label: 'Rares', odds: '1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
+      { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: '#cfd8eb' },
     ];
     function CollectionScreen({ onNavigate, user }) {
       const readOwned = () => { try { return JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []; } catch (e) { return []; } };
@@ -16235,71 +16252,174 @@ void main(){
         : id === 'rare' ? grads.filter(g => g.rare && !g.legendary)
         : grads.filter(g => !g.rare && !g.legendary);
       const discovered = grads.filter(g => counts[g.id]).length;
+      const pct = grads.length ? Math.round((discovered / grads.length) * 100) : 0;
+      const totalMin = owned.reduce((n, c) => n + (Number(c.duration) || 0), 0);
+      /* Anneau de complétion */
+      const R = 34, C = 2 * Math.PI * R;
+
       return (
-        <div className="fs-coll" style={{ width:'100%', height:'100%', overflow:'auto', color:T.text, fontFamily:T.font }}>
+        <div className="fs-coll" style={{ width: '100%', height: '100%', overflow: 'auto', color: T.text, fontFamily: T.font }}>
           <style>{`
             .fs-coll::-webkit-scrollbar{width:0}
-            .fs-coll-inner{max-width:920px;margin:0 auto;padding:clamp(20px,3.5vh,36px) clamp(18px,3.5vw,40px) 48px}
-            .fs-coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
-            .fs-coll-cell{position:relative;border-radius:var(--mineral-radius-md);border:1px solid rgba(255,255,255,.07);
-              background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(0,0,0,.14));padding:16px 10px 13px;
-              display:flex;flex-direction:column;align-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-              transition:transform .2s var(--mineral-ease),border-color .2s,box-shadow .2s}
-            .fs-coll-cell:hover{transform:translateY(-2px)}
-            .fs-coll-cell.got:hover{border-color:rgba(var(--theme-c1-rgb),.3);box-shadow:var(--fs-elev-1),inset 0 1px 0 rgba(255,255,255,.07)}
-            .fs-coll-gem{position:relative;height:60px;display:grid;place-items:center;filter:drop-shadow(0 10px 16px rgba(0,0,0,.4))}
-            .fs-coll-gem::after{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);width:38px;height:7px;
-              border-radius:50%;background:radial-gradient(ellipse,var(--gem-glow,rgba(var(--theme-c1-rgb),.4)),transparent 74%);filter:blur(2.5px)}
-            .fs-coll-cell.locked .fs-coll-gem{filter:grayscale(1) brightness(.34) drop-shadow(0 8px 12px rgba(0,0,0,.4));opacity:.7}
-            .fs-coll-cell.locked .fs-coll-gem::after{opacity:.25}
-            .fs-coll-name{margin-top:10px;font-size:11px;font-weight:850;letter-spacing:.02em;color:rgba(248,246,252,.88);
+            .fs-coll-inner{max-width:1000px;margin:0 auto;padding:clamp(18px,3vh,32px) clamp(16px,3vw,40px) 56px}
+
+            /* ── En-tête : identité + complétion en un coup d'œil ── */
+            .fs-coll-back{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 10px;border-radius:11px;cursor:pointer;
+              border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:var(--mineral-muted);
+              font:750 11.5px var(--font-body);transition:all .18s var(--mineral-ease)}
+            .fs-coll-back:hover{background:rgba(255,255,255,.09);color:var(--mineral-text)}
+            .fs-coll-hero{display:flex;align-items:center;gap:clamp(16px,3vw,34px);margin:18px 0 8px;flex-wrap:wrap}
+            .fs-coll-eyebrow{font-size:9.5px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:rgba(var(--theme-c1-rgb),.95)}
+            .fs-coll-title{font-family:var(--font-display);font-size:clamp(26px,3.4vw,38px);font-weight:900;letter-spacing:-.04em;line-height:1.02;margin-top:8px}
+            .fs-coll-lede{margin-top:9px;max-width:52ch;font-size:12.5px;line-height:1.6;color:var(--mineral-muted)}
+            .fs-coll-ring{position:relative;width:96px;height:96px;flex-shrink:0;display:grid;place-items:center;margin-left:auto}
+            .fs-coll-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+            .fs-coll-ring-val{font-family:var(--font-display);font-size:21px;font-weight:900;letter-spacing:-.03em;line-height:1;
+              font-variant-numeric:tabular-nums;color:var(--mineral-text)}
+            .fs-coll-ring-lbl{margin-top:3px;font-size:8.5px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;color:rgba(248,246,252,.42)}
+
+            /* ── Bandeau de stats ── */
+            .fs-coll-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:22px 0 30px}
+            .fs-coll-stat{padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.07);
+              background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+            .fs-coll-stat b{display:block;font-family:var(--font-display);font-size:20px;font-weight:900;letter-spacing:-.03em;
+              font-variant-numeric:tabular-nums;line-height:1}
+            .fs-coll-stat span{display:block;margin-top:5px;font-size:9px;font-weight:850;letter-spacing:.12em;
+              text-transform:uppercase;color:rgba(248,246,252,.42)}
+
+            /* ── Sections de rareté ── */
+            .fs-coll-sec{margin-bottom:30px}
+            .fs-coll-sec-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:5px}
+            .fs-coll-rail{width:3px;height:22px;border-radius:99px;flex-shrink:0}
+            .fs-coll-sec-name{font-family:var(--font-display);font-size:16px;font-weight:900;letter-spacing:-.025em}
+            .fs-coll-odds{font-size:9.5px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;
+              padding:4px 10px;border-radius:99px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);
+              color:rgba(248,246,252,.62);white-space:nowrap}
+            .fs-coll-sec-count{margin-left:auto;font-size:11px;font-weight:800;color:rgba(248,246,252,.5);font-variant-numeric:tabular-nums}
+            .fs-coll-sec-hint{font-size:11px;color:var(--mineral-muted);margin:0 0 13px 14px}
+            .fs-coll-bar{height:3px;border-radius:99px;background:rgba(255,255,255,.06);margin:0 0 15px 14px;overflow:hidden}
+            .fs-coll-bar i{display:block;height:100%;border-radius:99px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+
+            /* ── Cartes ── */
+            .fs-coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:10px}
+            .fs-coll-cell{position:relative;border-radius:20px;padding:18px 12px 14px;overflow:hidden;
+              border:1px solid rgba(255,255,255,.07);
+              background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.16));
+              display:flex;flex-direction:column;align-items:center;text-align:center;
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+              transition:transform .24s cubic-bezier(.34,1.56,.64,1),border-color .24s,box-shadow .24s}
+            /* Lueur propre à la gemme, révélée au survol des possédées */
+            .fs-coll-cell.got::before{content:'';position:absolute;left:50%;top:-18%;width:120%;height:70%;transform:translateX(-50%);
+              background:radial-gradient(ellipse at 50% 50%,var(--gem-glow),transparent 68%);
+              opacity:.16;filter:blur(16px);pointer-events:none;transition:opacity .3s}
+            .fs-coll-cell.got:hover{transform:translateY(-3px);border-color:var(--gem-edge);
+              box-shadow:0 16px 34px rgba(0,0,0,.34),0 0 26px var(--gem-soft),inset 0 1px 0 rgba(255,255,255,.08)}
+            .fs-coll-cell.got:hover::before{opacity:.34}
+            .fs-coll-gem{position:relative;height:64px;display:grid;place-items:center;
+              filter:drop-shadow(0 10px 16px rgba(0,0,0,.42))}
+            .fs-coll-gem::after{content:'';position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);
+              width:40px;height:8px;border-radius:50%;
+              background:radial-gradient(ellipse,var(--gem-glow),transparent 74%);filter:blur(3px)}
+            /* Silhouette scellée : sombre et nette, pas un simple gris délavé */
+            .fs-coll-cell.locked .fs-coll-gem{filter:brightness(0) drop-shadow(0 6px 10px rgba(0,0,0,.5));opacity:.42}
+            .fs-coll-cell.locked .fs-coll-gem::after{opacity:.12}
+            .fs-coll-name{margin-top:12px;font-size:11.5px;font-weight:850;letter-spacing:-.005em;color:rgba(248,246,252,.9);
               max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-            .fs-coll-cell.locked .fs-coll-name{color:rgba(248,246,252,.4)}
-            .fs-coll-sub{margin-top:3px;font-size:9.5px;font-weight:750;color:rgba(248,246,252,.4);font-variant-numeric:tabular-nums}
-            .fs-coll-badge{position:absolute;top:8px;right:8px;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
-              display:grid;place-items:center;font-size:10px;font-weight:900;color:#070810;
-              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));box-shadow:0 6px 14px rgba(var(--theme-c1-rgb),.3)}
-            .fs-coll-stat{display:inline-flex;align-items:baseline;gap:6px;padding:8px 14px;border-radius:14px;
-              border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
-            .fs-coll-stat b{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--theme-c1)}
-            .fs-coll-stat span{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(248,246,252,.45)}
-            @media(max-width:560px){.fs-coll-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}}
+            .fs-coll-cell.locked .fs-coll-name{color:rgba(248,246,252,.34)}
+            .fs-coll-sub{margin-top:4px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+              color:rgba(248,246,252,.36);font-variant-numeric:tabular-nums}
+            .fs-coll-badge{position:absolute;top:9px;right:9px;min-width:21px;height:21px;padding:0 7px;border-radius:99px;
+              display:grid;place-items:center;font-size:10px;font-weight:900;color:#070810;font-variant-numeric:tabular-nums;
+              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));box-shadow:0 6px 14px rgba(var(--theme-c1-rgb),.28)}
+            .fs-coll-lock{position:absolute;top:10px;right:11px;color:rgba(248,246,252,.22)}
+
+            @media (max-width:640px){
+              .fs-coll-stats{grid-template-columns:repeat(2,1fr)}
+              .fs-coll-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+              .fs-coll-ring{margin-left:0}
+              .fs-coll-hero{gap:16px}
+            }
+            /* PC modestes : on coupe les lueurs floutées (coûteuses en peinture) */
+            html.fs-perf-lite .fs-coll-cell.got::before{display:none}
+            html.fs-perf-lite .fs-coll-gem{filter:none}
+            html.fs-reduce-motion .fs-coll-cell{transition:none}
           `}</style>
           <div className="fs-coll-inner">
-            <button onClick={() => onNavigate('settings')} style={{ height:32, borderRadius:12, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 12px', fontSize:11, fontWeight:750, fontFamily:T.font, cursor:'pointer', marginBottom:16 }}>Retour</button>
-            <div style={{ fontSize:10, fontWeight:900, letterSpacing:'var(--fs-label-tracking)', textTransform:'uppercase', color:'rgba(var(--theme-c1-rgb),.92)', marginBottom:8 }}>Collection</div>
-            <div style={{ fontFamily:T.display, fontSize:'clamp(28px,3.6vw,42px)', lineHeight:1, fontWeight:900, letterSpacing:'-.04em' }}>Ta collection de cristaux.</div>
-            <div style={{ marginTop:10, maxWidth:560, fontSize:13, lineHeight:1.6, color:T.muted }}>Chaque session de focus réussie forge un cristal. Les rares et les légendaires ne s'obtiennent qu'au tirage de la forge — personne ne peut les choisir.</div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:10, margin:'18px 0 26px' }}>
-              <span className="fs-coll-stat"><b>{owned.length}</b><span>forgés</span></span>
-              <span className="fs-coll-stat"><b>{discovered}/{grads.length}</b><span>découverts</span></span>
-              <span className="fs-coll-stat"><b>{owned.filter(c => c.rarity === 'rare' || c.rarity === 'gold').length}</b><span>rares</span></span>
-              <span className="fs-coll-stat"><b>{owned.filter(c => c.rarity === 'legendary').length}</b><span>légendaires</span></span>
+            <button className="fs-coll-back" onClick={() => onNavigate('cristaux')}>
+              <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Grotte
+            </button>
+
+            <div className="fs-coll-hero">
+              <div style={{ minWidth: 0 }}>
+                <div className="fs-coll-eyebrow">Collection</div>
+                <h1 className="fs-coll-title">Le codex des cristaux.</h1>
+                <p className="fs-coll-lede">
+                  Chaque session réussie forge une gemme. Les rares et les légendaires ne s'obtiennent qu'au tirage
+                  de la forge — personne ne peut les choisir.
+                </p>
+              </div>
+              <div className="fs-coll-ring" role="img" aria-label={`${pct} % du codex découvert`}>
+                <svg viewBox="0 0 96 96" width="96" height="96">
+                  <circle cx="48" cy="48" r={R} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="6" />
+                  <circle cx="48" cy="48" r={R} fill="none" stroke="var(--theme-c1)" strokeWidth="6" strokeLinecap="round"
+                    strokeDasharray={`${(C * pct) / 100} ${C}`}
+                    style={{ transition: 'stroke-dasharray .8s cubic-bezier(.22,1,.36,1)' }} />
+                </svg>
+                <div style={{ textAlign: 'center' }}>
+                  <div className="fs-coll-ring-val">{pct} %</div>
+                  <div className="fs-coll-ring-lbl">Codex</div>
+                </div>
+              </div>
             </div>
+
+            <div className="fs-coll-stats">
+              <div className="fs-coll-stat"><b style={{ color: 'var(--theme-c1)' }}>{owned.length}</b><span>Forgés</span></div>
+              <div className="fs-coll-stat"><b>{discovered}<span style={{ display: 'inline', fontSize: 13, fontWeight: 800, color: 'rgba(248,246,252,.35)', letterSpacing: 0, textTransform: 'none' }}> / {grads.length}</span></b><span>Découverts</span></div>
+              <div className="fs-coll-stat"><b style={{ color: '#9ae8ff' }}>{owned.filter(c => c.rarity === 'rare' || c.rarity === 'gold').length}</b><span>Rares</span></div>
+              <div className="fs-coll-stat"><b style={{ color: '#e9d5ff' }}>{owned.filter(c => c.rarity === 'legendary').length}</b><span>Légendaires</span></div>
+            </div>
+
             {FS_COLL_TIERS.map(tier => {
               const items = tierItems(tier.id);
               if (!items.length) return null;
               const got = items.filter(g => counts[g.id]).length;
+              const ratio = Math.round((got / items.length) * 100);
               return (
-                <section key={tier.id} style={{ marginBottom:28 }}>
-                  <div style={{ display:'flex', alignItems:'baseline', gap:12, flexWrap:'wrap', marginBottom:4 }}>
-                    <span style={{ fontSize:14.5, fontWeight:900, fontFamily:T.display, letterSpacing:'-.02em', color:tier.tint }}>{tier.label}</span>
-                    <span style={{ fontSize:10, fontWeight:850, letterSpacing:'.08em', textTransform:'uppercase', padding:'3px 9px', borderRadius:99, border:'1px solid rgba(255,255,255,.10)', background:'rgba(255,255,255,.04)', color:'rgba(248,246,252,.6)' }}>{tier.odds}</span>
-                    <span style={{ marginLeft:'auto', fontSize:10.5, color:T.muted, fontVariantNumeric:'tabular-nums' }}>{got}/{items.length}</span>
+                <section className="fs-coll-sec" key={tier.id}>
+                  <div className="fs-coll-sec-head">
+                    <span className="fs-coll-rail" style={{ background: `linear-gradient(180deg, ${tier.tint}, ${tier.tint}33)`, boxShadow: `0 0 10px ${tier.tint}55` }} />
+                    <span className="fs-coll-sec-name" style={{ color: tier.tint }}>{tier.label}</span>
+                    <span className="fs-coll-odds">{tier.odds}</span>
+                    <span className="fs-coll-sec-count">{got}/{items.length}</span>
                   </div>
-                  <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>{tier.hint}</div>
+                  <div className="fs-coll-sec-hint">{tier.hint}</div>
+                  <div className="fs-coll-bar"><i style={{ width: `${ratio}%`, background: `linear-gradient(90deg, ${tier.tint}88, ${tier.tint})` }} /></div>
                   <div className="fs-coll-grid">
                     {items.map((g, i) => {
                       const n = counts[g.id] || 0;
+                      const glow = g.glow || 'rgba(var(--theme-c1-rgb),.4)';
                       return (
-                        <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked')} style={{ '--gem-glow': g.glow }}
+                        <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked')}
+                          style={{ '--gem-glow': glow, '--gem-edge': glow.replace(/[\d.]+\)$/, '0.34)'), '--gem-soft': glow.replace(/[\d.]+\)$/, '0.16)') }}
                           title={n ? `${g.name} · ${n} forgé${n > 1 ? 's' : ''}` : `${g.name} — pas encore découvert`}>
                           <div className="fs-coll-gem">
-                            {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:'diamond', gradientId:g.id, progress:.88, size:46, seed:i + 2 }) : null}
+                            {window.ShapedCrystalGem
+                              ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: g.id, progress: .88, size: 50, seed: i + 2 })
+                              : null}
                           </div>
-                          <div className="fs-coll-name">{g.name}</div>
-                          <div className="fs-coll-sub">{n ? `${n} forgé${n > 1 ? 's' : ''}` : 'Non découvert'}</div>
+                          <div className="fs-coll-name">{n ? g.name : '— — —'}</div>
+                          <div className="fs-coll-sub">{n ? `${n} forgé${n > 1 ? 's' : ''}` : 'Scellé'}</div>
                           {n > 1 && <span className="fs-coll-badge">×{n}</span>}
+                          {!n && (
+                            <svg className="fs-coll-lock" width={11} height={11} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="2" />
+                              <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          )}
                         </div>
                       );
                     })}
@@ -19223,7 +19343,7 @@ void main(){
       return cv;
     }
 
-    function MesCristauxPanel({ open, onClose, user, embedded = false }) {
+    function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection }) {
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
       const [sel, setSel] = React.useState(null);
@@ -19544,6 +19664,23 @@ void main(){
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
               .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
               .fs-cv-header>*{pointer-events:auto}
+              /* Accès à la collection : porte d'entrée du codex, à hauteur des stats. */
+              .fs-cv-collection{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:13px;cursor:pointer;
+                font:800 11.5px var(--font-body);letter-spacing:.02em;white-space:nowrap;color:#dff2ff;
+                border:1px solid rgba(140,220,255,.24);
+                background:linear-gradient(180deg,rgba(14,32,58,.86),rgba(4,10,24,.82));
+                backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+                box-shadow:0 10px 24px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.07);
+                transition:transform .2s cubic-bezier(.34,1.56,.64,1),border-color .2s,box-shadow .2s,background .2s}
+              .fs-cv-collection:hover{transform:translateY(-1px);border-color:rgba(140,220,255,.5);
+                background:linear-gradient(180deg,rgba(20,44,78,.92),rgba(6,14,30,.88));
+                box-shadow:0 14px 30px rgba(0,0,0,.4),0 0 22px rgba(119,240,255,.16),inset 0 1px 0 rgba(255,255,255,.1)}
+              .fs-cv-collection:active{transform:translateY(0) scale(.97)}
+              .fs-cv-collection .fs-cv-collection-short{display:none}
+              .fs-cv-collection-gem{width:9px;height:11px;flex-shrink:0;
+                clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
+                background:linear-gradient(158deg,#fff,#8ef6ff 40%,#e7b7ff);
+                filter:drop-shadow(0 0 5px rgba(119,240,255,.7))}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
               .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:13px;border:1px solid rgba(140,220,255,.14);background:rgba(4,10,24,.7);backdrop-filter:blur(8px)}
               .fs-cv-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(8,16,32,.7);color:rgba(230,242,255,.85);font-size:16px;cursor:pointer}
@@ -19557,6 +19694,10 @@ void main(){
               .fs-cv-empty{position:absolute;inset:0;display:grid;place-items:center;z-index:50;pointer-events:none;text-align:center}
               @media (max-width:680px){
                 .fs-cv-stats{display:none}
+                /* Mobile : le bouton reste, réduit à son intitulé court. */
+                .fs-cv-collection{height:34px;padding:0 11px;font-size:11px}
+                .fs-cv-collection .fs-cv-collection-long{display:none}
+                .fs-cv-collection .fs-cv-collection-short{display:inline}
                 .fs-cv-hint{display:none}
                 .fs-cv-detail{left:10px;right:10px;bottom:10px;width:auto}
                 .fs-cv-hud{bottom:auto;top:74px}
@@ -19633,6 +19774,14 @@ void main(){
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  {onOpenCollection && (
+                    <button type="button" className="fs-cv-collection" onClick={onOpenCollection}
+                      title="Voir tous les cristaux, leurs raretés et leurs cotes de tirage">
+                      <span className="fs-cv-collection-gem" aria-hidden="true" />
+                      <span className="fs-cv-collection-long">Voir ma collection</span>
+                      <span className="fs-cv-collection-short">Collection</span>
+                    </button>
+                  )}
                   {crystals.length > 0 && (
                     <div className="fs-cv-stats">
                       <div className="fs-cv-stat">
