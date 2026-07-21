@@ -8977,7 +8977,6 @@
         setCristauxOpen(false);
         setAccountOpen(false);
         setFocusMenuOpen(false);
-        setEvolutionMenuOpen(false);
       };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
       const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
@@ -9322,7 +9321,7 @@
                 </div>
                 <button ref={gearRef} type="button" className={'fs-gear-dot' + (screen === 'settings' ? ' fs-account-open' : '')}
                   onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(screen === 'settings' ? 'dashboard' : 'settings'); }}
-                  aria-label={screen === 'settings' ? 'Fermer les settings' : 'Ouvrir les settings'}
+                  aria-label={screen === 'settings' ? 'Fermer les paramètres' : 'Ouvrir les paramètres'}
                   aria-pressed={screen === 'settings'}>
                   <svg className="fs-gear-icon" viewBox="0 0 24 24">
                     <path d="M12 6.2a5.8 5.8 0 1 0 0 11.6a5.8 5.8 0 0 0 0-11.6Z" />
