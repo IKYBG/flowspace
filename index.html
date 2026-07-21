@@ -436,6 +436,31 @@
         radial-gradient(ellipse 34% 22% at 50% 0%, rgba(255,255,255,0.050), transparent 72%);
       opacity: 0.9;
     }
+    /* Retour : même pastille partout (grotte, notes, collection) — l'utilisateur
+       apprend un seul geste pour sortir d'un écran de second niveau. */
+    .fs-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 32px;
+      padding: 0 13px 0 10px;
+      border-radius: 11px;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--mineral-muted);
+      font: 750 11.5px var(--font-body);
+      white-space: nowrap;
+      transition: background .18s var(--mineral-ease), color .18s var(--mineral-ease), transform .18s var(--mineral-ease);
+    }
+    .fs-back-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--mineral-text);
+      transform: translateX(-2px);
+    }
+    .fs-back-btn:active { transform: translateX(0) scale(.97); }
+    .fs-back-btn svg { flex-shrink: 0; }
+
     .fs-dashboard-header {
       position: relative;
       background:
@@ -7883,7 +7908,7 @@
       );
     }
 
-    function FocusScreen({ user, sessions, onStart, initialTab = 'focus', onOpenCollection, hotkeyEnabled = true }) {
+    function FocusScreen({ user, sessions, onStart, initialTab = 'focus', onOpenCollection, onBack, hotkeyEnabled = true }) {
       const [tab, setTab] = React.useState(initialTab);
       React.useEffect(() => setTab(initialTab), [initialTab]);
       /* Entrée / Espace → ouvre le lanceur, comme « Démarrer une session ». */
@@ -7939,7 +7964,7 @@
           <div className="fs-focus-screen-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
             <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
-              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection })}
+              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection, onBack })}
             </div>
           </div>
         </div>
@@ -7951,83 +7976,298 @@
   <script type="text/babel">
     const { useState: _uSB } = React;
 
+    /* ── Accueil : ce que LumenOS est vraiment ────────────────────────────────
+       L'ancien parcours vendait « un dashboard adaptable » sans jamais montrer
+       l'ÉTENDUE du réglage, ni la boucle de jeu. Cinq temps : ton espace →
+       compose-le → habille-le → travaille dedans (seul ou à deux) → récolte
+       tes cristaux. Chaque visuel DÉMONTRE au lieu de décorer ; l'étape des
+       thèmes est manipulable, c'est là que le déclic se produit. */
+    const OB_THEMES = [
+      { id: 'cosmos', name: 'Mineral OS', a: '#8fdcff', b: '#b891ff' },
+      { id: 'sunset', name: 'Sunset', a: '#f84d6d', b: '#ff7c2a' },
+      { id: 'aurora', name: 'Aurora', a: '#32c896', b: '#30b8ff' },
+      { id: 'royal', name: 'Royal', a: '#7828ff', b: '#ffc832' },
+      { id: 'sakura', name: 'Sakura', a: '#ff69b4', b: '#ffb4d2' },
+    ];
+    const OB_WIDGETS = ['Horloge', 'Tâches', 'Note rapide', 'Sons de focus', 'Pomodoro', 'Régularité', 'Image', 'Texte', 'Liens'];
+
+    function ObThemeVisual() {
+      const [sel, setSel] = _uSB(0);
+      const t = OB_THEMES[sel];
+      return (
+        <div className="ob-visual">
+          {/* Mini-dashboard qui prend réellement les couleurs choisies */}
+          <div className="ob-canvas" style={{ background: `radial-gradient(ellipse 70% 55% at 18% 12%, ${t.a}26, transparent 66%), radial-gradient(ellipse 55% 45% at 84% 82%, ${t.b}1f, transparent 66%), #0a0b14` }}>
+            <div className="ob-canvas-row">
+              <div className="ob-tile" style={{ borderColor: `${t.a}44`, background: `linear-gradient(150deg, ${t.a}1f, transparent)` }}>
+                <span style={{ fontFamily: T.display, fontWeight: 900, fontSize: 22, letterSpacing: '-.04em', background: `linear-gradient(120deg, ${t.a}, ${t.b})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>09:41</span>
+              </div>
+              <div className="ob-tile sm" style={{ borderColor: `${t.b}33` }}>
+                <i style={{ background: t.a }} /><i style={{ background: t.b, opacity: .5 }} /><i style={{ background: 'rgba(255,255,255,.16)' }} />
+              </div>
+            </div>
+            <div className="ob-canvas-bar"><i style={{ width: '62%', background: `linear-gradient(90deg, ${t.a}, ${t.b})` }} /></div>
+          </div>
+          <div className="ob-swatches" role="group" aria-label="Aperçu des thèmes">
+            {OB_THEMES.map((th, i) => (
+              <button key={th.id} type="button" onClick={() => setSel(i)} title={th.name}
+                aria-label={`Thème ${th.name}`} aria-pressed={i === sel}
+                className={'ob-swatch' + (i === sel ? ' on' : '')}
+                style={{ background: `linear-gradient(135deg, ${th.a}, ${th.b})` }} />
+            ))}
+          </div>
+          <div className="ob-swatch-note">{t.name} — et 20 autres, ou tes propres couleurs</div>
+        </div>
+      );
+    }
+
     function OnboardingScreen({ onDone }) {
       const [step, setStep] = _uSB(0);
+
       const STEPS = [
         {
-          kicker: 'Bienvenue', title: 'Ton espace,\ntes règles.',
-          body: 'LumenOS est un tableau de bord personnel qui s\'adapte à ta façon de travailler — pas l\'inverse.',
+          kicker: 'Bienvenue',
+          title: 'Ton espace,\ntes règles.',
+          body: 'LumenOS est un tableau de bord personnel. Rien n’y est figé : tu choisis ce qui s’affiche, où, et à quoi ça ressemble.',
           visual: (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: 320 }}>
-              {[{ label: 'Clock', size: 'span 2', h: 72 }, { label: 'Pomodoro', size: 'auto', h: 72 }, { label: 'Tasks', size: 'auto', h: 72 }].map(w => (
-                <div key={w.label} style={{ gridColumn: w.size, height: w.h, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{w.label}</span>
+            <div className="ob-visual">
+              <div className="ob-canvas ob-canvas-hero">
+                <div className="ob-canvas-row">
+                  <div className="ob-tile" style={{ borderColor: 'rgba(var(--theme-c1-rgb),.34)', background: 'linear-gradient(150deg, rgba(var(--theme-c1-rgb),.14), transparent)' }}>
+                    <span style={{ fontFamily: T.display, fontWeight: 900, fontSize: 22, letterSpacing: '-.04em', color: T.c1 }}>09:41</span>
+                  </div>
+                  <div className="ob-tile sm"><i style={{ background: T.c1 }} /><i style={{ background: 'rgba(255,255,255,.22)' }} /><i style={{ background: 'rgba(255,255,255,.12)' }} /></div>
                 </div>
-              ))}
-            </div>
-          ),
-        },
-        {
-          kicker: 'Mise en page', title: 'Glisse. Dépose.\nFais-en le tien.',
-          body: 'Chaque widget est redimensionnable et repositionnable. Compose la mise en page exacte dont tu as besoin.',
-          visual: (
-            <div style={{ position: 'relative', width: 320, height: 180 }}>
-              <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gap: 10 }}>
-                <div style={{ gridRow: '1/3', background: `${c1(0.078)}`, border: `1.5px solid ${c1(0.267)}`, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontFamily: T.display, fontWeight: 800, fontSize: 32, color: T.c1, letterSpacing: '-0.04em' }}>09:41</span>
+                <div className="ob-canvas-row">
+                  <div className="ob-tile sm wide"><i style={{ background: 'rgba(255,255,255,.2)', width: '70%' }} /><i style={{ background: 'rgba(255,255,255,.12)', width: '45%' }} /></div>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 14 }} />
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 14 }} />
               </div>
-              <div style={{ position: 'absolute', left: 'calc(2/3 * 100% + 2px)', bottom: '2px', width: 12, height: 12, background: T.c1, borderRadius: 3, boxShadow: `0 0 10px ${c1(0.533)}` }} />
-              <div style={{ position: 'absolute', top: '25%', left: '16%', width: 28, height: 28, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>✥</div>
             </div>
           ),
         },
         {
-          kicker: 'Focus', title: 'Entre en\nfocus profond.',
-          body: 'Lance une session minutée, bloque les distractions et suis ta régularité — un jour à la fois.',
+          kicker: 'Compose',
+          title: 'Glisse, redimensionne,\nempile.',
+          body: 'Neuf types de widgets, chacun décliné en plusieurs styles. Attrape-les, étire-les, place-les exactement où tu veux.',
           visual: (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-              <div style={{ position: 'relative', width: 140, height: 140 }}>
-                <Ring value={0.68} size={140} stroke={3.5} color={T.c1}>
+            <div className="ob-visual">
+              <div className="ob-canvas">
+                <div className="ob-drag-grid">
+                  <div className="ob-drag-tile lifted">
+                    <span className="ob-grab">✥</span>
+                    <span className="ob-handle nw" /><span className="ob-handle ne" />
+                    <span className="ob-handle sw" /><span className="ob-handle se" />
+                  </div>
+                  <div className="ob-drop" /><div className="ob-drop" />
+                </div>
+              </div>
+              <div className="ob-chips">
+                {OB_WIDGETS.slice(0, 6).map(w => <span key={w} className="ob-chip">{w}</span>)}
+                <span className="ob-chip more">+3</span>
+              </div>
+            </div>
+          ),
+        },
+        {
+          kicker: 'Habille',
+          title: 'Change tout.\nVraiment tout.',
+          body: 'Thèmes, dégradés, polices, arrondis, opacité, halo, image de fond. Touche une couleur : l’espace entier suit.',
+          visual: <ObThemeVisual />,
+          interactiveHint: 'Touche une pastille',
+        },
+        {
+          kicker: 'Travaille',
+          title: 'Seul,\nou à plusieurs.',
+          body: 'Lance une session minutée. Invite des amis : vous démarrez ensemble, chacun voit qui tient le cap.',
+          visual: (
+            <div className="ob-visual">
+              <div className="ob-session">
+                <Ring value={0.68} size={116} stroke={3.5} color={T.c1}>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 32, letterSpacing: '-0.04em' }}>24:00</div>
-                    <Sub ch="focus" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 3 }} />
+                    <div style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-.04em' }}>24:00</div>
+                    <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.14em', color: T.muted, marginTop: 3 }}>focus</div>
                   </div>
                 </Ring>
+                <div className="ob-party">
+                  <div className="ob-party-avs">
+                    <span className="ob-av" style={{ background: 'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))' }}>T</span>
+                    <span className="ob-av" style={{ background: 'linear-gradient(145deg,#4ade80,#2dd4bf)' }}>A</span>
+                    <span className="ob-av" style={{ background: 'linear-gradient(145deg,#fb7185,#f472b6)' }}>M</span>
+                  </div>
+                  <div className="ob-party-txt">
+                    <b>Ensemble</b>
+                    <span>3 en session</span>
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[...Array(4)].map((_, i) => <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: i < 2 ? T.c1 : 'rgba(255,255,255,0.1)', boxShadow: i < 2 ? `0 0 6px ${c1(0.533)}` : '' }} />)}
+            </div>
+          ),
+        },
+        {
+          kicker: 'Récolte',
+          title: 'Chaque session\nforge un cristal.',
+          body: 'La gemme prend la couleur de ton effort. Rares et légendaires se méritent au tirage — jamais au choix. Ta grotte les garde, ta vitrine les montre à tes amis.',
+          visual: (
+            <div className="ob-visual">
+              <div className="ob-crystal">
+                {window.ShapedCrystalGem
+                  ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: 'cosmos2', progress: 0.92, size: 96, seed: 7 })
+                  : <div style={{ width: 70, height: 88, clipPath: 'polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%)', background: 'linear-gradient(158deg,#fff,#818cf8 40%,#c084fc)' }} />}
+              </div>
+              <div className="ob-rarities">
+                <span className="ob-rar"><i style={{ background: '#cfd8eb' }} />Classique</span>
+                <span className="ob-rar"><i style={{ background: '#9ae8ff' }} />Rare · 1/20</span>
+                <span className="ob-rar leg"><i style={{ background: '#e9d5ff' }} />Légendaire · 1/200</span>
               </div>
             </div>
           ),
         },
       ];
+
+      const last = step === STEPS.length - 1;
       const cur = STEPS[step];
+      const next = () => (last ? onDone() : setStep(s => s + 1));
+      const prev = () => setStep(s => Math.max(0, s - 1));
+
+      /* Clavier : Entrée / → avancent, ← recule, Échap passe l'intro. */
+      React.useEffect(() => {
+        const onKey = e => {
+          const el = document.activeElement;
+          const tag = el && el.tagName;
+          if (el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA')) return;
+          if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); next(); }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+          else if (e.key === 'Escape') { e.preventDefault(); onDone(); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [step, last]);
+
       return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: `radial-gradient(circle, ${c1(0.039)} 0%, transparent 70%)`, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
-          <div style={{ width: '100%', maxWidth: 480, padding: '0 40px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 52 }}>
-              {STEPS.map((_, i) => (
-                <div key={i} onClick={() => setStep(i)} style={{ height: 3, width: i === step ? 32 : 8, borderRadius: 99, background: i === step ? T.c1 : 'rgba(255,255,255,0.12)', transition: 'all 0.45s cubic-bezier(0.34,1.56,0.64,1)', cursor: 'pointer' }} />
+        <div className="ob-root">
+          <style>{`
+            .ob-root{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow-y:auto;padding:24px 0}
+            .ob-root::before{content:'';position:absolute;width:560px;height:560px;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);
+              background:radial-gradient(circle,rgba(var(--theme-c1-rgb),.07) 0%,transparent 70%);pointer-events:none}
+            .ob-shell{width:100%;max-width:520px;padding:0 32px;display:flex;flex-direction:column;align-items:center;position:relative}
+            .ob-steps{display:flex;gap:6px;margin-bottom:34px}
+            .ob-steps button{height:3px;border:none;padding:0;border-radius:99px;cursor:pointer;
+              transition:all .45s cubic-bezier(.34,1.56,.64,1)}
+            .ob-stage{margin-bottom:30px;min-height:196px;display:grid;place-items:center;
+              animation:obIn .5s cubic-bezier(.22,1,.36,1) both}
+            @keyframes obIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
+            .ob-kicker{font-size:9.5px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:rgba(var(--theme-c1-rgb),.95);margin-bottom:12px}
+            .ob-title{font-family:var(--font-display);font-weight:900;font-size:34px;letter-spacing:-.045em;line-height:1.1;text-align:center;
+              margin-bottom:14px;white-space:pre-line}
+            .ob-body{font-size:14px;line-height:1.72;text-align:center;max-width:380px;color:var(--mineral-muted)}
+            .ob-actions{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:14px;width:100%}
+            .ob-cta{width:100%;max-width:300px;height:52px;border:none;border-radius:16px;cursor:pointer;
+              font:900 14px var(--font-body);color:#07070d;
+              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+              box-shadow:0 16px 40px rgba(var(--theme-c1-rgb),.28),inset 0 1px 0 rgba(255,255,255,.4);
+              transition:transform .2s var(--mineral-ease),box-shadow .2s}
+            .ob-cta:hover{transform:translateY(-1px);box-shadow:0 20px 50px rgba(var(--theme-c1-rgb),.36),inset 0 1px 0 rgba(255,255,255,.46)}
+            .ob-cta:active{transform:translateY(0) scale(.98)}
+            .ob-sub{display:flex;align-items:center;gap:18px}
+            .ob-link{background:none;border:none;cursor:pointer;font:700 12px var(--font-body);color:rgba(248,246,252,.42);padding:4px 2px}
+            .ob-link:hover{color:rgba(248,246,252,.78)}
+            .ob-hint{font-size:10.5px;font-weight:700;color:rgba(var(--theme-c1-rgb),.85);margin-top:-18px;margin-bottom:22px;
+              display:inline-flex;align-items:center;gap:6px}
+            .ob-hint::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;animation:obPulse 1.6s ease-in-out infinite}
+            @keyframes obPulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+            /* ── visuels ── */
+            .ob-visual{display:flex;flex-direction:column;align-items:center;gap:14px}
+            .ob-canvas{width:300px;border-radius:20px;padding:12px;display:flex;flex-direction:column;gap:9px;
+              background:radial-gradient(ellipse 70% 55% at 18% 12%,rgba(var(--theme-c1-rgb),.10),transparent 66%),#0a0b14;
+              border:1px solid rgba(255,255,255,.07);box-shadow:0 20px 50px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.05);
+              transition:background .5s var(--mineral-ease)}
+            .ob-canvas-row{display:flex;gap:9px}
+            .ob-tile{flex:1;height:64px;border-radius:14px;border:1px solid rgba(255,255,255,.09);
+              background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;gap:5px;
+              transition:border-color .5s,background .5s}
+            .ob-tile.sm{flex-direction:column;align-items:flex-start;justify-content:center;padding:0 12px;gap:6px}
+            .ob-tile.sm i{display:block;height:4px;width:52px;border-radius:99px}
+            .ob-tile.sm.wide{height:44px}
+            .ob-canvas-bar{height:4px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+            .ob-canvas-bar i{display:block;height:100%;border-radius:99px;transition:background .5s}
+            .ob-swatches{display:flex;gap:9px}
+            .ob-swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;
+              transition:transform .2s cubic-bezier(.34,1.56,.64,1),border-color .2s,box-shadow .2s}
+            .ob-swatch:hover{transform:scale(1.12)}
+            .ob-swatch.on{border-color:rgba(255,255,255,.9);transform:scale(1.16);box-shadow:0 6px 18px rgba(0,0,0,.4)}
+            .ob-swatch-note{font-size:11px;font-weight:700;color:rgba(248,246,252,.5)}
+            .ob-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px}
+            .ob-chip{font-size:10px;font-weight:800;padding:5px 10px;border-radius:99px;
+              border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);color:rgba(248,246,252,.68)}
+            .ob-chip.more{border-color:rgba(var(--theme-c1-rgb),.3);color:var(--theme-c1);background:rgba(var(--theme-c1-rgb),.1)}
+            .ob-drag-grid{position:relative;height:118px;display:grid;grid-template-columns:1.6fr 1fr;grid-template-rows:1fr 1fr;gap:9px}
+            .ob-drag-tile{grid-row:1/3;position:relative;border-radius:14px;
+              border:1.5px solid rgba(var(--theme-c1-rgb),.55);background:rgba(var(--theme-c1-rgb),.10);
+              box-shadow:0 14px 30px rgba(0,0,0,.4);animation:obLift 3.4s ease-in-out infinite}
+            @keyframes obLift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(6px,-5px) scale(1.03)}}
+            .ob-grab{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;
+              display:grid;place-items:center;font-size:13px;color:rgba(255,255,255,.75);
+              background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.14)}
+            .ob-handle{position:absolute;width:9px;height:9px;border-radius:3px;background:var(--theme-c1);box-shadow:0 0 8px rgba(var(--theme-c1-rgb),.8)}
+            .ob-handle.nw{top:-5px;left:-5px}.ob-handle.ne{top:-5px;right:-5px}
+            .ob-handle.sw{bottom:-5px;left:-5px}.ob-handle.se{bottom:-5px;right:-5px}
+            .ob-drop{border-radius:12px;border:1.5px dashed rgba(255,255,255,.14);background:rgba(255,255,255,.02)}
+            .ob-session{display:flex;flex-direction:column;align-items:center;gap:18px}
+            .ob-party{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:16px;
+              border:1px solid rgba(74,222,128,.22);background:rgba(74,222,128,.08)}
+            .ob-party-avs{display:flex}
+            .ob-av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;margin-left:-8px;
+              font:900 11px var(--font-display);color:#07070d;border:2px solid #0a0b14}
+            .ob-av:first-child{margin-left:0}
+            .ob-party-txt{display:flex;flex-direction:column;line-height:1.25}
+            .ob-party-txt b{font-size:12px;font-weight:850;color:#7af6a4}
+            .ob-party-txt span{font-size:10px;color:rgba(248,246,252,.5)}
+            .ob-crystal{position:relative;display:grid;place-items:center;height:120px;
+              filter:drop-shadow(0 14px 28px rgba(0,0,0,.5));animation:obFloat 4.2s ease-in-out infinite}
+            @keyframes obFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+            .ob-rarities{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+            .ob-rar{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;padding:5px 11px;border-radius:99px;
+              border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.04);color:rgba(248,246,252,.7)}
+            .ob-rar i{width:7px;height:7px;border-radius:50%}
+            .ob-rar.leg{border-color:rgba(233,213,255,.3);color:#e9d5ff;background:rgba(233,213,255,.08)}
+
+            @media (max-width:560px){
+              .ob-shell{padding:0 20px}
+              .ob-title{font-size:27px}
+              .ob-body{font-size:13px}
+              .ob-canvas{width:min(300px,86vw)}
+              .ob-stage{min-height:170px;margin-bottom:24px}
+              .ob-steps{margin-bottom:24px}
+            }
+            html.fs-reduce-motion .ob-stage,html.fs-reduce-motion .ob-drag-tile,
+            html.fs-reduce-motion .ob-crystal,html.fs-reduce-motion .ob-hint::before{animation:none!important}
+          `}</style>
+
+          <div className="ob-shell">
+            <div className="ob-steps">
+              {STEPS.map((s, i) => (
+                <button key={s.kicker} type="button" onClick={() => setStep(i)}
+                  aria-label={`Étape ${i + 1} : ${s.kicker}`} aria-current={i === step}
+                  style={{ width: i === step ? 30 : 8, background: i === step ? 'var(--theme-c1)' : 'rgba(255,255,255,.14)' }} />
               ))}
             </div>
-            <div style={{ marginBottom: 40 }}>{cur.visual}</div>
-            <Lbl ch={cur.kicker} style={{ marginBottom: 12, textAlign: 'center' }} />
-            <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 36, letterSpacing: '-0.04em', lineHeight: 1.15, textAlign: 'center', marginBottom: 16, whiteSpace: 'pre-line' }}>{cur.title}</div>
-            <Sub ch={cur.body} style={{ fontSize: 14, lineHeight: 1.75, textAlign: 'center', maxWidth: 340 }} />
-            <div style={{ marginTop: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%' }}>
-              <button onClick={() => step < STEPS.length - 1 ? setStep(s => s + 1) : onDone()}
-                style={{ width: '100%', maxWidth: 280, background: T.c1, border: 'none', borderRadius: 14, padding: '15px 0', color: '#07070d', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, boxShadow: `0 0 40px ${c1(0.267)}` }}
-                onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 0 60px ${c1(0.4)}`; e.currentTarget.style.transform = 'scale(1.02)'; }}
-                onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 0 40px ${c1(0.267)}`; e.currentTarget.style.transform = 'scale(1)'; }}>
-                {step < STEPS.length - 1 ? 'Continuer' : 'Entrer dans LumenOS'}
+
+            <div className="ob-stage" key={step}>{cur.visual}</div>
+
+            <div className="ob-kicker">{cur.kicker}</div>
+            <h1 className="ob-title">{cur.title}</h1>
+            <p className="ob-body">{cur.body}</p>
+            {cur.interactiveHint && <div className="ob-hint" style={{ marginTop: 16, marginBottom: 0 }}>{cur.interactiveHint}</div>}
+
+            <div className="ob-actions">
+              <button className="ob-cta" onClick={next}>
+                {last ? 'Entrer dans LumenOS' : 'Continuer'}
               </button>
-              {step < STEPS.length - 1 && (
-                <button onClick={onDone} style={{ background: 'none', border: 'none', color: T.faint, fontSize: 12, cursor: 'pointer', fontFamily: T.font }}>Passer l'intro</button>
-              )}
+              <div className="ob-sub">
+                {step > 0 && <button className="ob-link" onClick={prev}>← Retour</button>}
+                {!last && <button className="ob-link" onClick={onDone}>Passer l’intro</button>}
+              </div>
             </div>
           </div>
         </div>
@@ -11430,6 +11670,12 @@ void main(){
           </div>
           <aside className={"fs-note-builder" + (mobileTab==='builder' ? ' fs-mob-show' : '')}>
             <div style={{padding:'22px 22px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+              <button className="fs-back-btn" onClick={() => onNavigate && onNavigate('dashboard')} style={{ marginBottom: 14 }}>
+                <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Dashboard
+              </button>
               <div style={{fontFamily:T.display,fontWeight:850,fontSize:24,letterSpacing:'-0.04em',color:T.text}}>Nouvelle note</div>
             </div>
             <div style={{padding:18,display:'flex',flexDirection:'column',gap:10,flex:1,minHeight:0}}>
@@ -16159,7 +16405,7 @@ void main(){
                 <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} />}
                 {screen === 'tasks' && <TasksScreen />}
-                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux', onOpenCollection: () => go('collection'), hotkeyEnabled: !activeSession && !showSession })}
+                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux', onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} />}
@@ -16168,7 +16414,7 @@ void main(){
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
-                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), onOpenCollection: () => go('collection'), hotkeyEnabled: !activeSession && !showSession })}
+                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { onNavigate: go, user })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
                 {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
@@ -19421,7 +19667,7 @@ void main(){
       return cv;
     }
 
-    function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection }) {
+    function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection, onBack }) {
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
       const [sel, setSel] = React.useState(null);
@@ -19742,6 +19988,10 @@ void main(){
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
               .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
               .fs-cv-header>*{pointer-events:auto}
+              /* Retour : accordé à la palette froide de la grotte. */
+              .fs-cv-back{border-color:rgba(140,220,255,.2)!important;background:rgba(4,10,24,.72)!important;
+                color:rgba(207,234,255,.82)!important;backdrop-filter:blur(8px)}
+              .fs-cv-back:hover{background:rgba(14,28,52,.9)!important;color:#eaf7ff!important}
               /* Accès à la collection : porte d'entrée du codex, à hauteur des stats. */
               .fs-cv-collection{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:13px;cursor:pointer;
                 font:800 11.5px var(--font-body);letter-spacing:.02em;white-space:nowrap;color:#dff2ff;
@@ -19843,6 +20093,14 @@ void main(){
 
               <div className="fs-cv-header">
                 <div>
+                  {onBack && (
+                    <button className="fs-back-btn fs-cv-back" onClick={onBack} style={{ marginBottom: 12 }}>
+                      <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Dashboard
+                    </button>
+                  )}
                   <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(161,232,255,0.72)', marginBottom: 6 }}>focus grotto</div>
                   <div style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
                   <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.66)', marginTop: 7, maxWidth: 340 }}>
