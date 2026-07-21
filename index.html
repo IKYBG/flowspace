@@ -4427,16 +4427,13 @@
       const today = _todayStr();
       const yest = _prevDay(today);
       const mon = window._gMon ? window._gMon() : null;
-      if (!g.streaks) g.streaks = { daily:0, weekly:0, lastDate:null, weekStart:null, jokers:1, jokersUsed:0 };
+      if (!g.streaks) g.streaks = { daily:0, weekly:0, lastDate:null, weekStart:null, jokers:0, monthGrant:null, pendingBreak:null };
       if (g.streaks.lastDate !== today) {
         g.streaks.daily = g.streaks.lastDate === yest ? Number(g.streaks.daily || 0) + 1 : 1;
         g.streaks.lastDate = today;
       }
-      if (mon && g.streaks.weekStart !== mon) {
-        g.streaks.weekStart = mon;
-        g.streaks.jokers = 1;
-        g.streaks.jokersUsed = 0;
-      }
+      if (mon) g.streaks.weekStart = mon;
+      window._gGrantMonthlyJoker && window._gGrantMonthlyJoker(g);
       g.streaks.weekly = Math.floor(Number(g.streaks.daily || 0) / 7);
       window._gSave(uid, g);
     }
@@ -8016,7 +8013,7 @@
                 style={{ background: `linear-gradient(135deg, ${th.a}, ${th.b})` }} />
             ))}
           </div>
-          <div className="ob-swatch-note">{t.name} — et 20 autres, ou tes propres couleurs</div>
+          <div className="ob-swatch-note">{t.name} · +20 thèmes</div>
         </div>
       );
     }
@@ -8028,7 +8025,7 @@
         {
           kicker: 'Bienvenue',
           title: 'Ton espace,\ntes règles.',
-          body: 'LumenOS est un tableau de bord personnel. Rien n’y est figé : tu choisis ce qui s’affiche, où, et à quoi ça ressemble.',
+          body: 'Rien n’est figé ici.',
           visual: (
             <div className="ob-visual">
               <div className="ob-canvas ob-canvas-hero">
@@ -8047,8 +8044,8 @@
         },
         {
           kicker: 'Compose',
-          title: 'Glisse, redimensionne,\nempile.',
-          body: 'Neuf types de widgets, chacun décliné en plusieurs styles. Attrape-les, étire-les, place-les exactement où tu veux.',
+          title: 'Glisse.\nÉtire. Place.',
+          body: '9 widgets, plusieurs styles chacun.',
           visual: (
             <div className="ob-visual">
               <div className="ob-canvas">
@@ -8071,14 +8068,14 @@
         {
           kicker: 'Habille',
           title: 'Change tout.\nVraiment tout.',
-          body: 'Thèmes, dégradés, polices, arrondis, opacité, halo, image de fond. Touche une couleur : l’espace entier suit.',
+          body: 'Thèmes, polices, couleurs, halo.',
           visual: <ObThemeVisual />,
           interactiveHint: 'Touche une pastille',
         },
         {
           kicker: 'Travaille',
           title: 'Seul,\nou à plusieurs.',
-          body: 'Lance une session minutée. Invite des amis : vous démarrez ensemble, chacun voit qui tient le cap.',
+          body: 'Un minuteur. Des amis. Du focus.',
           visual: (
             <div className="ob-visual">
               <div className="ob-session">
@@ -8106,7 +8103,7 @@
         {
           kicker: 'Récolte',
           title: 'Chaque session\nforge un cristal.',
-          body: 'La gemme prend la couleur de ton effort. Rares et légendaires se méritent au tirage — jamais au choix. Ta grotte les garde, ta vitrine les montre à tes amis.',
+          body: 'Rare 1/20 · Légendaire 1/200.',
           visual: (
             <div className="ob-visual">
               <div className="ob-crystal">
@@ -15142,6 +15139,8 @@ void main(){
       });
       /* Cristal récupéré à la fin d'une session → pop-up de célébration. */
       const [sessionResult, setSessionResult] = _uSC(null);
+      /* Rupture de série constatée à l'ouverture (une seule fois par jour). */
+      const [streakBreak, setStreakBreak] = _uSC(null);
       /* Résout le NOM d'un participant par id : session (friendUsers / friendUser)
          puis liste d'amis persistée — pour ne PLUS afficher « ton ami » quand on
          connaît son nom (départ détecté par la DB, sans nom dans la ligne). */
@@ -15924,6 +15923,22 @@ void main(){
         };
       }, []);
 
+      /* Constat de rupture à l'ouverture : la série ne se perdait qu'au moment
+         de la session suivante, donc en silence. On la détecte ici pour pouvoir
+         proposer la réparation tant qu'elle est encore rattrapable. */
+      _uEC(() => {
+        if (!user?.id || !window._gCheckStreakBreak) return;
+        const t = setTimeout(() => {
+          try {
+            const pb = window._gCheckStreakBreak(user.id);
+            if (!pb) return;
+            const g = window._gLoad(user.id);
+            setStreakBreak({ ...pb, jokers: Number(g?.streaks?.jokers || 0) });
+          } catch (_) {}
+        }, 1200);
+        return () => clearTimeout(t);
+      }, [user?.id]);
+
       const handleEndSession = async (crystalData = null) => {
         const hasCrystalData = crystalData
           && typeof crystalData === 'object'
@@ -16430,6 +16445,15 @@ void main(){
           {isApp && guestLobby && !activeSession && !pendingSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: guestLobby, user, isGuest: true, hostName: (guestLobby.host?.name || '').replace(' (hôte)', ''), onCancel: leaveGuestLobby })}
           {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
           {isApp && sessionResult && window.SessionCompleteModal && React.createElement(window.SessionCompleteModal, { result: sessionResult, onClose: () => setSessionResult(null), onOpenCave: () => { setSessionResult(null); go('cristaux'); } })}
+          {isApp && streakBreak && !activeSession && !sessionResult && window.StreakBreakModal && React.createElement(window.StreakBreakModal, {
+            user, breakInfo: streakBreak, jokers: streakBreak.jokers,
+            onRepair: () => {
+              const ng = window._gRepairStreak?.(user?.id);
+              setStreakBreak(null);
+              if (ng) addToast({ message: `Série restaurée à ${ng.streaks.daily} jours`, type: 'success', icon: '✓', duration: 4200 });
+            },
+            onDismiss: () => { window._gDismissBreak?.(user?.id); setStreakBreak(null); },
+          })}
         </>
       );
     }
@@ -19192,6 +19216,197 @@ void main(){
     }
     window.SessionCompleteModal = SessionCompleteModal;
 
+    /* ── Série rompue ─────────────────────────────────────────────────────────
+       Moment de tension du jeu : la flamme se fissure et s'éteint, le compteur
+       retombe. On propose alors de la rallumer avec un joker — et la
+       réparation se REJOUE à l'écran (la flamme se ravive, le nombre remonte)
+       pour que la dépense du joker se ressente comme une victoire. */
+    function StreakBreakModal({ user, breakInfo, jokers, onRepair, onDismiss }) {
+      const [phase, setPhase] = React.useState('broken'); /* broken → repairing → healed */
+      const [shown, setShown] = React.useState(0);
+      const lost = Number(breakInfo?.lostStreak || 0);
+      const canRepair = jokers > 0;
+
+      /* Compteur qui remonte pendant la réparation.
+         Deux pilotes volontairement redondants : rAF donne le rendu fluide tant
+         que l'onglet est visible, et un timer de secours conclut la séquence
+         quoi qu'il arrive. Sans lui, un utilisateur qui change d'onglet pendant
+         la réparation verrait l'animation gelée — rAF est totalement suspendu
+         sur un onglet caché — et son joker ne serait jamais consommé. */
+      React.useEffect(() => {
+        if (phase !== 'repairing') return;
+        const DUREE = 900;
+        const now = () => ((window.performance && performance.now) ? performance.now() : Date.now());
+        const t0 = now();
+        let raf = 0, done = false;
+        const finir = () => {
+          if (done) return;
+          done = true;
+          setShown(lost);
+          setPhase('healed');
+        };
+        const tick = () => {
+          const p = Math.min(1, (now() - t0) / DUREE);
+          setShown(Math.round(lost * p));
+          if (p < 1) raf = requestAnimationFrame(tick);
+          else finir();
+        };
+        raf = requestAnimationFrame(tick);
+        const filet = setTimeout(finir, DUREE + 240);
+        return () => { cancelAnimationFrame(raf); clearTimeout(filet); };
+      }, [phase, lost]);
+
+      React.useEffect(() => {
+        if (phase !== 'healed') return;
+        const t = setTimeout(() => onRepair && onRepair(), 1150);
+        return () => clearTimeout(t);
+      }, [phase]);
+
+      const repair = () => { if (canRepair && phase === 'broken') setPhase('repairing'); };
+
+      return (
+        <div className={'fs-sbk' + (phase !== 'broken' ? ' healing' : '')} role="dialog" aria-label="Série rompue">
+          <style>{`
+            .fs-sbk{position:fixed;inset:0;z-index:6400;display:grid;place-items:center;padding:20px;
+              background:rgba(4,3,10,.8);backdrop-filter:blur(22px) saturate(1.1);-webkit-backdrop-filter:blur(22px) saturate(1.1);
+              animation:sbkVeil .4s ease both}
+            @keyframes sbkVeil{from{opacity:0}to{opacity:1}}
+            .fs-sbk-card{position:relative;width:min(400px,100%);border-radius:28px;overflow:hidden;text-align:center;
+              padding:34px 26px 26px;
+              background:radial-gradient(120% 70% at 50% -10%,rgba(255,107,138,.16),transparent 58%),
+                linear-gradient(180deg,rgba(20,16,26,.99),rgba(9,8,16,.995));
+              border:1px solid rgba(255,255,255,.09);
+              box-shadow:0 40px 110px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06);
+              animation:sbkCard .6s cubic-bezier(.22,1.28,.36,1) both}
+            @keyframes sbkCard{from{opacity:0;transform:translateY(24px) scale(.94)}to{opacity:1;transform:none}}
+            .fs-sbk.healing .fs-sbk-card{background:radial-gradient(120% 70% at 50% -10%,rgba(255,210,125,.20),transparent 58%),
+              linear-gradient(180deg,rgba(24,20,14,.99),rgba(9,8,16,.995))}
+            .fs-sbk-eyebrow{font-size:9.5px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:#ff8fa6}
+            .fs-sbk.healing .fs-sbk-eyebrow{color:#ffd27d}
+            /* Scène : la flamme, sa fissure, ses éclats */
+            .fs-sbk-scene{position:relative;height:150px;display:grid;place-items:center;margin:6px 0 2px}
+            .fs-sbk-flame{position:relative;width:74px;height:96px;display:grid;place-items:center}
+            .fs-sbk-flame svg{position:relative;z-index:2;
+              filter:drop-shadow(0 0 18px rgba(120,120,140,.25));transition:filter .5s}
+            .fs-sbk.healing .fs-sbk-flame svg{filter:drop-shadow(0 0 22px rgba(255,160,60,.75))}
+            .fs-sbk-crack{position:absolute;inset:0;z-index:3;pointer-events:none}
+            .fs-sbk.healing .fs-sbk-crack{opacity:0;transition:opacity .5s}
+            .fs-sbk-shard{position:absolute;width:5px;height:9px;border-radius:1px;background:#6b6b7d;
+              animation:sbkShard 1.5s cubic-bezier(.3,.7,.4,1) both}
+            @keyframes sbkShard{0%{opacity:0;transform:translate(0,0) rotate(0) scale(.5)}
+              18%{opacity:.9}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot)) scale(.9)}}
+            .fs-sbk-ember{position:absolute;width:4px;height:4px;border-radius:50%;background:#ffce7a;
+              box-shadow:0 0 8px #ffab3d;animation:sbkEmber 1.4s ease-out infinite}
+            @keyframes sbkEmber{0%{opacity:0;transform:translate(0,10px) scale(.5)}25%{opacity:1}
+              100%{opacity:0;transform:translate(var(--dx),-58px) scale(1.1)}}
+            .fs-sbk-halo{position:absolute;inset:-30%;border-radius:50%;z-index:1;
+              background:radial-gradient(circle,rgba(255,190,90,.42),transparent 66%);opacity:0;transition:opacity .6s}
+            .fs-sbk.healing .fs-sbk-halo{opacity:1;animation:sbkHalo 1.4s ease-in-out infinite}
+            @keyframes sbkHalo{0%,100%{transform:scale(.92);opacity:.6}50%{transform:scale(1.1);opacity:1}}
+            .fs-sbk-count{font-family:var(--font-display);font-size:52px;font-weight:900;letter-spacing:-.05em;line-height:1;
+              font-variant-numeric:tabular-nums;color:#8d8da6;transition:color .4s}
+            .fs-sbk.healing .fs-sbk-count{color:#ffd27d;text-shadow:0 0 30px rgba(255,180,60,.5)}
+            .fs-sbk-unit{font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;color:rgba(248,246,252,.4);margin-top:6px}
+            .fs-sbk-title{font-family:var(--font-display);font-size:23px;font-weight:900;letter-spacing:-.03em;color:#f4f6fb;margin-top:16px}
+            .fs-sbk-sub{font-size:12.5px;line-height:1.6;color:rgba(248,246,252,.6);margin-top:8px;max-width:290px;margin-left:auto;margin-right:auto}
+            .fs-sbk-actions{display:flex;flex-direction:column;gap:9px;margin-top:22px}
+            .fs-sbk-btn{height:48px;border-radius:15px;cursor:pointer;font:900 13px var(--font-body);
+              display:inline-flex;align-items:center;justify-content:center;gap:9px;
+              transition:transform .18s var(--mineral-ease),box-shadow .2s,background .2s}
+            .fs-sbk-btn:active{transform:scale(.97)}
+            .fs-sbk-primary{border:none;color:#1a1206;background:linear-gradient(135deg,#ffd27d,#ff9f43);
+              box-shadow:0 14px 34px rgba(255,160,60,.3),inset 0 1px 0 rgba(255,255,255,.4)}
+            .fs-sbk-primary:hover{transform:translateY(-1px);box-shadow:0 18px 42px rgba(255,160,60,.4),inset 0 1px 0 rgba(255,255,255,.46)}
+            .fs-sbk-ghost{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(248,246,252,.72)}
+            .fs-sbk-ghost:hover{background:rgba(255,255,255,.09)}
+            .fs-sbk-badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:99px;
+              background:rgba(26,18,6,.28);font-size:11px;font-weight:900}
+            html.fs-reduce-motion .fs-sbk,html.fs-reduce-motion .fs-sbk-card,html.fs-reduce-motion .fs-sbk-shard,
+            html.fs-reduce-motion .fs-sbk-ember,html.fs-reduce-motion .fs-sbk-halo{animation:none!important}
+            @media(max-width:480px){.fs-sbk-card{padding:28px 20px 22px}.fs-sbk-count{font-size:44px}}
+          `}</style>
+
+          <div className={'fs-sbk-card'} onClick={e => e.stopPropagation()}>
+            <div className="fs-sbk-eyebrow">{phase === 'broken' ? 'Série rompue' : 'Série restaurée'}</div>
+
+            <div className="fs-sbk-scene">
+              <div className="fs-sbk-flame">
+                <div className="fs-sbk-halo" />
+                {/* Flamme : éteinte (grise) puis ravivée */}
+                <svg width="74" height="96" viewBox="0 0 36 52" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="sbkFlame" x1="0%" y1="100%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor={phase === 'broken' ? '#4a4a58' : '#e25822'} />
+                      <stop offset="100%" stopColor={phase === 'broken' ? '#7a7a8c' : '#ffd700'} />
+                    </linearGradient>
+                  </defs>
+                  <path d="M18 1C18 1 6 14 6 28a12 12 0 0 0 24 0C30 20 22 16 22 9c0 0-2 5-4 6-2-3 0-14 0-14z" fill="url(#sbkFlame)" />
+                </svg>
+                {/* Fissure + éclats projetés au moment de la rupture */}
+                {phase === 'broken' && (
+                  <svg className="fs-sbk-crack" width="74" height="96" viewBox="0 0 36 52" aria-hidden="true">
+                    <path d="M18 12 L14 24 L20 28 L15 40" stroke="rgba(10,10,16,.85)" strokeWidth="2.2" fill="none" strokeLinejoin="round" />
+                  </svg>
+                )}
+                {phase === 'broken' && [0, 1, 2, 3, 4].map(i => (
+                  <span key={i} className="fs-sbk-shard" style={{
+                    left: `${28 + i * 9}%`, top: `${30 + (i % 3) * 14}%`,
+                    '--dx': `${(i - 2) * 26}px`, '--dy': `${34 + i * 6}px`, '--rot': `${(i - 2) * 70}deg`,
+                    animationDelay: `${0.25 + i * 0.07}s`,
+                  }} />
+                ))}
+                {phase !== 'broken' && [0, 1, 2, 3, 4, 5].map(i => (
+                  <span key={i} className="fs-sbk-ember" style={{
+                    left: `${22 + i * 11}%`, bottom: '16%',
+                    '--dx': `${(i - 2.5) * 12}px`, animationDelay: `${i * 0.18}s`,
+                  }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Au repos on affiche la série PERDUE, pas un zéro : c'est elle
+                l'enjeu, et elle reste à l'écran comme quelque chose à reprendre.
+                La réparation la fait remonter de 0, en or. */}
+            <div className="fs-sbk-count">{phase === 'broken' ? lost : shown}</div>
+            <div className="fs-sbk-unit">
+              {phase === 'broken'
+                ? (lost > 1 ? 'jours perdus' : 'jour perdu')
+                : (shown > 1 ? 'jours d’affilée' : 'jour d’affilée')}
+            </div>
+
+            {phase === 'broken' ? (
+              <>
+                <div className="fs-sbk-title">Ta série s’est éteinte.</div>
+                <div className="fs-sbk-sub">
+                  {canRepair
+                    ? 'Un joker la rallume exactement là où tu l’avais laissée.'
+                    : 'Aucun joker en réserve. Tu en gagnes 1 par mois, et parfois en fin de session.'}
+                </div>
+                <div className="fs-sbk-actions">
+                  {canRepair && (
+                    <button className="fs-sbk-btn fs-sbk-primary" onClick={repair}>
+                      Réparer ma série
+                      <span className="fs-sbk-badge">{jokers}</span>
+                    </button>
+                  )}
+                  <button className="fs-sbk-btn fs-sbk-ghost" onClick={onDismiss}>
+                    {canRepair ? 'Repartir de zéro' : 'Continuer'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="fs-sbk-title">{phase === 'healed' ? 'Te revoilà en course.' : 'Réparation…'}</div>
+                <div className="fs-sbk-sub">Joker dépensé. Enchaîne une session aujourd’hui pour la garder.</div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+    window.StreakBreakModal = StreakBreakModal;
+
+
     /* ── Mes Cristaux Panel ──────────────────────────────────────────────── */
     /* ── Grotte aux cristaux — chambre organique (v3) ────────────────────────
        Fini l'effet tunnel : la grotte est une chambre irrégulière rendue en
@@ -21641,6 +21856,15 @@ void main(){
         animation:gamifSlideIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
       }
       .fs-gamif-backdrop { position:fixed; inset:0; z-index:199; }
+      /* Inventaire de jokers : des jetons qu'on possède, pas un bouton à presser. */
+      .gf-joker-card { display:flex; align-items:center; gap:15px; padding:14px 16px; border-radius:18px;
+        background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+      .gf-joker-slots { display:flex; gap:6px; flex-shrink:0; }
+      .gf-joker-slot { width:30px; height:30px; border-radius:10px; display:grid; place-items:center;
+        border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03);
+        color:rgba(255,255,255,0.14); transition:all .3s cubic-bezier(.34,1.56,.64,1); }
+      .gf-joker-slot.on { color:#a5b8ff; border-color:rgba(165,184,255,0.34);
+        background:rgba(165,184,255,0.12); box-shadow:0 0 16px rgba(165,184,255,0.20); }
       .gf-sec-title {
         font-size:9px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase;
         color:rgba(248,246,252,0.3); margin-bottom:10px; padding-top:18px;
@@ -21707,8 +21931,15 @@ void main(){
   };
   window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
+  /* Mois courant (YYYY-MM) — cadence de la dotation de jokers. */
+  window._gMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  /* Jokers de série : 1 offert par mois, plus une petite chance d'en gagner à
+     chaque session. Plafonné pour qu'ils restent précieux — sans plafond on
+     accumulerait de quoi ne plus jamais craindre de rompre sa série. */
+  window.FS_JOKER_MAX = 3;
+  window.FS_JOKER_DROP = 0.12;
   function _gDefault() {
-    return { streaks:{daily:0,weekly:0,lastDate:null,weekStart:null,jokers:1,jokersUsed:0},
+    return { streaks:{daily:0,weekly:0,lastDate:null,weekStart:null,jokers:0,monthGrant:null,pendingBreak:null},
       xp:0, heatmap:{}, unlocks:['default'], activeSkin:'default' };
   }
   function _gPrevDateKey(key) {
@@ -21781,12 +22012,75 @@ void main(){
     }
   };
 
+  /* Dotation mensuelle : 1 joker au premier passage de chaque mois. */
+  window._gGrantMonthlyJoker = (g) => {
+    if (!g || !g.streaks) return false;
+    const m = window._gMonth();
+    if (g.streaks.monthGrant === m) return false;
+    g.streaks.monthGrant = m;
+    g.streaks.jokers = Math.min(window.FS_JOKER_MAX, Number(g.streaks.jokers || 0) + 1);
+    return true;
+  };
+
+  /* Rupture de série : contrôlée à l'OUVERTURE de l'app, pas seulement à la
+     session suivante — sinon on n'apprendrait sa perte qu'en retravaillant.
+     La série perdue est mise de côté (pendingBreak) pour pouvoir être réparée. */
+  window._gCheckStreakBreak = (uid) => {
+    const g = window._gLoad(uid);
+    if (!g.streaks) return null;
+    const today = window._gToday();
+    const yest = _gPrevDateKey(today);
+    const last = g.streaks.lastDate;
+    const granted = window._gGrantMonthlyJoker(g);
+    const lost = Number(g.streaks.daily || 0);
+    /* Rompue si la dernière activité est antérieure à hier, et qu'il y avait
+       bien une série à perdre. */
+    const broken = last && last !== today && last !== yest && lost > 0;
+    if (broken && !g.streaks.pendingBreak) {
+      g.streaks.pendingBreak = { lostStreak: lost, lastDate: last, seenOn: today };
+      g.streaks.daily = 0;
+      window._gSave(uid, g);
+      return g.streaks.pendingBreak;
+    }
+    if (granted) window._gSave(uid, g);
+    return g.streaks.pendingBreak || null;
+  };
+
+  /* Répare la série avec un joker : on restaure le compteur et on recale
+     lastDate sur hier, pour qu'une session aujourd'hui enchaîne normalement. */
+  window._gRepairStreak = (uid) => {
+    const g = window._gLoad(uid);
+    const pb = g.streaks && g.streaks.pendingBreak;
+    if (!pb || Number(g.streaks.jokers || 0) <= 0) return null;
+    g.streaks.jokers = Number(g.streaks.jokers) - 1;
+    g.streaks.daily = Number(pb.lostStreak || 0);
+    g.streaks.lastDate = _gPrevDateKey(window._gToday());
+    g.streaks.weekly = Math.floor(Number(g.streaks.daily || 0) / 7);
+    g.streaks.pendingBreak = null;
+    window._gSave(uid, g);
+    return g;
+  };
+
+  /* L'utilisateur renonce : on solde la rupture sans consommer de joker. */
+  window._gDismissBreak = (uid) => {
+    const g = window._gLoad(uid);
+    if (!g.streaks) return;
+    g.streaks.pendingBreak = null;
+    window._gSave(uid, g);
+  };
+
   window._gProcessSession = (uid, session, onToast) => {
     const g=window._gLoad(uid), today=window._gToday(), mon=window._gMon(), dur=session?.duration||0;
     const yest=(()=>{ const d=new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
     /* streaks */
     if(g.streaks.lastDate!==today){ g.streaks.daily=(g.streaks.lastDate===yest)?Number(g.streaks.daily||0)+1:1; g.streaks.lastDate=today; }
-    if(g.streaks.weekStart!==mon){ g.streaks.weekStart=mon; g.streaks.jokers=1; g.streaks.jokersUsed=0; }
+    g.streaks.weekStart=mon;
+    window._gGrantMonthlyJoker(g);
+    /* Butin : petite chance de décrocher un joker de série en fin de session. */
+    if (Number(g.streaks.jokers || 0) < window.FS_JOKER_MAX && Math.random() < window.FS_JOKER_DROP) {
+      g.streaks.jokers = Number(g.streaks.jokers || 0) + 1;
+      try { onToast && onToast('Joker de série trouvé ! Il te protège d’un jour manqué.'); } catch (_) {}
+    }
     g.streaks.weekly=Math.floor(Number(g.streaks.daily||0)/7);
     try {
       const legacy = JSON.parse(localStorage.getItem('fs_streak') || '[]');
@@ -21842,11 +22136,10 @@ void main(){
     const [g, setG] = useGamif(user?.id);
     if (!embed && !open) return null;
     const { streaks={} } = g;
-    const useJoker = () => {
-      if ((streaks.jokers||0) <= 0 || (streaks.jokersUsed||0) > 0) return;
-      const ng = { ...g, streaks: { ...streaks, daily:(streaks.daily||0)+1, jokers:(streaks.jokers||1)-1, jokersUsed:(streaks.jokersUsed||0)+1 } };
-      setG(ng);
-    };
+    /* Les jokers ne se dépensent plus à la main : ils servent uniquement à
+       réparer une série rompue, depuis l'invite affichée au dashboard. */
+    const JOKER_MAX = window.FS_JOKER_MAX || 3;
+    const jokers = Math.min(JOKER_MAX, Number(streaks.jokers || 0));
 
     const flameScale = Math.min((streaks.daily||0) / 30, 1);
 
@@ -21893,24 +22186,27 @@ void main(){
             </div>
 
             {/* Joker */}
-            <span className="gf-sec-title">Joker hebdomadaire</span>
-            <div style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderRadius:18,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)'}}>
-              <div style={{width:38,height:38,borderRadius:12,background:'rgba(165,184,255,0.1)',border:'1px solid rgba(165,184,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#a5b8ff" strokeWidth={1.6} strokeLinecap="round"><circle cx={12} cy={12} r={10}/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx={12} cy={17} r={.5} fill="#a5b8ff"/></svg>
+            <span className="gf-sec-title">Jokers de série</span>
+            <div className="gf-joker-card">
+              <div className="gf-joker-slots" aria-label={`${jokers} joker${jokers > 1 ? 's' : ''} sur ${JOKER_MAX}`}>
+                {Array.from({ length: JOKER_MAX }, (_, i) => (
+                  <span key={i} className={'gf-joker-slot' + (i < jokers ? ' on' : '')}>
+                    <svg width={15} height={17} viewBox="0 0 24 26" fill="none" aria-hidden="true">
+                      <path d="M12 1.5 21.5 8v10L12 24.5 2.5 18V8z" fill="currentColor" opacity=".9"/>
+                      <path d="M12 1.5V24.5M2.5 8l9.5 5 9.5-5" stroke="rgba(7,8,16,.45)" strokeWidth="1.1"/>
+                    </svg>
+                  </span>
+                ))}
               </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:T.text}}>
-                  {(streaks.jokers||0)>0&&(streaks.jokersUsed||0)===0?'Joker disponible':'Joker utilisé cette semaine'}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>
+                  {jokers > 0 ? `${jokers} joker${jokers > 1 ? 's' : ''} en réserve` : 'Aucun joker'}
                 </div>
-                <div style={{fontSize:11,color:T.muted,marginTop:2}}>Protège ta série en cas de journée manquée</div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 3, lineHeight: 1.5 }}>
+                  1 offert chaque mois · une chance d'en trouver à chaque session.
+                  {jokers > 0 ? ' Il répare ta série si tu manques un jour.' : ''}
+                </div>
               </div>
-              {(streaks.jokers||0)>0&&(streaks.jokersUsed||0)===0&&(
-                <button onClick={useJoker} style={{background:'rgba(165,184,255,0.12)',border:'1px solid rgba(165,184,255,0.28)',borderRadius:12,padding:'8px 14px',color:'#a5b8ff',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:T.font,transition:'all 0.18s',whiteSpace:'nowrap'}}
-                  onMouseEnter={e=>e.currentTarget.style.background='rgba(165,184,255,0.22)'}
-                  onMouseLeave={e=>e.currentTarget.style.background='rgba(165,184,255,0.12)'}>
-                  Utiliser
-                </button>
-              )}
             </div>
 
           </div>
