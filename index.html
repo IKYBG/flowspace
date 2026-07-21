@@ -1289,7 +1289,7 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
-                       'fs_showcase', 'fs_text_widgets', 'fs_task_view'];
+                       'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -1803,7 +1803,7 @@
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
-      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets', 'fs_task_view',
+      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked',
       'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
       'fs_ambient'
     ];
@@ -2178,7 +2178,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_|^fs_prod_ratings_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -2303,6 +2303,20 @@
           if (typeof widgetStyle.taskView === 'string' && widgetStyle.taskView) _fsRawSet('fs_task_view', widgetStyle.taskView);
           else if (!ownLocal) _fsRawRemove('fs_task_view');
         } catch (_) { }
+        /* Amis retirés (pierres tombales) embarqués dans widget_style.friendsBlocked.
+           Fusion par UNION et jamais par remplacement : la RLS nous interdit de
+           nous retirer de la liste de l'autre, donc c'est cette liste seule qui
+           empêche la relation d'être ressuscitée par la requête inverse. Un
+           remplacement ferait revenir un ami retiré depuis un autre appareil. */
+        try {
+          const distants = Array.isArray(widgetStyle.friendsBlocked) ? widgetStyle.friendsBlocked : [];
+          if (distants.length) {
+            const locaux = (() => { try { return JSON.parse(localStorage.getItem('fs_friends_blocked') || '[]') || []; } catch (_) { return []; } })();
+            const fusion = window._fsMergeBlockedFriends ? window._fsMergeBlockedFriends(locaux, distants) : distants;
+            _fsRawSet('fs_friends_blocked', JSON.stringify(fusion));
+            window.dispatchEvent(new CustomEvent('fs-friends-blocked-update'));
+          }
+        } catch (_) { }
       } else {
         const rememberedStyle = _fsReadRememberedWidgetStyle(userId);
         if (rememberedStyle) {
@@ -2364,7 +2378,13 @@
           window.dispatchEvent(new CustomEvent('fs-gamif-update', { detail: null }));
         }
         if (remote && Array.isArray(remote.friends)) {
-          _fsRawSet(`fs_friends_${userId}`, JSON.stringify(remote.friends));
+          /* La ligne distante peut encore contenir un ami retiré (push d'un autre
+             appareil, ou écriture concurrente). On soustrait les pierres
+             tombales ici : c'est le seul endroit où la liste distante atterrit
+             dans le stockage local que lisent les autres écrans. */
+          const retires = window._fsBlockedFriendIds ? window._fsBlockedFriendIds() : new Set();
+          const propre = remote.friends.filter(f => f && !retires.has(f.id));
+          _fsRawSet(`fs_friends_${userId}`, JSON.stringify(propre));
         }
       }
 
@@ -2520,9 +2540,55 @@
       put('fs_showcase', 'showcase', true);
       put('fs_text_widgets', 'textWidgets', true);
       put('fs_task_view', 'taskView', false);
+      put('fs_friends_blocked', 'friendsBlocked', true);
       return out;
     }
     window._fsWithStyleExtras = _fsWithStyleExtras;
+
+    /* ── Amis retirés : pierres tombales ──────────────────────────────────────
+       Retirer un ami ne suffisait pas à le faire disparaître. La liste affichée
+       est l'union de « mes amis » et de la requête inverse (toute personne qui
+       me compte dans SES amis) ; or la RLS nous interdit d'écrire dans la ligne
+       de quelqu'un d'autre, donc on ne peut pas s'y retirer soi-même. La requête
+       inverse le remontait donc à chaque ouverture du panneau — et l'effet de
+       sauvegarde le réinscrivait ensuite dans notre propre colonne.
+       On garde donc localement la liste des retraits, on la synchronise via
+       widget_style.friendsBlocked, et on la soustrait à chaque fusion. */
+    function _fsMergeBlockedFriends(a, b) {
+      const parId = new Map();
+      [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(e => {
+        const id = typeof e === 'string' ? e : e && e.id;
+        if (!id) return;
+        const at = (e && e.at) || 0;
+        const dejaLa = parId.get(id);
+        if (!dejaLa || at > dejaLa.at) parId.set(id, { id, at });
+      });
+      return [...parId.values()];
+    }
+    window._fsMergeBlockedFriends = _fsMergeBlockedFriends;
+
+    function _fsReadBlockedFriends() {
+      try { return _fsMergeBlockedFriends(JSON.parse(localStorage.getItem('fs_friends_blocked') || '[]'), []); }
+      catch (_) { return []; }
+    }
+    window._fsBlockedFriendIds = () => new Set(_fsReadBlockedFriends().map(e => e.id));
+
+    function _fsWriteBlockedFriends(liste) {
+      try { localStorage.setItem('fs_friends_blocked', JSON.stringify(liste)); } catch (_) { }
+      try { window._fsDirtyKeys?.add('fs_friends_blocked'); window._fsDirtyThisSession = true; } catch (_) { }
+      try { window._fsFlushPush?.(); } catch (_) { }
+      window.dispatchEvent(new CustomEvent('fs-friends-blocked-update'));
+    }
+    window._fsBlockFriend = (id) => {
+      if (!id) return;
+      _fsWriteBlockedFriends(_fsMergeBlockedFriends(_fsReadBlockedFriends(), [{ id, at: Date.now() }]));
+    };
+    /* Ré-ajouter volontairement quelqu'un lève sa pierre tombale — sinon il
+       serait filtré en silence et l'ajout paraîtrait ne rien faire. */
+    window._fsUnblockFriend = (id) => {
+      if (!id) return;
+      _fsWriteBlockedFriends(_fsReadBlockedFriends().filter(e => e.id !== id));
+    };
 
     function _fsSnapshotLocalData(userId = window._fsSbUser?.id) {
       const r = {};
@@ -3038,6 +3104,9 @@
     /* Ajout local + sync d'un ami (utilisé à l'acceptation, des deux côtés) */
     async function _fsAddFriendEntry(userId, entry) {
       if (!userId || !entry?.id || !entry?.email) return;
+      /* Relation ré-établie d'un commun accord : on lève la pierre tombale,
+         sinon le filtre de fusion masquerait ce nouvel ami en silence. */
+      try { window._fsUnblockFriend?.(entry.id); } catch (_) { }
       const key = 'fs_friends_' + userId;
       let list = [];
       try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { }
@@ -7921,9 +7990,25 @@
         return () => window.removeEventListener('fs-crystal-update', sync);
       }, [crystalKey]);
       const total = sessions.reduce((sum,s)=>sum + (Number(s.actualMinutes || s.duration) || 0), 0);
+      /* Progression du codex : c'est elle qui donne envie d'ouvrir la Collection,
+         donc elle s'affiche directement sur l'onglet plutôt qu'une fois dedans. */
+      const [decouverte, setDecouverte] = React.useState({ vus: 0, total: 0 });
+      React.useEffect(() => {
+        const calc = () => {
+          const grads = window.CRYSTAL_GRADIENTS || [];
+          let owned = [];
+          try { owned = JSON.parse(localStorage.getItem(crystalKey) || '[]') || []; } catch (e) {}
+          const vus = new Set(owned.map(c => c.crystalGradient).filter(Boolean));
+          setDecouverte({ vus: grads.filter(g => vus.has(g.id)).length, total: grads.length });
+        };
+        calc();
+        window.addEventListener('fs-crystal-update', calc);
+        return () => window.removeEventListener('fs-crystal-update', calc);
+      }, [crystalKey]);
       const TABS = [
         { id:'focus', label:'Focus', meta:'Démarrer' },
         { id:'cristaux', label:'Cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
+        { id:'collection', label:'Collection', meta:decouverte.total ? `${decouverte.vus} / ${decouverte.total} découverts` : 'Le codex' },
       ];
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
@@ -7939,7 +8024,7 @@
                 <span className="xp-badge">{crystalCount} cristaux</span>
               </div>
             </div>
-            <div className="fs-focus-tabs" style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+            <div className="fs-focus-tabs" style={{display:'grid',gridTemplateColumns:`repeat(${TABS.length},minmax(0,1fr))`,gap:10,padding:4,borderRadius:24,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
               {TABS.map(t => {
                 const active = tab === t.id;
                 return (
@@ -7961,7 +8046,8 @@
           <div className="fs-focus-screen-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
             <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
-              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection, onBack })}
+              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection:() => setTab('collection'), onBack })}
+              {tab === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { user, embedded:true, onNavigate:() => setTab('cristaux') })}
             </div>
           </div>
         </div>
@@ -13919,7 +14005,10 @@ void main(){
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [active, setActive] = _uSC('clock');
       const [group, setGroup] = _uSC('essentials');
-      const [appearanceOpen, setAppearanceOpen] = _uSC(false);
+      /* L'apparence n'est plus derrière un bouton : c'est un inspecteur
+         permanent. Atteindre cet écran suffit donc à solder le fil d'Ariane
+         d'onboarding, qui pointait auparavant vers ce bouton disparu. */
+      _uEC(() => { try { window._fsPersoHintMark?.(); } catch (_) {} }, []);
       const CATALOG = [
         { id:'clock', label:'Clock', name:'Horloge', group:'essentials', short:'Temps en direct', icon:<FsWidgetIcon type="clock" />, Component:ClockWidget, variants:[1,2,3,4,7,8,9,10,11,12,13] },
         { id:'tasks', label:'Tasks', name:'Tâches', group:'essentials', short:'Actions du jour', icon:<FsWidgetIcon type="tasks" />, Component:TasksWidget, variants:[1,2,3] },
@@ -13953,7 +14042,7 @@ void main(){
          héros (aperçu 310px + cartes 160px min) et l'aperçu chevauchait le texte
          « Étape 2 » (typiquement au zoom navigateur). Le panneau bascule alors
          en rangée pleine largeur sous le contenu. */
-      const studioCss = '.fs-widget-studio *{box-sizing:border-box}.fs-widget-studio-scroll::-webkit-scrollbar{width:0;height:0}.fs-widget-card:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),.26)!important;background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.035))!important}.fs-widget-variant:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(0,0,0,.34),0 0 28px rgba(var(--theme-c1-rgb),.10)!important}@media(max-width:1280px){.fs-widget-studio-body.fs-appearance-open{grid-template-columns:250px minmax(0,1fr)!important}.fs-widget-studio-body.fs-appearance-open .fs-widget-appearance{grid-column:1/-1!important}}@media(max-width:900px){.fs-widget-studio-body{grid-template-columns:1fr!important}.fs-widget-studio-side{position:relative!important;top:auto!important}.fs-widget-studio-hero{grid-template-columns:1fr!important}.fs-widget-studio-groups{display:grid!important;grid-template-columns:repeat(3,1fr)!important}.fs-widget-studio-shell{padding:18px!important}}@media(max-width:560px){.fs-widget-studio-groups{grid-template-columns:1fr!important}.fs-widget-studio-variants{grid-template-columns:1fr!important}.fs-widget-studio-header{flex-direction:column!important;align-items:flex-start!important}}';
+      const studioCss = '.fs-widget-studio *{box-sizing:border-box}.fs-widget-studio-scroll::-webkit-scrollbar{width:0;height:0}.fs-widget-card:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),.26)!important;background:linear-gradient(145deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.035))!important}.fs-widget-variant:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(0,0,0,.34),0 0 28px rgba(var(--theme-c1-rgb),.10)!important}@media(max-width:1280px){.fs-widget-studio-body.fs-appearance-open{grid-template-columns:250px minmax(0,1fr)!important}.fs-widget-studio-body.fs-appearance-open .fs-widget-appearance{grid-column:1/-1!important;position:static!important}}@media(max-width:900px){.fs-widget-studio-body{grid-template-columns:1fr!important}.fs-widget-studio-side{position:relative!important;top:auto!important}.fs-widget-studio-hero{grid-template-columns:1fr!important}.fs-widget-studio-groups{display:grid!important;grid-template-columns:repeat(3,1fr)!important}.fs-widget-studio-shell{padding:18px!important}}@media(max-width:560px){.fs-widget-studio-groups{grid-template-columns:1fr!important}.fs-widget-studio-variants{grid-template-columns:1fr!important}.fs-widget-studio-header{flex-direction:column!important;align-items:flex-start!important}}';
       return (
         <div className="fs-widget-studio" style={{ width:'100%', height:'100%', overflow:'hidden', display:'grid', gridTemplateRows:'auto 1fr', color:T.text, fontFamily:T.font }}>
           <style>{studioCss}</style>
@@ -13962,12 +14051,11 @@ void main(){
               <button onClick={() => onNavigate('perso')} style={{ height:32, borderRadius:12, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 12px', fontSize:11, fontWeight:750, fontFamily:T.font, cursor:'pointer', marginBottom:14 }}>Retour</button>
               <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.16em', textTransform:'uppercase', color:'rgba(var(--theme-c1-rgb),.92)', marginBottom:8 }}>Personnalisation</div>
               <div style={{ fontFamily:T.display, fontSize:'clamp(30px,4vw,48px)', lineHeight:.98, fontWeight:900, letterSpacing:'-.045em' }}>Bibliothèque de widgets.</div>
-              <div style={{ marginTop:10, maxWidth:610, fontSize:13, lineHeight:1.65, color:T.muted }}>Choisis d'abord le besoin, puis un widget. Une seule décision à la fois, avec un aperçu clair avant d'ajouter.</div>
+              <div style={{ marginTop:10, maxWidth:610, fontSize:13, lineHeight:1.65, color:T.muted }}>Choisis un widget, ajuste son allure à droite, ajoute-le. Les réglages d'apparence s'appliquent à tous tes widgets.</div>
             </div>
-            <button onClick={() => { setAppearanceOpen(v => !v); window._fsPersoHintMark && window._fsPersoHintMark(); }} style={{ minHeight:44, borderRadius:15, border:'1px solid rgba(var(--theme-c1-rgb),.22)', background:appearanceOpen ? 'rgba(var(--theme-c1-rgb),.14)' : 'rgba(255,255,255,.045)', color:appearanceOpen ? T.c1 : T.text, padding:'0 15px', display:'flex', alignItems:'center', gap:9, fontSize:12, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:appearanceOpen ? '0 14px 34px rgba(var(--theme-c1-rgb),.12)' : 'inset 0 1px 0 rgba(255,255,255,.05)' }}><span style={{ width:22, height:22, borderRadius:9, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#070810' }}>✦</span>Apparence globale{window.FsHintDot && <window.FsHintDot />}</button>
           </header>
           <main className="fs-widget-studio-scroll fs-widget-studio-shell" style={{ overflow:'auto', padding:'22px 34px 34px' }}>
-            <div className={'fs-widget-studio-body' + (appearanceOpen ? ' fs-appearance-open' : '')} style={{ display:'grid', gridTemplateColumns: appearanceOpen ? '250px minmax(0,1fr) 340px' : '250px minmax(0,1fr)', gap:18, alignItems:'start' }}>
+            <div className="fs-widget-studio-body fs-appearance-open" style={{ display:'grid', gridTemplateColumns:'250px minmax(0,1fr) 340px', gap:18, alignItems:'start' }}>
               <aside className="fs-widget-studio-side" style={{ position:'sticky', top:18, display:'grid', gap:10 }}>
                 <div style={{ borderRadius:24, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,.06)' }}>
                   <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted, margin:'4px 4px 10px' }}>Étape 1</div>
@@ -13995,10 +14083,36 @@ void main(){
                   <div className="fs-widget-studio-variants" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>{current.variants.map(v => <div key={v} className="fs-widget-variant" style={{ borderRadius:20, border:'1px solid rgba(255,255,255,.07)', background:'linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.024))', overflow:'hidden', transition:'all .22s cubic-bezier(.16,1,.3,1)', boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ height:148, overflow:'hidden', background:'rgba(0,0,0,.14)' }}>{current.Component ? React.createElement(current.Component, { variant:v, style:{ height:'100%', minHeight:148 } }) : null}</div><div style={{ padding:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ fontSize:12, fontWeight:900 }}>Style {v}</div><div style={{ marginTop:3, fontSize:10.5, color:T.muted }}>Aperçu compact</div></div><button onClick={() => useVariant(v)} style={{ height:34, borderRadius:12, border:'1px solid rgba(var(--theme-c1-rgb),.25)', background:'rgba(var(--theme-c1-rgb),.12)', color:T.c1, padding:'0 12px', fontSize:10.5, fontWeight:900, fontFamily:T.font, cursor:'pointer' }}>Utiliser</button></div></div>)}</div>
                 </div>
               </section>
-              {appearanceOpen && <aside className="fs-widget-appearance" style={{ borderRadius:28, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:18, boxShadow:'0 22px 58px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:16 }}><div><div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:T.muted }}>Apparence</div><div style={{ marginTop:5, fontSize:16, fontWeight:900 }}>Tous les widgets</div></div><button onClick={() => { update({ opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 }); addToast({ message:'Apparence réinitialisée', type:'info', icon:'↺' }); }} style={{ height:32, borderRadius:11, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 10px', fontSize:10.5, fontWeight:800, fontFamily:T.font, cursor:'pointer' }}>Réinitialiser</button></div>
-                <div style={{ display:'grid', gap:18 }}><div style={{ height:150, borderRadius:20, padding:10, background:'rgba(0,0,0,.18)', border:'1px solid rgba(255,255,255,.055)', overflow:'hidden' }}><ClockWidget variant={1} style={{ height:'100%' }} /></div><PremiumSlider label="Opacite" value={opacity} min={0.3} max={1} step={0.01} formatValue={v => Math.round(v * 100) + '%'} onChange={v => update({ opacity:v })} accent={T.c1} /><PremiumSlider label="Arrondi" value={radius} min={8} max={40} step={1} formatValue={v => v + 'px'} onChange={v => update({ radius:v })} accent={T.c2} /><PremiumSlider label="Halo" value={glowIntensity} min={0} max={1} step={0.01} formatValue={v => v < .01 ? 'Off' : Math.round(v * 100) + '%'} onChange={v => update({ glowIntensity:v })} accent={glowColor} /><div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{GLOW_PRESETS.map(p => <button key={p.color} title={p.name} onClick={() => update({ glowColor:p.color })} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid ' + (glowColor === p.color ? 'rgba(255,255,255,.9)' : 'transparent'), background:p.color, cursor:'pointer', boxShadow:glowColor === p.color ? '0 0 0 3px ' + p.color + '44, 0 0 18px ' + p.color + '66' : '0 2px 8px rgba(0,0,0,.34)' }} />)}<label style={{ width:28, height:28, borderRadius:'50%', border:'1.5px dashed rgba(255,255,255,.28)', background:'rgba(255,255,255,.05)', display:'grid', placeItems:'center', cursor:'pointer', position:'relative', overflow:'hidden' }}><span style={{ fontSize:14, color:T.muted }}>+</span><input type="color" value={glowColor} onChange={e => update({ glowColor:e.target.value })} style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer' }} /></label></div></div>
-              </aside>}
+              {/* Inspecteur d'apparence permanent. Il était derrière un bouton en
+                  haut à droite : réglage vital, mais invisible tant qu'on ne
+                  l'avait pas trouvé. Il reste maintenant collé au défilement,
+                  et l'aperçu montre le widget SÉLECTIONNÉ — on voit donc l'effet
+                  sur ce qu'on est en train de regarder, pas sur une horloge. */}
+              <aside className="fs-widget-appearance" style={{ position:'sticky', top:18, borderRadius:28, border:'1px solid rgba(255,255,255,.075)', background:'linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.024))', padding:18, boxShadow:'0 22px 58px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.07)' }}>
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:6 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:10, fontWeight:900, letterSpacing:'.13em', textTransform:'uppercase', color:'rgba(var(--theme-c1-rgb),.92)' }}>Apparence</div>
+                    <div style={{ marginTop:5, fontSize:16, fontWeight:900, letterSpacing:'-.02em' }}>Tous tes widgets</div>
+                  </div>
+                  <button onClick={() => { update({ opacity:1, radius:22, glowColor:'#8fdcff', glowIntensity:0 }); addToast({ message:'Apparence réinitialisée', type:'info', icon:'↺' }); }} style={{ height:32, borderRadius:11, border:'1px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.04)', color:T.muted, padding:'0 10px', fontSize:10.5, fontWeight:800, fontFamily:T.font, cursor:'pointer', flexShrink:0 }}>Réinitialiser</button>
+                </div>
+                <div style={{ fontSize:11, lineHeight:1.55, color:T.muted, marginBottom:15 }}>Ces réglages s'appliquent à l'ensemble du dashboard.</div>
+                <div style={{ display:'grid', gap:18 }}>
+                  <div style={{ height:150, borderRadius:20, padding:10, background:'rgba(0,0,0,.18)', border:'1px solid rgba(255,255,255,.055)', overflow:'hidden' }}>
+                    {current.Component ? React.createElement(current.Component, { variant: current.variants[0], style:{ height:'100%' } }) : null}
+                  </div>
+                  <PremiumSlider label="Opacité" value={opacity} min={0.3} max={1} step={0.01} formatValue={v => Math.round(v * 100) + '%'} onChange={v => update({ opacity:v })} accent={T.c1} />
+                  <PremiumSlider label="Arrondi" value={radius} min={8} max={40} step={1} formatValue={v => v + 'px'} onChange={v => update({ radius:v })} accent={T.c2} />
+                  <PremiumSlider label="Halo" value={glowIntensity} min={0} max={1} step={0.01} formatValue={v => v < .01 ? 'Aucun' : Math.round(v * 100) + '%'} onChange={v => update({ glowIntensity:v })} accent={glowColor} />
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:850, color:T.muted, marginBottom:9 }}>Couleur de lueur</div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                      {GLOW_PRESETS.map(p => <button key={p.color} title={p.name} onClick={() => update({ glowColor:p.color })} style={{ width:28, height:28, borderRadius:'50%', border:'2px solid ' + (glowColor === p.color ? 'rgba(255,255,255,.9)' : 'transparent'), background:p.color, cursor:'pointer', boxShadow:glowColor === p.color ? '0 0 0 3px ' + p.color + '44, 0 0 18px ' + p.color + '66' : '0 2px 8px rgba(0,0,0,.34)' }} />)}
+                      <label title="Couleur personnalisée" style={{ width:28, height:28, borderRadius:'50%', border:'1.5px dashed rgba(255,255,255,.28)', background:'rgba(255,255,255,.05)', display:'grid', placeItems:'center', cursor:'pointer', position:'relative', overflow:'hidden' }}><span style={{ fontSize:14, color:T.muted }}>+</span><input type="color" value={glowColor} onChange={e => update({ glowColor:e.target.value })} style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer' }} /></label>
+                    </div>
+                  </div>
+                </div>
+              </aside>
             </div>
           </main>
         </div>
@@ -14310,7 +14424,11 @@ void main(){
 
       const [prefs, setPrefs] = React.useState(readPrefs);
       const [saved, setSaved] = React.useState(false);
-      const [advanced, setAdvanced] = React.useState(false);
+      /* Deux volets au lieu d'un long défilement. « Réglages avancés » cachait
+         six catégories entières derrière un seul bouton : personne n'allait les
+         chercher. Chacune est maintenant une section de plein droit, visible
+         d'emblée dans la colonne de gauche. */
+      const [section, setSection] = React.useState('profil');
       const [displayName, setDisplayName] = React.useState(user?.name || user?.username || 'Utilisateur');
       /* Vitrine de profil : accordéon dans la carte Profil (page plus courte) */
       const [showcaseOpen, setShowcaseOpen] = React.useState(false);
@@ -14352,7 +14470,9 @@ void main(){
         s.setProperty('--glass-opacity', String((prefs.glassDepth / 100).toFixed(3)));
         s.setProperty('--backdrop-blur', prefs.backdropBlur + 'px');
         s.setProperty('--radius', prefs.radius + 'px');
-        s.setProperty('--widget-opacity', String((prefs.widgetOpacity / 100).toFixed(3)));
+        /* `--widget-opacity` n'est plus écrit ici : widget_style.opacity (réglé
+           dans Apparence, et synchronisé) pilote la même variable. Les deux
+           curseurs se écrasaient l'un l'autre selon l'ordre des effets. */
         root.classList.toggle('fs-reduce-motion', !!prefs.reduceMotion);
         root.classList.toggle('fs-ambient-glow', !!prefs.ambientGlow);
         root.classList.toggle('fs-compact-cards', !!prefs.compactCards);
@@ -14467,12 +14587,16 @@ void main(){
           {children}
         </div>
       );
+      /* En-tête optionnel : la carte principale d'une section n'a pas à répéter
+         le titre déjà porté par l'intitulé de section juste au-dessus. */
       const Card = ({ title, desc, danger, children }) => (
         <section className={'fs-set-card' + (danger ? ' danger' : '')}>
-          <div className="fs-set-card-head">
-            <div className="fs-set-card-title">{title}</div>
-            <div className="fs-set-card-desc">{desc}</div>
-          </div>
+          {(title || desc) && (
+            <div className="fs-set-card-head">
+              {title && <div className="fs-set-card-title">{title}</div>}
+              {desc && <div className="fs-set-card-desc">{desc}</div>}
+            </div>
+          )}
           {children}
         </section>
       );
@@ -14482,6 +14606,25 @@ void main(){
           {children}
         </section>
       );
+
+      /* Jeu d'icônes maison, grille 24, trait 1.8 — pas de glyphe de police. */
+      const Ico = ({ d, circle }) => (
+        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {circle && <circle cx={circle[0]} cy={circle[1]} r={circle[2]} />}
+          <path d={d} />
+        </svg>
+      );
+      const SECTIONS = [
+        { id:'profil',    label:'Profil',        desc:'Qui tu es dans LumenOS.',                    ico:<Ico circle={[12,8,3.4]} d="M4.5 20a7.5 7.5 0 0 1 15 0" /> },
+        { id:'apparence', label:'Apparence',     desc:'Ton thème et l’allure de tes widgets.',      ico:<Ico d="M12 3l2.2 5.1 5.3.5-4 3.6 1.2 5.3L12 15l-4.7 2.5 1.2-5.3-4-3.6 5.3-.5z" /> },
+        { id:'dashboard', label:'Dashboard',     desc:'Ce qui s’affiche sur ton écran d’accueil.',  ico:<Ico d="M4 4h7v6H4zM13 4h7v4h-7zM4 12h7v8H4zM13 10h7v10h-7z" /> },
+        { id:'sessions',  label:'Sessions',      desc:'Durées, pauses et forge de cristaux.',       ico:<Ico circle={[12,13,7.5]} d="M12 9v4l2.5 1.6M9.5 2.5h5" /> },
+        { id:'notifs',    label:'Notifications', desc:'Ce dont LumenOS te prévient.',               ico:<Ico d="M6.5 9a5.5 5.5 0 1 1 11 0c0 4 1.5 5.5 1.5 5.5H5S6.5 13 6.5 9zM10.2 18a2 2 0 0 0 3.6 0" /> },
+        { id:'confort',   label:'Confort',       desc:'Matière, flou et intensité des animations.', ico:<Ico d="M5 7h14M5 12h14M5 17h14" circle={[9,7,1.8]} /> },
+        { id:'donnees',   label:'Données',       desc:'Sauvegardes, export et suppression.',        ico:<Ico d="M4 6.5c0-1.4 3.6-2.5 8-2.5s8 1.1 8 2.5-3.6 2.5-8 2.5-8-1.1-8-2.5zM4 6.5v11c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-11M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" /> },
+      ];
+      const sectionActive = SECTIONS.find(s => s.id === section) || SECTIONS[0];
 
       return (
         <div className="fs-set-root">
@@ -14498,13 +14641,67 @@ void main(){
             .fs-set-btn:hover{background:rgba(255,255,255,0.08);color:${T.text};transform:translateY(-1px)}
             .fs-set-btn.white{background:#f4f6fb;color:#0a0c14;border-color:#f4f6fb;box-shadow:0 12px 30px rgba(255,255,255,0.12)}
             .fs-set-btn.white:hover{background:#fff;color:#06080f}
-            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr)}
+            .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:246px minmax(0,1fr)}
             .fs-set-main{overflow:auto;padding:30px 34px 90px;scrollbar-width:thin}
             .fs-set-shell{max-width:660px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
             .fs-set-shell>*{min-width:0}
             .fs-set-intro{margin:2px 0 4px}
             .fs-set-intro-t{font-family:${T.display};font-size:20px;font-weight:850;letter-spacing:-0.02em}
             .fs-set-intro-d{font-size:13px;color:${T.muted};margin-top:5px;line-height:1.55}
+
+            /* ── Rail de sections ──────────────────────────────────────────
+               Chaque catégorie est visible d'emblée : plus de « avancés » qui
+               enterrait la moitié de la page derrière un bouton. */
+            .fs-set-nav{overflow:auto;padding:22px 14px 40px;border-right:1px solid rgba(255,255,255,0.06);
+              background:linear-gradient(180deg,rgba(255,255,255,0.028),transparent 40%);scrollbar-width:thin}
+            .fs-set-nav-k{font-size:9.5px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;
+              color:${T.muted};padding:0 12px;margin-bottom:10px}
+            .fs-set-nav-i{display:flex;align-items:center;gap:11px;width:100%;padding:10px 12px;margin-bottom:3px;
+              border:1px solid transparent;border-radius:14px;background:transparent;color:${T.muted};
+              font:800 12.5px ${T.font};cursor:pointer;text-align:left;
+              transition:background .18s var(--mineral-ease),color .18s var(--mineral-ease),transform .18s var(--mineral-ease);
+              animation:fsSetNavIn .42s cubic-bezier(.22,1,.36,1) both}
+            @keyframes fsSetNavIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+            .fs-set-nav-i:hover{background:rgba(255,255,255,0.05);color:${T.text}}
+            .fs-set-nav-i.on{background:linear-gradient(135deg,rgba(var(--accent-rgb,143,220,255),0.16),rgba(var(--theme-c2-rgb),0.07));
+              border-color:rgba(var(--accent-rgb,143,220,255),0.24);color:${T.text};
+              box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+            .fs-set-nav-ico{width:28px;height:28px;flex:none;border-radius:10px;display:grid;place-items:center;
+              background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.07);color:${T.muted};
+              transition:all .2s var(--mineral-ease)}
+            .fs-set-nav-i.on .fs-set-nav-ico{background:linear-gradient(145deg,var(--accent,#8fdcff),var(--theme-c2));
+              color:#070810;border-color:transparent;box-shadow:0 8px 20px rgba(var(--accent-rgb,143,220,255),0.24)}
+
+            /* Ouverture de la page + changement de section */
+            .fs-set-root{animation:fsSetRootIn .46s cubic-bezier(.22,1,.36,1) both}
+            @keyframes fsSetRootIn{from{opacity:0;transform:translateY(10px) scale(.994)}to{opacity:1;transform:none}}
+            .fs-set-pane{animation:fsSetPaneIn .34s cubic-bezier(.22,1,.36,1) both}
+            @keyframes fsSetPaneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+            html.fs-reduce-motion .fs-set-root,html.fs-reduce-motion .fs-set-pane,
+            html.fs-reduce-motion .fs-set-nav-i{animation:none!important}
+
+            /* Aperçu : un VRAI widget du dashboard, pas un gabarit gris. */
+            .fs-set-wprev{position:relative;border-radius:22px;padding:16px;overflow:hidden;
+              background:radial-gradient(120% 90% at 20% 0%,rgba(var(--theme-c1-rgb),.14),transparent 58%),
+                linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.2));
+              border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+            .fs-set-wprev-tag{position:absolute;top:11px;right:13px;z-index:2;font-size:9px;font-weight:900;
+              letter-spacing:.13em;text-transform:uppercase;color:rgba(248,246,252,.34)}
+            .fs-set-wprev-stage{height:132px;display:grid;place-items:center}
+            .fs-set-wprev-frame{width:min(260px,100%);height:118px;overflow:hidden;
+              border-radius:var(--widget-radius,22px);opacity:var(--widget-opacity,1);
+              box-shadow:0 0 var(--widget-glow-size,0px) var(--widget-glow,transparent);
+              transition:border-radius .2s ease,box-shadow .25s ease,opacity .2s ease}
+            .fs-set-swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+            .fs-set-swatch{width:24px;height:24px;border-radius:50%;padding:0;cursor:pointer;
+              border:2px solid transparent;transition:transform .18s var(--mineral-ease)}
+            .fs-set-swatch:hover{transform:scale(1.14)}
+            .fs-set-swatch-plus{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+              position:relative;overflow:hidden;cursor:pointer;
+              border:1.5px dashed rgba(255,255,255,.3);background:rgba(255,255,255,.05);
+              font-size:13px;color:${T.muted};transition:all .18s var(--mineral-ease)}
+            .fs-set-swatch-plus:hover{border-color:rgba(255,255,255,.55);color:${T.text};transform:scale(1.1)}
+            .fs-set-swatch-plus input{position:absolute;inset:0;opacity:0;cursor:pointer}
             .fs-set-card{border-radius:24px;border:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02));box-shadow:0 18px 56px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.055);padding:24px}
             .fs-set-card.danger{border-color:rgba(255,107,138,0.28);background:linear-gradient(180deg,rgba(255,107,138,0.07),rgba(255,255,255,0.02))}
             .fs-set-card-head{margin-bottom:14px}
@@ -14543,13 +14740,7 @@ void main(){
             .fs-set-input{height:42px;width:100%;border-radius:13px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.05);color:${T.text};font:600 13px ${T.font};padding:0 13px;outline:none;box-sizing:border-box;transition:all .18s var(--mineral-ease)}
             .fs-set-input:focus{border-color:rgba(var(--accent-rgb,143,220,255),0.46);background:rgba(var(--accent-rgb,143,220,255),0.05)}
             .fs-set-input:disabled{opacity:.6;cursor:not-allowed}
-            .fs-set-lbl{font-size:10.5px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:${T.muted};margin-bottom:7px}
-            .fs-set-adv-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px 20px;border-radius:18px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:${T.text};font:850 13.5px ${T.font};cursor:pointer;transition:all .18s var(--mineral-ease)}
-            .fs-set-adv-btn:hover{background:rgba(255,255,255,0.06);border-color:rgba(var(--accent-rgb,143,220,255),0.2)}
-            .fs-set-adv-chev{transition:transform .25s var(--mineral-ease);color:${T.muted}}
-            .fs-set-adv-btn.open .fs-set-adv-chev{transform:rotate(90deg)}
-            .fs-set-adv-body{display:grid;gap:16px;animation:fsSetReveal .3s var(--mineral-ease)}
-            @keyframes fsSetReveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+            .fs-set-lbl{font-size:10.5px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;color:${T.muted};margin-bottom:7px};font:850 13.5px ${T.font};cursor:pointer;transition:all .18s var(--mineral-ease)}}to{opacity:1;transform:none}}
             .fs-set-sub{border-radius:20px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.022);padding:18px 20px}
             .fs-set-sub-title{font-size:11px;font-weight:900;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent,#8fdcff);margin-bottom:6px}
             .fs-set-int{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
@@ -14594,7 +14785,19 @@ void main(){
             .fs-set-modal-bg{position:fixed;inset:0;z-index:999;display:grid;place-items:center;background:rgba(4,6,14,0.62);backdrop-filter:blur(8px);padding:20px}
             .fs-set-modal{width:min(420px,100%);border-radius:24px;border:1px solid rgba(255,107,138,0.28);background:linear-gradient(180deg,rgba(28,18,24,0.98),rgba(var(--mineral-bg-rgb),0.98));box-shadow:0 40px 100px rgba(0,0,0,0.6);padding:26px}
             .fs-reduce-motion *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
-            @media(max-width:1040px){.fs-set-body{grid-template-columns:minmax(0,1fr)}.fs-set-preview{display:none}}
+            @media(max-width:1040px){.fs-set-preview{display:none}}
+            /* Sous 900px le rail passe en bandeau de puces défilant en haut :
+               les sections restent toutes visibles d'un coup de pouce. */
+            @media(max-width:900px){
+              .fs-set-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+              .fs-set-nav{display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;padding:12px 14px;
+                border-right:none;border-bottom:1px solid rgba(255,255,255,0.06);scrollbar-width:none}
+              .fs-set-nav::-webkit-scrollbar{display:none}
+              .fs-set-nav-k{display:none}
+              .fs-set-nav-i{width:auto;flex:none;margin-bottom:0;padding:8px 13px;border-radius:999px;
+                border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);white-space:nowrap}
+              .fs-set-nav-ico{display:none}
+            }
             @media(max-width:680px){.fs-set-main{padding:20px 16px 80px}.fs-set-header{padding:16px}}
             @media(max-width:480px){.fs-tp-grid{grid-template-columns:repeat(2,1fr)!important}}
           `}</style>
@@ -14612,15 +14815,29 @@ void main(){
           </header>
 
           <div className="fs-set-body">
+            <nav className="fs-set-nav" aria-label="Sections des paramètres">
+              <div className="fs-set-nav-k">Réglages</div>
+              {SECTIONS.map((s, i) => (
+                <button key={s.id} type="button" onClick={() => setSection(s.id)}
+                  aria-current={section === s.id ? 'page' : undefined}
+                  className={'fs-set-nav-i' + (section === s.id ? ' on' : '')}
+                  style={{ animationDelay: `${40 + i * 34}ms` }}>
+                  <span className="fs-set-nav-ico">{s.ico}</span>
+                  {s.label}
+                </button>
+              ))}
+            </nav>
+
             <main className="fs-set-main">
-              <div className="fs-set-shell">
+              <div className="fs-set-shell fs-set-pane" key={section}>
                 <div className="fs-set-intro">
-                  <div className="fs-set-intro-t">L'essentiel d'abord</div>
-                  <div className="fs-set-intro-d">Ton profil et l'allure de LumenOS. Tout le reste est rangé dans les réglages avancés — tu n'en as pas besoin pour commencer.</div>
+                  <div className="fs-set-intro-t">{sectionActive.label}</div>
+                  <div className="fs-set-intro-d">{sectionActive.desc}</div>
                 </div>
 
                 {/* PROFIL */}
-                <Card title="Profil" desc="Qui tu es dans LumenOS.">
+                {section === 'profil' && (
+                <Card>
                   <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoFile} />
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center', paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <button type="button" className="fs-set-photo" onClick={() => fileRef.current?.click()} title="Changer l'avatar">
@@ -14679,9 +14896,11 @@ void main(){
                     </button>
                   </div>
                 </Card>
+                )}
 
-                {/* APPARENCE (essentiel) */}
-                <Card title="Apparence" desc="Ton thème, et l'apparence de tous tes widgets.">
+                {/* APPARENCE */}
+                {section === 'apparence' && (
+                <Card>
                   {window.ThemePicker
                     ? React.createElement(window.ThemePicker, { bgThemeId, onApply })
                     : <div style={{ fontSize: 12, color: T.muted }}>Thèmes indisponibles.</div>}
@@ -14704,25 +14923,19 @@ void main(){
                           <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Widgets</span>
                           <span style={{ fontSize: 10.5, color: T.muted }}>S'applique à tout le dashboard</span>
                         </div>
-                        {/* Aperçu discret — branché sur les variables CSS live :
-                           il reflète opacité / arrondi / lueur pendant le réglage. */}
-                        <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 10px' }}>
-                          <div style={{
-                            width: 'min(280px, 100%)', boxSizing: 'border-box',
-                            borderRadius: 'var(--widget-radius, 22px)',
-                            background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-                            border: '1px solid rgba(255,255,255,0.09)',
-                            boxShadow: '0 0 var(--widget-glow-size, 0px) var(--widget-glow, transparent), inset 0 1px 0 rgba(255,255,255,0.06)',
-                            opacity: 'var(--widget-opacity, 1)',
-                            padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 7,
-                            transition: 'border-radius .2s ease, box-shadow .25s ease, opacity .2s ease',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--theme-c1)', boxShadow: '0 0 8px var(--theme-c1)' }} />
-                              <span style={{ fontSize: 9.5, fontWeight: 850, letterSpacing: '0.12em', textTransform: 'uppercase', color: T.muted }}>Aperçu widget</span>
+                        {/* Aperçu : le VRAI widget Horloge du dashboard, pas un
+                           gabarit de barres grises — on ne pouvait pas juger de
+                           l'effet d'un réglage sur un placeholder. Il est branché
+                           sur les mêmes variables CSS live que le dashboard, donc
+                           opacité / arrondi / lueur s'y voient pendant le réglage. */}
+                        <div className="fs-set-wprev" style={{ margin: '10px 0 14px' }}>
+                          <span className="fs-set-wprev-tag">Aperçu en direct</span>
+                          <div className="fs-set-wprev-stage">
+                            <div className="fs-set-wprev-frame">
+                              {window.ClockWidget
+                                ? React.createElement(window.ClockWidget, { variant: 1, style: { height: '100%' } })
+                                : null}
                             </div>
-                            <span style={{ height: 8, width: '62%', borderRadius: 4, background: 'rgba(255,255,255,0.14)' }} />
-                            <span style={{ height: 8, width: '38%', borderRadius: 4, background: 'rgba(255,255,255,0.08)' }} />
                           </div>
                         </div>
                         <div style={rowStyle}>
@@ -14743,13 +14956,25 @@ void main(){
                         {glowPct > 0 && (
                           <div style={{ ...rowStyle, paddingTop: 2 }}>
                             <span style={lbl}>Couleur de lueur</span>
-                            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                              {GLOWS.map(c => (
-                                <button key={c} type="button" onClick={() => upd({ glowColor: c })} aria-label={`Lueur ${c}`}
-                                  style={{ width: 20, height: 20, borderRadius: 7, padding: 0, cursor: 'pointer', background: c,
-                                    border: (ws.glowColor || '#8fdcff').toLowerCase() === c.toLowerCase() ? '2px solid rgba(255,255,255,0.9)' : '1px solid rgba(255,255,255,0.14)',
-                                    boxShadow: `0 0 10px ${c}55` }} />
-                              ))}
+                            <div className="fs-set-swatches">
+                              {GLOWS.map(c => {
+                                const on = (ws.glowColor || '#8fdcff').toLowerCase() === c.toLowerCase();
+                                return (
+                                  <button key={c} type="button" onClick={() => upd({ glowColor: c })} aria-label={`Lueur ${c}`}
+                                    className="fs-set-swatch"
+                                    style={{ background: c,
+                                      borderColor: on ? 'rgba(255,255,255,0.92)' : 'transparent',
+                                      boxShadow: on ? `0 0 0 3px ${c}44, 0 0 16px ${c}66` : `0 2px 8px rgba(0,0,0,.32)` }} />
+                                );
+                              })}
+                              {/* Couleur libre — même « + » que la bibliothèque de
+                                 widgets, pour ne pas être limité aux six pastilles. */}
+                              <label className="fs-set-swatch-plus" title="Couleur personnalisée">
+                                +
+                                <input type="color" value={ws.glowColor || '#8fdcff'}
+                                  onChange={e => upd({ glowColor: e.target.value })}
+                                  aria-label="Couleur de lueur personnalisée" />
+                              </label>
                             </div>
                           </div>
                         )}
@@ -14767,99 +14992,104 @@ void main(){
                     );
                   })()}
                 </Card>
-
-                {/* RÉGLAGES AVANCÉS (replié) */}
-                <button className={'fs-set-adv-btn' + (advanced ? ' open' : '')} onClick={() => setAdvanced(v => !v)} aria-expanded={advanced}>
-                  <span>Réglages avancés</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 11.5, color: T.muted, fontWeight: 700 }}>{advanced ? 'Masquer' : 'Personnalisation, sessions, données…'}</span>
-                    <svg className="fs-set-adv-chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </span>
-                </button>
-
-                {advanced && (
-                  <div className="fs-set-adv-body">
-                    <SubCard title="Personnalisation fine">
-                      <Field title="Profondeur du verre"><Slider k="glassDepth" min={0} max={100} fmt={v => v + '%'} /></Field>
-                      <Field title="Flou d'arrière-plan"><Slider k="backdropBlur" min={0} max={40} fmt={v => v + 'px'} /></Field>
-                      <Field title="Arrondi des coins"><Slider k="radius" min={8} max={32} fmt={v => v + 'px'} /></Field>
-                      <Field title="Opacité des widgets"><Slider k="widgetOpacity" min={20} max={100} fmt={v => v + '%'} /></Field>
-                      <Row title="Halo ambiant" desc="Lueur autour des widgets actifs." k="ambientGlow" />
-                      <Row title="Réduire les animations" desc="Pour un espace calme et fluide." k="reduceMotion" last />
-                    </SubCard>
-
-                    <SubCard title="Dashboard">
-                      <Row title="Bandeau de bienvenue" k="showGreeting" />
-                      <Row title="Île de cristal visible" k="showCrystal" />
-                      <Row title="Module de série (streak)" k="showStreak" />
-                      <Row title="Cartes compactes" desc="Moins d'espace autour des widgets." k="compactCards" />
-                      <Row title="Sauvegarde auto de la disposition" k="autosaveLayout" last />
-                    </SubCard>
-
-                    <SubCard title="Sessions & Cristaux">
-                      <Field title="Durée par défaut">
-                        <Segmented k="sessionDuration" options={[[25, '25'], [45, '45'], [60, '60'], [90, '90 min']]} />
-                      </Field>
-                      <Row title="Démarrer le focus automatiquement" k="autoStartFocus" />
-                      <Row title="Pauses intelligentes" k="smartBreaks" />
-                      <Row title="Animation de cristal en fin de session" k="sessionCelebration" />
-                      <Row title="Effets sonores" desc="Son à la forge d'un cristal." k="soundEffects" />
-                      <Row title="Afficher les raretés sur l'île" k="crystalRarity" last />
-                    </SubCard>
-
-                    <SubCard title="Notifications">
-                      <Row title="Résumé du jour" k="dailyDigest" />
-                      <Row title="Notifications push" k="pushNotifications" soon />
-                      <Field title="Intensité des rappels">
-                        <Segmented k="reminderLevel" options={[['minimal', 'Minimal'], ['balanced', 'Équilibré'], ['intense', 'Intense']]} />
-                      </Field>
-                      <Row title="Alerte de série en danger" k="streakAlert" last />
-                    </SubCard>
-
-                    <SubCard title="Intégrations">
-                      <div className="fs-set-int">
-                        <div className="fs-set-int-l">
-                          <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="fs-set-row-t">Google Calendar <Soon /></div>
-                            <div className="fs-set-row-d">Tes événements dans tes sessions.</div>
-                          </div>
-                        </div>
-                        <button className="fs-set-connect" disabled>Connecter</button>
-                      </div>
-                      <div className="fs-set-int">
-                        <div className="fs-set-int-l">
-                          <span className="fs-set-int-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="1.7"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" strokeLinecap="round" /></svg></span>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="fs-set-row-t">Notion <Soon /></div>
-                            <div className="fs-set-row-d">Importe tes pages en notes.</div>
-                          </div>
-                        </div>
-                        <button className="fs-set-connect" disabled>Importer</button>
-                      </div>
-                    </SubCard>
-
-                    <SubCard title="Données">
-                      <Row title="Sauvegardes cloud automatiques" k="cloudBackups" />
-                      <div className="fs-set-row">
-                        <div style={{ minWidth: 0 }}>
-                          <div className="fs-set-row-t">Exporter mes données</div>
-                          <div className="fs-set-row-d">Télécharge une sauvegarde JSON (profil, notes, tâches, widgets, préférences).</div>
-                        </div>
-                        <button className="fs-set-connect" onClick={exportData}>Exporter</button>
-                      </div>
-                      <Row title="Notes chiffrées" k="encryptedNotes" soon />
-                      <Row title="Export hebdomadaire (ZIP)" k="weeklyExport" soon />
-                      <div className="fs-set-row" style={{ borderBottom: 'none' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="fs-set-row-t" style={{ color: T.rose }}>Supprimer toutes les données</div>
-                          <div className="fs-set-row-d">Efface profil, notes, tâches et widgets. Irréversible.</div>
-                        </div>
-                        <button className="fs-set-danger-btn" onClick={() => setConfirmWipe(true)}>Supprimer</button>
-                      </div>
-                    </SubCard>
-                  </div>
                 )}
+
+                {/* DASHBOARD */}
+                {section === 'dashboard' && (
+                  <Card>
+                    <Row title="Bandeau de bienvenue" desc="Le mot d'accueil en haut du dashboard." k="showGreeting" />
+                    <Row title="Île de cristal visible" desc="Ta collection en fond d'écran d'accueil." k="showCrystal" />
+                    <Row title="Module de série" desc="Ton compteur de jours d'affilée." k="showStreak" />
+                    <Row title="Cartes compactes" desc="Moins d'espace autour des widgets." k="compactCards" />
+                    <Row title="Sauvegarde auto de la disposition" desc="Tes déplacements de widgets sont gardés." k="autosaveLayout" last />
+                  </Card>
+                )}
+
+                {/* SESSIONS */}
+                {section === 'sessions' && (
+                  <Card>
+                    <Field title="Durée par défaut" desc="Présélectionnée au lancement d'une session.">
+                      <Segmented k="sessionDuration" options={[[25, '25'], [45, '45'], [60, '60'], [90, '90 min']]} />
+                    </Field>
+                    <Row title="Démarrer le focus automatiquement" desc="La session part dès l'ouverture du lanceur." k="autoStartFocus" />
+                    <Row title="Pauses intelligentes" desc="LumenOS propose une pause au bon moment." k="smartBreaks" />
+                    <Row title="Animation de forge" desc="La cinématique du cristal en fin de session." k="sessionCelebration" />
+                    <Row title="Effets sonores" desc="Son à la forge d'un cristal." k="soundEffects" />
+                    <Row title="Afficher les raretés sur l'île" desc="Marque les cristaux rares et légendaires." k="crystalRarity" last />
+                  </Card>
+                )}
+
+                {/* NOTIFICATIONS */}
+                {section === 'notifs' && (
+                  <Card>
+                    <Row title="Résumé du jour" desc="Un récapitulatif de ta journée de focus." k="dailyDigest" />
+                    <Row title="Notifications push" desc="Des rappels même hors de l'onglet." k="pushNotifications" soon />
+                    <Field title="Intensité des rappels" desc="À quelle fréquence LumenOS se manifeste.">
+                      <Segmented k="reminderLevel" options={[['minimal', 'Minimal'], ['balanced', 'Équilibré'], ['intense', 'Intense']]} />
+                    </Field>
+                    <Row title="Alerte de série en danger" desc="Un signal avant de perdre ta série." k="streakAlert" last />
+                  </Card>
+                )}
+
+                {/* CONFORT */}
+                {section === 'confort' && (
+                  <Card>
+                    <Field title="Profondeur du verre" desc="L'opacité des surfaces vitrées."><Slider k="glassDepth" min={0} max={100} fmt={v => v + '%'} /></Field>
+                    <Field title="Flou d'arrière-plan" desc="Le flou derrière les panneaux."><Slider k="backdropBlur" min={0} max={40} fmt={v => v + 'px'} /></Field>
+                    <Field title="Arrondi des coins" desc="Sur les panneaux et les cartes."><Slider k="radius" min={8} max={32} fmt={v => v + 'px'} /></Field>
+                    <Row title="Halo ambiant" desc="Lueur autour des widgets actifs." k="ambientGlow" />
+                    <Row title="Réduire les animations" desc="Un espace plus calme, et plus fluide sur machine modeste." k="reduceMotion" last />
+                  </Card>
+                )}
+
+                {/* DONNÉES */}
+                {section === 'donnees' && (<>
+                  <Card>
+                    <Row title="Sauvegardes cloud automatiques" desc="Tes données suivent ton compte sur tous tes appareils." k="cloudBackups" />
+                    <div className="fs-set-row">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fs-set-row-t">Exporter mes données</div>
+                        <div className="fs-set-row-d">Une sauvegarde JSON : profil, notes, tâches, widgets, préférences.</div>
+                      </div>
+                      <button className="fs-set-connect" onClick={exportData}>Exporter</button>
+                    </div>
+                    <Row title="Notes chiffrées" k="encryptedNotes" soon />
+                    <Row title="Export hebdomadaire (ZIP)" k="weeklyExport" soon last />
+                  </Card>
+
+                  <Card title="Intégrations" desc="Bientôt disponibles.">
+                    <div className="fs-set-int">
+                      <div className="fs-set-int-l">
+                        <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="fs-set-row-t">Google Calendar <Soon /></div>
+                          <div className="fs-set-row-d">Tes événements dans tes sessions.</div>
+                        </div>
+                      </div>
+                      <button className="fs-set-connect" disabled>Connecter</button>
+                    </div>
+                    <div className="fs-set-int">
+                      <div className="fs-set-int-l">
+                        <span className="fs-set-int-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="1.7"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" strokeLinecap="round" /></svg></span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="fs-set-row-t">Notion <Soon /></div>
+                          <div className="fs-set-row-d">Importe tes pages en notes.</div>
+                        </div>
+                      </div>
+                      <button className="fs-set-connect" disabled>Importer</button>
+                    </div>
+                  </Card>
+
+                  <Card title="Zone sensible" desc="Cette action ne peut pas être annulée." danger>
+                    <div className="fs-set-row" style={{ borderBottom: 'none' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fs-set-row-t" style={{ color: T.rose }}>Supprimer toutes les données</div>
+                        <div className="fs-set-row-d">Efface profil, notes, tâches et widgets de cet appareil.</div>
+                      </div>
+                      <button className="fs-set-danger-btn" onClick={() => setConfirmWipe(true)}>Supprimer</button>
+                    </div>
+                  </Card>
+                </>)}
               </div>
             </main>
 
@@ -16431,8 +16661,8 @@ void main(){
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { onNavigate: go, user })}
-                {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user })}
-                {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression' })}
+                {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, onNavigate: go })}
+                {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression', onNavigate: go })}
                 </ScreenErrorBoundary>
               </div>
             </div>
@@ -16540,7 +16770,9 @@ void main(){
       { id: 'rare', label: 'Rares', odds: '1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
       { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: '#cfd8eb' },
     ];
-    function CollectionScreen({ onNavigate, user }) {
+    /* `embedded` : rendu comme onglet de Focus. La barre d'onglets fait alors
+       office de navigation, donc le bouton retour ferait doublon. */
+    function CollectionScreen({ onNavigate, user, embedded = false }) {
       const readOwned = () => { try { return JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []; } catch (e) { return []; } };
       const [owned, setOwned] = React.useState(readOwned);
       React.useEffect(() => {
@@ -16652,12 +16884,14 @@ void main(){
             html.fs-reduce-motion .fs-coll-cell{transition:none}
           `}</style>
           <div className="fs-coll-inner">
-            <button className="fs-coll-back" onClick={() => onNavigate('cristaux')}>
-              <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Grotte
-            </button>
+            {!embedded && (
+              <button className="fs-coll-back" onClick={() => onNavigate('cristaux')}>
+                <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Grotte
+              </button>
+            )}
 
             <div className="fs-coll-hero">
               <div style={{ minWidth: 0 }}>
@@ -17395,11 +17629,16 @@ void main(){
       const displayStorageKey = `${storageKey}_display`;
 
       const [friends, setFriends] = React.useState(() => {
+        /* Le cache d'affichage peut encore contenir un ami retiré (il n'est
+           réécrit qu'au chargement suivant) : on le filtre dès l'état initial,
+           sinon il réapparaîtrait le temps d'un battement à l'ouverture. */
+        const retires = window._fsBlockedFriendIds ? window._fsBlockedFriendIds() : new Set();
+        const propre = l => (Array.isArray(l) ? l : []).filter(f => f && !retires.has(f.id));
         try {
-          const display = JSON.parse(localStorage.getItem(displayStorageKey) || '[]');
-          if (Array.isArray(display) && display.length) return display;
+          const display = propre(JSON.parse(localStorage.getItem(displayStorageKey) || '[]'));
+          if (display.length) return display;
         } catch(e) {}
-        try { return JSON.parse(localStorage.getItem(storageKey)||'[]'); } catch(e) { return []; }
+        try { return propre(JSON.parse(localStorage.getItem(storageKey)||'[]')); } catch(e) { return []; }
       });
       const [reverseFriends, setReverseFriends] = React.useState([]);
       const [showVitrine, setShowVitrine] = React.useState(false);
@@ -17466,11 +17705,16 @@ void main(){
           updatedAt: f.updatedAt
         };
       };
+      /* Point de passage unique de TOUTES les fusions d'amis (chargement local,
+         ligne distante, requête inverse, événement de sync). Le filtre des amis
+         retirés vit donc ici : aucun chemin de fusion ne peut le contourner et
+         ressusciter quelqu'un. */
       const uniqueFriends = (list, excludedId = user?.id) => {
+        const retires = window._fsBlockedFriendIds ? window._fsBlockedFriendIds() : new Set();
         const map = new Map();
         (Array.isArray(list) ? list : []).forEach(f => {
           const n = normalizeFriend(f);
-          if (!n || (excludedId && n.id === excludedId)) return;
+          if (!n || (excludedId && n.id === excludedId) || retires.has(n.id)) return;
           map.set(n.id, { ...(map.get(n.id) || {}), ...n });
         });
         return Array.from(map.values());
@@ -17676,6 +17920,9 @@ void main(){
           return;
         }
 
+        /* Ajout direct assumé (ancien chemin, sans table de demandes) : on lève
+           la pierre tombale avant la fusion, qui sinon le filtrerait. */
+        try { window._fsUnblockFriend?.(found.id); } catch (_) {}
         const friendEntry = normalizeFriend({ ...found, addedAt: Date.now() });
         const nextFriends = uniqueFriends([...friends, friendEntry]);
         setFriends(nextFriends);
@@ -17716,6 +17963,9 @@ void main(){
       };
       const removeFriend = async (id) => {
         const removed = [...friends, ...reverseFriends].find(f => f.id === id);
+        /* Pierre tombale d'abord : sans elle la requête inverse le ferait
+           revenir à la prochaine ouverture du panneau. */
+        try { window._fsBlockFriend?.(id); } catch (_) {}
         setFriends(prev => prev.filter(f => f.id !== id));
         setReverseFriends(prev => prev.filter(f => f.id !== id));
         if (removed) addToast({ message: `${removed.name || removed.email} retiré de tes amis`, type: 'info', icon: '−' });
@@ -20207,23 +20457,38 @@ void main(){
               .fs-cv-back{border-color:rgba(140,220,255,.2)!important;background:rgba(4,10,24,.72)!important;
                 color:rgba(207,234,255,.82)!important;backdrop-filter:blur(8px)}
               .fs-cv-back:hover{background:rgba(14,28,52,.9)!important;color:#eaf7ff!important}
-              /* Accès à la collection : porte d'entrée du codex, à hauteur des stats. */
-              .fs-cv-collection{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:13px;cursor:pointer;
-                font:800 11.5px var(--font-body);letter-spacing:.02em;white-space:nowrap;color:#dff2ff;
-                border:1px solid rgba(140,220,255,.24);
-                background:linear-gradient(180deg,rgba(14,32,58,.86),rgba(4,10,24,.82));
+              /* Accès à la collection. Ancien défaut : une pilule discrète parmi
+                 d'autres contrôles, que personne ne trouvait. Elle porte
+                 maintenant la progression du codex et une barre de complétion —
+                 c'est ce qui fait qu'on la remarque et qu'on l'ouvre. */
+              .fs-cv-collection{position:relative;display:inline-flex;align-items:center;gap:10px;
+                height:46px;padding:0 16px;border-radius:15px;cursor:pointer;overflow:hidden;
+                font-family:var(--font-body);white-space:nowrap;color:#eaf8ff;
+                border:1px solid rgba(140,220,255,.34);
+                background:linear-gradient(180deg,rgba(20,46,80,.9),rgba(5,12,28,.86));
                 backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-                box-shadow:0 10px 24px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.07);
+                box-shadow:0 12px 28px rgba(0,0,0,.38),0 0 20px rgba(119,240,255,.10),inset 0 1px 0 rgba(255,255,255,.09);
                 transition:transform .2s cubic-bezier(.34,1.56,.64,1),border-color .2s,box-shadow .2s,background .2s}
-              .fs-cv-collection:hover{transform:translateY(-1px);border-color:rgba(140,220,255,.5);
-                background:linear-gradient(180deg,rgba(20,44,78,.92),rgba(6,14,30,.88));
-                box-shadow:0 14px 30px rgba(0,0,0,.4),0 0 22px rgba(119,240,255,.16),inset 0 1px 0 rgba(255,255,255,.1)}
+              .fs-cv-collection:hover{transform:translateY(-2px);border-color:rgba(140,220,255,.62);
+                background:linear-gradient(180deg,rgba(28,60,100,.94),rgba(8,18,38,.9));
+                box-shadow:0 18px 38px rgba(0,0,0,.44),0 0 30px rgba(119,240,255,.24),inset 0 1px 0 rgba(255,255,255,.12)}
               .fs-cv-collection:active{transform:translateY(0) scale(.97)}
-              .fs-cv-collection .fs-cv-collection-short{display:none}
-              .fs-cv-collection-gem{width:9px;height:11px;flex-shrink:0;
+              .fs-cv-collection-txt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1}
+              .fs-cv-collection-lbl{font-size:12px;font-weight:900;letter-spacing:-.01em}
+              .fs-cv-collection-num{font-size:10px;font-weight:800;color:rgba(180,226,255,.78);font-variant-numeric:tabular-nums}
+              .fs-cv-collection-bar{position:absolute;left:0;right:0;bottom:0;height:2.5px;background:rgba(255,255,255,.07)}
+              .fs-cv-collection-bar i{display:block;height:100%;
+                background:linear-gradient(90deg,#8ef6ff,#e7b7ff);
+                box-shadow:0 0 10px rgba(142,246,255,.7);
+                transition:width .6s cubic-bezier(.22,1,.36,1)}
+              .fs-cv-collection-gem{width:13px;height:16px;flex-shrink:0;
                 clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
                 background:linear-gradient(158deg,#fff,#8ef6ff 40%,#e7b7ff);
-                filter:drop-shadow(0 0 5px rgba(119,240,255,.7))}
+                filter:drop-shadow(0 0 7px rgba(119,240,255,.85));
+                animation:fsCvGem 2.8s ease-in-out infinite}
+              @keyframes fsCvGem{0%,100%{filter:drop-shadow(0 0 6px rgba(119,240,255,.6))}
+                50%{filter:drop-shadow(0 0 12px rgba(231,183,255,.95))}}
+              html.fs-reduce-motion .fs-cv-collection-gem{animation:none}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
               .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:13px;border:1px solid rgba(140,220,255,.14);background:rgba(4,10,24,.7);backdrop-filter:blur(8px)}
               .fs-cv-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(8,16,32,.7);color:rgba(230,242,255,.85);font-size:16px;cursor:pointer}
@@ -20237,10 +20502,11 @@ void main(){
               .fs-cv-empty{position:absolute;inset:0;display:grid;place-items:center;z-index:50;pointer-events:none;text-align:center}
               @media (max-width:680px){
                 .fs-cv-stats{display:none}
-                /* Mobile : le bouton reste, réduit à son intitulé court. */
-                .fs-cv-collection{height:34px;padding:0 11px;font-size:11px}
-                .fs-cv-collection .fs-cv-collection-long{display:none}
-                .fs-cv-collection .fs-cv-collection-short{display:inline}
+                /* Mobile : les stats cèdent la place, le bouton garde sa
+                   progression — c'est elle qui porte l'envie d'entrer. */
+                .fs-cv-collection{height:42px;padding:0 13px;gap:8px}
+                .fs-cv-collection-lbl{font-size:11.5px}
+                .fs-cv-collection-num{font-size:9.5px}
                 .fs-cv-hint{display:none}
                 .fs-cv-detail{left:10px;right:10px;bottom:10px;width:auto}
                 .fs-cv-hud{bottom:auto;top:74px}
@@ -20325,14 +20591,26 @@ void main(){
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  {onOpenCollection && (
-                    <button type="button" className="fs-cv-collection" onClick={onOpenCollection}
-                      title="Voir tous les cristaux, leurs raretés et leurs cotes de tirage">
-                      <span className="fs-cv-collection-gem" aria-hidden="true" />
-                      <span className="fs-cv-collection-long">Voir ma collection</span>
-                      <span className="fs-cv-collection-short">Collection</span>
-                    </button>
-                  )}
+                  {onOpenCollection && (() => {
+                    /* Le bouton affiche la progression du codex plutôt qu'un
+                       intitulé neutre : « 12 / 30 » se lit comme une collection
+                       incomplète et donne une raison d'entrer. */
+                    const grads = window.CRYSTAL_GRADIENTS || [];
+                    const vus = new Set(crystals.map(c => c.crystalGradient).filter(Boolean));
+                    const nb = grads.filter(g => vus.has(g.id)).length;
+                    const pct = grads.length ? Math.round((nb / grads.length) * 100) : 0;
+                    return (
+                      <button type="button" className="fs-cv-collection" onClick={onOpenCollection}
+                        title="Voir tous les cristaux, leurs raretés et leurs cotes de tirage">
+                        <span className="fs-cv-collection-gem" aria-hidden="true" />
+                        <span className="fs-cv-collection-txt">
+                          <span className="fs-cv-collection-lbl">Collection</span>
+                          {grads.length > 0 && <span className="fs-cv-collection-num">{nb} / {grads.length}</span>}
+                        </span>
+                        {grads.length > 0 && <span className="fs-cv-collection-bar" aria-hidden="true"><i style={{ width: pct + '%' }} /></span>}
+                      </button>
+                    );
+                  })()}
                   {crystals.length > 0 && (
                     <div className="fs-cv-stats">
                       <div className="fs-cv-stat">
@@ -22420,19 +22698,44 @@ void main(){
   /* ─────────────────────────────────────────────────────────────
      ÉVOLUTION SCREEN — Régularité · Progression
   ───────────────────────────────────────────────────────────── */
-  /* Évolution : une SEULE page. « Régularité » et « Vue d'ensemble » étaient
-     deux onglets qui racontaient la même histoire en deux moitiés — on lit
-     désormais d'un trait : le bandeau de progression (niveau + XP), puis les
-     chiffres, la carte d'activité, et enfin la régularité (série, jokers). */
-  function EvolutionScreen({ user, initialTab = null }) {
+  /* Évolution : une SEULE page, lue d'un trait.
+     Le défaut n'était pas le manque d'informations mais leur redite : la série
+     s'affichait TROIS fois (bandeau, tuile de stats, brasier géant), deux héros
+     visuels se disputaient la page, et le coffre répétait la grotte. Chaque
+     donnée a désormais un seul domicile :
+       bandeau  → niveau et XP, rien d'autre
+       Repères  → série (le seul brasier), cristaux, temps
+       Activité → carte de chaleur
+       Régularité → paliers hebdomadaires et jokers
+       Cristaux → un aperçu court qui renvoie au codex complet */
+  function EvolutionScreen({ user, initialTab = null, onNavigate }) {
     const [g] = useGamif(user?.id);
-    const { xp = 0, streaks = {} } = g;
+    const { xp = 0, streaks = {}, heatmap = {} } = g;
     const lvl = window._gLevel(xp);
     /* Progression vers le palier suivant — s'appuie sur _gLvlPct (existant). */
     const lvlPct = (() => {
       try { const p = window._gLvlPct ? window._gLvlPct(xp) : 0; return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0)); }
       catch (e) { return 0; }
     })();
+
+    const crystals = React.useMemo(() => {
+      try { return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`)) || []; } catch (e) { return []; }
+    }, [user?.id]);
+    const [ratings, setRatings] = React.useState(() => window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
+    React.useEffect(() => {
+      const sync = () => setRatings(window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
+      sync();
+      window.addEventListener('fs-prod-rating-update', sync);
+      return () => window.removeEventListener('fs-prod-rating-update', sync);
+    }, [user?.id]);
+
+    const totalMin = Object.values(heatmap).reduce((a, b) => a + b, 0);
+    const serie = Number(streaks.daily || 0);
+    const JOKER_MAX = window.FS_JOKER_MAX || 3;
+    const jokers = Math.min(JOKER_MAX, Number(streaks.jokers || 0));
+    const hasActivity = crystals.length > 0 || totalMin > 0 || Object.keys(ratings).length > 0;
+    const goSession = () => { if (onNavigate) onNavigate('session'); else { try { location.hash = '#session'; } catch (e) {} } };
+    const heures = Math.round(totalMin / 60 * 10) / 10;
 
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: T.font }}>
@@ -22450,15 +22753,56 @@ void main(){
             background:linear-gradient(90deg,var(--theme-c1),var(--theme-c2));transition:width .8s cubic-bezier(.22,1,.36,1)}
           .fs-evo2-body{flex:1;overflow-y:auto;padding:20px 36px 40px}
           .fs-evo2-body::-webkit-scrollbar{width:0}
-          .fs-evo2-sec{margin-top:26px}
+          .fs-evo2-sec{margin-top:30px}
           .fs-evo2-sec:first-child{margin-top:0}
-          .fs-evo2-sec-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-          .fs-evo2-sec-h b{font-family:var(--font-display);font-size:15px;font-weight:900;letter-spacing:-.025em}
-          .fs-evo2-sec-h i{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.09),transparent)}
+          .fs-evo2-sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:13px}
+          .fs-evo2-sec-h b{font-family:var(--font-display);font-size:15px;font-weight:900;letter-spacing:-.025em;flex-shrink:0}
+          .fs-evo2-sec-h u{text-decoration:none;font-size:11px;color:var(--mineral-muted);flex-shrink:0}
+          .fs-evo2-sec-h i{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.09),transparent);transform:translateY(-4px)}
+
+          /* Repères : trois faits, un seul domicile chacun. */
+          .fs-evo2-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+          .fs-evo2-key{position:relative;padding:16px 18px;border-radius:20px;overflow:hidden;
+            border:1px solid rgba(255,255,255,.07);
+            background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+          .fs-evo2-key.flame{border-color:rgba(255,210,125,.2);
+            background:radial-gradient(120% 100% at 100% 0%,rgba(255,180,80,.12),transparent 60%),linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015))}
+          .fs-evo2-key b{display:block;font-family:var(--font-display);font-size:30px;font-weight:900;
+            letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+          .fs-evo2-key span{display:block;margin-top:7px;font-size:9px;font-weight:850;letter-spacing:.13em;
+            text-transform:uppercase;color:rgba(248,246,252,.42)}
+          .fs-evo2-key em{display:block;margin-top:3px;font-style:normal;font-size:11px;color:var(--mineral-muted)}
+          .fs-evo2-key svg{position:absolute;right:14px;top:14px;opacity:.9}
+
+          .fs-evo2-card{padding:18px 20px;border-radius:22px;border:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.025);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+
+          /* Paliers hebdomadaires */
+          .fs-evo2-weeks{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+          .fs-evo2-week{padding:11px 6px;border-radius:14px;text-align:center;transition:all .35s;
+            background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}
+          .fs-evo2-week.on{background:rgba(255,210,125,.1);border-color:rgba(255,210,125,.28)}
+          .fs-evo2-week b{display:block;font-size:11.5px;font-weight:900}
+          .fs-evo2-week span{display:block;margin-top:3px;font-size:9px;color:var(--mineral-muted)}
+
+          /* Aperçu de cristaux : court, et il renvoie au codex. */
+          .fs-evo2-gems{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:9px}
+          .fs-evo2-gem{display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;
+            border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+          .fs-evo2-gem u{text-decoration:none;font-size:9px;font-weight:800;color:var(--mineral-muted)}
+          .fs-evo2-link{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:13px;
+            cursor:pointer;font:850 11.5px var(--font-body);color:var(--mineral-text);
+            border:1px solid rgba(var(--theme-c1-rgb),.24);background:rgba(var(--theme-c1-rgb),.10);
+            transition:all .2s var(--mineral-ease)}
+          .fs-evo2-link:hover{background:rgba(var(--theme-c1-rgb),.18);transform:translateY(-1px)}
+
           @media(max-width:768px){
             .fs-evo2-head{padding:20px 16px 0}
             .fs-evo2-body{padding:16px 16px 32px}
             .fs-evo2-rail{flex-wrap:wrap;gap:10px}
+            .fs-evo2-keys{grid-template-columns:1fr}
+            .fs-evo2-key b{font-size:26px}
           }
         `}</style>
 
@@ -22488,25 +22832,136 @@ void main(){
               </div>
               <div className="fs-evo2-bar"><i style={{ width: `${lvlPct * 100}%` }} /></div>
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontFamily: T.display, fontSize: 20, fontWeight: 900, letterSpacing: '-.03em', color: '#ffd27d', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{streaks.daily || 0}</div>
-              <div style={{ fontSize: 9, fontWeight: 850, letterSpacing: '.12em', textTransform: 'uppercase', color: T.muted, marginTop: 4 }}>Jours d'affilée</div>
-            </div>
           </div>
         </div>
 
         <div className="fs-evo2-body">
-          {/* 1. Chiffres + carte d'activité */}
-          {window.ProgressScreen && React.createElement(window.ProgressScreen, { onNavigate: () => {}, user, embedded: true })}
-
-          {/* 2. Régularité : série, jokers */}
-          <div className="fs-evo2-sec">
-            <div className="fs-evo2-sec-h">
-              <b>Régularité</b>
-              <i />
+          {!hasActivity && (
+            <div style={{ display:'grid', placeItems:'center', textAlign:'center', padding:'44px 22px', borderRadius:24, background:'linear-gradient(180deg,rgba(var(--theme-c1-rgb),0.08),rgba(255,255,255,0.02))', border:'1px solid rgba(var(--theme-c1-rgb),0.16)' }}>
+              <div style={{ width:72, height:72, borderRadius:24, display:'grid', placeItems:'center', background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', boxShadow:'0 18px 44px rgba(var(--theme-c1-rgb),0.28)', marginBottom:18 }}>
+                <div style={{ width:26, height:34, clipPath:'polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%)', background:'#070810' }} />
+              </div>
+              <div style={{ fontFamily:T.display, fontSize:24, fontWeight:850, letterSpacing:'-0.03em' }}>Forge ton premier cristal</div>
+              <div style={{ fontSize:13, lineHeight:1.6, color:T.muted, maxWidth:380, marginTop:10 }}>Lance une session : tu forges un cristal, et cette page se remplit.</div>
+              <button onClick={goSession} style={{ marginTop:22, display:'flex', alignItems:'center', gap:8, background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', border:'none', borderRadius:14, padding:'12px 22px', color:'#070810', fontSize:13, fontWeight:850, cursor:'pointer', fontFamily:T.font, boxShadow:'0 16px 34px rgba(var(--theme-c1-rgb),0.22)' }}>
+                <svg width={13} height={13} viewBox="0 0 12 12"><circle cx={6} cy={6} r={5} stroke="#07070d" strokeWidth={1.5} fill="none" /><polygon points="5,3.5 9,6 5,8.5" fill="#07070d" /></svg>
+                Démarrer ma première session
+              </button>
             </div>
-            {window.StreaksPanel && React.createElement(window.StreaksPanel, { embed: true, user })}
-          </div>
+          )}
+
+          {hasActivity && (<>
+            {/* 1. Repères — les trois chiffres qui résument tout */}
+            <div className="fs-evo2-sec">
+              <div className="fs-evo2-sec-h"><b>Repères</b><i /></div>
+              <div className="fs-evo2-keys">
+                <div className="fs-evo2-key flame">
+                  <svg width={17} height={24} viewBox="0 0 36 52" aria-hidden="true">
+                    <defs><linearGradient id="evoFlame" x1="0%" y1="100%" x2="0%" y2="0%"><stop offset="0%" stopColor="#e25822" /><stop offset="100%" stopColor="#ffd700" /></linearGradient></defs>
+                    <path d="M18 50C8 50 2 42 2 34C2 24 9 16 18 10C18 18 22 22 26 20C22 26 30 30 30 38C30 45 25 50 18 50Z" fill="url(#evoFlame)" opacity={serie > 0 ? 1 : .3} />
+                  </svg>
+                  <b style={{ color:'#ffd27d' }}>{serie}</b>
+                  <span>Série en cours</span>
+                  <em>{serie > 1 ? 'jours d’affilée' : serie === 1 ? 'jour — reviens demain' : 'aucune série active'}</em>
+                </div>
+                <div className="fs-evo2-key">
+                  <b style={{ color:T.text }}>{crystals.length}</b>
+                  <span>Cristaux forgés</span>
+                  <em>{crystals.length > 0 ? 'dans ta grotte' : 'grotte vide'}</em>
+                </div>
+                <div className="fs-evo2-key">
+                  <b style={{ color:T.text }}>{heures}</b>
+                  <span>Heures de focus</span>
+                  <em>{Math.round(totalMin)} minutes au total</em>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Activité — la carte de chaleur, seule dans sa section */}
+            <div className="fs-evo2-sec">
+              <div className="fs-evo2-sec-h"><b>Activité</b><u>365 derniers jours</u><i /></div>
+              <div className="fs-evo2-card">
+                <div className="fs-heatmap-wrap" style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
+                  <FocusHeatmap heatmap={heatmap} ratings={ratings} />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Régularité — les mécaniques qui entretiennent la série */}
+            <div className="fs-evo2-sec">
+              <div className="fs-evo2-sec-h"><b>Régularité</b><i /></div>
+              <div className="fs-evo2-card" style={{ display:'grid', gap:18 }}>
+                <div>
+                  <div style={{ fontSize:11.5, fontWeight:850, color:T.muted, marginBottom:9 }}>Paliers hebdomadaires</div>
+                  <div className="fs-evo2-weeks">
+                    {[1,2,3,4].map(w => {
+                      const on = (streaks.weekly || 0) >= w;
+                      return (
+                        <div key={w} className={'fs-evo2-week' + (on ? ' on' : '')}>
+                          <b style={{ color: on ? '#ffd27d' : T.muted }}>S{w}</b>
+                          <span>{w * 7} jours</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize:11.5, fontWeight:850, color:T.muted, marginBottom:9 }}>Jokers de série</div>
+                  <div className="gf-joker-card">
+                    <div className="gf-joker-slots" aria-label={`${jokers} joker${jokers > 1 ? 's' : ''} sur ${JOKER_MAX}`}>
+                      {Array.from({ length: JOKER_MAX }, (_, i) => (
+                        <span key={i} className={'gf-joker-slot' + (i < jokers ? ' on' : '')}>
+                          <svg width={15} height={17} viewBox="0 0 24 26" fill="none" aria-hidden="true">
+                            <path d="M12 1.5 21.5 8v10L12 24.5 2.5 18V8z" fill="currentColor" opacity=".9" />
+                            <path d="M12 1.5V24.5M2.5 8l9.5 5 9.5-5" stroke="rgba(7,8,16,.45)" strokeWidth="1.1" />
+                          </svg>
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:T.text }}>
+                        {jokers > 0 ? `${jokers} joker${jokers > 1 ? 's' : ''} en réserve` : 'Aucun joker'}
+                      </div>
+                      <div style={{ fontSize:11, color:T.muted, marginTop:3, lineHeight:1.5 }}>
+                        1 offert chaque mois · une chance d'en trouver à chaque session.
+                        {jokers > 0 ? ' Il répare ta série si tu manques un jour.' : ''}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Cristaux — un aperçu court : le codex complet vit dans Collection */}
+            {crystals.length > 0 && (
+              <div className="fs-evo2-sec">
+                <div className="fs-evo2-sec-h"><b>Derniers cristaux</b><i /></div>
+                <div className="fs-evo2-card">
+                  <div className="fs-evo2-gems">
+                    {crystals.slice(-8).reverse().map(c => {
+                      const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
+                      const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
+                      const dur = (c.duration || 0) < 1 ? `${Math.round((c.duration || 0) * 60)} s` : `${c.duration} min`;
+                      return (
+                        <div key={c.id} className="fs-evo2-gem" title={dur}>
+                          {c.crystalShape && window.ShapedCrystalGem
+                            ? React.createElement(window.ShapedCrystalGem, { shape:c.crystalShape, gradientId:isGold ? 'gold' : c.crystalGradient, progress:0.88, size:42, seed:c.seed || c.id })
+                            : React.createElement(window.CrystalGem, { progress:window._cStateProgress(si), size:42, skin:c.skin })}
+                          <u>{dur}</u>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button className="fs-evo2-link" style={{ marginTop:15 }} onClick={() => onNavigate && onNavigate('collection')}>
+                    Voir la collection complète
+                    <svg width={11} height={11} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+          </>)}
         </div>
       </div>
     );
