@@ -1,10 +1,13 @@
-const CACHE_NAME = 'lumenos-v12';
+const CACHE_NAME = 'lumenos-v13';
 
 // Static assets to cache on install
+// logo.png est affiché dès le splash (avant toute compilation) : le précacher
+// évite un aller-retour réseau sur le tout premier écran aux visites suivantes.
 const PRECACHE = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/logo.png',
 ];
 
 self.addEventListener('install', (event) => {
