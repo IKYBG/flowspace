@@ -14769,7 +14769,13 @@ void main(){
               --s-line:rgba(var(--sa-rgb),0.18);--s-line-n:rgba(255,255,255,0.065);
               --s-halo:rgba(var(--sa-rgb),0.20)}
             .fs-set-root{display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;font-family:${T.font};color:${T.text};background:radial-gradient(ellipse 70% 50% at 80% -12%,rgba(var(--sa-rgb),0.085),transparent 62%),radial-gradient(ellipse 60% 44% at 2% 104%,rgba(var(--sb-rgb),0.055),transparent 58%),linear-gradient(180deg,rgba(var(--mineral-bg-rgb),0.98),rgba(var(--mineral-surface-rgb),0.93))}
-            .fs-set-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 30px;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.012));backdrop-filter:blur(16px);flex-wrap:wrap}
+            /* Header : plus de backdrop-filter. Combiné à l'animation d'entrée
+               de .fs-set-root (transform sur un ancêtre), le flou d'arrière-plan
+               produisait sous Chromium des coutures — les « lignes blanches »
+               qui barraient le titre. Le fond est de toute façon quasi opaque :
+               on le rend franchement opaque, sans flou, sans artefact, et plus
+               léger sur machine modeste. */
+            .fs-set-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 30px;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.72),rgba(var(--mineral-bg-rgb),0.30));flex-wrap:wrap}
             .fs-set-header-l{display:flex;align-items:center;gap:13px;min-width:0}
             .fs-set-h1{font-family:${T.display};font-size:25px;font-weight:850;letter-spacing:-0.035em}
             .fs-set-badge{display:inline-flex;align-items:center;gap:6px;height:25px;padding:0 11px;border-radius:999px;border:1px solid var(--s-line-n);background:var(--s-veil);color:rgba(248,246,252,0.50);font-size:10.5px;font-weight:900;letter-spacing:0.12em;text-transform:uppercase}
@@ -14922,13 +14928,19 @@ void main(){
 
           <header className="fs-set-header">
             <div className="fs-set-header-l">
-              <button className="fs-set-btn" onClick={() => onNavigate('dashboard')} style={{ height: 34, padding: '0 12px' }} aria-label="Retour">←</button>
+              {/* Glyphes de police proscrits (CLAUDE.md) : flèche et coche en SVG. */}
+              <button className="fs-set-btn" onClick={() => onNavigate('dashboard')} style={{ height: 34, width: 34, padding: 0, display: 'grid', placeItems: 'center' }} aria-label="Retour">
+                <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+              </button>
               <h1 className="fs-set-h1">Paramètres</h1>
               <span className="fs-set-badge">LumenOS</span>
             </div>
             <div className="fs-set-header-r">
-              <span className={'fs-set-saved' + (saved ? ' show' : '')}>Enregistré ✓</span>
-              <button className="fs-set-btn" onClick={resetAll}>Reset</button>
+              <span className={'fs-set-saved' + (saved ? ' show' : '')}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: '-1px' }}><path d="M5 13l4 4L19 7"/></svg>
+                Enregistré
+              </span>
+              <button className="fs-set-btn" onClick={resetAll}>Réinitialiser</button>
             </div>
           </header>
 
@@ -16982,7 +16994,7 @@ void main(){
             .fs-coll-cell.locked .fs-coll-gem::after{opacity:.12}
             .fs-coll-name{margin-top:12px;font-size:11.5px;font-weight:850;letter-spacing:-.005em;color:rgba(248,246,252,.9);
               max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-            .fs-coll-cell.locked .fs-coll-name{color:rgba(248,246,252,.34)}
+            .fs-coll-cell.locked .fs-coll-name{color:rgba(248,246,252,.6)}
             .fs-coll-sub{margin-top:4px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
               color:rgba(248,246,252,.36);font-variant-numeric:tabular-nums}
             .fs-coll-badge{position:absolute;top:9px;right:9px;min-width:21px;height:21px;padding:0 7px;border-radius:99px;
@@ -17069,7 +17081,11 @@ void main(){
                               ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: g.id, progress: .88, size: 50, seed: i + 2 })
                               : null}
                           </div>
-                          <div className="fs-coll-name">{n ? g.name : '— — —'}</div>
+                          {/* Nom TOUJOURS visible, même scellé : savoir qu'il
+                             existe un « Orage » ou un « Prisme boréal » à forger
+                             donne un but. La silhouette noire + le cadenas + le
+                             sous-titre « Scellé » disent déjà qu'il reste à obtenir. */}
+                          <div className="fs-coll-name">{g.name}</div>
                           <div className="fs-coll-sub">{n ? `${n} forgé${n > 1 ? 's' : ''}` : 'Scellé'}</div>
                           {n > 1 && <span className="fs-coll-badge">×{n}</span>}
                           {!n && (
@@ -19389,11 +19405,19 @@ void main(){
               {/* Le nom porte les COULEURS FINALES de la gemme (dégradé du
                  cristal), pas un blanc neutre — on lit sa couleur avant même
                  de la voir. */}
+              {/* Nom teinté du dégradé du cristal. Piège corrigé : un
+                 `filter:drop-shadow` posé sur un élément `background-clip:text`
+                 fait, sous Chromium, peindre le dégradé sur TOUT le bloc — d'où
+                 le « rectangle de couleur » à la place du nom. La lueur passe
+                 donc par `text-shadow` (dessiné sur la forme des glyphes, sans
+                 casser le découpage), et `-webkit-text-fill-color:transparent`
+                 remplace `color:transparent`, plus robuste pour le clip texte. */}
               <div style={{ fontFamily:T.display, fontSize:15, fontWeight:800, letterSpacing:'-0.01em', lineHeight:1.1,
                 textAlign:'center', whiteSpace:'nowrap',
                 background:`linear-gradient(100deg, ${nameA}, ${nameB})`,
-                WebkitBackgroundClip:'text', backgroundClip:'text', color:'transparent',
-                filter:`drop-shadow(0 0 9px ${pal.glow})` }}>
+                WebkitBackgroundClip:'text', backgroundClip:'text',
+                WebkitTextFillColor:'transparent', color:'transparent',
+                textShadow:`0 0 10px ${pal.glow}` }}>
                 {phase==='complete' ? 'Cristal forgé' : phase==='shattered' ? 'Brisé' : pal.name}
               </div>
               {/* Time */}
@@ -19440,7 +19464,11 @@ void main(){
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {/* Progress ring */}
-            {isGold && <span style={{position:'absolute',inset:-18,borderRadius:'50%',background:'conic-gradient(from 20deg,transparent,rgba(255,245,190,0.34),transparent 35%,rgba(245,158,11,0.28),transparent 70%)',filter:'blur(1px)',animation:'crystalGoldAura 3.4s ease-in-out infinite',pointerEvents:'none'}} />}
+            {/* L'aura dorée est portée par <CrystalAura> DERRIÈRE le disque, déjà
+               centrée. On avait ici un 2e halo conique à lobe unique (from 20deg)
+               qui, faute de symétrie, ressortait comme un croissant décalé en
+               haut à gauche — le « bug » signalé. Supprimé : un seul système
+               d'aura, centré, pour le doré comme pour rare/légendaire. */}
             <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', transform:'rotate(-90deg)' }} viewBox="0 0 80 80">
               <circle cx={40} cy={40} r={Rc} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={4}/>
               <circle cx={40} cy={40} r={Rc} fill="none" stroke={pal.a} strokeWidth={4}
@@ -21285,7 +21313,7 @@ void main(){
      un vrai effet de jeu : bloom de cœur, rayons, rubans, particules, anneaux.
      Les compteurs de particules chutent en perf-lite (PC modestes). */
   const FS_AURA_ARCH = {
-    magma:      'ember',   braise:  'ember',
+    magma:      'lava',    braise:  'ember',
     banquise:   'frost',   glacier2:'frost',
     orage:      'storm',
     neant:      'void',    obsidienne:'void',
@@ -21331,10 +21359,49 @@ void main(){
       @keyframes fsAuBubble{0%{opacity:0;transform:translate(0,26%) scale(.35)}25%{opacity:.9}80%{opacity:.7}100%{opacity:0;transform:translate(var(--dx,0),-40%) scale(1.25)}}
       /* houle des abysses */
       @keyframes fsAuWave{0%{opacity:.5;transform:scale(.45)}100%{opacity:0;transform:scale(1.35)}}
+      /* ── VFX enrichis (orage / boréal / magma) ─────────────────────────── */
+      /* Éclair : coup vif, lueur résiduelle, salves irrégulières */
+      @keyframes fsAuStrike{0%,72%,100%{opacity:0}73%{opacity:1}77%{opacity:.2}79%{opacity:.92}84%{opacity:.12}}
+      /* Flash plein cadre synchronisé aux frappes */
+      @keyframes fsAuBoltFlash{0%,70%,100%{opacity:0}73%{opacity:.55}80%{opacity:.08}}
+      /* Rideaux d'aurore : ondulation verticale lente + respiration */
+      @keyframes fsAuCurtain{0%,100%{transform:translateY(4%) scaleY(.9) skewX(-5deg);opacity:.35}50%{transform:translateY(-5%) scaleY(1.12) skewX(6deg);opacity:.8}}
+      @keyframes fsAuCurtainHue{0%,100%{filter:blur(12px) hue-rotate(-14deg)}50%{filter:blur(15px) hue-rotate(16deg)}}
+      /* Lave : churn du cœur en fusion (rotation + pulsation lentes) */
+      @keyframes fsAuLava{0%{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.08)}100%{transform:rotate(360deg) scale(1)}}
+      @keyframes fsAuHeat{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:.85;transform:scale(1.06)}}
+      /* Braises de lave : montée avec scintillement thermique */
+      @keyframes fsAuSpark{0%{opacity:0;transform:translate(0,22%) scale(.4)}14%{opacity:1}70%{opacity:.85}100%{opacity:0;transform:translate(var(--dx,0),-62%) scale(1.1)}}
+      /* Veines de lave qui pulsent */
+      @keyframes fsAuVein{0%,100%{opacity:.32}50%{opacity:.9}}
       html.fs-reduce-motion .fs-aura *{animation:none!important}
       html.fs-perf-lite .fs-aura .heavy{display:none}
     `;
     document.head.appendChild(s);
+  }
+
+  /* Filtres SVG organiques (bruit fractal figé, mus par transform CSS pour
+     rester peu coûteux) : donnent aux VFX un grain « 3D » de vrai jeu — lave
+     turbulente, voile d'aurore, fractures d'éclair. Injectés une seule fois. */
+  if (typeof document !== 'undefined' && !document.getElementById('fs-aura-defs')) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.id = 'fs-aura-defs';
+    svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+    svg.innerHTML = `
+      <defs>
+        <filter id="fsTurbLava" x="-40%" y="-40%" width="180%" height="180%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.022 0.05" numOctaves="4" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="30" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+        <filter id="fsTurbAurora" x="-40%" y="-20%" width="180%" height="140%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.008 0.02" numOctaves="2" seed="21" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+      </defs>`;
+    (document.body || document.documentElement).appendChild(svg);
   }
 
   function CrystalAura({ gradientId, rarity, size = 120, intensity = 1 }) {
@@ -21403,6 +21470,50 @@ void main(){
         <div className="lay heavy" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c0}44, transparent 30%, ${c2}33, transparent 62%)`, filter: 'blur(14px)', opacity: .6, animation: 'fsAuSpin 9s linear infinite' }} />
         {particles(nP(11), 3, 'fsAuRise', (i, r1) => dot(r1 > 0.6 ? '#ffe9a8' : c0, 2 + r1 * 3, 0.4))}
       </>;
+    } else if (kind === 'lava') {
+      /* MAGMA — coulée en fusion. Un cœur turbulent (bruit fractal déplacé)
+         qui tourne et respire comme de la roche liquide, des VEINES de lave
+         incandescentes qui pulsent, une croûte sombre par-dessus, et des
+         braises qui montent en scintillant. Nettement plus « matière » que
+         de simples points de feu. */
+      layers = <>
+        {/* halo de chaleur */}
+        {bloom(c1, 22, 18, 2.6, 0.72)}
+        {/* cœur en fusion : deux nappes de bruit contrariées → churn de roche
+           liquide. Bord non clippé (fond transparent) pour une silhouette
+           irrégulière et flammée, pas une bille ronde. Fort contraste
+           blanc chaud → orange → rouge sombre pour des filaments molten nets. */}
+        <div className="lay" style={{ inset:'8%', mixBlendMode:'screen', animation:'fsAuHeat 3.2s ease-in-out infinite' }}>
+          <div style={{ position:'absolute', inset:'-20%', filter:'url(#fsTurbLava)', borderRadius:'50%',
+            background:`radial-gradient(circle at 50% 46%, #fff6cc 0%, #ffcf6a 15%, ${c0} 33%, #d63a12 55%, #6e1403 74%, transparent 86%)`,
+            animation:'fsAuLava 11s linear infinite' }} />
+          <div className="heavy" style={{ position:'absolute', inset:'-14%', filter:'url(#fsTurbLava)', borderRadius:'50%', mixBlendMode:'screen', opacity:.7,
+            background:`radial-gradient(circle at 54% 56%, #ffe08a 0%, ${c0} 40%, transparent 72%)`,
+            animation:'fsAuLava 8s linear infinite reverse' }} />
+        </div>
+        {/* veines incandescentes qui pulsent (fractures de la croûte) */}
+        {Array.from({ length: nP(5) }, (_, i) => {
+          const r1 = _auraN(i, 41), r2 = _auraN(i + 30, 41);
+          return (
+            <div key={'vn'+i} className={i > 2 ? 'heavy' : undefined} style={{
+              left:(24 + r1 * 52) + '%', top:(28 + r2 * 44) + '%',
+              width: box * (0.14 + r1 * 0.18), height: 2 + r1 * 1.5,
+              transform:`rotate(${(r2 - 0.5) * 160}deg)`,
+              background:`linear-gradient(90deg, transparent, #ffd27a, ${c0}, transparent)`,
+              filter:'blur(0.6px)', mixBlendMode:'screen', borderRadius:'50%',
+              animation:`fsAuVein ${1.6 + r1 * 1.8}s ease-in-out infinite`, animationDelay:(-r2 * 2).toFixed(2)+'s',
+            }} />
+          );
+        })}
+        {/* croûte sombre : plaques refroidies, déformées par le même bruit et
+           volontairement ASYMÉTRIQUES (sinon deux taches rondes font des yeux). */}
+        <div className="lay heavy" style={{ inset:'14%', borderRadius:'50%', filter:'url(#fsTurbLava)',
+          background:`radial-gradient(ellipse 52% 22% at 30% 22%, rgba(18,5,2,0.72), transparent 60%), radial-gradient(ellipse 26% 44% at 74% 40%, rgba(18,5,2,0.5), transparent 58%), radial-gradient(ellipse 40% 20% at 58% 82%, rgba(18,5,2,0.6), transparent 62%)`,
+          mixBlendMode:'multiply', opacity:.62, animation:'fsAuLava 26s linear infinite reverse' }} />
+        {/* braises ascendantes qui scintillent */}
+        {particles(nP(12), 61, 'fsAuSpark', (i, r1) => dot(r1 > 0.62 ? '#fff0b0' : (r1 > 0.3 ? c0 : c1), 1.8 + r1 * 3, 0.3))}
+        {ring(c0 + 'aa', 2, 2.4, 0)}
+      </>;
     } else if (kind === 'frost') {
       layers = <>
         {bloom(c1, 22, 18, 4.2, 0.62)}
@@ -21419,17 +21530,36 @@ void main(){
         {particles(nP(9), 7, 'fsAuFall', (i, r1) => dot('#eaf9ff', 1.6 + r1 * 2))}
       </>;
     } else if (kind === 'storm') {
+      /* ORAGE — éclairs fourchus. Chaque salve : un tronc anguleux + deux
+         ramifications, deux passes de lueur (halo large + cœur blanc net), et
+         un flash plein cadre synchronisé pour le « coup de foudre ». */
+      const bolts = [
+        { main:'M52 2 L45 26 L58 30 L48 52 L60 56 L50 98', forks:['M45 26 L30 40','M48 52 L66 62'] },
+        { main:'M18 6 L34 30 L24 36 L44 60 L34 66 L54 96', forks:['M34 30 L14 34','M44 60 L60 72'] },
+        { main:'M84 4 L68 26 L78 34 L60 52 L70 60 L54 94', forks:['M68 26 L88 32','M60 52 L44 58'] },
+      ];
       layers = <>
-        {bloom(c1, 24, 16, 1.1, 0.6)}
-        {/* arcs électriques : flashs brefs et désynchronisés */}
-        {Array.from({ length: 3 }, (_, i) => (
-          <svg key={'arc' + i} className={i > 1 ? 'heavy' : undefined} viewBox="0 0 100 100" preserveAspectRatio="none"
-            style={{ inset: 0, width: '100%', height: '100%', mixBlendMode: 'screen', animation: `fsAuFlash ${1.9 + i * 0.6}s linear infinite`, animationDelay: (-i * 0.7) + 's' }}>
-            <path d={i === 0 ? 'M50 6 L44 34 L57 38 L47 94' : i === 1 ? 'M8 46 L34 44 L28 55 L92 52' : 'M16 14 L40 38 L30 44 L78 86'}
-              stroke="#f2f0ff" strokeWidth="1.6" fill="none" strokeLinejoin="round"
-              style={{ filter: `drop-shadow(0 0 5px ${c0}) drop-shadow(0 0 12px ${c1})` }} />
+        {bloom(c1, 24, 16, 1.1, 0.55)}
+        {/* halo de charge : le nuage sombre qui couve entre deux frappes */}
+        <div className="lay" style={{ inset:'20%', borderRadius:'50%', background:`radial-gradient(circle, ${c0}44, transparent 66%)`, filter:'blur(12px)', opacity:.5, animation:'fsAuBloom 2.3s ease-in-out infinite' }} />
+        {bolts.map((b, i) => (
+          <svg key={'bolt'+i} className={i > 1 ? 'heavy' : undefined} viewBox="0 0 100 100" preserveAspectRatio="none"
+            style={{ inset:0, width:'100%', height:'100%', mixBlendMode:'screen',
+              animation:`fsAuStrike ${2.2 + i * 0.9}s ease-out infinite`, animationDelay:(-i * 1.3).toFixed(2)+'s' }}>
+            {/* passe 1 : lueur colorée large */}
+            <path d={b.main} stroke={c0} strokeWidth="3.4" fill="none" strokeLinejoin="round" strokeLinecap="round"
+              style={{ filter:`drop-shadow(0 0 6px ${c0}) drop-shadow(0 0 14px ${c1})`, opacity:.85 }} />
+            {b.forks.map((f, j) => (
+              <path key={j} d={f} stroke={c0} strokeWidth="2" fill="none" strokeLinecap="round"
+                style={{ filter:`drop-shadow(0 0 5px ${c1})`, opacity:.7 }} />
+            ))}
+            {/* passe 2 : cœur blanc net */}
+            <path d={b.main} stroke="#fbfaff" strokeWidth="1.2" fill="none" strokeLinejoin="round" strokeLinecap="round" />
           </svg>
         ))}
+        {/* flash plein cadre : l'éclat qui inonde la scène à chaque coup */}
+        <div className="lay" style={{ inset:'-6%', borderRadius:'50%', background:`radial-gradient(circle, #ffffff, ${c1}66 40%, transparent 70%)`, mixBlendMode:'screen', opacity:0, animation:'fsAuBoltFlash 2.2s ease-out infinite' }} />
+        <div className="lay heavy" style={{ inset:'-6%', borderRadius:'50%', background:`radial-gradient(circle, ${c1}, transparent 62%)`, mixBlendMode:'screen', opacity:0, animation:'fsAuBoltFlash 3.1s ease-out infinite', animationDelay:'-1.5s' }} />
         {ring(c0 + '99', 2, 1.9, 0)}
       </>;
     } else if (kind === 'void') {
@@ -21469,18 +21599,30 @@ void main(){
         {ring('#ffd98acc', 2, 2.6, 0)}
       </>;
     } else if (kind === 'aurora') {
+      /* PRISME BORÉAL — vraies aurores. Des RIDEAUX verticaux (et non des
+         bandes horizontales) qui pendent du haut, ondulent et changent de
+         teinte, déformés par un bruit fractal pour le drapé organique.
+         Champ d'étoiles froid en fond, lueur d'horizon en bas. */
+      const curtainCols = [c0, c1, c2, c0, c1];
       layers = <>
-        {bloom(c1, 30, 16, 5, 0.45)}
-        {/* rubans d'aurore : bandes larges qui ondulent */}
-        {[c0, c1, c2].map((cc, i) => (
-          <div key={'rb' + i} className={i > 1 ? 'heavy' : undefined} style={{
-            left: '6%', right: '6%', top: (16 + i * 20) + '%', height: box * 0.3,
-            background: `linear-gradient(90deg, transparent, ${cc}, transparent)`,
-            filter: 'blur(13px)', mixBlendMode: 'screen', borderRadius: '50%',
-            animation: `fsAuRibbon ${4.6 + i * 1.3}s ease-in-out infinite`, animationDelay: (-i * 0.8) + 's',
-          }} />
-        ))}
-        {particles(nP(7), 23, 'fsAuTwinkle', (i, r1) => dot('#ffffff', 1.4 + r1 * 1.6))}
+        {/* ciel nocturne + lueur d'horizon basse */}
+        <div className="lay" style={{ inset:'8%', borderRadius:'50%', background:`radial-gradient(ellipse 80% 60% at 50% 92%, ${c1}55, transparent 60%)`, filter:'blur(16px)', opacity:.6, animation:'fsAuHeat 6s ease-in-out infinite' }} />
+        {/* voile de rideaux : groupe déformé par turbulence, ondulant en bloc */}
+        <div className="lay" style={{ inset:0, filter:'url(#fsTurbAurora)', animation:'fsAuCurtainHue 7s ease-in-out infinite' }}>
+          {curtainCols.map((cc, i) => (
+            <div key={'cu'+i} className={i > 3 ? 'heavy' : undefined} style={{
+              position:'absolute', top:'-8%', bottom:'2%',
+              left:(12 + i * 17) + '%', width: Math.max(10, box * 0.09),
+              background:`linear-gradient(180deg, transparent, ${cc} 30%, ${cc}cc 60%, transparent)`,
+              filter:'blur(6px)', mixBlendMode:'screen', borderRadius:'50%',
+              transformOrigin:'50% 20%',
+              animation:`fsAuCurtain ${3.8 + (i % 3) * 1.1}s ease-in-out infinite`,
+              animationDelay:(-i * 0.7).toFixed(2)+'s',
+            }} />
+          ))}
+        </div>
+        {bloom(c1, 34, 18, 5.5, 0.32)}
+        {particles(nP(9), 23, 'fsAuTwinkle', (i, r1) => dot(r1 > 0.7 ? '#eafcff' : '#ffffff', 1.2 + r1 * 1.7))}
       </>;
     } else if (kind === 'blood') {
       layers = <>
