@@ -4648,14 +4648,17 @@
         const days = buildDays(14);
         const counts = days.reduce((a, d) => { if (d.r) a[d.r] = (a[d.r] || 0) + 1; return a; }, {});
         const rated = (counts.green || 0) + (counts.yellow || 0) + (counts.red || 0);
+        /* Accents accrochés au THÈME (var CSS live), plus au warm ambre fixe :
+           la Régularité épouse le thème appliqué. Les barres rouge/jaune/vert
+           restent sémantiques (niveau de journée). */
         return (
-          <Shell glow={T.warm} style={style}>
+          <Shell glow="var(--theme-c1)" style={style}>
             <div style={{ padding: '20px 22px 16px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <Lbl ch="régularité" />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 22, padding: '0 10px', borderRadius: 99, background: `${T.warm}16`, border: `1px solid ${T.warm}33` }}>
-                  <span style={{ fontSize: 10, color: T.warm, lineHeight: 1 }}>▲</span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: T.warm, fontVariantNumeric: 'tabular-nums' }}>{streak} j</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 22, padding: '0 10px', borderRadius: 99, background: 'rgba(var(--theme-c1-rgb),0.10)', border: '1px solid rgba(var(--theme-c1-rgb),0.22)' }}>
+                  <svg width={9} height={9} viewBox="0 0 24 24" fill="var(--theme-c1)" aria-hidden="true" style={{ display: 'block' }}><path d="M12 4l8 14H4z"/></svg>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--theme-c1)', fontVariantNumeric: 'tabular-nums' }}>{streak} j</span>
                 </div>
               </div>
               <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 4, paddingTop: 4 }}>
@@ -4697,7 +4700,7 @@
         return (
           <Shell style={style}>
             <div style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, height: '100%' }}>
-              <div style={{ fontSize: 36, lineHeight: 1, fontFamily: T.display, fontWeight: 800, color: T.warm, fontVariantNumeric: 'tabular-nums' }}>{streak}</div>
+              <div style={{ fontSize: 36, lineHeight: 1, fontFamily: T.display, fontWeight: 800, color: 'var(--theme-c1)', fontVariantNumeric: 'tabular-nums' }}>{streak}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>jours de suite</div>
                 <div style={{ marginTop: 7, display: 'flex', alignItems: 'flex-end', gap: 4, height: 18 }}>
@@ -6466,7 +6469,7 @@
         { id: 'pomodoro', label: 'Pomodoro', name: 'Pomodoro', short: 'Cycles de focus', category: 'Focus', desc: 'Lancer des cycles de concentration directement depuis le dashboard.', best: 'Sessions courtes', icon: <FsWidgetIcon type="pomodoro" />, color: T.rose, C: window.PomodoroWidget, variants: [1, 2, 9] },
         { id: 'tasks', label: 'Tasks', name: 'Tâches', short: 'Actions du jour', category: 'Action', desc: 'Afficher les tâches importantes et cocher ce qui avance.', best: 'Priorités du jour', icon: <FsWidgetIcon type="tasks" />, color: T.green, C: window.TasksWidget, variants: [1, 2, 3] },
         { id: 'spotify', label: 'Sons', name: 'Sons de focus', short: 'Ambiances sonores pour se concentrer', category: 'Ambiance', desc: 'Mixe des sons d’ambiance (pluie, océan, forêt, espace…) pour te concentrer.', best: 'Concentration', icon: <FsWidgetIcon type="spotify" />, color: T.green, C: window.AmbientWidget, variants: [1, 5, 10] },
-        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Ta régularité en graphe', category: 'Habitude', desc: 'Un graphe de tes jours productifs, nourri par ta Carte d’activité.', best: 'Suivi quotidien', icon: <FsWidgetIcon type="streak" />, color: T.warm, C: window.StreakWidget, variants: [1, 2, 10] },
+        { id: 'streak', label: 'Streak', name: 'Régularité', short: 'Ta régularité en graphe', category: 'Habitude', desc: 'Un graphe de tes jours productifs, nourri par ta Carte d’activité.', best: 'Suivi quotidien', icon: <FsWidgetIcon type="streak" />, color: T.c1, C: window.StreakWidget, variants: [1, 2, 10] },
         { id: 'countdown', label: 'Countdown', name: 'Compte à rebours', short: 'Deadline sous contrôle', category: 'Deadline', desc: 'Mettre en avant une échéance ou un lancement important.', best: 'Deadline visible', icon: <FsWidgetIcon type="countdown" />, color: T.teal, C: window.CountdownWidget, variants: [1, 10] },
         { id: 'links', label: 'Links', name: 'Liens rapides', short: 'Raccourcis essentiels rapides', category: 'Navigation', desc: 'Regrouper les raccourcis utiles pour ouvrir les bons outils vite.', best: 'Outils fréquents', icon: <FsWidgetIcon type="links" />, color: T.muted, C: window.LinksWidget, variants: [1, 2, 8] },
         { id: 'image', label: 'Image', name: 'Image', short: 'Inspiration visuelle personnelle', category: 'Personnel', desc: 'Ajouter une photo, une inspiration ou un visuel de contexte.', best: 'Moodboard', icon: <FsWidgetIcon type="image" />, color: T.rose, C: window.ImageWidget, variants: [1] },
@@ -15980,7 +15983,28 @@ void main(){
         addToast({ message: 'Invitation annulée', type: 'info', icon: '✕', duration: 3200 });
       };
 
+      /* Point d'entrée UNIQUE pour ouvrir le lanceur. Interdit une 2e session
+         tant qu'une est active (sinon la nouvelle écrasait l'active en silence).
+         La topbar tressaille + un toast explique pourquoi rien ne s'est lancé. */
+      const requestStartSession = () => {
+        if (activeSessionRef.current) {
+          try { window.dispatchEvent(new CustomEvent('fs-session-active-nudge')); } catch (_) {}
+          addToast({ message: 'Une session est déjà en cours — termine-la d’abord', type: 'info', icon: '!', duration: 3600 });
+          setRoutedScreen('dashboard', true);
+          return;
+        }
+        setShowSession(true);
+      };
+
       const handleLaunch = async (session) => {
+        /* Défense en profondeur : même si le lanceur s'ouvrait, on refuse de
+           démarrer par-dessus une session active. */
+        if (activeSessionRef.current) {
+          setShowSession(false);
+          try { window.dispatchEvent(new CustomEvent('fs-session-active-nudge')); } catch (_) {}
+          addToast({ message: 'Une session est déjà en cours', type: 'info', icon: '!', duration: 3200 });
+          return;
+        }
         if (session.type === 'together' && (session.friendIds?.length || session.friendId)) {
           setShowSession(false);
           setRoutedScreen('dashboard', true);
@@ -16780,7 +16804,7 @@ void main(){
                 <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
                 {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} />}
                 {screen === 'tasks' && <TasksScreen />}
-                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), initialTab: 'cristaux', onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
+                {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: requestStartSession, initialTab: 'cristaux', onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} />}
@@ -16789,7 +16813,7 @@ void main(){
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
                 {screen === 'notes-style' && window.NotesDesignScreen && React.createElement(window.NotesDesignScreen, { onNavigate: go, bgThemeId })}
                 {screen === 'variants'    && <WidgetVariantsScreen onNavigate={go} onUseVariant={handleUseVariant} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
-                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: () => setShowSession(true), onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
+                {screen === 'session' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: requestStartSession, onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { onNavigate: go, user })}
                 {screen === 'evolution' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, onNavigate: go })}
                 {screen === 'progression' && window.EvolutionScreen && React.createElement(window.EvolutionScreen, { user, initialTab: 'progression', onNavigate: go })}
@@ -19312,6 +19336,12 @@ void main(){
       }, [phase]);
 
       const [hovered, setHovered] = React.useState(false);
+      /* Le panneau (chrono + « Arrêter ») s'ouvrait UNIQUEMENT au survol : sur
+         tactile, et pour qui ne devine pas le survol, la session devenait
+         impossible à terminer. On l'ouvre aussi au TAP (pinned) → « Arrêter »
+         est atteignable partout. */
+      const [pinned, setPinned] = React.useState(false);
+      const panelOpen = hovered || pinned;
 
       if (!session) return null;
 
@@ -19378,13 +19408,13 @@ void main(){
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}>
 
-          {/* ── Expanded tooltip (hover only) ── */}
+          {/* ── Panneau (survol OU tap) ── */}
           <div style={{
             marginBottom: 10, overflow: 'hidden',
-            maxHeight: hovered ? 120 : 0,
-            opacity: hovered ? 1 : 0,
+            maxHeight: panelOpen ? 132 : 0,
+            opacity: panelOpen ? 1 : 0,
             transition: 'max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease',
-            pointerEvents: hovered ? 'all' : 'none',
+            pointerEvents: panelOpen ? 'all' : 'none',
           }}>
             <div style={{
               background: 'rgba(7,6,17,0.96)',
@@ -19432,15 +19462,21 @@ void main(){
               {phase === 'complete' && (
                 <div style={{ fontSize:13, fontWeight:700, color:pal.b }}>Session complète !</div>
               )}
-              {/* End button */}
+              {/* Arrêter — bouton clair, toujours atteignable via le panneau
+                 (survol ou tap). Au-dessus de 50 % : « Forger », sinon « Arrêter »
+                 (car le cristal n'est gardé qu'à partir de 50 %). */}
               {phase === 'growing' && (
-                <button onClick={handleEnd} style={{
-                  background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
-                  borderRadius:10, padding:'6px 18px', color:T.muted, fontSize:11, fontWeight:600,
-                  cursor:'pointer', fontFamily:T.font, transition:'all 0.15s' }}
-                  onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.12)';e.currentTarget.style.color=T.text;}}
-                  onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.color=T.muted;}}>
-                  Arrêter
+                <button onClick={(e) => { e.stopPropagation(); handleEnd(); }} style={{
+                  display:'flex', alignItems:'center', gap:7,
+                  background: progress >= 0.5 ? `linear-gradient(135deg, ${pal.a}, ${pal.b})` : 'rgba(255,255,255,0.07)',
+                  border: progress >= 0.5 ? 'none' : '1px solid rgba(255,255,255,0.14)',
+                  borderRadius:11, padding:'8px 18px', color: progress >= 0.5 ? '#0a0a12' : T.text,
+                  fontSize:11.5, fontWeight:850, cursor:'pointer', fontFamily:T.font,
+                  boxShadow: progress >= 0.5 ? `0 8px 20px ${pal.glow}` : 'none', transition:'transform 0.15s, filter 0.15s' }}
+                  onMouseEnter={e=>{e.currentTarget.style.filter='brightness(1.08)';e.currentTarget.style.transform='translateY(-1px)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.filter='none';e.currentTarget.style.transform='none';}}>
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></svg>
+                  {progress >= 0.5 ? 'Forger le cristal' : 'Arrêter la session'}
                 </button>
               )}
             </div>
@@ -19452,15 +19488,18 @@ void main(){
           {window.CrystalAura && (rarity === 'rare' || rarity === 'gold' || rarity === 'legendary')
             ? React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 80, intensity: 0.5 + progress * 0.5 })
             : null}
-          <div style={{
+          <div role="button" tabIndex={0} aria-label={panelOpen ? 'Masquer les options de session' : 'Options de session'}
+            onClick={() => setPinned(p => !p)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPinned(p => !p); } }}
+            style={{
             width: 80, height: 80, borderRadius: '50%', position: 'relative', zIndex: 1,
             cursor: 'pointer',
             background: 'rgba(7,6,17,0.88)',
             backdropFilter: 'blur(24px)',
-            border: `1.5px solid ${pal.a}55`,
+            border: `1.5px solid ${pal.a}${panelOpen ? '99' : '55'}`,
             boxShadow: isGold ? `0 10px 38px rgba(0,0,0,0.58), 0 0 34px rgba(255,202,75,0.76), 0 0 88px rgba(245,158,11,0.42)` : `0 8px 32px rgba(0,0,0,0.55), 0 0 28px ${pal.glow}`,
             transition: 'border-color 1.8s ease, box-shadow 1.8s ease, transform 0.22s cubic-bezier(0.34,1.56,0.64,1)',
-            transform: hovered ? 'scale(1.08)' : 'scale(1)',
+            transform: (hovered || pinned) ? 'scale(1.08)' : 'scale(1)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             {/* Progress ring */}
@@ -19480,17 +19519,21 @@ void main(){
             <div style={{ animation: phase==='growing' ? 'crystalFloat 4.2s ease-in-out infinite' :
                            phase==='complete' ? 'crystalComplete 0.85s cubic-bezier(0.34,1.56,0.64,1)' : undefined,
               position:'relative', zIndex:1 }}>
-              {session?.crystalShape && window.ShapedCrystalGem
+              {(session?.crystalShape || session?.crystalGradient) && window.ShapedCrystalGem
                 ? React.createElement(window.ShapedCrystalGem, {
-                    shape: session.crystalShape,
-                    gradientId: isGold ? 'gold' : session.crystalGradient,
-                    progress: phase==='complete' ? 1 : progress,
-                    colorProgress: phase==='complete' ? 1 : Math.pow(progress, 0.62),
+                    shape: session.crystalShape || 'diamond',
+                    gradientId: isGold ? 'gold' : (session.crystalGradient || 'aurora'),
+                    /* Plancher de présence : à t=0 la gemme était gris pur et
+                       minuscule (colorProgress 0) → perçue comme « pas de
+                       cristal ». On garantit une forme et une teinte visibles
+                       dès le départ, qui se saturent à mesure de la session. */
+                    progress: phase==='complete' ? 1 : Math.max(0.14, progress),
+                    colorProgress: phase==='complete' ? 1 : Math.max(0.3, Math.pow(progress, 0.62)),
                     timeOffset: elapsed,
                     size: 42, shattered,
                     seed: session.startTime || Date.now(),
                   })
-                : <CrystalGem progress={phase==='complete'?1:progress} size={42} shattered={shattered}/>
+                : <CrystalGem progress={phase==='complete' ? 1 : Math.max(0.14, progress)} size={42} shattered={shattered}/>
               }
             </div>
           </div>
@@ -21076,6 +21119,18 @@ void main(){
         };
       }, [session.startTime, session.type]);
 
+      /* Secousse d'attention : déclenchée quand user tente de lancer une 2e
+         session. On retire puis re-applique la classe pour rejouer l'animation. */
+      _uE8(() => {
+        const onNudge = () => {
+          const el = barRef.current; if (!el) return;
+          el.classList.remove('fs-sb-nudge'); void el.offsetWidth; el.classList.add('fs-sb-nudge');
+          setTimeout(() => el && el.classList.remove('fs-sb-nudge'), 700);
+        };
+        window.addEventListener('fs-session-active-nudge', onNudge);
+        return () => window.removeEventListener('fs-session-active-nudge', onNudge);
+      }, []);
+
       const total = session.duration * 60;
       /* Plus de dépassement : le chrono se fige à 00:00 (jamais de négatif) ;
          la session se conclut alors via l'overlay → pop-up de récupération. */
@@ -21141,6 +21196,13 @@ void main(){
         <div className={`fs-session-wrap${focusNudgeOpen ? ' fs-session-nudge-open' : ''}${embedded ? ' fs-session-embedded' : ''}`} style={{ position:'relative', flexShrink:0, display:'flex', justifyContent:embedded ? 'center' : 'center', padding:embedded ? 0 : '14px 24px 8px', zIndex:100, width:embedded ? 'min(720px, 100%)' : undefined, minWidth:0, margin:embedded ? '0 auto' : undefined }}>
           <style>{`
             .fs-session-bar{opacity:0;}
+            /* Attention : quand user tente de lancer une 2e session, la barre
+               tressaille et s'illumine → « une session est DÉJÀ en cours ici ». */
+            @keyframes fsSbNudge{0%,100%{transform:translateX(0)}12%{transform:translateX(-7px)}28%{transform:translateX(6px)}44%{transform:translateX(-4px)}60%{transform:translateX(3px)}76%{transform:translateX(-1px)}}
+            .fs-session-bar.fs-sb-nudge{animation:fsSbNudge .62s cubic-bezier(.36,.07,.19,.97) both!important;
+              box-shadow:0 20px 54px rgba(0,0,0,.5),0 0 0 2px rgba(var(--theme-c1-rgb),.55),0 0 34px rgba(var(--theme-c1-rgb),.4)!important;
+              border-color:rgba(var(--theme-c1-rgb),.6)!important}
+            html.fs-reduce-motion .fs-session-bar.fs-sb-nudge{animation:none!important}
             /* ── Cockpit de session : panneau rectangulaire structuré, plus une pilule. ── */
             /* Ligne d'accent supérieure : statique, respiration lente — pas de gadget qui balaie. */
             .fs-sb-accent{position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;
@@ -21392,9 +21454,9 @@ void main(){
     svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
     svg.innerHTML = `
       <defs>
-        <filter id="fsTurbLava" x="-40%" y="-40%" width="180%" height="180%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.022 0.05" numOctaves="4" seed="7" result="n"/>
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="30" xChannelSelector="R" yChannelSelector="G"/>
+        <filter id="fsTurbLava" x="-30%" y="-30%" width="160%" height="160%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.03 0.06" numOctaves="4" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="16" xChannelSelector="R" yChannelSelector="G"/>
         </filter>
         <filter id="fsTurbAurora" x="-40%" y="-20%" width="180%" height="140%">
           <feTurbulence type="fractalNoise" baseFrequency="0.008 0.02" numOctaves="2" seed="21" result="n"/>
@@ -21476,19 +21538,21 @@ void main(){
          incandescentes qui pulsent, une croûte sombre par-dessus, et des
          braises qui montent en scintillant. Nettement plus « matière » que
          de simples points de feu. */
+      /* Empreinte CONTENUE, calée sur les autres rares (cœur ~inset 22 %) : le
+         magma ne devait pas déborder plus que Orage ou Abysse. Le grain molten
+         (bruit déplacé, veines, croûte) est conservé, juste resserré. */
       layers = <>
-        {/* halo de chaleur */}
-        {bloom(c1, 22, 18, 2.6, 0.72)}
+        {/* halo de chaleur — discret, marge transparente comme les autres rares */}
+        {bloom(c1, 34, 14, 2.6, 0.4)}
         {/* cœur en fusion : deux nappes de bruit contrariées → churn de roche
-           liquide. Bord non clippé (fond transparent) pour une silhouette
-           irrégulière et flammée, pas une bille ronde. Fort contraste
-           blanc chaud → orange → rouge sombre pour des filaments molten nets. */}
-        <div className="lay" style={{ inset:'8%', mixBlendMode:'screen', animation:'fsAuHeat 3.2s ease-in-out infinite' }}>
-          <div style={{ position:'absolute', inset:'-20%', filter:'url(#fsTurbLava)', borderRadius:'50%',
-            background:`radial-gradient(circle at 50% 46%, #fff6cc 0%, #ffcf6a 15%, ${c0} 33%, #d63a12 55%, #6e1403 74%, transparent 86%)`,
+           liquide, bord légèrement irrégulier (déplacement doux, pas de bulge).
+           Dégradé qui s'éteint tôt (transparent 80 %) pour ne pas emplir la boîte. */}
+        <div className="lay" style={{ inset:'26%', mixBlendMode:'screen', animation:'fsAuHeat 3.2s ease-in-out infinite' }}>
+          <div style={{ position:'absolute', inset:'2%', filter:'url(#fsTurbLava)', borderRadius:'50%',
+            background:`radial-gradient(circle at 50% 46%, #fff6cc 0%, #ffcf6a 16%, ${c0} 38%, #d63a12 60%, #6e1403 74%, transparent 80%)`,
             animation:'fsAuLava 11s linear infinite' }} />
-          <div className="heavy" style={{ position:'absolute', inset:'-14%', filter:'url(#fsTurbLava)', borderRadius:'50%', mixBlendMode:'screen', opacity:.7,
-            background:`radial-gradient(circle at 54% 56%, #ffe08a 0%, ${c0} 40%, transparent 72%)`,
+          <div className="heavy" style={{ position:'absolute', inset:'6%', filter:'url(#fsTurbLava)', borderRadius:'50%', mixBlendMode:'screen', opacity:.6,
+            background:`radial-gradient(circle at 54% 56%, #ffe08a 0%, ${c0} 44%, transparent 72%)`,
             animation:'fsAuLava 8s linear infinite reverse' }} />
         </div>
         {/* veines incandescentes qui pulsent (fractures de la croûte) */}
@@ -21496,8 +21560,8 @@ void main(){
           const r1 = _auraN(i, 41), r2 = _auraN(i + 30, 41);
           return (
             <div key={'vn'+i} className={i > 2 ? 'heavy' : undefined} style={{
-              left:(24 + r1 * 52) + '%', top:(28 + r2 * 44) + '%',
-              width: box * (0.14 + r1 * 0.18), height: 2 + r1 * 1.5,
+              left:(32 + r1 * 40) + '%', top:(34 + r2 * 34) + '%',
+              width: box * (0.09 + r1 * 0.12), height: 2 + r1 * 1.2,
               transform:`rotate(${(r2 - 0.5) * 160}deg)`,
               background:`linear-gradient(90deg, transparent, #ffd27a, ${c0}, transparent)`,
               filter:'blur(0.6px)', mixBlendMode:'screen', borderRadius:'50%',
@@ -21505,14 +21569,13 @@ void main(){
             }} />
           );
         })}
-        {/* croûte sombre : plaques refroidies, déformées par le même bruit et
-           volontairement ASYMÉTRIQUES (sinon deux taches rondes font des yeux). */}
-        <div className="lay heavy" style={{ inset:'14%', borderRadius:'50%', filter:'url(#fsTurbLava)',
+        {/* croûte sombre : plaques refroidies asymétriques, resserrées sur le cœur. */}
+        <div className="lay heavy" style={{ inset:'24%', borderRadius:'50%', filter:'url(#fsTurbLava)',
           background:`radial-gradient(ellipse 52% 22% at 30% 22%, rgba(18,5,2,0.72), transparent 60%), radial-gradient(ellipse 26% 44% at 74% 40%, rgba(18,5,2,0.5), transparent 58%), radial-gradient(ellipse 40% 20% at 58% 82%, rgba(18,5,2,0.6), transparent 62%)`,
           mixBlendMode:'multiply', opacity:.62, animation:'fsAuLava 26s linear infinite reverse' }} />
-        {/* braises ascendantes qui scintillent */}
-        {particles(nP(12), 61, 'fsAuSpark', (i, r1) => dot(r1 > 0.62 ? '#fff0b0' : (r1 > 0.3 ? c0 : c1), 1.8 + r1 * 3, 0.3))}
-        {ring(c0 + 'aa', 2, 2.4, 0)}
+        {/* braises ascendantes qui scintillent — moins nombreuses, resserrées */}
+        {particles(nP(8), 61, 'fsAuSpark', (i, r1) => dot(r1 > 0.62 ? '#fff0b0' : (r1 > 0.3 ? c0 : c1), 1.6 + r1 * 2.4, 0.3))}
+        {ring(c0 + '88', 1.5, 2.6, 0)}
       </>;
     } else if (kind === 'frost') {
       layers = <>
