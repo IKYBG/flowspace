@@ -16046,31 +16046,49 @@ void main(){
           setRoutedScreen('dashboard', true);
           const targets = (session.friendIds && session.friendIds.length ? session.friendIds : [session.friendId]).filter(Boolean);
           const ids = [];
+          const rows = [];       /* lignes complètes → diffusion broadcast redondante */
+          let insertError = null; /* on ne l'avale plus : la panne devient diagnostiquable */
           /* started_at IDENTIQUE pour toutes les lignes = ligne de base. Quand un
              ami rejoint, il remplace started_at → l'hôte détecte « != baseline »
              (exact, même pour un join instantané). */
           const launchIso = new Date().toISOString();
           for (const fid of targets) {
             try {
-              const { data } = await window._fsSb.from('sessions').insert({
+              const { data, error } = await window._fsSb.from('sessions').insert({
                 host_id: window._fsSbUser?.id, friend_id: fid,
                 type: 'together', duration: session.duration,
                 music: session.music, breaks: session.breaks, active: true,
                 started_at: launchIso,
-              }).select('id').single();
-              if (data) ids.push(data.id);
-            } catch (e) { console.warn('[fs] session insert failed', e); }
-          }
-          if (!ids.length) {
-            /* Pas de sync possible : démarrage direct comme avant. */
-            addToast({ message: 'Synchronisation de session indisponible', type: 'warning', icon: '!' });
-            _activateSession(session);
-            return;
+              }).select('id, host_id, friend_id, type, duration, music, breaks, active, started_at').single();
+              if (error) { insertError = error; console.warn('[fs] session insert error', error); }
+              if (data) { ids.push(data.id); rows.push(data); }
+            } catch (e) { insertError = e; console.warn('[fs] session insert threw', e); }
           }
           const invited = (Array.isArray(session.friendUsers) && session.friendUsers.length
             ? session.friendUsers
             : [{ id: session.friendId, name: session.friendUser?.name || '?', initial: session.friendUser?.initial, color: session.friendUser?.color }]
           ).filter(f => f && f.id).map(f => ({ id: f.id, name: f.name || '?', initial: f.initial || (f.name || '?')[0].toUpperCase(), color: f.color || '#4ade80' }));
+          /* Livraison REDONDANTE de l'invitation : en plus des postgres_changes
+             (qui exigent que le Realtime soit activé sur la table `sessions`) et
+             du polling 15 s côté ami, on POUSSE aussi chaque ligne par broadcast
+             temps réel. Si un canal est muet (Realtime table désactivé), l'autre
+             passe → la carte d'invitation apparaît bien plus fiablement. */
+          rows.forEach(row => {
+            const fid = row.friend_id;
+            const send = () => { try { window._fsSendToUser?.(fid, 'session-invite', row); } catch (_) {} };
+            send(); [600, 1800, 3500].forEach(ms => setTimeout(send, ms));
+          });
+          if (!ids.length) {
+            /* Aucune ligne créée : sans ligne `sessions`, l'ami ne peut PAS
+               rejoindre (le join s'appuie sur la ligne). On l'assume honnêtement
+               au lieu de faire croire à une salle d'attente qui n'aboutira
+               jamais : message clair (cause probable : RLS/Realtime Supabase) et
+               démarrage solo. L'erreur réelle est exposée pour le diagnostic. */
+            try { window.__fsLastSessionError = (insertError && (insertError.message || insertError.code)) || 'insert renvoyé vide'; } catch (_) {}
+            addToast({ message: 'Session partagée indisponible (connexion/serveur). Démarrage en solo — réessaie plus tard.', type: 'warning', icon: '!', duration: 5200 });
+            _activateSession(session);
+            return;
+          }
           startedPendingRef.current = null;
           setPendingSession({ cfg: session, ids, invited, joined: [], declined: [], createdAt: Date.now(), startedBaseline: launchIso });
           return;
@@ -17458,36 +17476,44 @@ void main(){
           let remote = null;
           try {
             if (window._fsSb) {
-              const { data: base, error: baseError } = await window._fsSb
+              /* Requête INITIALE légère + à TIMEOUT : elle ne sélectionne que
+                 l'ossature (widgets, thème, style) — PAS custom_bg, qui est
+                 l'image de fond de l'ami et peut peser plusieurs Mo. Avant, ce
+                 blob voyageait dans la requête bloquante ET sans timeout : sur
+                 connexion lente, le profil « chargeait » interminablement
+                 (les ~3 min signalées). Le fond et les images arrivent après,
+                 en différé, une fois le dashboard déjà affiché. */
+              const _fbQuery = window._fsSb
                 .from('user_data')
-                .select('widgets, bg_theme, custom_bg, widget_style, updated_at')
+                .select('widgets, bg_theme, widget_style, updated_at')
                 .eq('user_id', friend.id)
                 .maybeSingle();
+              const { data: base, error: baseError } = await (window._fsWithTimeout
+                ? window._fsWithTimeout(_fbQuery, 10000, { data: null, error: { message: 'friend dashboard load timeout' } })
+                : _fbQuery);
               if (baseError) console.warn('[fs] friend dashboard base load failed', baseError);
               remote = base || null;
               if (remote && !cancelled) {
                 setData(remote);
                 setLoadError(false);
                 setLoading(false);
-                /* Les images sont des data-URI base64 : le blob peut peser
-                   plusieurs Mo. On ne le télécharge QUE si l'ami a réellement
-                   un widget image — sinon c'était des mégaoctets tirés pour
-                   rien à chaque ouverture de profil. */
+                /* Différé : fond perso (custom_bg, souvent lourd) — toujours —
+                   et images des widgets image (data-URI base64) si présents.
+                   Une seule requête, non bloquante. */
                 const needsImages = Array.isArray(remote.widgets) && remote.widgets.some(
                   w => String(w?.label || w?.id || '').toLowerCase().split('_')[0] === 'image'
                 );
-                if (needsImages) {
-                  window._fsSb
-                    .from('user_data')
-                    .select('images, updated_at')
-                    .eq('user_id', friend.id)
-                    .maybeSingle()
-                    .then(({ data: media, error: mediaError }) => {
-                      if (mediaError) console.warn('[fs] friend dashboard media load failed', mediaError);
-                      if (!cancelled && media?.images) setData(prev => ({ ...(prev || remote), images: media.images, updated_at: media.updated_at || prev?.updated_at || remote.updated_at }));
-                    })
-                    .catch(e => console.warn('[fs] friend dashboard media load threw', e));
-                }
+                const heavyCols = needsImages ? 'custom_bg, images, updated_at' : 'custom_bg, updated_at';
+                window._fsSb
+                  .from('user_data')
+                  .select(heavyCols)
+                  .eq('user_id', friend.id)
+                  .maybeSingle()
+                  .then(({ data: media, error: mediaError }) => {
+                    if (mediaError) console.warn('[fs] friend dashboard media load failed', mediaError);
+                    if (!cancelled && media) setData(prev => ({ ...(prev || remote), custom_bg: media.custom_bg ?? prev?.custom_bg, images: media.images ?? prev?.images, updated_at: media.updated_at || prev?.updated_at || remote.updated_at }));
+                  })
+                  .catch(e => console.warn('[fs] friend dashboard media load threw', e));
                 return;
               }
             }
