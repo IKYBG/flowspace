@@ -1294,7 +1294,7 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
-                       'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked'];
+                       'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked', 'fs_dash_presets'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -1809,6 +1809,7 @@
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
       'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked',
+      'fs_dash_presets',
       'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
       'fs_ambient'
     ];
@@ -2183,7 +2184,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked') || dirtyKeys.has('fs_dash_presets')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_|^fs_prod_ratings_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -2311,6 +2312,12 @@
           if (widgetStyle.textWidgets) _fsRawSet('fs_text_widgets', JSON.stringify(widgetStyle.textWidgets));
           else if (!ownLocal) _fsRawRemove('fs_text_widgets');
           window.dispatchEvent(new CustomEvent('fs-text-widgets-update'));
+        } catch (_) { }
+        /* Préréglages de dashboard embarqués dans widget_style.dashPresets */
+        try {
+          if (Array.isArray(widgetStyle.dashPresets)) _fsRawSet('fs_dash_presets', JSON.stringify(widgetStyle.dashPresets));
+          else if (!ownLocal) _fsRawRemove('fs_dash_presets');
+          window.dispatchEvent(new CustomEvent('fs-dash-presets-update'));
         } catch (_) { }
         /* Affichage des tâches embarqué dans widget_style.taskView */
         try {
@@ -2555,9 +2562,25 @@
       put('fs_text_widgets', 'textWidgets', true);
       put('fs_task_view', 'taskView', false);
       put('fs_friends_blocked', 'friendsBlocked', true);
+      put('fs_dash_presets', 'dashPresets', true);
       return out;
     }
     window._fsWithStyleExtras = _fsWithStyleExtras;
+
+    /* ── Préréglages de dashboard (templates personnels) ─────────────────────
+       Dispositions sauvegardées par l'utilisateur : liste {id, name, widgets,
+       createdAt}, plafonnée, embarquée au push sous widget_style.dashPresets
+       (même motif que la vitrine / les widgets texte — pas de nouvelle colonne,
+       cf. l'échec silencieux 42703 de `gamification`). Synchronisée en temps
+       réel entre appareils via le canal widget_style existant. */
+    window._fsDashPresetsRead = () => {
+      try { const v = JSON.parse(localStorage.getItem('fs_dash_presets') || '[]'); return Array.isArray(v) ? v : []; }
+      catch (_) { return []; }
+    };
+    window._fsDashPresetsWrite = (list) => {
+      try { localStorage.setItem('fs_dash_presets', JSON.stringify((Array.isArray(list) ? list : []).slice(0, 12))); } catch (_) { }
+      try { window.dispatchEvent(new CustomEvent('fs-dash-presets-update')); } catch (_) { }
+    };
 
     /* ── Amis retirés : pierres tombales ──────────────────────────────────────
        Retirer un ami ne suffisait pas à le faire disparaître. La liste affichée
@@ -2804,11 +2827,25 @@
     window._fsPushStyleOnly = _fsPushStyleOnly;
 
     /* Monkey-patch localStorage.setItem — catches all synced keys + image keys */
-    function _fsSchedulePushForKey(key) {
-      if (!window._fsSbUser || !window._fsSyncReady || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
-      _fsMarkLocalWrite();
+    function _fsSchedulePushForKey(key, changed = true) {
+      if (!window._fsSbUser || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
+      /* Écriture à l'identique (échos d'effets React au montage) : aucun
+         marquage — sinon chaque boot se daterait « à l'instant » et gagnerait
+         à tort contre le cloud. */
+      if (!changed) return;
+      /* L'horodatage + le marquage dirty se font même AVANT que la sync soit
+         prête (boot local-first : le dashboard s'affiche pendant que la
+         réconciliation tourne en arrière-plan). Sans ça, une modif utilisateur
+         faite dans cette fenêtre ne serait pas datée → la réconciliation la
+         croirait antérieure au cloud et l'écraserait. Seul l'ENVOI attend
+         _fsSyncReady. Exception pré-hydratation : les clés AUTOMATIQUES du boot
+         (fs_streak du jour, recalculs fs_gamif_*) ne datent pas — elles ne sont
+         pas des gestes de l'utilisateur et fausseraient l'arbitrage local/cloud. */
+      const autoKey = key === 'fs_streak' || key.startsWith('fs_gamif_');
+      if (window._fsSyncReady || !autoKey) _fsMarkLocalWrite();
       window._fsDirtyKeys.add(key);
       if (key === 'fs_widgets') _fsMarkWidgetsLocalWrite();
+      if (!window._fsSyncReady) return;
       if (['fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'].includes(key)) {
         try { _fsBackupVisualPrefs(window._fsSbUser.id); } catch (_) { }
       }
@@ -2833,6 +2870,9 @@
     window._fsNotifyQuota = _fsNotifyQuota;
 
     Storage.prototype.setItem = function (key, value) {
+      /* Valeur précédente AVANT écriture : permet de distinguer une vraie
+         modification d'un écho à l'identique (effets React au montage). */
+      const _prev = this === localStorage ? this.getItem(key) : null;
       try {
         _fsOrigSetItem.call(this, key, value);
       } catch (e) {
@@ -2842,7 +2882,7 @@
         throw e;
       }
       if (this === localStorage) {
-        _fsSchedulePushForKey(key);
+        _fsSchedulePushForKey(key, _prev !== String(value));
         /* Signal in-page : permet aux composants (sidebar, badges) de réagir
            aux écritures au lieu de sonder localStorage en boucle. */
         try { window.dispatchEvent(new CustomEvent('fs-store', { detail: { key } })); } catch (e) { }
@@ -2850,9 +2890,10 @@
     };
 
     Storage.prototype.removeItem = function (key) {
+      const _prev = this === localStorage ? this.getItem(key) : null;
       _fsOrigRemoveItem.call(this, key);
       if (this === localStorage) {
-        _fsSchedulePushForKey(key);
+        _fsSchedulePushForKey(key, _prev !== null);
         try { window.dispatchEvent(new CustomEvent('fs-store', { detail: { key } })); } catch (e) { }
       }
     };
@@ -4628,6 +4669,17 @@
         yellow: { c: '#fbbf24', label: 'Moyen' },
         green:  { c: '#4ade80', label: 'Productif' },
       };
+      /* Échelle ORDINALE dérivée du thème : fini le feu vert/orange/rouge figé
+         qui jurait avec le thème appliqué. L'intensité de la couleur du thème
+         encode le niveau (productif = pleine, moyen = 55 %, peu = voilée) — la
+         hauteur des barres et les libellés portent déjà le sens. Vars CSS →
+         le widget se reteinte en direct au changement de thème. */
+      const ta = a => `rgba(var(--theme-c1-rgb),${a})`;
+      const RATE_TONE = {
+        green:  { top: ta(1),    bot: ta(0.34), dot: ta(1)    },
+        yellow: { top: ta(0.55), bot: ta(0.16), dot: ta(0.55) },
+        red:    { top: ta(0.24), bot: ta(0.08), dot: ta(0.26) },
+      };
       const ratings = window._fsProdRatings ? window._fsProdRatings(user?.id || window._fsSbUser?.id) : {};
       const RATE_H = { green: 1, yellow: 0.62, red: 0.32 };
       const buildDays = n => _lastNDates(n).map(k => {
@@ -4642,11 +4694,11 @@
       };
       const barVisual = d => {
         if (d.r) {
-          const c = RATE_META[d.r].c;
+          const t = RATE_TONE[d.r];
           return {
             height: `${RATE_H[d.r] * 100}%`,
-            background: `linear-gradient(180deg, ${c}, ${c}55)`,
-            boxShadow: d.r === 'green' ? `0 0 12px ${c}3d` : 'none',
+            background: `linear-gradient(180deg, ${t.top}, ${t.bot})`,
+            boxShadow: d.r === 'green' ? `0 0 12px ${ta(0.26)}` : 'none',
           };
         }
         if (d.active) return { height: '46%', background: 'rgba(var(--theme-c1-rgb),0.34)' };
@@ -4693,7 +4745,7 @@
                 ) : (
                   ['green', 'yellow', 'red'].map(k => counts[k] ? (
                     <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      <i style={{ width: 6, height: 6, borderRadius: '50%', background: RATE_META[k].c, boxShadow: `0 0 6px ${RATE_META[k].c}55` }} />
+                      <i style={{ width: 6, height: 6, borderRadius: '50%', background: RATE_TONE[k].dot, boxShadow: k === 'green' ? `0 0 6px ${ta(0.32)}` : 'none' }} />
                       <Sub ch={`${counts[k]} ${RATE_META[k].label.toLowerCase()}`} style={{ fontSize: 10 }} />
                     </span>
                   ) : null)
@@ -4734,8 +4786,8 @@
             <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
               {days.map(d => (
                 <div key={d.k} title={dayTitle(d)} style={{ width: 5, height: 5, borderRadius: '50%',
-                  background: d.r ? RATE_META[d.r].c : d.active ? 'rgba(var(--theme-c1-rgb),0.45)' : 'rgba(255,255,255,0.1)',
-                  boxShadow: d.r === 'green' ? `0 0 5px ${RATE_META.green.c}66` : 'none' }} />
+                  background: d.r ? RATE_TONE[d.r].dot : d.active ? 'rgba(var(--theme-c1-rgb),0.45)' : 'rgba(255,255,255,0.1)',
+                  boxShadow: d.r === 'green' ? `0 0 5px ${ta(0.4)}` : 'none' }} />
               ))}
             </div>
           </div>
@@ -6748,6 +6800,61 @@
         }
       };
 
+      /* ── Mes dashboards : préréglages PERSONNELS, synchronisés ─────────────
+         Avant, « Préréglage » ne savait que générer/charger un lien. On peut
+         désormais figer la disposition actuelle sous un nom, retrouver la liste
+         de ses dashboards, en appliquer un, en supprimer. Persistés via
+         widget_style.dashPresets → mêmes données sur tous les appareils, et
+         l'événement fs-dash-presets-update les rafraîchit en direct ici. */
+      const [savedPresets, setSavedPresets] = _uS9(() => (window._fsDashPresetsRead ? window._fsDashPresetsRead() : []));
+      const [presetName, setPresetName] = _uS9('');
+      _uEff9(() => {
+        const h = () => setSavedPresets(window._fsDashPresetsRead ? window._fsDashPresetsRead() : []);
+        window.addEventListener('fs-dash-presets-update', h);
+        return () => window.removeEventListener('fs-dash-presets-update', h);
+      }, []);
+      const saveCurrentAsPreset = () => {
+        const name = (presetName || '').trim() || ('Dashboard ' + new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }));
+        const snapshot = widgets.map(w => ({ label: w.label, col: w.col, row: w.row, variant: w.variant || 1 }));
+        if (!snapshot.length) { addToast({ message: 'Dashboard vide — ajoute au moins un widget', type: 'warning', icon: '!' }); return; }
+        const p = { id: 'dp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name.slice(0, 40), widgets: snapshot, createdAt: new Date().toISOString() };
+        const next = [p, ...savedPresets].slice(0, 12);
+        window._fsDashPresetsWrite?.(next);
+        setSavedPresets(next);
+        setPresetName('');
+        addToast({ message: `« ${p.name} » enregistré dans tes templates`, type: 'success', icon: '✓' });
+      };
+      const applySavedPreset = (p) => {
+        const nextWidgets = sanitizeTemplateWidgets(p.widgets || []);
+        if (!nextWidgets.length) { addToast({ message: 'Template vide ou invalide', type: 'error', icon: '!' }); return; }
+        try { localStorage.setItem('fs_widgets', JSON.stringify(nextWidgets)); } catch (_) { }
+        try { onSave(nextWidgets); } catch (_) { }
+        try { window._fsFlushPush?.(true); } catch (_) { }
+        setWidgets(nextWidgets);
+        setSelected(null);
+        setShowPresets(false);
+        addToast({ message: `« ${p.name} » appliqué au dashboard`, type: 'success', icon: '✓' });
+      };
+      const deleteSavedPreset = (id) => {
+        const next = savedPresets.filter(x => x.id !== id);
+        window._fsDashPresetsWrite?.(next);
+        setSavedPresets(next);
+        addToast({ message: 'Template supprimé', type: 'info', icon: '✕', duration: 2600 });
+      };
+      /* Vignette de disposition : plan minute des blocs, sans rendu de widget. */
+      const MiniMap = ({ ws, h = 56 }) => (
+        <div style={{ position: 'relative', height: h, borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(145deg,rgba(var(--mineral-bg-rgb),0.8),rgba(var(--mineral-surface-rgb),0.5))', border: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          {(ws || []).slice(0, 24).map((w, i) => {
+            const [a, b] = parseSpan(w.col); const [c, d] = parseSpan(w.row);
+            return (
+              <div key={i} style={{ position: 'absolute', left: `${((a - 1) / COLS) * 100}%`, top: `${((c - 1) / ROWS) * 100}%`, width: `${((b - a) / COLS) * 100}%`, height: `${((d - c) / ROWS) * 100}%`, padding: 1.5, boxSizing: 'border-box' }}>
+                <div style={{ width: '100%', height: '100%', borderRadius: 4, background: 'rgba(var(--theme-c1-rgb),0.35)', border: '1px solid rgba(255,255,255,0.14)' }} />
+              </div>
+            );
+          })}
+        </div>
+      );
+
       const findFreeSpot = ws => {
         for (let r = 1; r <= ROWS; r++) {
           for (let c = 1; c <= COLS - 2; c++) {
@@ -7347,8 +7454,8 @@
                 <div style={{ padding:'22px 26px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:18, borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
                   <div>
                     <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.14em', textTransform:'uppercase', color:T.c1 }}>Préréglages dashboard</div>
-                    <div style={{ marginTop:6, fontFamily:T.display, fontSize:26, lineHeight:1, fontWeight:850, letterSpacing:'-0.04em', color:T.text }}>Templates premium</div>
-                    <div style={{ marginTop:8, fontSize:12.5, lineHeight:1.55, color:T.muted, maxWidth:560 }}>Sauvegarde ton layout actuel ou applique un lien de template. Les images personnelles restent privées.</div>
+                    <div style={{ marginTop:6, fontFamily:T.display, fontSize:26, lineHeight:1, fontWeight:850, letterSpacing:'-0.04em', color:T.text }}>Tes dashboards, prêts à l'emploi</div>
+                    <div style={{ marginTop:8, fontSize:12.5, lineHeight:1.55, color:T.muted, maxWidth:560 }}>Fige la disposition actuelle dans tes templates, puis applique-la en un clic — synchronisée sur tous tes appareils.</div>
                   </div>
                   <button onClick={() => setShowPresets(false)} style={{ width:38, height:38, borderRadius:14, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(255,255,255,0.045)', color:T.muted, cursor:'pointer', display:'grid', placeItems:'center', flexShrink:0 }}>
                     <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"/></svg>
@@ -7359,8 +7466,8 @@
                     <div style={{ width:44, height:44, borderRadius:16, background:'linear-gradient(145deg,var(--theme-c1),var(--theme-c2))', color:'#071018', display:'grid', placeItems:'center', boxShadow:`0 16px 34px ${c1(0.22)}, inset 0 1px 0 rgba(255,255,255,0.38)` }}>
                       <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
                     </div>
-                    <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Créer un template</div>
-                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Génère un lien court partageable : widgets, tailles, positions, thème et style.</div>
+                    <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Créer un template avec mon dashboard</div>
+                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Fige la disposition actuelle — widgets, tailles, positions — sous un nom, dans tes templates.</div>
                     <div style={{ marginTop:16, borderRadius:20, border:'1px solid rgba(255,255,255,0.085)', background:'radial-gradient(circle at 18% 12%,rgba(var(--theme-c1-rgb),0.16),transparent 36%),linear-gradient(145deg,rgba(255,255,255,0.065),rgba(255,255,255,0.025))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
                         <div style={{ fontSize:10, fontWeight:900, letterSpacing:'0.10em', textTransform:'uppercase', color:T.muted }}>Aperçu du lien</div>
@@ -7382,11 +7489,26 @@
                         })}
                       </div>
                     </div>
-                    <button onClick={createDashboardTemplate} disabled={templateBusy} style={{ marginTop:18, height:44, borderRadius:15, border:'none', background:templateBusy ? `linear-gradient(135deg,${c1(0.22)},rgba(var(--theme-c2-rgb),0.14))` : 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:templateBusy ? T.text : '#071018', padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:templateBusy ? 'wait' : 'pointer', opacity:1, boxShadow:templateBusy ? `0 18px 38px ${c1(0.14)}, inset 0 1px 0 rgba(255,255,255,0.12)` : `0 18px 38px ${c1(0.24)}, inset 0 1px 0 rgba(255,255,255,0.34)`, transition:'all .2s cubic-bezier(.16,1,.3,1)', display:'flex', alignItems:'center', justifyContent:'center', gap:9, overflow:'hidden', position:'relative' }}>
+                    {/* Nom + enregistrement LOCAL synchronisé : l'action première.
+                       Le lien de partage existe toujours, mais en secondaire. */}
+                    <input value={presetName} onChange={e => setPresetName(e.target.value)} maxLength={40}
+                      onKeyDown={e => { if (e.key === 'Enter') saveCurrentAsPreset(); }}
+                      placeholder="Nom du template — ex. Deep work"
+                      style={{ marginTop:16, width:'100%', height:46, borderRadius:15, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12.5 }} />
+                    <button onClick={saveCurrentAsPreset} style={{ marginTop:12, width:'100%', height:44, borderRadius:15, border:'none', background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', color:'#071018', padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 18px 38px ${c1(0.24)}, inset 0 1px 0 rgba(255,255,255,0.34)`, display:'flex', alignItems:'center', justifyContent:'center', gap:9 }}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                      Enregistrer dans mes templates
+                    </button>
+                    <div style={{ marginTop:14, display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ flex:1, height:1, background:'rgba(255,255,255,0.08)' }} />
+                      <span style={{ fontSize:9.5, fontWeight:850, letterSpacing:'0.12em', textTransform:'uppercase', color:T.muted }}>Ou partager</span>
+                      <span style={{ flex:1, height:1, background:'rgba(255,255,255,0.08)' }} />
+                    </div>
+                    <button onClick={createDashboardTemplate} disabled={templateBusy} style={{ marginTop:12, width:'100%', height:42, borderRadius:14, border:`1px solid ${c1(0.24)}`, background:c1(0.10), color:T.c1, padding:'0 16px', fontSize:12, fontWeight:850, fontFamily:T.font, cursor:templateBusy ? 'wait' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:9 }}>
                       {templateBusy && (
-                        <span style={{ width:18, height:22, display:'inline-block', background:'linear-gradient(145deg,rgba(255,255,255,0.95),var(--theme-c1) 42%,var(--theme-c2))', clipPath:'polygon(50% 0,88% 28%,72% 100%,28% 100%,12% 28%)', boxShadow:`0 0 18px ${c1(0.42)}, inset 4px 4px 8px rgba(255,255,255,0.32), inset -5px -6px 9px rgba(0,0,0,0.20)`, animation:'fwSpin 1.05s linear infinite' }} />
+                        <span style={{ width:14, height:18, display:'inline-block', background:'linear-gradient(145deg,rgba(255,255,255,0.95),var(--theme-c1) 42%,var(--theme-c2))', clipPath:'polygon(50% 0,88% 28%,72% 100%,28% 100%,12% 28%)', boxShadow:`0 0 18px ${c1(0.42)}`, animation:'fwSpin 1.05s linear infinite' }} />
                       )}
-                      <span>{templateBusy ? 'Cristallisation du lien' : 'Créer et copier'}</span>
+                      <span>{templateBusy ? 'Cristallisation du lien' : 'Copier un lien de partage'}</span>
                     </button>
                     {templateLink && (
                       <div style={{ marginTop:16, borderRadius:18, border:`1px solid ${templateCopied ? 'rgba(92,230,165,0.24)' : 'rgba(255,255,255,0.08)'}`, background:'linear-gradient(145deg,rgba(0,0,0,0.24),rgba(255,255,255,0.035))', padding:12, boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)' }}>
@@ -7404,14 +7526,56 @@
                       </div>
                     )}
                   </section>
-                  <section style={{ minHeight:260, borderRadius:22, border:'1px solid rgba(255,255,255,0.09)', background:'linear-gradient(155deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))', padding:20, boxShadow:'0 18px 42px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.07)' }}>
-                    <div style={{ width:44, height:44, borderRadius:16, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.10)', color:T.c1, display:'grid', placeItems:'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)' }}>
-                      <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
+                  <section style={{ minHeight:260, borderRadius:22, border:'1px solid rgba(255,255,255,0.09)', background:'linear-gradient(155deg,rgba(255,255,255,0.07),rgba(255,255,255,0.025))', padding:20, boxShadow:'0 18px 42px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.07)', display:'flex', flexDirection:'column' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ width:44, height:44, borderRadius:16, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.10)', color:T.c1, display:'grid', placeItems:'center', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)', flexShrink:0 }}>
+                        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+                      </div>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Mes dashboards enregistrés</div>
+                        <div style={{ marginTop:3, fontSize:11.5, color:T.muted }}>{savedPresets.length ? `${savedPresets.length} template${savedPresets.length > 1 ? 's' : ''} · appliqués en un clic` : 'Tes templates apparaîtront ici'}</div>
+                      </div>
                     </div>
-                    <div style={{ marginTop:18, fontSize:17, fontWeight:900, color:T.text, letterSpacing:'-0.02em' }}>Charger un template</div>
-                    <div style={{ marginTop:8, fontSize:12.5, color:T.muted, lineHeight:1.58 }}>Colle un lien court de préréglage. Le layout en édition sera remplacé avant sauvegarde.</div>
-                    <input value={templateInput} onChange={e => setTemplateInput(e.target.value.trim())} placeholder="https://...#t=..." style={{ marginTop:16, width:'100%', height:48, borderRadius:16, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 14px', boxSizing:'border-box', fontFamily:T.font, fontSize:12, lineHeight:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} />
-                    <button onClick={() => applyDashboardTemplate()} style={{ marginTop:12, height:44, borderRadius:15, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 16px', fontSize:12.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', boxShadow:`0 16px 34px ${c1(0.10)}, inset 0 1px 0 rgba(255,255,255,0.07)` }}>Appliquer le préréglage</button>
+                    {savedPresets.length === 0 ? (
+                      <div style={{ marginTop:16, flex:1, display:'grid', placeItems:'center', textAlign:'center', padding:'22px 14px', borderRadius:18, border:'1px dashed rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.02)' }}>
+                        <div>
+                          <div style={{ fontSize:12.5, fontWeight:800, color:T.text }}>Aucun template pour l'instant</div>
+                          <div style={{ marginTop:6, fontSize:11.5, lineHeight:1.55, color:T.muted, maxWidth:240 }}>Enregistre ton dashboard actuel à gauche — il apparaîtra ici, sur tous tes appareils.</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop:14, display:'grid', gap:9, maxHeight:296, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingRight:2 }}>
+                        {savedPresets.map(p => (
+                          <div key={p.id} style={{ display:'grid', gridTemplateColumns:'86px minmax(0,1fr) auto', gap:12, alignItems:'center', padding:10, borderRadius:16, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)' }}>
+                            <MiniMap ws={p.widgets} h={54} />
+                            <div style={{ minWidth:0 }}>
+                              <div style={{ fontSize:12.5, fontWeight:900, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</div>
+                              <div style={{ marginTop:4, fontSize:10.5, color:T.muted, fontVariantNumeric:'tabular-nums' }}>
+                                {(p.widgets || []).length} widget{(p.widgets || []).length > 1 ? 's' : ''}
+                                {p.createdAt ? ` · ${new Date(p.createdAt).toLocaleDateString('fr-FR', { day:'numeric', month:'short' })}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <button onClick={() => applySavedPreset(p)} title={`Appliquer « ${p.name} »`}
+                                style={{ height:34, borderRadius:12, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 13px', fontSize:11, fontWeight:900, fontFamily:T.font, cursor:'pointer', whiteSpace:'nowrap' }}>Appliquer</button>
+                              <button onClick={() => deleteSavedPreset(p.id)} aria-label={`Supprimer « ${p.name} »`}
+                                style={{ width:34, height:34, borderRadius:12, border:'1px solid rgba(255,255,255,0.09)', background:'rgba(255,255,255,0.04)', color:T.muted, cursor:'pointer', display:'grid', placeItems:'center', flexShrink:0 }}
+                                onMouseEnter={e => { e.currentTarget.style.color = T.rose; e.currentTarget.style.borderColor = 'rgba(251,113,133,0.32)'; e.currentTarget.style.background = 'rgba(251,113,133,0.08)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = T.muted; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}>
+                                <svg width={13} height={13} viewBox="0 0 14 14" fill="none"><path d="M2.5 3.5h9M5.5 3V2h3v1M3.5 3.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+                      <div style={{ fontSize:9.5, fontWeight:850, letterSpacing:'0.12em', textTransform:'uppercase', color:T.muted, marginBottom:9 }}>Ou coller un lien partagé</div>
+                      <div style={{ display:'flex', gap:8 }}>
+                        <input value={templateInput} onChange={e => setTemplateInput(e.target.value.trim())} placeholder="https://...#t=..." style={{ flex:1, minWidth:0, height:40, borderRadius:13, border:'1px solid rgba(255,255,255,0.10)', background:'rgba(0,0,0,0.20)', color:T.text, outline:'none', padding:'0 12px', boxSizing:'border-box', fontFamily:T.font, fontSize:11.5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} />
+                        <button onClick={() => applyDashboardTemplate()} style={{ height:40, borderRadius:13, border:`1px solid ${c1(0.28)}`, background:c1(0.12), color:T.c1, padding:'0 14px', fontSize:11.5, fontWeight:900, fontFamily:T.font, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}>Appliquer</button>
+                      </div>
+                    </div>
                   </section>
                 </div>
               </div>
@@ -12344,6 +12508,46 @@ void main(){
           window._fsSbUser = sbUser;
           let remote = null;
           let syncResult = { source: 'load-failed', remote: null };
+          /* ── LOCAL-FIRST au login ─────────────────────────────────────────
+             _fsLoadRemote peut prendre 15-20 s sur réseau lent (3 essais × 12 s
+             de timeout) : l'utilisateur restait planté sur l'écran d'auth. Si le
+             cache local de CET appareil appartient déjà au compte qui se
+             connecte, on entre IMMÉDIATEMENT avec lui ; la réconciliation
+             continue en arrière-plan et ré-applique ses résultats via
+             onAuth(…, quiet). Un AUTRE compte garde le chemin bloquant —
+             l'isolation entre comptes reste stricte. */
+          const _localOwnerId = (() => {
+            try {
+              const fu = JSON.parse(localStorage.getItem('fs_user') || 'null');
+              return (fu && fu.id) || localStorage.getItem('fs_last_logout_user') || null;
+            } catch (_) { return null; }
+          })();
+          if (mode === 'login' && _localOwnerId === sbUser.id) {
+            const snap = window._fsSnapshotLocalData ? window._fsSnapshotLocalData(sbUser.id) : null;
+            const uFast = { name: (snap && snap.name) || sbUser.user_metadata?.name || trimmedEmail.split('@')[0], email: trimmedEmail, id: sbUser.id, photo: window._fsLocalProfilePhoto?.() || null, ts: Date.now() };
+            try { window._fsRawSet ? window._fsRawSet('fs_user', JSON.stringify(uFast)) : localStorage.setItem('fs_user', JSON.stringify(uFast)); } catch (e) { }
+            clearAuthAttempts();
+            setStatus('success');
+            setTimeout(() => onAuth(uFast, false, snap), 680);
+            (async () => {
+              try {
+                remote = await window._fsLoadRemote(sbUser.id);
+                syncResult = await window._fsReconcileRemote(sbUser.id, remote);
+                if (syncResult.source === 'load-failed') { window._fsRetryRemoteHydration?.(sbUser.id); return; }
+                window._fsSetSyncReady?.(true);
+                const eff = syncResult.source === 'remote' ? remote : window._fsSnapshotLocalData(sbUser.id);
+                const finalName = (eff && eff.name) || uFast.name;
+                const u2 = { ...uFast, name: finalName, photo: remote?.images?.['fs_img_profile'] || uFast.photo, ts: Date.now() };
+                try { window._fsRawSet ? window._fsRawSet('fs_user', JSON.stringify(u2)) : localStorage.setItem('fs_user', JSON.stringify(u2)); } catch (e) { }
+                try { await window._fsSaveUserProfile?.(sbUser.id, finalName, trimmedEmail, remote); } catch (_) { }
+                onAuth(u2, false, eff, true); /* quiet : ré-applique sans rejouer l'entrée */
+              } catch (e) {
+                console.warn('[fs] background post-login sync failed', e);
+                window._fsRetryRemoteHydration?.(sbUser.id);
+              }
+            })();
+            return;
+          }
           try {
             remote = await window._fsLoadRemote(sbUser.id);
             syncResult = await window._fsReconcileRemote(sbUser.id, remote);
@@ -12788,6 +12992,32 @@ void main(){
     function rgbArrayToHex(rgb) {
       return '#' + rgb.map(v => clampChannel(v).toString(16).padStart(2, '0')).join('');
     }
+
+    /* Clamp de luminance de l'ACCENT (--theme-c1/c2) — pas du fond d'écran.
+       Couleurs personnalisées extrêmes : noir+noir rendait boutons, pastilles
+       rgba(accent, .1) et textes accent INVISIBLES sur les surfaces sombres ;
+       blanc+blanc collait l'accent au blanc pur du corps de texte (affordance
+       nulle, blanc-sur-blanc possible sur les remplissages clairs). On borne la
+       luminance perçue de l'accent dans [64, 224] en mélangeant vers le blanc
+       (plancher) ou le noir (plafond) : le fond garde les couleurs BRUTES du
+       choix de l'utilisateur, seuls les accents restent lisibles. */
+    function _fsAccentSafeRgb(rgbStr) {
+      try {
+        const [r, g, b] = rgbStrToArray(rgbStr);
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const FLOOR = 64, CEIL = 224;
+        if (lum < FLOOR) {
+          const t = (FLOOR - lum) / (255 - lum || 1);
+          return rgbArrayToStr([r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t]);
+        }
+        if (lum > CEIL) {
+          const t = (lum - CEIL) / (lum || 1);
+          return rgbArrayToStr([r * (1 - t), g * (1 - t), b * (1 - t)]);
+        }
+        return rgbArrayToStr([r, g, b]);
+      } catch (_) { return rgbStr; }
+    }
+    window._fsAccentSafeRgb = _fsAccentSafeRgb;
     function themeTone(theme, strength) {
       const a = rgbStrToArray(theme?.g1?.rgb);
       const b = rgbStrToArray(theme?.g2?.rgb);
@@ -16461,10 +16691,14 @@ void main(){
         r.setProperty('--bg-g2', `rgba(${theme.g2.rgb},${theme.g2.o})`);
         r.setProperty('--bg-g2-x', theme.g2.x);
         r.setProperty('--bg-g2-y', theme.g2.y);
-        r.setProperty('--theme-c1-rgb', theme.g1.rgb);
-        r.setProperty('--theme-c2-rgb', theme.g2.rgb);
-        r.setProperty('--theme-c1', `rgb(${theme.g1.rgb})`);
-        r.setProperty('--theme-c2', `rgb(${theme.g2.rgb})`);
+        /* Accent borné en luminance (noir+noir / blanc+blanc restaient
+           illisibles) — le fond, lui, garde les couleurs brutes ci-dessus. */
+        const _safe1 = window._fsAccentSafeRgb ? window._fsAccentSafeRgb(theme.g1.rgb) : theme.g1.rgb;
+        const _safe2 = window._fsAccentSafeRgb ? window._fsAccentSafeRgb(theme.g2.rgb) : theme.g2.rgb;
+        r.setProperty('--theme-c1-rgb', _safe1);
+        r.setProperty('--theme-c2-rgb', _safe2);
+        r.setProperty('--theme-c1', `rgb(${_safe1})`);
+        r.setProperty('--theme-c2', `rgb(${_safe2})`);
         const palette = window.buildThemePalette ? window.buildThemePalette(theme) : null;
         if (palette) {
           r.setProperty('--mineral-bg', palette.bgHex);
@@ -16621,8 +16855,11 @@ void main(){
         return () => window.removeEventListener('hashchange', onRouteChange);
       }, [user?.id]);
 
-      const handleAuth = (authUser, isNew, remote) => {
-        window.__fsDiagLog('handleAuth', { userId: authUser?.id, isNew });
+      /* `quiet` : ré-application en ARRIÈRE-PLAN des données réconciliées après
+         un login local-first — tout l'état est resynchronisé, mais on ne rejoue
+         ni le gate d'entrée ni le setScreen (l'utilisateur est déjà dans l'app). */
+      const handleAuth = (authUser, isNew, remote, quiet = false) => {
+        window.__fsDiagLog('handleAuth', { userId: authUser?.id, isNew, quiet });
         /* Le localStorage vient d'être RÉCONCILIÉ pour CE compte (seed/restore/
            gapfill ont écrit ses vraies données, ou les ont retirées s'il n'en a
            pas). C'est la source de vérité : on la lit en priorité. Mettre un
@@ -16654,6 +16891,7 @@ void main(){
           window._fsStartSessionRealtime(authUser.id);
         }
         if (visualSource) window.dispatchEvent(new CustomEvent('fs-remote-update', { detail: visualSource }));
+        if (quiet) { window.__fsDiagLog('handleAuth-done', 'quiet'); return; }
         const nextScreen = isNew ? 'onboarding' : readStartScreen();
         /* Gate sauté en reduce-motion (a11y), en perf-lite ET sur tout mobile.
            Le voile du gate est un cercle OPAQUE de 150vmax : une couche
@@ -16709,6 +16947,26 @@ void main(){
               window._fsSbUser = session.user;
               window._fsSetSyncReady?.(false);
               window._fsHydrationLock = true;
+              /* ── LOCAL-FIRST ────────────────────────────────────────────────
+                 Avant : le dashboard attendait _fsLoadRemote (jusqu'à 3×12 s de
+                 timeouts sur réseau lent) PUIS la réconciliation avant le tout
+                 premier setScreen → 15-20 s d'attente au refresh/login alors que
+                 user/widgets/thème sont DÉJÀ initialisés depuis le cache local.
+                 Désormais, si le cache appartient au MÊME compte que la session
+                 (jamais pour un autre compte : l'isolation reste bloquante), on
+                 affiche le dashboard immédiatement et la réconciliation continue
+                 en arrière-plan — elle réapplique ses résultats en re-set d'état
+                 quand elle aboutit. */
+              const _earlyLocalUser = (() => {
+                try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (_) { return null; }
+              })();
+              const _introPending = (() => {
+                try { return localStorage.getItem('fs_intro_pending') === '1'; } catch (_) { return false; }
+              })();
+              if (_earlyLocalUser?.id === session.user.id && !_introPending) {
+                window.__fsDiagLog('setScreen', 'local-first:' + readStartScreen());
+                setScreen(readStartScreen());
+              }
               /* Start Realtime for returning users */
               const remote = await window._fsLoadRemote(session.user.id);
               const syncResult = await window._fsReconcileRemote(session.user.id, remote);
@@ -17468,11 +17726,27 @@ void main(){
         } catch (e) { return null; }
       }, [data?.widget_style]);
 
+      /* Reprise automatique : hors ligne à l'ouverture → état d'erreur
+         IMMÉDIAT (zéro requête), et on relance dès l'événement `online`. */
+      const [retryTick, setRetryTick] = React.useState(0);
+      React.useEffect(() => {
+        const onBack = () => setRetryTick(t => t + 1);
+        window.addEventListener('online', onBack);
+        return () => window.removeEventListener('online', onBack);
+      }, []);
+
       React.useEffect(() => {
         let cancelled = false;
         (async () => {
           setLoading(true);
           setLoadError(false);
+          /* HORS LIGNE : échec propre en ~0 ms au lieu d'empiler timeout 10 s
+             + fallback à 3 essais × 12 s (les « 1 à 2 minutes » signalées).
+             navigator.onLine=false est fiable dans ce sens-là. */
+          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            setData(null); setLoadError(true); setLoading(false);
+            return;
+          }
           let remote = null;
           try {
             if (window._fsSb) {
@@ -17517,7 +17791,11 @@ void main(){
                 return;
               }
             }
-            if (!remote && window._fsLoadRemote) remote = await window._fsLoadRemote(friend.id);
+            /* Plus de repli _fsLoadRemote ici : ses 3 essais × 12 s de timeout
+               (pensés pour NOS données au boot) transformaient un simple profil
+               d'ami injoignable en attente d'une à deux minutes — et son objet
+               d'échec { __fsLoadFailed } passait pour des données. La requête
+               légère à timeout court suffit ; l'état d'erreur offre le réessai. */
           } catch (e) {
             console.warn('[fs] friend dashboard load threw', e);
           }
@@ -17528,7 +17806,7 @@ void main(){
           }
         })();
         return () => { cancelled = true; };
-      }, [friend.id]);
+      }, [friend.id, retryTick]);
 
       React.useEffect(() => {
         if (!data || loading || !window._fsSb) return;
@@ -17590,10 +17868,10 @@ void main(){
         '--bg-g2': `rgba(${friendTheme.g2.rgb},${friendTheme.g2.o})`,
         '--bg-g2-x': friendTheme.g2.x,
         '--bg-g2-y': friendTheme.g2.y,
-        '--theme-c1-rgb': friendTheme.g1.rgb,
-        '--theme-c2-rgb': friendTheme.g2.rgb,
-        '--theme-c1': `rgb(${friendTheme.g1.rgb})`,
-        '--theme-c2': `rgb(${friendTheme.g2.rgb})`,
+        '--theme-c1-rgb': window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g1.rgb) : friendTheme.g1.rgb,
+        '--theme-c2-rgb': window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g2.rgb) : friendTheme.g2.rgb,
+        '--theme-c1': `rgb(${window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g1.rgb) : friendTheme.g1.rgb})`,
+        '--theme-c2': `rgb(${window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g2.rgb) : friendTheme.g2.rgb})`,
         '--widget-opacity': String(friendWidgetStyle.opacity ?? 1),
         '--widget-radius': `${friendWidgetStyle.radius ?? 24}px`,
         '--widget-glow-size': friendWidgetStyle.glowIntensity > 0 ? `${(friendWidgetStyle.glowIntensity * 60).toFixed(1)}px` : '0px',
@@ -19674,9 +19952,24 @@ void main(){
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(120% 70% at 50% -6%, ${accent}22, transparent 58%)` }} />
             <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>Session terminée</div>
 
-            {/* Cristal + aura */}
+            {/* Cristal + aura. L'aura vit dans un CADRE centré sur la scène et
+               rogné en douceur (masque radial) : sa boîte (2,35-2,9× la gemme)
+               débordait de la scène de 168 px et ses couches basses (rideaux
+               d'aurore, halos d'horizon) s'étalaient jusque derrière le bouton
+               « Continuer » — perçu comme une aura décentrée, pire en mobile.
+               Le masque éteint l'effet avant les bords : centré, contenu,
+               identique sur mobile. */}
             <div style={{ position: 'relative', height: 168, display: 'grid', placeItems: 'center', margin: '10px 0 4px' }}>
-              {window.CrystalAura && (isRare || isLeg) && React.createElement(window.CrystalAura, { gradientId: crystal.crystalGradient, rarity, size: 120, intensity: 1 })}
+              {window.CrystalAura && (isRare || isLeg) && (
+                <div aria-hidden="true" style={{
+                  position: 'absolute', inset: -14, display: 'grid', placeItems: 'center',
+                  overflow: 'hidden', pointerEvents: 'none',
+                  WebkitMaskImage: 'radial-gradient(ellipse 74% 80% at 50% 47%, #000 52%, transparent 79%)',
+                  maskImage: 'radial-gradient(ellipse 74% 80% at 50% 47%, #000 52%, transparent 79%)',
+                }}>
+                  {React.createElement(window.CrystalAura, { gradientId: crystal.crystalGradient, rarity, size: 108, intensity: 1 })}
+                </div>
+              )}
               <div className="fs-scm-gem" style={{ position: 'relative', zIndex: 1, animation: 'fsScmGem .7s cubic-bezier(.22,1.4,.36,1) both' }}>
                 {window.ShapedCrystalGem
                   ? React.createElement(window.ShapedCrystalGem, { shape: crystal.crystalShape || 'diamond', gradientId: rarity === 'gold' ? 'gold' : crystal.crystalGradient, progress: 1, colorProgress: 1, size: 104, seed: crystal.seed || 1 })
