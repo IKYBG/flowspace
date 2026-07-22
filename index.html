@@ -119,6 +119,39 @@
       scroll-behavior: auto !important;
     }
 
+    /* ── Réglages Confort (Paramètres) — consommateurs réels ────────────────
+       --glass-opacity / --backdrop-blur / --radius sont écrits par la page
+       Paramètres (et réappliqués au boot par _fsApplyComfortPrefs). Ces règles
+       les branchent sur les surfaces principales : la coque de l'app, les
+       modales et les panneaux vitrés. !important : ces surfaces portent des
+       styles inline historiques. */
+    .fs-app-main {
+      background: linear-gradient(180deg,
+        rgba(255, 255, 255, calc(0.075 * var(--glass-opacity, 0.6))),
+        rgba(255, 255, 255, calc(0.033 * var(--glass-opacity, 0.6)))) !important;
+      border-radius: calc(12px + var(--radius, 22px)) !important;
+    }
+    .fs-set-modal-bg,
+    .fs-cv-detail,
+    .fs-cv-hint,
+    .fs-cv-back,
+    .fs-cv-stat,
+    .fs-cv-collection,
+    .fs-cv-hud button {
+      backdrop-filter: blur(var(--backdrop-blur, 12px)) !important;
+      -webkit-backdrop-filter: blur(var(--backdrop-blur, 12px)) !important;
+    }
+    .fs-set-card, .fs-set-modal {
+      border-radius: calc(var(--radius, 22px) + 2px) !important;
+    }
+    /* Halo ambiant (Paramètres → Confort) : lueur thémée au survol des widgets */
+    html.fs-ambient-glow .fs-dashboard-grid > * {
+      transition: filter .3s var(--mineral-ease);
+    }
+    html.fs-ambient-glow .fs-dashboard-grid > *:hover {
+      filter: drop-shadow(0 0 22px rgba(var(--theme-c1-rgb), 0.17));
+    }
+
     html,
     body {
       width: 100%;
@@ -2098,7 +2131,7 @@
       const profile = _fsSanitizePayload({ name: _fsSafeText(name, 64), email: safeEmail }, userId);
       try {
         if (knownRemote) {
-          const { error } = await _fsSb.from('user_data').update(profile).eq('user_id', userId);
+          const { error } = await _fsSb.from('user_data').update({ ...profile, updated_at: _fsStampOwnPush(new Date().toISOString()) }).eq('user_id', userId);
           if (error) console.warn('[fs] profile update failed', error);
           await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
             .then(r => { if (r?.error) console.warn('[fs] profiles_public write failed (friend directory) —', r.error.message || r.error); })
@@ -2107,7 +2140,7 @@
         }
         if (!window._fsSyncReady && !window._fsHydratedSavedData) return;
         const snapshot = _fsSnapshotLocalData(userId);
-        const payload = _fsSanitizePayload({ user_id: userId, ...snapshot, ...profile, updated_at: new Date().toISOString() }, userId);
+        const payload = _fsSanitizePayload({ user_id: userId, ...snapshot, ...profile, updated_at: _fsStampOwnPush(new Date().toISOString()) }, userId);
         const { error } = await _fsRunSchemaAware(payload, p => _fsSb.from('user_data').upsert(p, { onConflict: 'user_id' }));
         if (error) console.warn('[fs] profile upsert failed', error);
         await _fsSb.from('profiles_public').upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).catch(() => null);
@@ -2123,6 +2156,25 @@
       window._fsDirtyThisSession = true;
       try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
     }
+
+    /* ── Anti-écho realtime : mémoire de NOS propres pushes ──────────────────
+       Chaque écriture user_data émise par CE client porte un updated_at
+       fabriqué côté client. postgres_changes nous renvoie ensuite notre propre
+       UPDATE en écho : cette row est un instantané d'AVANT les pushes encore
+       en file (débounce 800 ms) — ses colonnes tasks/bg_theme peuvent être
+       périmées. La re-semer écrasait la modif fraîche (thème appliqué qui
+       « saute », tâche terminée qui se réactive au retour sur le dashboard).
+       On reconnaît l'écho à son updated_at exact et on l'ignore intégralement. */
+    const _fsOwnPushStamps = [];
+    function _fsStampOwnPush(iso) {
+      if (!iso) return iso;
+      _fsOwnPushStamps.push(iso);
+      if (_fsOwnPushStamps.length > 24) _fsOwnPushStamps.splice(0, _fsOwnPushStamps.length - 24);
+      return iso;
+    }
+    function _fsIsOwnPushStamp(iso) { return !!iso && _fsOwnPushStamps.includes(iso); }
+    window._fsStampOwnPush = _fsStampOwnPush;
+    window._fsIsOwnPushStamp = _fsIsOwnPushStamp;
 
     function _fsMarkWidgetsLocalWrite() {
       try { _fsRawSet(FS_WIDGETS_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
@@ -2263,7 +2315,15 @@
          On garde le local et on le repoussera vers le cloud (auto-réparation).
          Pour un cache étranger, on supprime comme avant (isolation). */
       let healedKeys = false;
+      /* Bouclier : une modif locale PAS ENCORE poussée (clé dans la file dirty)
+         prime toujours sur la row distante — un écho/pull peut être antérieur
+         au geste de l'utilisateur. Elle repartira au prochain flush. */
+      const _fsKeyShielded = lsKey => {
+        try { return ownLocal && window._fsDirtyKeys?.has(lsKey) && localStorage.getItem(lsKey) != null; }
+        catch (_) { return false; }
+      };
       const seedField = (lsKey, remoteVal, serialize) => {
+        if (_fsKeyShielded(lsKey)) return;
         if (remote && remoteVal != null) { _fsRawSet(lsKey, serialize(remoteVal)); return; }
         if (ownLocal && localStorage.getItem(lsKey) != null) {
           window._fsDirtyKeys.add(lsKey);
@@ -2283,20 +2343,23 @@
       seedField('fs_custom_bg', remote?.custom_bg, v => JSON.stringify(v));
       if (remote && remote.widget_style != null) {
         const widgetStyle = _fsNormalizeWidgetStyle(remote.widget_style, _fsReadRememberedWidgetStyle(userId) || _fsReadWidgetStyle());
-        _fsRawSet('fs_widget_style', JSON.stringify(widgetStyle));
-        _fsRememberWidgetStyle(userId, widgetStyle);
-        if (widgetStyle.fontPresetId) {
+        if (!_fsKeyShielded('fs_widget_style')) {
+          _fsRawSet('fs_widget_style', JSON.stringify(widgetStyle));
+          _fsRememberWidgetStyle(userId, widgetStyle);
+        }
+        if (widgetStyle.fontPresetId && !_fsKeyShielded('fs_font_preset')) {
           _fsRawSet('fs_font_preset', widgetStyle.fontPresetId);
           try { window.applyFontPreset?.(widgetStyle.fontPresetId); } catch (_) { }
         }
-        if (widgetStyle.noteMapStyle) {
+        if (widgetStyle.noteMapStyle && !_fsKeyShielded('fs_note_map_style')) {
           _fsRawSet('fs_note_map_style', widgetStyle.noteMapStyle);
           window._fsCurrentMapStyle = widgetStyle.noteMapStyle;
           window.dispatchEvent(new CustomEvent('fs-note-map-style'));
         }
         /* Vitrine de profil embarquée dans widget_style.showcase */
         try {
-          if (widgetStyle.showcase) _fsRawSet('fs_showcase', JSON.stringify(widgetStyle.showcase));
+          if (_fsKeyShielded('fs_showcase')) { /* modif locale en file : on garde */ }
+          else if (widgetStyle.showcase) _fsRawSet('fs_showcase', JSON.stringify(widgetStyle.showcase));
           else if (!ownLocal) _fsRawRemove('fs_showcase');
           else if (localStorage.getItem('fs_showcase')) {
             /* Réparation : le local fait foi et le cloud a PERDU la vitrine
@@ -2309,19 +2372,22 @@
         } catch (_) { }
         /* Contenus des widgets Texte embarqués dans widget_style.textWidgets */
         try {
-          if (widgetStyle.textWidgets) _fsRawSet('fs_text_widgets', JSON.stringify(widgetStyle.textWidgets));
+          if (_fsKeyShielded('fs_text_widgets')) { /* modif locale en file : on garde */ }
+          else if (widgetStyle.textWidgets) _fsRawSet('fs_text_widgets', JSON.stringify(widgetStyle.textWidgets));
           else if (!ownLocal) _fsRawRemove('fs_text_widgets');
           window.dispatchEvent(new CustomEvent('fs-text-widgets-update'));
         } catch (_) { }
         /* Préréglages de dashboard embarqués dans widget_style.dashPresets */
         try {
-          if (Array.isArray(widgetStyle.dashPresets)) _fsRawSet('fs_dash_presets', JSON.stringify(widgetStyle.dashPresets));
+          if (_fsKeyShielded('fs_dash_presets')) { /* modif locale en file : on garde */ }
+          else if (Array.isArray(widgetStyle.dashPresets)) _fsRawSet('fs_dash_presets', JSON.stringify(widgetStyle.dashPresets));
           else if (!ownLocal) _fsRawRemove('fs_dash_presets');
           window.dispatchEvent(new CustomEvent('fs-dash-presets-update'));
         } catch (_) { }
         /* Affichage des tâches embarqué dans widget_style.taskView */
         try {
-          if (typeof widgetStyle.taskView === 'string' && widgetStyle.taskView) _fsRawSet('fs_task_view', widgetStyle.taskView);
+          if (_fsKeyShielded('fs_task_view')) { /* modif locale en file : on garde */ }
+          else if (typeof widgetStyle.taskView === 'string' && widgetStyle.taskView) _fsRawSet('fs_task_view', widgetStyle.taskView);
           else if (!ownLocal) _fsRawRemove('fs_task_view');
         } catch (_) { }
         /* Amis retirés (pierres tombales) embarqués dans widget_style.friendsBlocked.
@@ -2382,7 +2448,7 @@
       });
 
       if (userId) {
-        if (remote && remote.gamification != null) {
+        if (remote && remote.gamification != null && !_fsKeyShielded(`fs_gamif_${userId}`)) {
           /* Extrait d'abord cristaux/historique embarqués (fusion par union avec
              le local), puis stocke le gamif nettoyé. */
           const cleanGamif = _fsExtractGamifLocalData(userId, remote.gamification);
@@ -2717,8 +2783,11 @@
     async function _fsFlushPush(force = false) {
       const u = window._fsSbUser;
       if (!u || (!window._fsSyncReady && !force)) return;
+      /* Sync en pause (Paramètres → Données) : aucun envoi, même forcé —
+         les clés restent en file et partiront à la réactivation. */
+      if (window._fsCloudPaused) return;
       const dirtyKeys = new Set(window._fsDirtyKeys || []);
-      let payload = { user_id: u.id, updated_at: new Date().toISOString() };
+      let payload = { user_id: u.id, updated_at: _fsStampOwnPush(new Date().toISOString()) };
 
       try { const v = localStorage.getItem('fs_tasks');   if (v != null) payload.tasks = JSON.parse(v); } catch (_) { }
       try { const v = localStorage.getItem('fs_notes');   if (v != null) payload.notes = v; } catch (_) { }
@@ -2809,7 +2878,7 @@
       const u = window._fsSbUser;
       if (!u) return;
       try {
-        const p = { user_id: u.id, updated_at: new Date().toISOString() };
+        const p = { user_id: u.id, updated_at: _fsStampOwnPush(new Date().toISOString()) };
         if (widgetStyleObj != null) p.widget_style = _fsNormalizeWidgetStyle(widgetStyleObj);
         else p.widget_style = _fsReadWidgetStyle();
         /* Réinjecte vitrine / widgets texte / style de carte / police / vue
@@ -2828,11 +2897,25 @@
 
     /* Monkey-patch localStorage.setItem — catches all synced keys + image keys */
     function _fsSchedulePushForKey(key, changed = true) {
-      if (!window._fsSbUser || _fsIgnorePush || !_fsShouldSyncKey(key)) return;
+      if (!window._fsSbUser || !_fsShouldSyncKey(key)) return;
       /* Écriture à l'identique (échos d'effets React au montage) : aucun
          marquage — sinon chaque boot se daterait « à l'instant » et gagnerait
          à tort contre le cloud. */
       if (!changed) return;
+      if (_fsIgnorePush) {
+        /* Fenêtre post-seed (2 s) : les échos identiques sont déjà filtrés par
+           `changed` — une écriture DIFFÉRENTE ici est soit une re-normalisation
+           de composant, soit un VRAI geste utilisateur (thème appliqué juste
+           après le boot). L'avaler la perdait ET la laissait écrasable par le
+           prochain pull. On la met en file sans l'horodater (l'arbitrage
+           local/cloud reste inchangé) et on programme le flush pour la fin de
+           la fenêtre. */
+        window._fsDirtyKeys.add(key);
+        if (key === 'fs_widgets') _fsMarkWidgetsLocalWrite();
+        clearTimeout(_fsPushTimer);
+        _fsPushTimer = setTimeout(_fsFlushPush, 2400);
+        return;
+      }
       /* L'horodatage + le marquage dirty se font même AVANT que la sync soit
          prête (boot local-first : le dashboard s'affiche pendant que la
          réconciliation tourne en arrière-plan). Sans ça, une modif utilisateur
@@ -2845,6 +2928,10 @@
       if (window._fsSyncReady || !autoKey) _fsMarkLocalWrite();
       window._fsDirtyKeys.add(key);
       if (key === 'fs_widgets') _fsMarkWidgetsLocalWrite();
+      /* « Sauvegardes cloud automatiques » désactivées (Paramètres → Données) :
+         rien ne part — les modifs restent datées + en file, et repartiront
+         intégralement à la réactivation du réglage. */
+      if (window._fsCloudPaused) return;
       if (!window._fsSyncReady) return;
       if (['fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset'].includes(key)) {
         try { _fsBackupVisualPrefs(window._fsSbUser.id); } catch (_) { }
@@ -2898,6 +2985,27 @@
       }
     };
 
+    /* ── Pause de la synchronisation (Paramètres → Données) ─────────────────
+       cloudBackups:false → _fsCloudPaused. La réactivation pousse d'un coup
+       tout ce qui s'est accumulé en file pendant la pause. */
+    function _fsRefreshCloudPause() {
+      try {
+        const p = JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {};
+        const paused = p.cloudBackups === false;
+        const was = !!window._fsCloudPaused;
+        window._fsCloudPaused = paused;
+        if (was && !paused && window._fsSbUser) {
+          window._fsDirtyThisSession = true;
+          clearTimeout(_fsPushTimer);
+          _fsPushTimer = setTimeout(_fsFlushPush, 600);
+        }
+      } catch (_) { }
+    }
+    window.addEventListener('fs-store', e => {
+      if (e.detail && e.detail.key === 'fs_productivity_settings') _fsRefreshCloudPause();
+    });
+    _fsRefreshCloudPause();
+
     /* Flush pending writes when the tab is closing */
     window.addEventListener('beforeunload', () => {
       if (window._fsSyncReady && _fsPushTimer) { clearTimeout(_fsPushTimer); _fsFlushPush(); }
@@ -2924,6 +3032,11 @@
           filter: 'user_id=eq.' + userId
         }, payload => {
           if (_fsIgnorePush) return;
+          /* Écho de notre propre push : row déjà connue, et PARTIELLEMENT
+             périmée pour tout push encore en file. Ne jamais la re-semer —
+             c'est elle qui retirait un thème fraîchement appliqué ou
+             réactivait une tâche terminée juste avant. */
+          if (_fsIsOwnPushStamp(payload.new?.updated_at)) return;
           /* Colonnes embarquées sous widget_style (schéma incomplet) → remontées */
           const row = _fsLiftEmbeddedCols({ ...(payload.new || {}) });
           const hasSavedData = _fsRemoteHasSavedData(row);
@@ -3172,7 +3285,7 @@
         initial: (name || '?')[0].toUpperCase(), color: '#4ade80', photo: entry.photo || null, addedAt: Date.now() });
       try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) { }
       try {
-        await _fsRunSchemaAware({ friends: list, updated_at: new Date().toISOString() },
+        await _fsRunSchemaAware({ friends: list, updated_at: _fsStampOwnPush(new Date().toISOString()) },
           p => _fsSb.from('user_data').update(p).eq('user_id', userId));
       } catch (e) { }
       window.dispatchEvent(new CustomEvent('fs-friends-changed'));
@@ -3350,6 +3463,68 @@
         </div>
       );
     }
+
+    /* ── Préférences (fs_productivity_settings) : lecture partagée ──────────
+       Chaque réglage de la page Paramètres a un consommateur RÉEL branché sur
+       ces helpers. `useFsPrefs` re-rend au changement (le monkey-patch
+       localStorage dispatche `fs-store` à chaque écriture). */
+    window._fsReadPrefs = () => {
+      try { return JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {}; }
+      catch (_) { return {}; }
+    };
+    window.useFsPrefs = function () {
+      const [p, setP] = React.useState(window._fsReadPrefs);
+      React.useEffect(() => {
+        const h = e => {
+          const k = e && e.detail && e.detail.key;
+          if (!k || k === 'fs_productivity_settings') setP(window._fsReadPrefs());
+        };
+        window.addEventListener('fs-store', h);
+        window.addEventListener('fs-remote-update', h);
+        return () => { window.removeEventListener('fs-store', h); window.removeEventListener('fs-remote-update', h); };
+      }, []);
+      return p;
+    };
+    /* Application au BOOT des réglages Confort (avant : uniquement à
+       l'ouverture de la page Paramètres → tout retombait au défaut après un
+       refresh). N'écrit que les clés réellement sauvegardées. */
+    window._fsApplyComfortPrefs = (p) => {
+      p = p || window._fsReadPrefs();
+      const root = document.documentElement, s = root.style;
+      if (p.glassDepth != null) s.setProperty('--glass-opacity', (Number(p.glassDepth) / 100).toFixed(3));
+      if (p.backdropBlur != null) s.setProperty('--backdrop-blur', Number(p.backdropBlur) + 'px');
+      if (p.radius != null) s.setProperty('--radius', Number(p.radius) + 'px');
+      if ('reduceMotion' in p) root.classList.toggle('fs-reduce-motion', !!p.reduceMotion);
+      if ('ambientGlow' in p) root.classList.toggle('fs-ambient-glow', p.ambientGlow !== false);
+      if ('compactCards' in p) root.classList.toggle('fs-compact-cards', !!p.compactCards);
+    };
+    try { window._fsApplyComfortPrefs(); } catch (e) { }
+
+    /* ── Carillon de forge (Web Audio, synthétisé — aucun asset) ────────────
+       Trois harmoniques cristallines en arpège bref. Joué à la naissance d'un
+       cristal quand « Effets sonores » est actif. */
+    window._fsForgeChime = () => {
+      try {
+        if (window._fsReadPrefs().soundEffects === false) return;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        const ctx = window.__fsChimeCtx || (window.__fsChimeCtx = new AC());
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const t0 = ctx.currentTime + 0.02;
+        const master = ctx.createGain();
+        master.gain.setValueAtTime(0.16, t0);
+        master.connect(ctx.destination);
+        [[1318.5, 0], [1760, 0.09], [2637, 0.18]].forEach(([f, dt]) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = f;
+          g.gain.setValueAtTime(0, t0 + dt);
+          g.gain.linearRampToValueAtTime(0.9, t0 + dt + 0.012);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + dt + 0.7);
+          o.connect(g); g.connect(master);
+          o.start(t0 + dt); o.stop(t0 + dt + 0.75);
+        });
+      } catch (_) { }
+    };
 
     function Lbl({ ch, style }) {
       return <div style={{ fontSize: 10, fontWeight: 750, letterSpacing: '0.115em', textTransform: 'uppercase', color: 'var(--mineral-quiet)', ...style }}>{ch}</div>;
@@ -6312,10 +6487,48 @@
       );
     }
 
+    /* « Île de cristal » du dashboard : constellation discrète des cristaux
+       possédés, en fond d'écran d'accueil — halos flottants aux couleurs des
+       gemmes réelles (8 max), purement décoratif, coupé en reduce-motion. */
+    function DashCrystalBackdrop({ user }) {
+      const spots = React.useMemo(() => {
+        let owned = [];
+        try { owned = JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []; } catch (e) { }
+        if (!Array.isArray(owned) || owned.length === 0) return [];
+        const grads = window.CRYSTAL_GRADIENTS || [];
+        return owned.slice(0, 8).map((c, i) => {
+          const g = grads.find(x => x.id === c.crystalGradient);
+          const glow = (g && g.glow) || 'rgba(143,220,255,0.7)';
+          const n = (s) => { const x = Math.sin((Number(c.seed) || i * 97) * 12.9898 + s * 78.233) * 43758.5453; return x - Math.floor(x); };
+          return { id: c.id || i, glow, x: 6 + n(1) * 88, y: 12 + n(2) * 74, sz: 120 + n(3) * 150, d: 14 + n(4) * 14, delay: -n(5) * 20 };
+        });
+      }, [user?.id]);
+      if (!spots.length) return null;
+      return (
+        <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+          {spots.map(s => (
+            <span key={s.id} style={{
+              position: 'absolute', left: s.x + '%', top: s.y + '%', width: s.sz, height: s.sz,
+              marginLeft: -s.sz / 2, marginTop: -s.sz / 2, borderRadius: '50%',
+              background: `radial-gradient(circle, ${s.glow} 0%, transparent 62%)`,
+              opacity: 0.075, filter: 'blur(14px)', mixBlendMode: 'screen',
+              animation: `fsDashIsleDrift ${s.d}s ease-in-out infinite`, animationDelay: s.delay + 's',
+            }} />
+          ))}
+          <style>{`
+            @keyframes fsDashIsleDrift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(2.2%,-3%) scale(1.08)}}
+            html.fs-reduce-motion .fs-dashboard-screen [style*="fsDashIsleDrift"]{animation:none!important}
+          `}</style>
+        </div>
+      );
+    }
+
     function DashboardScreen({ onNavigate, widgets, session, onEndSession, user, animateWidgets = true, focusNudgeOpen = false }) {
       /* Entrée / Espace → même effet que le bouton « Démarrer ». Inactif
          pendant une session (le bouton n'y est pas affiché). */
       window.useStartHotkey(!session, () => onNavigate('session'));
+      /* Réglages Dashboard (page Paramètres) — tous branchés en live. */
+      const dashPrefs = window.useFsPrefs ? window.useFsPrefs() : {};
       const hour = new Date().getHours();
       const greeting = hour < 5 ? 'Encore debout ?' : hour < 12 ? 'Bonjour' : hour < 17 ? 'Bon après-midi' : 'Bonsoir';
       const dateStr = (() => {
@@ -6323,9 +6536,13 @@
         catch (e) { return ''; }
       })();
       return (
-        <div className="fs-dashboard-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="fs-dashboard-screen" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+          {dashPrefs.showCrystal !== false && <DashCrystalBackdrop user={user} />}
           <style>{`
             /* ── Topbar : hiérarchie nette, un seul cluster de contrôles ── */
+            /* Cartes compactes (réglage Dashboard) : plus de widgets à l'écran */
+            html.fs-compact-cards .fs-dashboard-grid{gap:8px!important;padding:10px 22px 18px!important}
+            html.fs-compact-cards .fs-dashboard-header{padding:12px 22px 8px!important}
             .fs-dhx-anim{animation:fsDhxIn .55s var(--mineral-ease) both}
             @keyframes fsDhxIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
             .fs-dhx-brandchip{position:relative;width:34px;height:34px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;
@@ -6373,6 +6590,7 @@
                 </div>
                 <span className="fs-dh-wordmark" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 14.5, letterSpacing: '-0.02em' }}>LumenOS</span>
               </div>
+              {dashPrefs.showGreeting !== false && (<>
               <div className="fs-dh-sep" style={{ width: 1, height: 26, background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.10), transparent)', flexShrink: 0 }} />
               <div className="fs-dh-greeting fs-dhx-anim" style={{ minWidth: 0, animationDelay: '.06s' }}>
                 <div style={{ fontFamily: T.display, fontWeight: 800, fontSize: 14.5, letterSpacing: '-0.02em', color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>
@@ -6384,11 +6602,12 @@
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Espace de focus cristallin</span>
                 </div>
               </div>
+              </>)}
                 </>
               )}
             </div>
             <div className="fs-dashboard-header-right fs-dhx-anim" style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0, minWidth: session ? 132 : undefined, justifyContent: 'flex-end', animationDelay: '.12s' }}>
-              {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenStreaks:()=>{} })}
+              {window.GamifMiniWidget && React.createElement(window.GamifMiniWidget, { user, onOpenStreaks:()=>{}, showStreak: dashPrefs.showStreak !== false })}
               {!session ? (
                 <>
                   <div className="fs-dhx-group">
@@ -6478,6 +6697,18 @@
       const [widgets, setWidgets] = _uS9(initialWidgets);
       const [showPicker, setShowPicker] = _uS9(false);
       const [showPresets, setShowPresets] = _uS9(false);
+      /* « Sauvegarde auto de la disposition » (Paramètres → Dashboard) : ON →
+         chaque modification est enregistrée en continu (débounce 900 ms) —
+         quitter le mode édition sans passer par « Terminé » ne perd plus rien.
+         OFF → comportement classique : on n'enregistre qu'au bouton Terminé. */
+      const _autosaveOn = _uR9((window._fsReadPrefs ? window._fsReadPrefs() : {}).autosaveLayout !== false);
+      const _autosaveSkipFirst = _uR9(true);
+      _uEff9(() => {
+        if (!_autosaveOn.current) return;
+        if (_autosaveSkipFirst.current) { _autosaveSkipFirst.current = false; return; }
+        const t = setTimeout(() => { try { onSave(widgets); } catch (e) { } }, 900);
+        return () => clearTimeout(t);
+      }, [widgets]);
       /* Mobile : la grille 12 colonnes est illisible (~94px par widget) et le
          drag/resize aux coins est inutilisable au doigt. Sur ≤768px on édite
          en LISTE — cohérent avec le dashboard mobile qui affiche les widgets
@@ -6654,7 +6885,7 @@
         });
         if (duplicateId) {
           if (cleanupChanged) {
-            const updated_at = new Date().toISOString();
+            const updated_at = window._fsStampOwnPush ? window._fsStampOwnPush(new Date().toISOString()) : new Date().toISOString();
             const { error } = await window._fsSb.from('user_data').update({ images: keptImages, updated_at }).eq('user_id', user.id);
             if (error) console.warn('[fs] template cleanup failed:', error);
           }
@@ -6664,7 +6895,7 @@
         delete templatePayload.images;
         const nextImages = { ...keptImages, [key]: templatePayload };
         window._fsRemoteTemplateImages = { ...(window._fsRemoteTemplateImages || {}), [key]: templatePayload };
-        const updated_at = new Date().toISOString();
+        const updated_at = window._fsStampOwnPush ? window._fsStampOwnPush(new Date().toISOString()) : new Date().toISOString();
         let { error } = await window._fsSb.from('user_data').update({ images: nextImages, updated_at }).eq('user_id', user.id);
         if (error) {
           const snapshot = window._fsSnapshotLocalData?.(user.id) || {};
@@ -7683,6 +7914,12 @@
          toujours le même format, autant ne pas le ressaisir à chaque fois. */
       const [cfg, setCfg] = _uSA(() => {
         const base = { duration: 50, music: 'Ambient', breaks: true };
+        /* « Durée par défaut » (Paramètres → Sessions) : présélectionnée quand
+           aucune session récente ne fournit de format à reprendre. */
+        try {
+          const pd = Number((window._fsReadPrefs ? window._fsReadPrefs() : {}).sessionDuration);
+          if (Number.isFinite(pd) && pd > 0 && pd <= 120) base.duration = pd;
+        } catch (e) { }
         try {
           const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || 'null');
           if (!last) return base;
@@ -14857,22 +15094,27 @@ void main(){
         window.clearTimeout(window.__fsSetSavedT);
         window.__fsSetSavedT = window.setTimeout(() => setSaved(false), 2200);
       };
-      const set = (key, value) => setPrefs(prev => ({ ...prev, [key]: value }));
+      const set = (key, value) => {
+        /* « Durée par défaut » : appliquée aussi au format mémorisé du lanceur,
+           pour que le changement soit visible dès la prochaine ouverture. */
+        if (key === 'sessionDuration') {
+          try {
+            const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || '{}') || {};
+            localStorage.setItem('fs_last_session_cfg', JSON.stringify({ ...last, duration: Number(value) }));
+          } catch (_) {}
+        }
+        setPrefs(prev => ({ ...prev, [key]: value }));
+      };
 
       React.useEffect(() => {
         try { localStorage.setItem('fs_productivity_settings', JSON.stringify(prefs)); } catch (_) {}
         try { localStorage.setItem('fs_default_route', prefs.startPage || 'dashboard'); } catch (_) {}
-        const root = document.documentElement;
-        const s = root.style;
-        s.setProperty('--glass-opacity', String((prefs.glassDepth / 100).toFixed(3)));
-        s.setProperty('--backdrop-blur', prefs.backdropBlur + 'px');
-        s.setProperty('--radius', prefs.radius + 'px');
-        /* `--widget-opacity` n'est plus écrit ici : widget_style.opacity (réglé
+        /* `--widget-opacity` n'est pas écrit ici : widget_style.opacity (réglé
            dans Apparence, et synchronisé) pilote la même variable. Les deux
-           curseurs se écrasaient l'un l'autre selon l'ordre des effets. */
-        root.classList.toggle('fs-reduce-motion', !!prefs.reduceMotion);
-        root.classList.toggle('fs-ambient-glow', !!prefs.ambientGlow);
-        root.classList.toggle('fs-compact-cards', !!prefs.compactCards);
+           curseurs se écrasaient l'un l'autre selon l'ordre des effets.
+           Application partagée avec le boot (_fsApplyComfortPrefs) : mêmes
+           règles ici et au démarrage, aucune divergence possible. */
+        if (window._fsApplyComfortPrefs) window._fsApplyComfortPrefs(prefs);
       }, [prefs]);
 
       const handlePhotoFile = e => {
@@ -15397,10 +15639,10 @@ void main(){
                 {section === 'dashboard' && (
                   <Card>
                     <Row title="Bandeau de bienvenue" desc="Le mot d'accueil en haut du dashboard." k="showGreeting" />
-                    <Row title="Île de cristal visible" desc="Ta collection en fond d'écran d'accueil." k="showCrystal" />
-                    <Row title="Module de série" desc="Ton compteur de jours d'affilée." k="showStreak" />
-                    <Row title="Cartes compactes" desc="Moins d'espace autour des widgets." k="compactCards" />
-                    <Row title="Sauvegarde auto de la disposition" desc="Tes déplacements de widgets sont gardés." k="autosaveLayout" last />
+                    <Row title="Île de cristal visible" desc="Une constellation de tes cristaux, en fond d'écran d'accueil." k="showCrystal" />
+                    <Row title="Module de série" desc="La pastille flamme de tes jours d'affilée, en haut du dashboard." k="showStreak" />
+                    <Row title="Cartes compactes" desc="Resserre la grille — plus de widgets à l'écran." k="compactCards" />
+                    <Row title="Sauvegarde auto de la disposition" desc="En mode édition, chaque changement est enregistré en continu." k="autosaveLayout" last />
                   </Card>
                 )}
 
@@ -15444,7 +15686,7 @@ void main(){
                 {/* DONNÉES */}
                 {section === 'donnees' && (<>
                   <Card>
-                    <Row title="Sauvegardes cloud automatiques" desc="Tes données suivent ton compte sur tous tes appareils." k="cloudBackups" />
+                    <Row title="Sauvegardes cloud automatiques" desc={prefs.cloudBackups === false ? 'Synchronisation en pause — tes modifications restent sur cet appareil et repartiront à la réactivation.' : 'Tes données suivent ton compte sur tous tes appareils.'} k="cloudBackups" />
                     <div className="fs-set-row">
                       <div style={{ minWidth: 0 }}>
                         <div className="fs-set-row-t">Exporter mes données</div>
@@ -15748,6 +15990,56 @@ void main(){
         document.addEventListener('visibilitychange', onVis);
         return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
       }, [user?.id, screen]);
+      /* ── Notifications réelles (Paramètres → Notifications) ────────────────
+         « Résumé du jour » : au premier dashboard de la journée, le bilan de
+         la veille (sessions, minutes, cristaux). « Alerte de série en danger » :
+         le soir, si la série est vivante mais qu'aucune session n'a été faite
+         aujourd'hui. Chacune une fois par jour, en toast — pas de modale. */
+      _uEC(() => {
+        if (screen !== 'dashboard' || !user?.id) return;
+        const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
+        const today = new Date().toISOString().slice(0, 10);
+        const sameDay = (iso, ref) => String(iso || '').slice(0, 10) === ref;
+        try {
+          if (p.dailyDigest !== false && localStorage.getItem('fs_digest_day') !== today) {
+            const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            const hist = readSessionHistory(user.id) || [];
+            const dayS = hist.filter(s => sameDay(s.endedAt, yest) && s.completed);
+            if (dayS.length > 0) {
+              const mins = dayS.reduce((n, s) => n + (Number(s.actualMinutes) || 0), 0);
+              const digestT = setTimeout(() => {
+                addToast({
+                  message: `Hier : ${dayS.length} session${dayS.length > 1 ? 's' : ''}, ${mins} min de focus, ${dayS.length} cristal${dayS.length > 1 ? 'aux' : ''} forgé${dayS.length > 1 ? 's' : ''}`,
+                  type: 'success', icon: '✓', duration: 7000,
+                });
+              }, 1600);
+              window.__fsDigestT = digestT;
+            }
+            localStorage.setItem('fs_digest_day', today);
+          }
+        } catch (_) { }
+        let alertIv = null;
+        try {
+          if (p.streakAlert !== false) {
+            const checkStreak = () => {
+              try {
+                if (new Date().getHours() < 18) return;
+                if (localStorage.getItem('fs_streak_alert_day') === today) return;
+                const g = JSON.parse(localStorage.getItem(`fs_gamif_${user.id}`) || 'null');
+                const daily = Number(g?.streaks?.daily || 0);
+                if (daily < 2) return;
+                const hist = readSessionHistory(user.id) || [];
+                if (hist.some(s => sameDay(s.endedAt, today) && s.completed)) return;
+                localStorage.setItem('fs_streak_alert_day', today);
+                addToast({ message: `Ta série de ${daily} jours attend sa session du jour`, type: 'warning', icon: '!', duration: 8000 });
+              } catch (_) { }
+            };
+            checkStreak();
+            alertIv = setInterval(checkStreak, 10 * 60 * 1000);
+          }
+        } catch (_) { }
+        return () => { if (alertIv) clearInterval(alertIv); if (window.__fsDigestT) clearTimeout(window.__fsDigestT); };
+      }, [screen, user?.id]);
       const _restoreSession = (uid) => {
         try {
           const s = JSON.parse(localStorage.getItem('fs_active_session') || 'null');
@@ -15806,13 +16098,20 @@ void main(){
           return;
         }
         const queueNudge = () => {
+          /* « Intensité des rappels » (Paramètres → Notifications) : module la
+             fréquence des nudges de focus — minimal espace ET saute une partie
+             des occasions, intense réagit presque à chaque décrochage. */
+          let cooldown = 12000, skipChance = 0;
           try {
             const prefs = JSON.parse(localStorage.getItem('fs_productivity_settings') || '{}') || {};
             const legacy = JSON.parse(localStorage.getItem('fs_settings_opts') || '{}') || {};
             if (prefs.focusNudges === false || legacy.nudge === false || localStorage.getItem('fs_focus_nudges') === '0') return;
+            if (prefs.reminderLevel === 'minimal') { cooldown = 45000; skipChance = 0.5; }
+            else if (prefs.reminderLevel === 'intense') { cooldown = 5000; }
           } catch (_) {}
           const now = Date.now();
-          if (now - focusNudgeLastAtRef.current < 12000) return;
+          if (now - focusNudgeLastAtRef.current < cooldown) return;
+          if (skipChance > 0 && Math.random() < skipChance) return;
           focusNudgeLastAtRef.current = now;
           focusNudgePendingRef.current = pickFocusNudgeMessage();
         };
@@ -15827,9 +16126,27 @@ void main(){
         };
         document.addEventListener('visibilitychange', onVisibilityChange);
         window.addEventListener('focus', showPendingNudge);
+        /* « Pauses intelligentes » (Paramètres → Sessions) : sur une session
+           longue (≥ 40 min), un rappel discret à ~55 % du temps — le moment
+           où l'attention décroche le plus souvent. Une seule fois par session. */
+        let breakTimer = null;
+        try {
+          const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
+          const durMin = Number(activeSession.duration) || 0;
+          if (p.smartBreaks !== false && durMin >= 40) {
+            const elapsed = Date.now() - (activeSession.startTime || Date.now());
+            const at = durMin * 60000 * 0.55 - elapsed;
+            if (at > 15000) {
+              breakTimer = setTimeout(() => {
+                addToast({ message: 'Bon moment pour une pause de 5 min — étire-toi, respire', type: 'info', icon: '!', duration: 6500 });
+              }, at);
+            }
+          }
+        } catch (_) { }
         return () => {
           document.removeEventListener('visibilitychange', onVisibilityChange);
           window.removeEventListener('focus', showPendingNudge);
+          if (breakTimer) clearTimeout(breakTimer);
         };
       }, [activeSession?.startTime]);
       const getHistoryOwnerId = () => {
@@ -16158,9 +16475,22 @@ void main(){
       _uEC(() => {
         const handler = (e) => {
           const r = e.detail;
-          if (r.widgets) setWidgets(r.widgets);
-          if (r.bg_theme) setBgThemeId(r.bg_theme);
-          if (r.widget_style) applySyncedWidgetStyle(r.widget_style);
+          /* Source de vérité : le localStorage APRÈS _fsSeedLocalFromRemote —
+             son bouclier y a déjà arbitré les modifs locales en attente de
+             push. Jamais la row realtime brute : elle peut être antérieure au
+             dernier geste de l'utilisateur (thème qui sautait, etc.). */
+          const _lg = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+          if (r.widgets) {
+            let w = r.widgets;
+            try { const v = JSON.parse(_lg('fs_widgets') || 'null'); if (Array.isArray(v)) w = v; } catch (_) { }
+            setWidgets(window._fsStripRetiredWidgets ? (window._fsStripRetiredWidgets(w) || w) : w);
+          }
+          if (r.bg_theme) setBgThemeId(_lg('fs_bgtheme') || r.bg_theme);
+          if (r.widget_style) {
+            let ws = r.widget_style;
+            try { const v = JSON.parse(_lg('fs_widget_style') || 'null'); if (v && typeof v === 'object') ws = v; } catch (_) { }
+            applySyncedWidgetStyle(ws);
+          }
           setSyncEpoch(n => n + 1);
         };
         window.addEventListener('fs-remote-update', handler);
@@ -16259,6 +16589,40 @@ void main(){
           setRoutedScreen('dashboard', true);
           return;
         }
+        /* « Démarrer le focus automatiquement » (Paramètres → Sessions) : le
+           lanceur est sauté, la session solo part immédiatement avec le
+           dernier format connu (ou la durée par défaut). */
+        try {
+          const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
+          if (p.autoStartFocus) {
+            let cfg = { duration: 50, music: 'Ambient', breaks: p.smartBreaks !== false };
+            try {
+              const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || 'null');
+              if (last && Number(last.duration) > 0) cfg = { duration: Number(last.duration), music: last.music || 'Ambient', breaks: typeof last.breaks === 'boolean' ? last.breaks : cfg.breaks };
+            } catch (_) { }
+            const pd = Number(p.sessionDuration);
+            if (Number.isFinite(pd) && pd > 0 && pd <= 120) cfg.duration = pd;
+            /* Même tirage de rareté qu'au lanceur : l'auto-démarrage ne doit
+               pas priver des rares/légendaires. */
+            let grad = window._randomGradient ? window._randomGradient() : 'aurora';
+            let rarity = 'standard';
+            const roll = Math.random();
+            const legPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
+            const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
+            if (roll < 0.005 && legPool.length) { const g = legPool[Math.floor(Math.random() * legPool.length)]; grad = g.id; rarity = 'legendary'; }
+            else if (roll < 0.055 && rarePool.length) { const g = rarePool[Math.floor(Math.random() * rarePool.length)]; grad = g.id; rarity = g.id === 'gold' ? 'gold' : 'rare'; }
+            addToast({ message: `Session lancée — ${cfg.duration} min de focus`, type: 'success', icon: '✓', duration: 3200 });
+            handleLaunch({
+              type: 'solo', friendEmail: null, friendUser: null, friendId: null, friendIds: null, friendUsers: null,
+              duration: cfg.duration, music: cfg.music, breaks: cfg.breaks,
+              crystalShape: 'diamond',
+              crystalGradient: grad,
+              crystalRarity: rarity,
+              focusTaskIds: null, startTime: Date.now(),
+            });
+            return;
+          }
+        } catch (_) { }
         setShowSession(true);
       };
 
@@ -16619,6 +16983,9 @@ void main(){
           const elapsedMin = Math.round(((Date.now() - (activeSession?.startTime || Date.now())) / 60000));
           const focusMinutes = Math.max(1, Math.min(planned, elapsedMin || planned));
           setSessionResult({ crystal: crystalData, focusMinutes });
+          /* « Effets sonores » : carillon de forge à la naissance du cristal
+             (le helper vérifie lui-même la préférence). */
+          try { window._fsForgeChime?.(); } catch (_) { }
         }
         if (hasCrystalData && user?.id) {
           try {
@@ -18225,7 +18592,7 @@ void main(){
           name: user.name || window._fsSbUser?.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
           email: (user.email || window._fsSbUser?.email || '').toLowerCase(),
           friends: clean,
-          updated_at: new Date().toISOString()
+          updated_at: window._fsStampOwnPush ? window._fsStampOwnPush(new Date().toISOString()) : new Date().toISOString()
         };
         const runWrite = (payload, run) => window._fsRunSchemaAware ? window._fsRunSchemaAware(payload, run) : run(payload);
         let { error } = await runWrite(base, p => window._fsSb.from('user_data').update(p).eq('user_id', user.id));
@@ -18339,7 +18706,7 @@ void main(){
             name: user.name || window._fsSbUser?.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
             email: (user.email || window._fsSbUser?.email || '').toLowerCase(),
             friends: clean,
-            updated_at: new Date().toISOString()
+            updated_at: window._fsStampOwnPush ? window._fsStampOwnPush(new Date().toISOString()) : new Date().toISOString()
           })
           .eq('user_id', user.id)
           .then(({ error }) => { if (error) console.warn('[fs] friends save failed', error); });
@@ -19913,6 +20280,9 @@ void main(){
     function SessionCompleteModal({ result, onClose, onOpenCave }) {
       const crystal = result?.crystal || null;
       const focusMin = result?.focusMinutes || crystal?.duration || 0;
+      /* « Animation de forge » (Paramètres → Sessions) : OFF → la carte
+         apparaît sobrement, sans cinématique (voile/carte/gemme instantanés). */
+      const celebrate = (window._fsReadPrefs ? window._fsReadPrefs() : {}).sessionCelebration !== false;
       React.useEffect(() => {
         const onKey = e => { if (e.key === 'Escape') onClose && onClose(); };
         window.addEventListener('keydown', onKey);
@@ -19928,14 +20298,16 @@ void main(){
       const rarLabel = isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal forgé';
       const rarColor = isLeg ? '#f0abfc' : accent;
       return (
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
+        <div onClick={onClose} className={celebrate ? undefined : 'fs-scm-nocine'} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
           background: 'rgba(4,4,11,0.72)', backdropFilter: 'blur(20px) saturate(1.1)', WebkitBackdropFilter: 'blur(20px) saturate(1.1)',
-          animation: 'fsScmVeil .34s ease both' }}>
+          animation: celebrate ? 'fsScmVeil .34s ease both' : 'none' }}>
           <style>{`
             @keyframes fsScmVeil{from{opacity:0}to{opacity:1}}
             @keyframes fsScmCard{from{opacity:0;transform:translateY(22px) scale(.94)}to{opacity:1;transform:none}}
             @keyframes fsScmGem{0%{opacity:0;transform:scale(.4) translateY(10px)}60%{transform:scale(1.12)}100%{opacity:1;transform:scale(1)}}
             @keyframes fsScmRay{to{transform:rotate(360deg)}}
+            /* Mode sobre (Animation de forge désactivée) : tout est posé, rien ne joue */
+            .fs-scm-nocine *{animation:none!important}
             .fs-scm-card{position:relative;width:min(400px,100%);border-radius:28px;overflow:hidden;text-align:center;
               padding:34px 28px 26px;background:linear-gradient(180deg,rgba(20,19,34,.98),rgba(10,10,19,.99));
               border:1px solid rgba(255,255,255,.09);box-shadow:0 40px 110px rgba(0,0,0,.66),inset 0 1px 0 rgba(255,255,255,.06);
@@ -20352,16 +20724,24 @@ void main(){
       ctx.beginPath(); ctx.ellipse(x, y + 1.1 * s, 2 * s, 2.9 * s, 0, 0, 6.3); ctx.fill();
     }
 
+    /* Dégradés fond/vignette : dépendent uniquement de (w,h) → cachés entre
+       frames au lieu d'être refabriqués 60×/s. */
+    let _caveGradCache = null;
     function _caveDraw(ctx, w, h, camZ, dust, t, glows, bats, reduce) {
       ctx.clearRect(0, 0, w, h);
       const ox = w * 0.5, oy = h * CAVE_OY, oyc = h * 0.47;
       const K = z => CAVE_F / Math.max(60, CAVE_F + z - camZ);
       const RX = w * 0.585, RYU = h * 0.35, RYD = h * 0.40;
 
+      if (!_caveGradCache || _caveGradCache.w !== w || _caveGradCache.h !== h) {
+        const bg = ctx.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, '#04091a'); bg.addColorStop(0.55, '#030713'); bg.addColorStop(1, '#01040c');
+        const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.34, w / 2, h * 0.5, h * 1.02);
+        vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,2,7,0.68)');
+        _caveGradCache = { w, h, bg, vg };
+      }
       /* fond : noir bleuté + respiration froide au bout de la galerie */
-      let g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#04091a'); g.addColorStop(0.55, '#030713'); g.addColorStop(1, '#01040c');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = _caveGradCache.bg; ctx.fillRect(0, 0, w, h);
       const kd = K(1900);
       const breath = reduce ? 0.75 : 0.68 + Math.sin(t * 0.0005) * 0.14;
       const wd = _caveWander(1900);
@@ -20494,9 +20874,7 @@ void main(){
       ctx.globalAlpha = 1;
 
       /* obscurité de grotte : vignette appuyée */
-      const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.34, w / 2, h * 0.5, h * 1.02);
-      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,2,7,0.68)');
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = _caveGradCache.vg; ctx.fillRect(0, 0, w, h);
     }
 
     /* ── Image partageable de la grotte (canvas 2D, aucun asset externe) ──────
@@ -21096,7 +21474,7 @@ void main(){
                         onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(c.id); }}
                         onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(h => h === c.id ? null : h); }}
                       >
-                        {isGold && <span className="fs-cv-gold-aura" />}
+                        {isGold && (window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && <span className="fs-cv-gold-aura" />}
                         <span className="fs-cv-glowpad" />
                         <span className="fs-cv-shadow" />
                         <span className="fs-cv-gem">
@@ -21697,6 +22075,13 @@ void main(){
     { id:'rose2',    name:'Rose quartz',  stops:['#fb7185','#f472b6'], glow:'rgba(251,113,133,0.72)' },
     { id:'foret2',   name:'Forêt',        stops:['#10b981','#34d399'], glow:'rgba(16,185,129,0.72)'  },
     { id:'cosmos2',  name:'Cosmos',       stops:['#818cf8','#c084fc'], glow:'rgba(129,140,248,0.75)' },
+    /* Vague 2 des classiques : teintes encore absentes du nuancier (miel,
+       grenat, lavande, céladon, argent) — mêmes règles (2 stops, glow 0.72). */
+    { id:'ambre',    name:'Ambre',        stops:['#ffc46b','#e8891c'], glow:'rgba(232,137,28,0.72)'  },
+    { id:'grenat',   name:'Grenat',       stops:['#e94057','#8a2387'], glow:'rgba(233,64,87,0.72)'   },
+    { id:'lavande',  name:'Lavande',      stops:['#b8c6ff','#9f7aea'], glow:'rgba(159,122,234,0.72)' },
+    { id:'celadon',  name:'Céladon',      stops:['#a8e063','#56ab2f'], glow:'rgba(134,204,84,0.72)'  },
+    { id:'argent',   name:'Argent',       stops:['#eef1f8','#9aa7c0'], glow:'rgba(190,205,235,0.72)' },
     { id:'gold',     name:'Cristal doré', stops:['#fff7b8','#ffd36a','#f59e0b'], glow:'rgba(255,202,75,0.92)', rare:true },
     /* ── Rares (tirés au sort à la forge, ~5 % — jamais sélectionnables) ──
        Chaque rare a SA couleur d'aura (glow) : le halo, les ombres portées et
@@ -21711,10 +22096,22 @@ void main(){
     { id:'prisme',     name:'Prisme boréal', stops:['#99f6e4','#f9a8d4'], glow:'rgba(153,246,228,0.82)', rare:true },
     { id:'eclipse',    name:'Éclipse',       stops:['#e2e8f0','#1e293b'], glow:'rgba(203,213,225,0.72)', rare:true },
     { id:'orage',      name:'Orage',         stops:['#e0e7ff','#7c3aed'], glow:'rgba(165,180,252,0.88)', rare:true },
+    /* Vague 2 des rares : chacun porte SA signature d'aura (FS_AURA_ARCH) —
+       couronne d'éruptions, halo lunaire, étoiles filantes, sylve vivante,
+       mercure en orbite, vortex de sable, glyphes gravés. */
+    { id:'solaire',    name:'Couronne solaire', stops:['#fff3a3','#ff9d00'], glow:'rgba(255,183,50,0.88)',  rare:true },
+    { id:'lunaire',    name:'Clair de lune',    stops:['#f8faff','#8ea8ff'], glow:'rgba(196,214,255,0.85)', rare:true },
+    { id:'meteore',    name:'Météore',          stops:['#ffd8a8','#7048e8'], glow:'rgba(255,171,94,0.85)',  rare:true },
+    { id:'sylve',      name:'Cœur de sylve',    stops:['#7ef29d','#14532d'], glow:'rgba(94,233,141,0.82)',  rare:true },
+    { id:'vifargent',  name:'Vif-argent',       stops:['#f8f9fb','#8c9db5'], glow:'rgba(214,226,245,0.85)', rare:true },
+    { id:'simoun',     name:'Simoun',           stops:['#ffe1a8','#c2410c'], glow:'rgba(255,177,86,0.82)',  rare:true },
+    { id:'runique',    name:'Pierre runique',   stops:['#9be3ff','#1f2937'], glow:'rgba(125,211,252,0.85)', rare:true },
     /* ── Légendaires (~0,5 %) — aura animée multi-teintes dédiée ── */
     { id:'astral', name:'Cristal astral', stops:['#c4b5fd','#22d3ee'], glow:'rgba(167,139,250,0.92)', legendary:true, aura:['#22d3ee','#a78bfa','#f0abfc'] },
     { id:'phenix', name:'Cœur de phénix', stops:['#fff1b8','#ff2d95'], glow:'rgba(255,138,76,0.94)',  legendary:true, aura:['#ffd36a','#ff8a4c','#ff2d95'] },
     { id:'neant',  name:'Éclat du néant', stops:['#e9d5ff','#1e1b4b'], glow:'rgba(168,85,247,0.92)',  legendary:true, aura:['#c084fc','#6d28d9','#312e81'] },
+    { id:'chronos',   name:'Sablier de Chronos', stops:['#fde6a8','#7dd3fc'], glow:'rgba(252,211,77,0.92)', legendary:true, aura:['#fcd34d','#7dd3fc','#c084fc'] },
+    { id:'leviathan', name:'Œil du léviathan',   stops:['#8df4e0','#0c4a6e'], glow:'rgba(94,234,212,0.92)', legendary:true, aura:['#5eead4','#0ea5e9','#312e81'] },
   ];
   window._randomGradient = () => {
     const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare && !g.legendary);
@@ -21742,6 +22139,16 @@ void main(){
     eclipse:    'eclipse',
     gold:       'gold',
     abysse:     'deep',
+    /* Vague 2 : une signature PAR cristal — aucun partage. */
+    solaire:    'corona',
+    lunaire:    'lunar',
+    meteore:    'meteor',
+    sylve:      'sylvan',
+    vifargent:  'quicksilver',
+    simoun:     'sand',
+    runique:    'runic',
+    chronos:    'chronal',
+    leviathan:  'leviathan',
   };
   /* bruit déterministe : les particules ne sautent pas d'un rendu à l'autre */
   const _auraN = (i, s) => { const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
@@ -21791,6 +22198,10 @@ void main(){
       @keyframes fsAuSpark{0%{opacity:0;transform:translate(0,22%) scale(.4)}14%{opacity:1}70%{opacity:.85}100%{opacity:0;transform:translate(var(--dx,0),-62%) scale(1.1)}}
       /* Veines de lave qui pulsent */
       @keyframes fsAuVein{0%,100%{opacity:.32}50%{opacity:.9}}
+      /* Étoile filante : traversée diagonale + traînée qui s'éteint */
+      @keyframes fsAuComet{0%{opacity:0;transform:translate(46%,-52%) rotate(-38deg) scaleX(.5)}8%{opacity:1}60%{opacity:.9}100%{opacity:0;transform:translate(-58%,54%) rotate(-38deg) scaleX(1.15)}}
+      /* Rafale de sable : balayage latéral chaud */
+      @keyframes fsAuGust{0%{opacity:0;transform:translate(-46%,0) scaleX(.6)}18%{opacity:.85}100%{opacity:0;transform:translate(52%,var(--dy,0)) scaleX(1.2)}}
       html.fs-reduce-motion .fs-aura *{animation:none!important}
       html.fs-perf-lite .fs-aura .heavy{display:none}
     `;
@@ -22078,6 +22489,178 @@ void main(){
           }} />
         ))}
         {particles(nP(7), 31, 'fsAuRise', (i, r1) => dot('#bff0ff', 1.6 + r1 * 2))}
+      </>;
+    } else if (kind === 'corona') {
+      /* COURONNE SOLAIRE — photosphère en fusion : double couronne de rayons
+         contrarotatifs, éruptions qui s'arrachent de la surface, anneau de
+         plasma. Chaud, aveuglant, majestueux. */
+      layers = <>
+        {bloom('#fff8d0', 30, 12, 2.2, 0.75)}
+        {bloom(c1, 16, 20, 3.4, 0.6)}
+        {rays(0, 11, '#fff3a3', c1, 0.55, false, 5)}
+        {rays(60, 17, c1 + 'cc', '#ffcf6a', 0.4, true, 7)}
+        {/* éruptions : arcs de plasma qui jaillissent puis retombent */}
+        {particles(nP(9), 53, 'fsAuRise', (i, r1) => dot(r1 > 0.55 ? '#fff6c8' : c1, 2 + r1 * 3.4, 0.4))}
+        {ring(c1 + 'aa', 2, 2.3, 0)}
+      </>;
+    } else if (kind === 'lunar') {
+      /* CLAIR DE LUNE — nuit calme : halo laiteux respirant, croissant qui
+         orbite avec lenteur, poussière d'argent en chute douce. Tout en
+         retenue — c'est le rare le plus silencieux. */
+      layers = <>
+        {bloom('#ffffff', 26, 18, 6.2, 0.5)}
+        {bloom(c1, 14, 22, 8, 0.45)}
+        {/* croissant : disque lumineux mordu par un disque sombre, en orbite lente */}
+        <div className="lay" style={{ animation: 'fsAuSpin 40s linear infinite' }}>
+          <div style={{ position: 'absolute', left: '50%', top: '7%', width: box * 0.13, height: box * 0.13, marginLeft: -box * 0.065, borderRadius: '50%', background: `radial-gradient(circle at 62% 38%, #ffffff, ${c1} 58%, transparent 74%)`, boxShadow: `inset ${-box * 0.028}px ${box * 0.014}px 0 0 rgba(6,10,26,0.92), 0 0 18px ${c1}`, mixBlendMode: 'screen', opacity: .9 }} />
+        </div>
+        {particles(nP(8), 47, 'fsAuFall', (i, r1) => dot('#eef3ff', 1.3 + r1 * 1.8))}
+        {ring(c1 + '55', 1.2, 7.5, 0)}
+      </>;
+    } else if (kind === 'meteor') {
+      /* MÉTÉORE — pluie d'étoiles filantes : traînées incandescentes qui
+         traversent la nuit violette en diagonale, ciel piqué d'étoiles. */
+      layers = <>
+        {bloom(c2, 12, 22, 5, 0.55)}
+        {bloom(c0, 32, 12, 3.2, 0.5)}
+        {Array.from({ length: nP(4) }, (_, i) => {
+          const r1 = _auraN(i, 71), r2 = _auraN(i + 33, 71);
+          return (
+            <div key={'cm' + i} className={i > 1 ? 'heavy' : undefined} style={{
+              left: (18 + r1 * 46) + '%', top: (20 + r2 * 44) + '%',
+              width: box * (0.2 + r1 * 0.16), height: 2.2 + r1 * 1.4,
+              borderRadius: 99, mixBlendMode: 'screen',
+              background: `linear-gradient(90deg, transparent, ${c0}, #fff6e0)`,
+              boxShadow: `0 0 10px ${c0}`,
+              animation: `fsAuComet ${2.6 + r2 * 2.2}s cubic-bezier(.3,.6,.4,1) infinite`,
+              animationDelay: (-r1 * 4.4).toFixed(2) + 's',
+            }} />
+          );
+        })}
+        {particles(nP(10), 73, 'fsAuTwinkle', (i, r1) => dot(r1 > 0.6 ? '#ffffff' : c0, 1.2 + r1 * 1.8))}
+      </>;
+    } else if (kind === 'sylvan') {
+      /* CŒUR DE SYLVE — clairière vivante : canopée d'émeraude qui respire,
+         spores lumineuses qui s'élèvent, lucioles en suspension. */
+      layers = <>
+        {bloom(c0, 20, 18, 4.6, 0.65)}
+        <div className="lay heavy" style={{ inset: '8%', borderRadius: '50%', background: `radial-gradient(ellipse 58% 40% at 36% 34%, ${c0}55, transparent 62%), radial-gradient(ellipse 50% 38% at 68% 62%, ${c1}44, transparent 60%)`, filter: 'blur(14px)', opacity: .7, animation: 'fsAuHeat 7s ease-in-out infinite' }} />
+        {particles(nP(9), 83, 'fsAuRise', (i, r1) => dot(r1 > 0.55 ? '#e8ffd8' : c0, 1.6 + r1 * 2.2, 0.3))}
+        {particles(nP(6), 89, 'fsAuTwinkle', (i, r1) => dot('#d9ffb0', 1.8 + r1 * 2.4))}
+        {ring(c0 + '66', 1.4, 5.2, 0)}
+      </>;
+    } else if (kind === 'quicksilver') {
+      /* VIF-ARGENT — mercure vivant : gouttes métalliques en orbite sur deux
+         plans contrarotatifs, reflets froids, coulures brèves. */
+      layers = <>
+        {bloom('#ffffff', 30, 14, 3.8, 0.4)}
+        {bloom(c1, 18, 20, 5.4, 0.45)}
+        {[0, 1].map(pl => (
+          <div key={'orb' + pl} className={pl > 0 ? 'lay heavy' : 'lay'} style={{ animation: `${pl ? 'fsAuSpinR' : 'fsAuSpin'} ${11 + pl * 7}s linear infinite` }}>
+            {Array.from({ length: nP(4) }, (_, i) => {
+              const r1 = _auraN(i + pl * 9, 91);
+              const ang = (i / 4) * 360 + r1 * 70;
+              const rad = box * (0.3 + pl * 0.08 + r1 * 0.05);
+              return (
+                <div key={i} style={{
+                  left: '50%', top: '50%',
+                  marginLeft: Math.cos(ang * Math.PI / 180) * rad - 3,
+                  marginTop: Math.sin(ang * Math.PI / 180) * rad * 0.55 - 3,
+                  width: 5 + r1 * 4, height: 5 + r1 * 4, borderRadius: '50%',
+                  background: `radial-gradient(circle at 34% 30%, #ffffff, ${c1} 55%, #5a6a84 90%)`,
+                  boxShadow: `0 0 8px ${c1}cc`, mixBlendMode: 'screen',
+                }} />
+              );
+            })}
+          </div>
+        ))}
+        {particles(nP(5), 97, 'fsAuFall', (i, r1) => dot('#f4f8ff', 1.4 + r1 * 1.6))}
+      </>;
+    } else if (kind === 'sand') {
+      /* SIMOUN — vent de sable brûlant : vortex ocre qui tourne, rafales
+         latérales, grains en suspension chauffés par le soleil. */
+      layers = <>
+        {bloom(c0, 24, 16, 3.6, 0.55)}
+        <div className="lay" style={{ borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c0}44 16%, transparent 34%, ${c1}33 52%, transparent 70%, ${c0}3d 88%, transparent)`, filter: 'blur(10px)', opacity: .65, animation: 'fsAuSpin 7s linear infinite' }} />
+        <div className="lay heavy" style={{ inset: '10%', borderRadius: '50%', background: `conic-gradient(from 140deg, transparent, ${c1}3a 22%, transparent 46%, ${c0}30 68%, transparent)`, filter: 'blur(13px)', opacity: .5, animation: 'fsAuSpinR 11s linear infinite' }} />
+        {Array.from({ length: nP(5) }, (_, i) => {
+          const r1 = _auraN(i, 103), r2 = _auraN(i + 27, 103);
+          return (
+            <div key={'gu' + i} className={i > 2 ? 'heavy' : undefined} style={{
+              left: (12 + r1 * 40) + '%', top: (24 + r2 * 52) + '%',
+              width: box * (0.16 + r1 * 0.14), height: 1.8 + r1 * 1.6, borderRadius: 99,
+              '--dy': ((r2 - 0.5) * 30) + '%',
+              background: `linear-gradient(90deg, transparent, ${c0}dd, transparent)`,
+              mixBlendMode: 'screen', filter: 'blur(0.5px)',
+              animation: `fsAuGust ${2.1 + r2 * 1.9}s ease-in-out infinite`,
+              animationDelay: (-r1 * 3.6).toFixed(2) + 's',
+            }} />
+          );
+        })}
+        {particles(nP(8), 107, 'fsAuTwinkle', (i, r1) => dot(r1 > 0.6 ? '#ffedc8' : c0, 1.1 + r1 * 1.6))}
+      </>;
+    } else if (kind === 'runic') {
+      /* PIERRE RUNIQUE — cercle de glyphes gravés qui s'allument tour à tour
+         sur un anneau en rotation lente, éclat froid d'encre magique. */
+      const RUNES = ['M6 1 L6 11 M6 1 L11 5 M6 6 L10 11', 'M2 11 L6 1 L10 11 M4 7 L8 7', 'M6 1 L6 11 M2 3 L10 8', 'M3 1 L3 11 M3 6 L9 1 M3 6 L9 11', 'M2 2 L10 10 M10 2 L2 10 M6 0 L6 12', 'M4 1 L8 1 L8 11 L4 11 Z'];
+      layers = <>
+        {bloom(c0, 22, 18, 5, 0.55)}
+        <div className="lay" style={{ animation: 'fsAuSpin 26s linear infinite' }}>
+          {RUNES.map((d, i) => {
+            const ang = (i / RUNES.length) * Math.PI * 2;
+            const rad = box * 0.335;
+            return (
+              <svg key={'rn' + i} className={i % 2 ? 'heavy' : undefined} viewBox="0 0 12 12" width={Math.max(10, box * 0.075)} height={Math.max(10, box * 0.075)} style={{
+                left: '50%', top: '50%',
+                marginLeft: Math.cos(ang) * rad - box * 0.0375,
+                marginTop: Math.sin(ang) * rad - box * 0.0375,
+                mixBlendMode: 'screen', overflow: 'visible',
+                animation: `fsAuVein ${2.2 + (i % 3) * 1.1}s ease-in-out infinite`,
+                animationDelay: (-i * 0.7).toFixed(2) + 's',
+              }}>
+                <path d={d} stroke={c0} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 4px ${c0}) drop-shadow(0 0 9px ${c0})` }} />
+              </svg>
+            );
+          })}
+        </div>
+        {ring(c0 + '77', 1.4, 4.4, 0)}
+        {ring(c0 + '44', 1, 4.4, 2.2)}
+      </>;
+    } else if (kind === 'chronal') {
+      /* SABLIER DE CHRONOS — le temps suspendu : cadrans gradués
+         contrarotatifs, poussière d'instants figés, tic de lumière qui
+         claque par salves. Légendaire : présence maximale. */
+      layers = <>
+        {bloom(c0, 22, 18, 3.8, 0.6)}
+        {bloom(c1, 8, 26, 5.6, 0.45)}
+        {/* cadrans : graduations en conic-gradient répétitif, deux sens */}
+        <div className="lay" style={{ inset: '12%', borderRadius: '50%', background: `repeating-conic-gradient(from 0deg, ${c0}cc 0deg 2deg, transparent 2deg 30deg)`, WebkitMask: 'radial-gradient(circle, transparent 62%, #000 66%, #000 74%, transparent 78%)', mask: 'radial-gradient(circle, transparent 62%, #000 66%, #000 74%, transparent 78%)', opacity: .75, animation: 'fsAuSpin 22s linear infinite' }} />
+        <div className="lay heavy" style={{ inset: '2%', borderRadius: '50%', background: `repeating-conic-gradient(from 8deg, ${c1}aa 0deg 1.4deg, transparent 1.4deg 15deg)`, WebkitMask: 'radial-gradient(circle, transparent 74%, #000 78%, #000 84%, transparent 88%)', mask: 'radial-gradient(circle, transparent 74%, #000 78%, #000 84%, transparent 88%)', opacity: .6, animation: 'fsAuSpinR 34s linear infinite' }} />
+        {/* le tic : flash bref, comme une seconde qui claque */}
+        <div className="lay" style={{ inset: '16%', borderRadius: '50%', background: `radial-gradient(circle, #ffffff, ${c0}55 42%, transparent 68%)`, mixBlendMode: 'screen', opacity: 0, animation: 'fsAuFlash 3.4s linear infinite' }} />
+        {particles(nP(12), 113, 'fsAuTwinkle', (i, r1) => dot(r1 > 0.62 ? '#fff8e0' : (r1 > 0.3 ? c0 : c2), 1.4 + r1 * 2))}
+        {ring(c0 + '88', 1.6, 5, 0)}
+        {ring(c2 + '66', 1.2, 5, 2.5)}
+      </>;
+    } else if (kind === 'leviathan') {
+      /* ŒIL DU LÉVIATHAN — la fosse qui regarde : houle abyssale massive,
+         pupille sombre qui bat comme un cœur lent, bioluminescence qui
+         remonte des profondeurs. Légendaire : présence maximale. */
+      layers = <>
+        {bloom(c1, 14, 24, 6.4, 0.6)}
+        {/* pupille : fente sombre cerclée d'iris lumineux, battement lent */}
+        <div className="lay" style={{ inset: '30%', borderRadius: '50%', background: 'radial-gradient(ellipse 34% 58% at 50% 50%, rgba(2,6,16,0.96) 38%, transparent 66%)', filter: 'blur(3px)', animation: 'fsAuBeat 5.2s ease-in-out infinite' }} />
+        <div className="lay" style={{ inset: '26%', borderRadius: '50%', border: `2px solid ${c0}aa`, boxShadow: `0 0 18px ${c0}66, inset 0 0 22px ${c0}44`, animation: 'fsAuBeat 5.2s ease-in-out infinite', animationDelay: '-.2s' }} />
+        {/* houle : ondes concentriques lentes et larges */}
+        {[0, 1, 2, 3].map(i => (
+          <div key={'lw' + i} className={i > 1 ? 'heavy' : undefined} style={{
+            inset: '14%', borderRadius: '50%', border: `1.6px solid ${i % 2 ? c1 : c0}77`,
+            mixBlendMode: 'screen', animation: 'fsAuWave 6.8s ease-out infinite', animationDelay: (-i * 1.7) + 's',
+          }} />
+        ))}
+        {/* nappes d'eau profonde en dérive contrariée */}
+        <div className="lay heavy" style={{ inset: '4%', borderRadius: '50%', background: `radial-gradient(ellipse 58% 42% at 32% 62%, ${c2}66, transparent 62%)`, filter: 'blur(18px)', opacity: .6, animation: 'fsAuSpin 36s linear infinite' }} />
+        {particles(nP(10), 127, 'fsAuRise', (i, r1) => dot(r1 > 0.55 ? '#c8fff2' : c0, 1.5 + r1 * 2.2, 0.3))}
       </>;
     } else { /* gold */
       layers = <>
@@ -22476,7 +23059,10 @@ void main(){
   window._fsGemRender = (function () {
     let gl = null, canvas = null, program = null, loc = null, dead = false;
     const cache = new Map();
-    const CACHE_MAX = 240;
+    /* Canvas bitmap ≈ 381 Ko pièce (vs ~50 Ko en dataURL PNG) : plafond
+       abaissé en conséquence — 120 gemmes ≈ 45 Mo, large pour grotte +
+       collection sans jamais gonfler la mémoire. */
+    const CACHE_MAX = 120;
     const W = 256, H = 372; /* même ratio que le viewBox 100×145 */
     const init = () => {
       if (gl || dead) return !!gl;
@@ -22571,7 +23157,7 @@ void main(){
     const perspective = (fov,aspect,near,far) => { const f=1/Math.tan(fov/2),nf=1/(near-far); return [f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,(2*far*near)*nf,0]; };
     const lookAt = (eye,target,up) => { const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x); return [x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-x[0]*eye[0]-x[1]*eye[1]-x[2]*eye[2],-y[0]*eye[0]-y[1]*eye[1]-y[2]*eye[2],-z[0]*eye[0]-z[1]*eye[1]-z[2]*eye[2],1]; };
     const hexV = h => [parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255];
-    return function render({ shape = 'diamond', seed = 1, c1 = '#a5b8ff', c2 = '#c084fc', progress = 1 }) {
+    function render({ shape = 'diamond', seed = 1, c1 = '#a5b8ff', c2 = '#c084fc', progress = 1 }) {
       const q = Math.round(Math.max(0, Math.min(1, progress)) * 12) / 12;
       const key = `${shape}|${seed >>> 0}|${c1}|${c2}|${q}`;
       const hit = cache.get(key);
@@ -22606,12 +23192,47 @@ void main(){
         gl.uniformMatrix4fv(loc.mvp, false, new Float32Array(mul(vp, model)));
         gl.drawArrays(gl.TRIANGLES, 0, mesh.length / 9);
         gl.deleteBuffer(buffer);
-        const url = canvas.toDataURL('image/png');
+        /* Snapshot par drawImage (copie GPU ~0,02 ms) et non toDataURL
+           (readback + encodage PNG ~7 ms SYNCHRONES par gemme : c'est lui qui
+           gelait l'ouverture de la grotte — 40 cristaux ≈ 400 ms de blocage,
+           2-4× pire sur mobile). Le cache stocke le canvas, pas un dataURL. */
+        const snap = document.createElement('canvas');
+        snap.width = W; snap.height = H;
+        snap.getContext('2d').drawImage(canvas, 0, 0);
         if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-        cache.set(key, url);
-        return url;
+        cache.set(key, snap);
+        return snap;
       } catch (e) { return null; }
+    }
+    /* Lecture seule du cache : jamais de rendu (0 coût). */
+    render.peek = function ({ shape = 'diamond', seed = 1, c1 = '#a5b8ff', c2 = '#c084fc', progress = 1 }) {
+      const q = Math.round(Math.max(0, Math.min(1, progress)) * 12) / 12;
+      return cache.get(`${shape}|${seed >>> 0}|${c1}|${c2}|${q}`) || null;
     };
+    /* File time-slicée : ~6 ms de budget par frame. La grotte (et toute vue
+       à N cristaux) monte instantanément, les gemmes éclosent sur les frames
+       suivantes au lieu de geler le main thread pendant N × rendu. */
+    const queue = [];
+    let pumping = false;
+    const pump = () => {
+      const t0 = performance.now();
+      while (queue.length && performance.now() - t0 < 6) {
+        const job = queue.shift();
+        let out = null;
+        try { out = render(job.params); } catch (_) { }
+        try { job.cb(out); } catch (_) { }
+      }
+      if (queue.length) requestAnimationFrame(pump);
+      else pumping = false;
+    };
+    render.async = function (params, cb) {
+      const hit = render.peek(params);
+      if (hit) { cb(hit); return; }
+      if (dead) { cb(null); return; }
+      queue.push({ params, cb });
+      if (!pumping) { pumping = true; requestAnimationFrame(pump); }
+    };
+    return render;
   })();
 
   /* Auras des cristaux rares/légendaires : halo conique tournant pour les
@@ -22647,11 +23268,31 @@ void main(){
     const targetC1 = grad.stops[0], targetC2 = grad.stops[grad.stops.length - 1];
     const c1 = cp >= 1 ? targetC1 : _lerpHex(GREY1, targetC1, cp);
     const c2 = cp >= 1 ? targetC2 : _lerpHex(GREY2, targetC2, cp);
-    const src = React.useMemo(() => {
-      try { return window._fsGemRender({ shape, seed: _s.current, c1, c2, progress: pr }); }
-      catch (e) { return null; }
+    /* Rendu ASYNCHRONE time-slicé : le composant monte immédiatement (la
+       grotte ne gèle plus à l'ouverture), la gemme éclot dès que la file l'a
+       rendue — instantané au cache hit (réouverture, session suivante). État :
+       canvas = prêt · null = en éclosion · false = pas de WebGL → repli SVG. */
+    const gemParams = { shape, seed: _s.current, c1, c2, progress: pr };
+    const [snap, setSnap] = React.useState(() => {
+      try { return window._fsGemRender.peek(gemParams); } catch (e) { return null; }
+    });
+    React.useEffect(() => {
+      let alive = true;
+      try {
+        window._fsGemRender.async(gemParams, out => { if (alive) setSnap(out || false); });
+      } catch (e) { if (alive) setSnap(false); }
+      return () => { alive = false; };
     }, [shape, c1, c2, Math.round(pr * 12)]);
-    if (!src) return React.createElement(_LegacyShapedCrystalGem, props);
+    const blitRef = React.useRef(null);
+    React.useLayoutEffect(() => {
+      const el = blitRef.current;
+      if (!el || !snap || !snap.width) return;
+      if (el.width !== snap.width) { el.width = snap.width; el.height = snap.height; }
+      const bc = el.getContext('2d');
+      bc.clearRect(0, 0, el.width, el.height);
+      bc.drawImage(snap, 0, 0);
+    }, [snap]);
+    if (snap === false) return React.createElement(_LegacyShapedCrystalGem, props);
     const glowAlpha = (0.08 + cp * 0.64).toFixed(2);
     const rawGlow = grad.glow.replace(/[\d.]+\)$/, `${glowAlpha})`);
     /* Rares : lueur renforcée · Légendaires : halo conique animé en plus.
@@ -22677,7 +23318,17 @@ void main(){
             background: `conic-gradient(from 0deg, ${auraStops[0]}66, ${auraStops[1]}22 30%, ${auraStops[2]}5c 52%, ${auraStops[1]}22 74%, ${auraStops[0]}66)`,
           }} />
         )}
-        <img src={src} alt="" draggable={false} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
+        {!snap && (
+          /* Éclosion : silhouette discrète aux couleurs de la gemme, le temps
+             que la file de rendu la livre (quelques frames au plus). */
+          <span aria-hidden="true" style={{
+            position: 'absolute', inset: '6% 14%', zIndex: 1,
+            clipPath: 'polygon(50% 0%, 88% 30%, 72% 96%, 28% 96%, 12% 30%)',
+            background: `linear-gradient(160deg, ${c1}66, ${c2}3d)`,
+            opacity: 0.55,
+          }} />
+        )}
+        <canvas ref={blitRef} aria-hidden="true" style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'block', pointerEvents: 'none', userSelect: 'none', opacity: snap ? 1 : 0, transition: 'opacity .3s ease' }} />
         {pr > 0.78 && !shattered && (
           <svg viewBox="0 0 100 145" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
             <g style={{ animation: 'crystalSparkle 1.9s ease-in-out infinite' }}>
@@ -22959,7 +23610,11 @@ void main(){
        direct écraserait la copie cloud des cristaux (perte de données). */
     if(uid&&window._fsSb){
       const blob = window._fsGamifWithLocalData ? window._fsGamifWithLocalData(uid, data) : data;
-      const payload = {gamification:blob,updated_at:new Date().toISOString()};
+      /* Estampillé : l'écho realtime de cet update IMMÉDIAT revenait avec les
+         colonnes tasks/bg_theme d'AVANT le push débounce → il écrasait la
+         tâche qu'on venait de terminer / le thème qu'on venait d'appliquer. */
+      const _ts = window._fsStampOwnPush ? window._fsStampOwnPush(new Date().toISOString()) : new Date().toISOString();
+      const payload = {gamification:blob,updated_at:_ts};
       /* Schéma-résilient : si la colonne gamification manque (42703), le blob
          part sous widget_style.gamification au lieu d'échouer en silence. */
       const run = p => window._fsSb.from('user_data').update(p).eq('user_id',uid);
@@ -23649,7 +24304,7 @@ void main(){
   /* ─────────────────────────────────────────────────────────────
      6. GAMIF MINI WIDGET  (Dashboard compact stats)
   ───────────────────────────────────────────────────────────── */
-  function GamifMiniWidget({ user, onOpenStreaks }) {
+  function GamifMiniWidget({ user, onOpenStreaks, showStreak = true }) {
     const [g] = useGamif(user?.id);
     const { xp=0, streaks={} } = g;
     const lvl = window._gLevel(xp);
@@ -23659,8 +24314,8 @@ void main(){
 
     return (
       <div className="fs-gamif-mini" style={{display:'flex',gap:8,alignItems:'center'}}>
-        {/* Streak badge */}
-        <button className="fs-gamif-chip" onClick={onOpenStreaks} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:12,background:'rgba(255,210,125,0.08)',border:'1px solid rgba(255,210,125,0.2)',cursor:'pointer',transition:'all 0.18s'}}
+        {/* Streak badge — masquable via Paramètres → Dashboard → Module de série */}
+        {showStreak && <button className="fs-gamif-chip" onClick={onOpenStreaks} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:12,background:'rgba(255,210,125,0.08)',border:'1px solid rgba(255,210,125,0.2)',cursor:'pointer',transition:'all 0.18s'}}
           onMouseEnter={e=>e.currentTarget.style.background='rgba(255,210,125,0.15)'}
           onMouseLeave={e=>e.currentTarget.style.background='rgba(255,210,125,0.08)'}>
           <svg width={12} height={14} viewBox="0 0 36 52" fill="url(#mFlame)" style={{filter:'drop-shadow(0 0 5px rgba(255,150,0,0.6))'}}>
@@ -23668,7 +24323,7 @@ void main(){
             <path d="M18 50C8 50 2 42 2 34C2 24 9 16 18 10C18 18 22 22 26 20C22 26 30 30 30 38C30 45 25 50 18 50Z" fill="url(#mFlame)"/>
           </svg>
           <span style={{fontFamily:T.mono,fontWeight:800,fontSize:12,color:'#ffd27d'}}>{streaks.daily||0}</span>
-        </button>
+        </button>}
         {/* Level badge */}
         <div className="fs-gamif-chip" style={{display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:12,background:'rgba(165,184,255,0.08)',border:'1px solid rgba(165,184,255,0.18)'}}>
           <svg width={11} height={11} viewBox="0 0 14 14" fill="none"><polygon points="7,1 8.5,5 13,5.5 9.5,8.5 10.5,13 7,10.5 3.5,13 4.5,8.5 1,5.5 5.5,5" stroke="#a5b8ff" strokeWidth={1} fill="rgba(165,184,255,0.2)"/></svg>
