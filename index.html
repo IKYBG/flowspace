@@ -1478,6 +1478,15 @@
     window._fsHydrationLock = true;
     window._fsHydratedSavedData = false;
     window._fsDirtyThisSession = false;
+    /* Confiance dans le cache local : n'est VRAI que quand on a la preuve que
+       le localStorage appartient bien au compte courant — retour sur le MÊME
+       appareil (fs_user déjà présent), ou après un seed/restore réussi. Tant
+       que c'est FAUX (appareil vierge, hydratation non résolue), aucune
+       écriture locale ne peut se dater « plus récente que le cloud » : c'est ce
+       qui empêche les widgets PAR DÉFAUT — écrits pendant un boot en échec
+       réseau sur mobile — d'écraser les vraies données au retry (perte de
+       données multi-appareils). */
+    window._fsLocalTrusted = false;
     window._fsDirtyKeys = new Set();
     window._fsImagePublishQueued = false;
     window._fsRemoteTemplateImages = {};
@@ -2174,6 +2183,8 @@
         Object.entries(data.images || {}).forEach(([k, v]) => {
           if (k && k.startsWith('fs_img_') && typeof v === 'string' && v && !_fsIsImageDbRef(v)) _fsRawSet(k, v);
         });
+        /* Le backup de CE compte vient d'être restauré → cache de confiance. */
+        window._fsLocalTrusted = true;
         setTimeout(() => { _fsIgnorePush = false; }, 500);
         return true;
       } catch (e) {
@@ -2312,6 +2323,10 @@
 
     function _fsMarkLocalWrite() {
       window._fsDirtyThisSession = true;
+      /* Idem _fsMarkWidgetsLocalWrite : pas de datation tant que le cache local
+         n'est pas de confiance — protège contre l'écrasement du cloud par des
+         défauts de boot (mobile en échec réseau). */
+      if (!window._fsLocalTrusted && !window._fsSyncReady) return;
       try { _fsRawSet(FS_SYNC_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
     }
 
@@ -2356,6 +2371,10 @@
     window._fsRowIsStale = _fsRowIsStale;
 
     function _fsMarkWidgetsLocalWrite() {
+      /* Voir _fsLocalTrusted : un cache non confirmé (défauts d'un boot en échec
+         réseau) ne doit jamais se dater — sinon il gagne à tort contre le vrai
+         cloud au retry et l'écrase. */
+      if (!window._fsLocalTrusted && !window._fsSyncReady) return;
       try { _fsRawSet(FS_WIDGETS_LOCAL_WRITE_KEY, new Date().toISOString()); } catch (_) { }
     }
 
@@ -2365,6 +2384,10 @@
 
     function _fsLocalDashboardLooksNewer(userId, remote) {
       if (!_fsSameLocalUser(userId)) return false;
+      /* Cache non confirmé (appareil vierge, hydratation non résolue) : on ne
+         peut PAS prétendre que le local est plus récent — sinon des widgets par
+         défaut battraient le vrai cloud. */
+      if (!window._fsLocalTrusted && !window._fsSyncReady) return false;
       let localWidgets = null;
       try {
         const raw = localStorage.getItem('fs_widgets');
@@ -2372,12 +2395,13 @@
         localWidgets = JSON.parse(raw);
       } catch (_) { return false; }
       if (_fsStableJson(localWidgets) === _fsStableJson(remote?.widgets)) return false;
-      let localMs = _fsIsoMs(localStorage.getItem(FS_WIDGETS_LOCAL_WRITE_KEY));
+      const localMs = _fsIsoMs(localStorage.getItem(FS_WIDGETS_LOCAL_WRITE_KEY));
+      /* PAS de marqueur = pas de preuve d'une édition locale genuine → on laisse
+         le cloud (qui a prouvablement des données) gagner. Avant, on posait
+         « maintenant » par défaut : c'est exactement ce qui datait les défauts
+         de boot et écrasait le cloud. */
+      if (!localMs) return false;
       const remoteMs = _fsIsoMs(remote?.updated_at);
-      if (!localMs) {
-        localMs = Date.now();
-        try { _fsRawSet(FS_WIDGETS_LOCAL_WRITE_KEY, new Date(localMs).toISOString()); } catch (_) { }
-      }
       return localMs > 0 && (!remoteMs || localMs > remoteMs - 1000 * 60 * 10);
     }
 
@@ -2433,6 +2457,9 @@
          survit à l'actualisation : on compare directement son horodatage à
          remote.updated_at. Si le local est plus récent → on le garde et on le
          (re)pousse, donc plus aucune perte au refresh. */
+      /* Même garde que _fsLocalDashboardLooksNewer : un cache non confirmé ne
+         peut pas se déclarer plus récent que le cloud. */
+      if (!window._fsLocalTrusted && !window._fsSyncReady) return false;
       const localMs = _fsIsoMs(localStorage.getItem(FS_SYNC_LOCAL_WRITE_KEY));
       if (!localMs) return false;
       const remoteMs = _fsIsoMs(remote?.updated_at);
@@ -2656,6 +2683,10 @@
 
       if (remote?.updated_at) _fsRawSet(FS_SYNC_REMOTE_APPLIED_KEY, remote.updated_at);
 
+      /* Le local reflète désormais le cloud de CE compte → cache de confiance :
+         les futures éditions pourront se dater et être défendues au refresh. */
+      window._fsLocalTrusted = true;
+
       setTimeout(() => { _fsIgnorePush = false; }, 2000);
       /* Auto-réparation : les champs gardés localement (absents du cloud)
          sont repoussés pour que la ligne remote redevienne complète. */
@@ -2674,6 +2705,10 @@
     async function _fsReconcileRemote(userId, remote) {
       if (!userId) return { source: 'none', remote };
       const sameLocalUser = _fsSameLocalUser(userId);
+      /* Retour sur le MÊME appareil avec des données déjà présentes pour CE
+         compte : le cache est de confiance → ses marqueurs de fraîcheur valent,
+         donc une édition faite pendant le boot local-first sera bien conservée. */
+      if (sameLocalUser && _fsLocalHasSavedData(userId)) window._fsLocalTrusted = true;
       const previousLocalUserId = _fsCurrentLocalUserId();
       const lastLogoutUserId = (() => { try { return localStorage.getItem(FS_LAST_LOGOUT_USER_KEY); } catch (_) { return null; } })();
       /* Who the leftover local cache actually belongs to: the live fs_user if set,
@@ -2687,6 +2722,9 @@
            to — or pushed up into — this account. Runs even when the remote is
            unreachable, so an outage can't expose the previous user's dashboard. */
         try { _fsBackupLocalUserData(localOwnerId); } catch (_) { }
+        /* Nouveau compte sur cet appareil : le cache va être vidé, il n'est plus
+           de confiance (et ses marqueurs viennent d'être supprimés). */
+        window._fsLocalTrusted = false;
         _fsClearLocalAppData(userId, { switching: true });
         /* Le cache local n'appartient plus à l'ancien compte : sans ce reset,
            une future perte de fs_user (session expirée) ferait attribuer le
@@ -2709,17 +2747,22 @@
       const localBelongsToRequestedUser = previousLocalUserId === userId || lastLogoutUserId === userId;
       const hasOrphanLocalData = !switchingUser && !sameLocalUser && !localBelongsToRequestedUser && _fsLocalHasSavedData(userId);
       if (_fsRestoreLogoutVisualPrefs(userId, remote)) {
+        window._fsLocalTrusted = true;
         _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         try { _fsRawRemove(FS_LAST_LOGOUT_USER_KEY); } catch (_) { }
         return { source: 'logout-visual', remote: _fsSnapshotLocalData(userId) };
       }
       if (!remote && sameLocalUser) {
+        window._fsLocalTrusted = true;
         _fsGapFillFromBackup(userId);
         await _fsWithTimeout(_fsFlushPush(true), 2500, null);
         return { source: 'local', remote };
       }
       if (!remote && hasOrphanLocalData && !previousLocalUserId) {
+        /* Données locales orphelines (usage sans compte puis connexion) : elles
+           appartiennent à cet utilisateur → confiance, on les fait monter. */
+        window._fsLocalTrusted = true;
         _fsGapFillFromBackup(userId);
         window._fsSetSyncReady?.(true);
         await _fsWithTimeout(_fsFlushPush(true), 3500, null);
@@ -7257,9 +7300,9 @@
             const blocked = overlapsAnyWidget({ nc1, nc2, nr1, nr2 }, drag.id);
             canDropRef.current = !blocked;
             if (!blocked) snapRef.current = { nc1, nc2, nr1, nr2 };
-            /* Le fantôme montre la DERNIÈRE emprise valide (celle qui sera
-               appliquée au lâcher) — rouge quand le geste courant est bloqué. */
-            if (snapRef.current) _paintDropGhost(m, snapRef.current, blocked);
+            /* Pas de fantôme de cible au resize : le clone vivant EST déjà à la
+               souris et porte le badge de taille — un second cadre ferait
+               justement la « zone en trop » signalée. */
             if (floatRef.current) {
               floatRef.current.style.borderColor = blocked ? `${T.rose}99` : `${c1(0.565)}`;
               floatRef.current.style.background = blocked ? `${T.rose}14` : `${c1(0.078)}`;
@@ -7516,8 +7559,16 @@
                 return (
                   <div key={w.id}
                     style={{ gridColumn: w.col, gridRow: w.row, position: 'relative', zIndex: drag?.id === w.id ? 10 : selected === w.id ? 5 : 1, transform: st ? `translate(${st.dx}px,${st.dy}px)` : undefined, transition: st?.live ? 'transform 0.42s cubic-bezier(0.34,1.56,0.64,1)' : undefined, contain: 'layout style' }}>
-                    {(isMoving || isResizing) ? (
+                    {isMoving ? (
+                      /* Déplacement : pointillé discret au point de DÉPART (le
+                         clone flotte sous la souris, le fantôme montre la cible). */
                       <div style={{ width: '100%', height: '100%', borderRadius: 24, background: `${c1(0.024)}`, border: `1.5px dashed ${c1(0.251)}` }} />
+                    ) : isResizing ? (
+                      /* Redimensionnement : AUCUNE zone à la position d'origine —
+                         c'était le « deuxième cadre » figé loin de la souris. Seul
+                         le clone vivant (qui suit le curseur) reste affiché. La
+                         cellule garde juste sa place dans la grille (spacer vide). */
+                      <div style={{ width: '100%', height: '100%' }} />
                     ) : (
                       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                         {/* Widget content — non-interactive in edit mode.
@@ -12495,13 +12546,26 @@ void main(){
       to{opacity:1;transform:translateY(0)}
     }
     .fs-auth-shell {
-      --auth-bg-0:#05020b;
-      --auth-bg-1:#12051d;
-      --auth-bg-2:#240027;
-      --auth-plum:72, 16, 84;
-      --auth-violet:168, 72, 204;
-      --auth-magenta:217, 43, 214;
-      --auth-lilac:214, 162, 255;
+      /* ── Palette commutable (cercles rose/vert) ──────────────────────────
+         Toute la teinte du login dérive de ces 6 triplets + le filtre image.
+         Rose = défaut ; [data-login="vert"] ne redéfinit QUE la palette. Les
+         variables --auth-* (utilisées partout dans le CSS d'auth) et les
+         couleurs inline du JSX pointent toutes ici → un seul point de bascule. */
+      --la-rgb:217, 43, 214;         /* accent principal   */
+      --la2-rgb:168, 72, 204;        /* accent secondaire  */
+      --la-soft-rgb:214, 162, 255;   /* teinte claire      */
+      --la-cool-rgb:43, 144, 255;    /* halo froid (orbe)  */
+      --la-dark-rgb:72, 16, 84;      /* fond profond teinté*/
+      --la-bg0:#05020b; --la-bg1:#12051d; --la-bg2:#240027;
+      --la-img:saturate(1.08) contrast(1.04);
+      /* Mapping vers les variables historiques d'auth */
+      --auth-bg-0:var(--la-bg0);
+      --auth-bg-1:var(--la-bg1);
+      --auth-bg-2:var(--la-bg2);
+      --auth-plum:var(--la-dark-rgb);
+      --auth-violet:var(--la2-rgb);
+      --auth-magenta:var(--la-rgb);
+      --auth-lilac:var(--la-soft-rgb);
       --auth-ink:#07030d;
       min-height:100dvh; height:100%; width:100%; position:relative; overflow:hidden;
       display:flex; align-items:center; justify-content:center; padding:34px 22px;
@@ -12510,6 +12574,21 @@ void main(){
         radial-gradient(circle at 24% 18%, rgba(var(--auth-violet),.22), transparent 28%),
         radial-gradient(circle at 50% 110%, rgba(var(--auth-plum),.42), transparent 44%),
         linear-gradient(135deg,var(--auth-bg-0) 0%,#090514 42%,var(--auth-bg-1) 100%);
+    }
+    /* Palette VERTE — dérivée des verts du système (emerald/mint), équivalents
+       exacts des tons rose : même structure, même luminance, autre teinte. Le
+       dashboard flottant (bg.png) est viré au vert par hue-rotate. */
+    .fs-auth-shell[data-login="vert"] {
+      --la-rgb:34, 197, 94;
+      --la2-rgb:16, 185, 129;
+      --la-soft-rgb:134, 239, 172;
+      --la-cool-rgb:20, 184, 166;
+      --la-dark-rgb:6, 58, 40;
+      --la-bg0:#02090a; --la-bg1:#04160f; --la-bg2:#03251a;
+      /* Vire le dashboard flottant au vert de façon UNIFORME quelle que soit sa
+         couleur source (sepia → hue-rotate → saturate) : un simple hue-rotate
+         faisait dériver les tons chauds vers l'orange. */
+      --la-img:grayscale(.28) sepia(1) hue-rotate(58deg) saturate(2.4) brightness(.92) contrast(1.05);
     }
     .fs-auth-shell::before {
       content:""; position:absolute; inset:-30%; pointer-events:none;
@@ -12597,7 +12676,7 @@ void main(){
       background:rgba(255,255,255,.05); border:1px solid rgba(var(--auth-lilac),.18);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 42px rgba(var(--auth-magenta),.12);
     }
-    .fs-auth-product-shot img { width:100%; height:100%; object-fit:cover; object-position:center center; opacity:.88; filter:saturate(1.08) contrast(1.04); }
+    .fs-auth-product-shot img { width:100%; height:100%; object-fit:cover; object-position:center center; opacity:.88; filter:var(--la-img); transition:filter .5s var(--mineral-ease); }
     .fs-auth-product-rail { position:absolute; left:4.5%; top:7%; bottom:7%; width:56px; background:rgba(3,5,14,.42); border-right:1px solid rgba(255,255,255,.08); }
     .fs-auth-product-glow {
       position:absolute; width:46%; height:52%; right:3%; top:10%; border-radius:50%;
@@ -12641,9 +12720,9 @@ void main(){
     }
     .fs-ai::placeholder { color:rgba(248,246,252,.24); }
     .fs-ai:focus {
-      border-color:rgba(143,220,255,.56);
-      background:rgba(143,220,255,.06);
-      box-shadow:0 0 0 3.5px rgba(143,220,255,.12),0 12px 26px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.08);
+      border-color:rgba(var(--la-soft-rgb),.56);
+      background:rgba(var(--la-soft-rgb),.06);
+      box-shadow:0 0 0 3.5px rgba(var(--la-soft-rgb),.14),0 12px 26px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.08);
       transform:translateY(-1px);
     }
     .fs-ai:disabled { opacity:.5; cursor:default; }
@@ -12693,6 +12772,17 @@ void main(){
       const [infoMsg, setInfoMsg] = _uSAuth('');
       const [awaitingConfirm, setAwaitingConfirm] = _uSAuth(false);
       const [resetSent, setResetSent] = _uSAuth(false);
+      /* Thème visuel de la page login (cercles rose/vert). Persisté : au retour
+         l'utilisateur retrouve son choix. Purement cosmétique — n'affecte pas
+         le thème du dashboard une fois connecté. */
+      const [loginTheme, setLoginTheme] = _uSAuth(() => {
+        try { return localStorage.getItem('fs_login_theme') === 'vert' ? 'vert' : 'rose'; } catch (_) { return 'rose'; }
+      });
+      const pickLogin = t => { setLoginTheme(t); try { localStorage.setItem('fs_login_theme', t); } catch (_) { } };
+      const LOGIN_SWATCHES = [
+        { id: 'rose', label: 'Rose', grad: 'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))', ring: '217,43,214' },
+        { id: 'vert', label: 'Vert', grad: 'linear-gradient(145deg,rgb(134,239,172),rgb(34,197,94))', ring: '34,197,94' },
+      ];
       const AUTH_RATE_KEY = 'fs_auth_attempts_v1';
       const readAuthAttempts = () => {
         try {
@@ -12954,17 +13044,36 @@ void main(){
         : <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>;
 
       return (
-        <div className="fs-auth-shell">
-          <div className="fs-auth-orb1" style={{ position:'absolute', width:760, height:760, top:'-24%', left:'-16%', borderRadius:'50%', background:'radial-gradient(circle, rgba(43,144,255,.24), transparent 64%)', pointerEvents:'none' }} />
-          <div className="fs-auth-orb2" style={{ position:'absolute', width:620, height:620, bottom:'-18%', right:'-10%', borderRadius:'50%', background:'radial-gradient(circle, rgba(160,92,255,.24), transparent 64%)', pointerEvents:'none' }} />
+        <div className="fs-auth-shell" data-login={loginTheme}>
+          {/* ── Cercles de thème (rose / vert) : retentent toute la page + le
+             dashboard flottant à chaque clic. Flottent en haut à droite. ── */}
+          <div className="fs-auth-theme-dots" role="group" aria-label="Couleur de la page" style={{ position:'absolute', top:'max(18px, env(safe-area-inset-top))', right:20, zIndex:6, display:'flex', alignItems:'center', gap:10, padding:'8px 11px', borderRadius:999, background:'rgba(10,8,20,.42)', border:'1px solid rgba(255,255,255,.10)', backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', boxShadow:'0 10px 30px rgba(0,0,0,.34)' }}>
+            {LOGIN_SWATCHES.map(s => {
+              const on = loginTheme === s.id;
+              return (
+                <button key={s.id} type="button" onClick={() => pickLogin(s.id)}
+                  aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
+                  style={{ width:24, height:24, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
+                    background:s.grad,
+                    border:on ? '2px solid #fff' : '2px solid rgba(255,255,255,.28)',
+                    boxShadow:on ? `0 0 0 3px rgba(${s.ring},.34), 0 4px 16px rgba(${s.ring},.5)` : '0 2px 8px rgba(0,0,0,.4)',
+                    transform:on ? 'scale(1.06)' : 'scale(1)',
+                    transition:'transform .2s var(--mineral-ease), box-shadow .2s var(--mineral-ease), border-color .2s' }}
+                  onMouseEnter={e => { if (!on) e.currentTarget.style.transform = 'scale(1.12)'; }}
+                  onMouseLeave={e => { if (!on) e.currentTarget.style.transform = 'scale(1)'; }} />
+              );
+            })}
+          </div>
+          <div className="fs-auth-orb1" style={{ position:'absolute', width:760, height:760, top:'-24%', left:'-16%', borderRadius:'50%', background:'radial-gradient(circle, rgba(var(--la-cool-rgb),.24), transparent 64%)', pointerEvents:'none' }} />
+          <div className="fs-auth-orb2" style={{ position:'absolute', width:620, height:620, bottom:'-18%', right:'-10%', borderRadius:'50%', background:'radial-gradient(circle, rgba(var(--la2-rgb),.26), transparent 64%)', pointerEvents:'none' }} />
 
           <div className={`fs-auth-card${shaking ? ' fs-auth-shake' : ''}`}>
             <div className="fs-auth-panel-grid">
               <section className="fs-auth-stage">
-                <div style={{position:'absolute',inset:0,pointerEvents:'none',background:'radial-gradient(circle at 72% 42%,rgba(143,220,255,.16),transparent 32%),radial-gradient(circle at 42% 72%,rgba(184,145,255,.12),transparent 36%)'}} />
+                <div style={{position:'absolute',inset:0,pointerEvents:'none',background:'radial-gradient(circle at 72% 42%,rgba(var(--la-soft-rgb),.16),transparent 32%),radial-gradient(circle at 42% 72%,rgba(var(--la2-rgb),.12),transparent 36%)'}} />
                 <div style={{position:'relative',zIndex:2,maxWidth:560}}>
                   <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:44}}>
-                    <div style={{width:48,height:48,borderRadius:18,flexShrink:0,position:'relative',background:'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))',boxShadow:'inset 0 1px 0 rgba(255,255,255,.36),0 18px 38px rgba(217,43,214,.34)',display:'grid',placeItems:'center'}}>
+                    <div style={{width:48,height:48,borderRadius:18,flexShrink:0,position:'relative',background:'linear-gradient(145deg,rgb(var(--la-soft-rgb)),rgb(var(--la-rgb)))',boxShadow:'inset 0 1px 0 rgba(255,255,255,.36),0 18px 38px rgba(var(--la-rgb),.34)',display:'grid',placeItems:'center'}}>
                       <img src="logo.png" alt="LumenOS" width={29} height={29} decoding="async" style={{width:29,height:29,objectFit:'contain',position:'relative',zIndex:1}}/>
                     </div>
                     <div>
@@ -12973,7 +13082,7 @@ void main(){
                     </div>
                   </div>
 
-                  <div style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 11px',borderRadius:999,background:'rgba(217,43,214,.12)',border:'1px solid rgba(214,162,255,.24)',color:'rgb(230,190,255)',fontSize:10,fontWeight:900,letterSpacing:0,textTransform:'uppercase',marginBottom:18}}>
+                  <div style={{display:'inline-flex',alignItems:'center',gap:8,padding:'6px 11px',borderRadius:999,background:'rgba(var(--la-rgb),.13)',border:'1px solid rgba(var(--la-soft-rgb),.26)',color:'rgb(var(--la-soft-rgb))',fontSize:10,fontWeight:900,letterSpacing:0,textTransform:'uppercase',marginBottom:18}}>
                     <span className="fs-auth-dot" />
                     Dashboard de productivité · Gratuit
                   </div>
@@ -12986,7 +13095,7 @@ void main(){
                 </div>
 
                 <div className="fs-auth-hero">
-                  <div style={{position:'absolute',inset:'18% 8% -8% 14%',borderRadius:'50%',background:'radial-gradient(circle,rgba(70,90,255,.32),transparent 62%)',filter:'blur(24px)'}} />
+                  <div style={{position:'absolute',inset:'18% 8% -8% 14%',borderRadius:'50%',background:'radial-gradient(circle,rgba(var(--la-cool-rgb),.32),transparent 62%)',filter:'blur(24px)'}} />
                   <div className="fs-auth-product-card">
                     <div className="fs-auth-product-glow" />
                     <div className="fs-auth-product-shot">
@@ -13001,13 +13110,13 @@ void main(){
                         filter:drop-shadow(0 22px 34px rgba(0,0,0,.45));animation:fsAuthGemFloat 5.2s ease-in-out infinite}
                       .fs-auth-gem{position:absolute;left:50%;top:0;width:62px;height:78px;transform:translateX(-50%);
                         clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
-                        background:linear-gradient(158deg,#fff 0%,#8fdcff 34%,#b891ff 100%)}
+                        background:linear-gradient(158deg,#fff 0%,rgb(var(--la-soft-rgb)) 40%,rgb(var(--la-rgb)) 100%)}
                       .fs-auth-gem::before{content:'';position:absolute;left:0;right:0;top:30%;height:1px;background:rgba(255,255,255,.5)}
                       .fs-auth-gem::after{content:'';position:absolute;left:48%;top:5%;bottom:5%;width:1px;background:linear-gradient(to bottom,rgba(255,255,255,.8),rgba(255,255,255,.08))}
                       .fs-auth-gem-halo{position:absolute;left:50%;top:4px;width:102px;height:102px;transform:translateX(-50%);border-radius:50%;
-                        background:radial-gradient(circle,rgba(143,220,255,.34) 0%,transparent 65%);filter:blur(15px)}
+                        background:radial-gradient(circle,rgba(var(--la-soft-rgb),.34) 0%,transparent 65%);filter:blur(15px)}
                       .fs-auth-gem-floor{position:absolute;left:50%;bottom:4px;width:64px;height:10px;transform:translateX(-50%);border-radius:50%;
-                        background:radial-gradient(ellipse,rgba(143,220,255,.4),transparent 72%);filter:blur(3px)}
+                        background:radial-gradient(ellipse,rgba(var(--la-soft-rgb),.4),transparent 72%);filter:blur(3px)}
                       @keyframes fsAuthGemFloat{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-9px) rotate(3deg)}}
                       html.fs-reduce-motion .fs-auth-gem-wrap{animation:none}
                       @media (prefers-reduced-motion:reduce){.fs-auth-gem-wrap{animation:none}}
@@ -13086,7 +13195,7 @@ void main(){
               {mode === 'login' && (
                 <div style={{ textAlign: 'right', marginTop: -4, marginBottom: 14 }}>
                   <button onClick={() => goMode('forgot')} disabled={busy}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(230,190,255,0.85)', fontSize: 12, fontWeight: 700, fontFamily: T.font }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(var(--la-soft-rgb),0.9)', fontSize: 12, fontWeight: 700, fontFamily: T.font }}>
                     Mot de passe oublié ?
                   </button>
                 </div>
@@ -13123,14 +13232,14 @@ void main(){
                   transition: 'all 0.28s cubic-bezier(0.34,1.56,0.64,1)',
                   /* Succès : on reste dans la signature LumenOS (même dégradé),
                      juste un bloom plus intense + sheen — pas de vert générique. */
-                  background: 'linear-gradient(135deg, rgb(214,162,255) 0%, rgb(217,43,214) 100%)',
+                  background: 'linear-gradient(135deg, rgb(var(--la-soft-rgb)) 0%, rgb(var(--la-rgb)) 100%)',
                   boxShadow: isOk
-                    ? '0 22px 64px rgba(217,43,214,.52), 0 0 92px rgba(214,162,255,.34), inset 0 1px 0 rgba(255,255,255,.5)'
-                    : '0 18px 46px rgba(217,43,214,.34),0 0 54px rgba(214,162,255,.16),inset 0 1px 0 rgba(255,255,255,.34)',
+                    ? '0 22px 64px rgba(var(--la-rgb),.52), 0 0 92px rgba(var(--la-soft-rgb),.34), inset 0 1px 0 rgba(255,255,255,.5)'
+                    : '0 18px 46px rgba(var(--la-rgb),.34),0 0 54px rgba(var(--la-soft-rgb),.16),inset 0 1px 0 rgba(255,255,255,.34)',
                   color: '#050713',
                 }}
-                onMouseEnter={e => { if (!busy) { e.currentTarget.style.transform = 'scale(1.018) translateY(-1px)'; e.currentTarget.style.boxShadow = '0 22px 62px rgba(217,43,214,.46),0 0 72px rgba(214,162,255,.24),inset 0 1px 0 rgba(255,255,255,.34)'; } }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1) translateY(0)'; e.currentTarget.style.boxShadow = '0 18px 46px rgba(217,43,214,.34),0 0 54px rgba(214,162,255,.16),inset 0 1px 0 rgba(255,255,255,.34)'; }}>
+                onMouseEnter={e => { if (!busy) { e.currentTarget.style.transform = 'scale(1.018) translateY(-1px)'; e.currentTarget.style.boxShadow = '0 22px 62px rgba(var(--la-rgb),.46),0 0 72px rgba(var(--la-soft-rgb),.24),inset 0 1px 0 rgba(255,255,255,.34)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1) translateY(0)'; e.currentTarget.style.boxShadow = '0 18px 46px rgba(var(--la-rgb),.34),0 0 54px rgba(var(--la-soft-rgb),.16),inset 0 1px 0 rgba(255,255,255,.34)'; }}>
                 {status === 'loading' && (
                   <svg className="fs-auth-spin" width={20} height={20} viewBox="0 0 24 24" fill="none" strokeLinecap="round">
                     <circle cx="12" cy="12" r="10" stroke="rgba(5,7,19,0.22)" strokeWidth={2.5} />
@@ -17341,6 +17450,10 @@ void main(){
                 try { return localStorage.getItem('fs_intro_pending') === '1'; } catch (_) { return false; }
               })();
               if (_earlyLocalUser?.id === session.user.id && !_introPending) {
+                /* Le cache appartient prouvablement à ce compte (même appareil) :
+                   confiance immédiate → une édition faite pendant que la
+                   réconciliation tourne en fond sera datée et défendue. */
+                window._fsLocalTrusted = true;
                 window.__fsDiagLog('setScreen', 'local-first:' + readStartScreen());
                 setScreen(readStartScreen());
               }
