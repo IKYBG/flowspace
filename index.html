@@ -12695,7 +12695,18 @@ void main(){
       background:rgba(255,255,255,.05); border:1px solid rgba(var(--auth-lilac),.18);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 42px rgba(var(--auth-magenta),.12);
     }
-    .fs-auth-product-shot img { width:100%; height:100%; object-fit:cover; object-position:center center; opacity:.88; filter:var(--la-img); transition:filter .5s var(--mineral-ease); }
+    /* Les DEUX fonds (bg.png rose / bg2.png vert) sont empilés et préchargés ;
+       la bascule n'est qu'un fondu d'opacité composité par le GPU — instantané,
+       sans décodage ni reflow au clic (le décodage de bg2.png coûtait ~166 ms). */
+    .fs-auth-product-shot img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; filter:var(--la-img); transition:opacity .5s var(--mineral-ease); }
+    /* Ripple premium de bascule de thème : un halo qui jaillit du cercle cliqué
+       et balaie la page dans la nouvelle teinte, masquant le repeint. */
+    @keyframes fsLoginRipple {
+      0%   { transform:translate(-50%,-50%) scale(0);    opacity:.5; }
+      55%  { opacity:.26; }
+      100% { transform:translate(-50%,-50%) scale(1);    opacity:0; }
+    }
+    html.fs-reduce-motion .fs-login-ripple { display:none; }
     .fs-auth-product-rail { position:absolute; left:4.5%; top:7%; bottom:7%; width:56px; background:rgba(3,5,14,.42); border-right:1px solid rgba(255,255,255,.08); }
     .fs-auth-product-glow {
       position:absolute; width:46%; height:52%; right:3%; top:10%; border-radius:50%;
@@ -12797,11 +12808,23 @@ void main(){
       const [loginTheme, setLoginTheme] = _uSAuth(() => {
         try { return localStorage.getItem('fs_login_theme') === 'vert' ? 'vert' : 'rose'; } catch (_) { return 'rose'; }
       });
-      const pickLogin = t => { setLoginTheme(t); try { localStorage.setItem('fs_login_theme', t); } catch (_) { } };
+      const [ripple, setRipple] = _uSAuth(null);
       const LOGIN_SWATCHES = [
         { id: 'rose', label: 'Rose', grad: 'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))', ring: '217,43,214' },
         { id: 'vert', label: 'Vert', grad: 'linear-gradient(145deg,rgb(134,239,172),rgb(34,197,94))', ring: '34,197,94' },
       ];
+      const pickLogin = (t, e) => {
+        try { localStorage.setItem('fs_login_theme', t); } catch (_) { }
+        /* Ripple depuis le point cliqué, dans la nouvelle teinte. La bascule
+           elle-même est instantanée (variables CSS + crossfade d'opacité). */
+        if (t !== loginTheme && e) {
+          const sw = LOGIN_SWATCHES.find(s => s.id === t);
+          setRipple({ x: e.clientX, y: e.clientY, ring: sw ? sw.ring : '217,43,214', key: Date.now() });
+          window.clearTimeout(window.__fsLoginRippleT);
+          window.__fsLoginRippleT = window.setTimeout(() => setRipple(null), 720);
+        }
+        setLoginTheme(t);
+      };
       const AUTH_RATE_KEY = 'fs_auth_attempts_v1';
       const readAuthAttempts = () => {
         try {
@@ -13070,7 +13093,7 @@ void main(){
             {LOGIN_SWATCHES.map(s => {
               const on = loginTheme === s.id;
               return (
-                <button key={s.id} type="button" onClick={() => pickLogin(s.id)}
+                <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
                   aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
                   style={{ width:24, height:24, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
                     background:s.grad,
@@ -13083,6 +13106,14 @@ void main(){
               );
             })}
           </div>
+          {ripple && (
+            <span key={ripple.key} className="fs-login-ripple" aria-hidden="true" style={{
+              position:'fixed', left:ripple.x, top:ripple.y, width:'220vmax', height:'220vmax',
+              marginLeft:0, marginTop:0, borderRadius:'50%', pointerEvents:'none', zIndex:5, mixBlendMode:'screen',
+              background:`radial-gradient(circle, rgba(${ripple.ring},.5), rgba(${ripple.ring},.16) 42%, transparent 68%)`,
+              animation:'fsLoginRipple .7s cubic-bezier(.22,1,.36,1) both',
+            }} />
+          )}
           <div className="fs-auth-orb1" style={{ position:'absolute', width:760, height:760, top:'-24%', left:'-16%', borderRadius:'50%', background:'radial-gradient(circle, rgba(var(--la-cool-rgb),.24), transparent 64%)', pointerEvents:'none' }} />
           <div className="fs-auth-orb2" style={{ position:'absolute', width:620, height:620, bottom:'-18%', right:'-10%', borderRadius:'50%', background:'radial-gradient(circle, rgba(var(--la2-rgb),.26), transparent 64%)', pointerEvents:'none' }} />
 
@@ -13118,10 +13149,11 @@ void main(){
                   <div className="fs-auth-product-card">
                     <div className="fs-auth-product-glow" />
                     <div className="fs-auth-product-shot">
-                      {/* Dashboard flottant : bg.png (rose) / bg2.png (vert). Le
-                         visuel vert est un vrai fichier, plus besoin de teinter
-                         par filtre. */}
-                      <img src={loginTheme === 'vert' ? 'bg2.png' : 'bg.png'} alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
+                      {/* Dashboard flottant : les DEUX visuels sont montés et
+                         préchargés, on ne fait que croiser les opacités → bascule
+                         instantanée (plus de décodage de bg2.png au clic). */}
+                      <img src="bg.png"  alt="" aria-hidden="true" decoding="async" style={{ opacity: loginTheme === 'vert' ? 0 : 0.88 }} />
+                      <img src="bg2.png" alt="" aria-hidden="true" decoding="async" fetchpriority="low" style={{ opacity: loginTheme === 'vert' ? 0.88 : 0 }} />
                       <div className="fs-auth-product-rail" />
                     </div>
                   </div>
