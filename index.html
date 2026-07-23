@@ -725,6 +725,144 @@
       }
     }
 
+    /* ═══════════════ LIQUID GLASS — matière de verre systémique ═══════════════
+       Un seul bloc, un seul commit → réversible d'un revert sur demande.
+       Trois niveaux de matière, UNE lumière (115°, haut-gauche) partout :
+       · verre PORTEUR  — la coque de l'app, translucide et vibrante ;
+       · verre de CARTE — widgets et cartes, rim spéculaire + sheen directionnel ;
+       · verre FLOTTANT — popovers, panneaux et modales, blur profond saturé.
+       perf-lite : les backdrop-filters ci-dessous sont posés SANS !important —
+       la neutralisation globale perf-lite (!important) gagne toujours ; les
+       rims et sheens (peinture statique, un seul paint) restent partout, donc
+       le langage visuel survit sur machine modeste. */
+    :root {
+      --lg-rim-hi: rgba(255, 255, 255, 0.30);
+      --lg-rim: rgba(255, 255, 255, 0.115);
+      --lg-rim-lo: rgba(255, 255, 255, 0.05);
+      --lg-sheen: linear-gradient(115deg,
+        rgba(255, 255, 255, 0.085) 0%,
+        rgba(255, 255, 255, 0.028) 24%,
+        transparent 45%,
+        transparent 70%,
+        rgba(255, 255, 255, 0.035) 100%);
+    }
+
+    /* ── Verre porteur : la coque devient une plaque de verre au-dessus du
+       fond thémé — translucidité relevée + vibrance (blur/saturate), rim
+       spéculaire continu, lumière qui accroche le bord haut. */
+    .fs-app-main {
+      background:
+        radial-gradient(ellipse 70% 42% at 16% 0%, rgba(var(--theme-c1-rgb), 0.075), transparent 62%),
+        radial-gradient(ellipse 58% 45% at 88% 98%, rgba(var(--theme-c2-rgb), 0.06), transparent 64%),
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb), 0.80), rgba(var(--mineral-bg-rgb), 0.87)) !important;
+      backdrop-filter: blur(28px) saturate(1.55) brightness(1.03);
+      -webkit-backdrop-filter: blur(28px) saturate(1.55) brightness(1.03);
+      box-shadow:
+        0 30px 90px rgba(0, 0, 0, 0.46),
+        inset 0 1.5px 0 var(--lg-rim-hi),
+        inset 1px 0 0 var(--lg-rim-lo),
+        inset -1px 0 0 var(--lg-rim-lo),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.035),
+        inset 0 0 0 1px var(--lg-rim-lo) !important;
+    }
+    /* perf-lite : sans blur, une coque à 80 % laisserait le fond transparaître
+       net — on lui rend son opacité d'origine, rims conservés. */
+    html.fs-perf-lite .fs-app-main {
+      background:
+        radial-gradient(ellipse 70% 42% at 16% 0%, rgba(var(--theme-c1-rgb), 0.055), transparent 62%),
+        radial-gradient(ellipse 58% 45% at 88% 98%, rgba(var(--theme-c2-rgb), 0.045), transparent 64%),
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb), 0.94), rgba(var(--mineral-bg-rgb), 0.985)) !important;
+    }
+
+    /* ── Verre de carte : rim spéculaire (bord haut allumé, flancs en demi-
+       teinte) sur les widgets et toutes les cartes du système. Enrichit la
+       règle premium existante — mêmes cibles, matière plus précise. */
+    [data-cr-widget] > div,
+    .fs-note-card,
+    .fs-task-row,
+    .fs-fht-stat-card,
+    .fs-fht-history,
+    .fs-cave-stat,
+    .crystal-mini-card,
+    .fs-set-card,
+    .fs-preset-card,
+    .fs-wl-card {
+      box-shadow:
+        0 1px 1px rgba(var(--mineral-bg-rgb), 0.34),
+        0 14px 36px rgba(var(--mineral-bg-rgb), 0.28),
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.14),
+        inset 1px 0 0 rgba(255, 255, 255, 0.045),
+        inset -1px 0 0 rgba(255, 255, 255, 0.045),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.025) !important;
+    }
+    /* Sheen directionnel sur les widgets du dashboard : une nappe de lumière
+       115° au-dessus du contenu (comme un reflet sur verre), quasi
+       subliminale, qui GLISSE au survol — c'est le « liquide ». Coût nul au
+       repos : le déplacement n'existe qu'en hover. */
+    [data-cr-widget] > div::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      border-radius: inherit;
+      pointer-events: none;
+      background: var(--lg-sheen);
+      background-size: 160% 100%;
+      background-position: 18% 0;
+      opacity: 0.75;
+      transition: background-position 1.1s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s var(--mineral-ease);
+    }
+    [data-cr-widget]:hover > div::before {
+      background-position: 62% 0;
+      opacity: 1;
+    }
+    /* Les widgets média (photo/GIF) gardent leur image intacte : pas de voile. */
+    [data-cr-widget] > div[data-fs-media-widget="true"]::before { display: none; }
+    html.fs-perf-lite [data-cr-widget] > div::before { transition: none; }
+
+    /* ── Verre flottant : panneaux et modales — blur profond, saturation
+       relevée, double rim. La lumière tombe du même côté que partout. */
+    .fs-popover,
+    .fs-account-panel,
+    .fs-friends-panel,
+    .fs-set-modal,
+    .fs-wl-panel,
+    .fs-cv-detail,
+    .fs-island-detail {
+      backdrop-filter: blur(30px) saturate(1.7);
+      -webkit-backdrop-filter: blur(30px) saturate(1.7);
+      box-shadow:
+        0 34px 90px rgba(0, 0, 0, 0.55),
+        inset 0 1.5px 0 var(--lg-rim-hi),
+        inset 0 0 0 1px var(--lg-rim-lo),
+        inset 0 -18px 34px -22px rgba(var(--theme-c1-rgb), 0.16) !important;
+    }
+    /* La carte de fin de session garde son ombre inline (halo de rareté) :
+       uniquement la vibrance, pas d'override d'ombre. */
+    .fs-scm-card {
+      backdrop-filter: blur(26px) saturate(1.6);
+      -webkit-backdrop-filter: blur(26px) saturate(1.6);
+    }
+    /* Rails porteurs : le bord éclairé côté contenu. */
+    .fs-sidebar {
+      box-shadow: inset -1px 0 0 var(--lg-rim-lo), inset 0 1.5px 0 rgba(255, 255, 255, 0.10) !important;
+    }
+    .fs-mobile-nav {
+      box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.42), inset 0 1.5px 0 var(--lg-rim) !important;
+    }
+    /* Écran d'authentification : les deux panneaux (vitrine produit + formulaire)
+       reçoivent la même matière que le verre flottant — première impression. */
+    .fs-auth-product-card,
+    .fs-auth-form-pane {
+      backdrop-filter: blur(26px) saturate(1.55);
+      -webkit-backdrop-filter: blur(26px) saturate(1.55);
+      box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.45),
+        inset 0 1.5px 0 var(--lg-rim-hi),
+        inset 0 0 0 1px var(--lg-rim-lo) !important;
+    }
+    /* ══════════════════════ fin LIQUID GLASS ══════════════════════ */
+
     /* ══════════════ MOBILE RESPONSIVE ══════════════ */
     @media (max-width: 768px) {
       /* ─── Shell ───────────────────────────────────── */
