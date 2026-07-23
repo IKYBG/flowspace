@@ -5729,8 +5729,11 @@
                        qu'entre plusieurs lignes, un court échantillon est ajouté
                        sous une ligne unique pour que le réglage se ressente. */}
                     <div style={{ borderRadius: 16, minHeight: 92, maxHeight: 220, overflow: 'auto', display: 'flex', alignItems: 'center', padding: '16px 18px', background: 'radial-gradient(circle at 30% 20%, rgba(var(--theme-c1-rgb),0.07), transparent 55%), rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      {/* Aperçu FIDÈLE : le texte tel qu'il s'affichera, une seule
+                         fois. (Avant, il était dupliqué pour « démontrer »
+                         l'interligne — ça le faisait apparaître deux fois.) */}
                       {shown
-                        ? <div style={{ ...textStyle }}>{shown}{!/\n/.test(shown) && shown.length < 22 ? '\n' + shown : ''}</div>
+                        ? <div style={{ ...textStyle }}>{shown}</div>
                         : <div style={{ width: '100%', textAlign: 'center', fontSize: 12, color: T.muted }}>Aperçu — écris ton texte ci-dessous</div>}
                     </div>
 
@@ -5783,11 +5786,28 @@
                         <input type="range" min={-2} max={10} step={0.5} value={cfg.spacing} onChange={e => save({ spacing: Number(e.target.value) })} aria-label="Espacement des lettres" />
                         <span className="fs-textw-val">{cfg.spacing}</span>
                       </div>
-                      <div className="fs-textw-sliderrow" style={{ marginTop: 8 }}>
-                        <span className="fs-textw-slbl">Interligne</span>
-                        <input type="range" min={1} max={2.2} step={0.05} value={cfg.lh} onChange={e => save({ lh: Number(e.target.value) })} aria-label="Interligne" />
-                        <span className="fs-textw-val">{cfg.lh.toFixed(2)}</span>
-                      </div>
+                      {/* Interligne : n'a d'effet VISIBLE que sur plusieurs lignes
+                         (retour à la ligne, ou texte long qui se replie). Sur une
+                         ligne unique, on le grise + on explique pourquoi — plutôt
+                         que de laisser croire qu'il est cassé. */}
+                      {(() => {
+                        const t = cfg.text || '';
+                        const multi = /\n/.test(t) || t.length > 24;
+                        return (
+                          <div style={{ marginTop: 8 }}>
+                            <div className="fs-textw-sliderrow" style={{ opacity: multi ? 1 : 0.5, transition: 'opacity .2s' }}>
+                              <span className="fs-textw-slbl">Interligne</span>
+                              <input type="range" min={1} max={2.2} step={0.05} value={cfg.lh} disabled={!multi} onChange={e => save({ lh: Number(e.target.value) })} aria-label="Interligne" />
+                              <span className="fs-textw-val">{cfg.lh.toFixed(2)}</span>
+                            </div>
+                            {!multi && (
+                              <div style={{ fontSize: 10.5, color: T.muted, marginTop: 6, lineHeight: 1.4 }}>
+                                Ajoute un retour à la ligne (Entrée) pour ajuster l'interligne.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div>
@@ -12585,10 +12605,9 @@ void main(){
       --la-cool-rgb:20, 184, 166;
       --la-dark-rgb:6, 58, 40;
       --la-bg0:#02090a; --la-bg1:#04160f; --la-bg2:#03251a;
-      /* Vire le dashboard flottant au vert de façon UNIFORME quelle que soit sa
-         couleur source (sepia → hue-rotate → saturate) : un simple hue-rotate
-         faisait dériver les tons chauds vers l'orange. */
-      --la-img:grayscale(.28) sepia(1) hue-rotate(58deg) saturate(2.4) brightness(.92) contrast(1.05);
+      /* bg2.png est déjà vert : traitement léger identique au rose, aucun
+         teintage par filtre. */
+      --la-img:saturate(1.06) contrast(1.03);
     }
     .fs-auth-shell::before {
       content:""; position:absolute; inset:-30%; pointer-events:none;
@@ -13099,7 +13118,10 @@ void main(){
                   <div className="fs-auth-product-card">
                     <div className="fs-auth-product-glow" />
                     <div className="fs-auth-product-shot">
-                      <img src="bg.png" alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
+                      {/* Dashboard flottant : bg.png (rose) / bg2.png (vert). Le
+                         visuel vert est un vrai fichier, plus besoin de teinter
+                         par filtre. */}
+                      <img src={loginTheme === 'vert' ? 'bg2.png' : 'bg.png'} alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
                       <div className="fs-auth-product-rail" />
                     </div>
                   </div>
