@@ -6901,18 +6901,30 @@
         }
         setRenamingId(null); setRenameDraft('');
       };
-      /* Vignette de disposition : plan minute des blocs. Chaque bloc porte la
-         COULEUR de son widget (couleur du catalogue) → chaque template a une
-         empreinte chromatique unique, reconnaissable avant même de lire le nom. */
-      const _wColor = label => (CATALOG.find(c => c.label === label) || {}).color || 'rgb(var(--theme-c1-rgb))';
+      /* Vignette de disposition : le VRAI portrait du dashboard, pas un plan
+         abstrait. Chaque bloc porte la couleur ET l'icône de son widget — on
+         reconnaît « son » dashboard d'un coup d'œil (l'horloge est là, le
+         pomodoro à droite…), avant même de lire le nom du template. */
+      const _wCat = label => CATALOG.find(c => c.label === label) || null;
       const MiniMap = ({ ws, h = 56 }) => (
-        <div style={{ position: 'relative', height: h, borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(145deg,rgba(var(--mineral-bg-rgb),0.8),rgba(var(--mineral-surface-rgb),0.5))', border: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+        <div style={{ position: 'relative', height: h, borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(145deg,rgba(var(--mineral-bg-rgb),0.85),rgba(var(--mineral-surface-rgb),0.55))', border: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
           {(ws || []).slice(0, 24).map((w, i) => {
             const [a, b] = parseSpan(w.col); const [c, d] = parseSpan(w.row);
-            const col = _wColor(w.label);
+            const cat = _wCat(w.label);
+            const col = (cat && cat.color) || 'rgb(var(--theme-c1-rgb))';
+            /* Taille d'icône proportionnée au bloc réel (jamais plus grande que lui) */
+            const blockH = h * ((d - c) / ROWS) - 6;
+            const blockW = (blockH * 4);
+            const icoSize = Math.max(9, Math.min(18, Math.floor(Math.min(blockH, blockW) * 0.52)));
             return (
               <div key={i} style={{ position: 'absolute', left: `${((a - 1) / COLS) * 100}%`, top: `${((c - 1) / ROWS) * 100}%`, width: `${((b - a) / COLS) * 100}%`, height: `${((d - c) / ROWS) * 100}%`, padding: 1.5, boxSizing: 'border-box' }}>
-                <div style={{ width: '100%', height: '100%', borderRadius: 4, background: `linear-gradient(145deg, ${col}55, ${col}22)`, border: `1px solid ${col}66` }} />
+                <div style={{ width: '100%', height: '100%', borderRadius: 5, background: `linear-gradient(145deg, ${col}4d, ${col}1a)`, border: `1px solid ${col}59`, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                  {cat?.icon && blockH >= 13 && (
+                    <span aria-hidden="true" style={{ color: col, opacity: 0.95, display: 'grid', placeItems: 'center', filter: `drop-shadow(0 0 6px ${col}66)` }}>
+                      {React.isValidElement(cat.icon) ? React.cloneElement(cat.icon, { size: icoSize }) : cat.icon}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -7198,7 +7210,9 @@
                     .fs-wl-add span{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 15px;
                       border-radius:999px;background:var(--theme-c1);color:#07070d;
                       font:900 11.5px var(--font-body);box-shadow:0 10px 26px rgba(var(--theme-c1-rgb),0.42)}
-                    .fs-wl-body{padding:13px 15px 4px}
+                    /* Nom + description CENTRÉS sous l'aperçu (desktop et mobile) —
+                       collés à gauche, ils déséquilibraient la carte. */
+                    .fs-wl-body{padding:13px 15px 4px;text-align:center}
                     .fs-wl-name{display:block;font-size:13.5px;font-weight:900;letter-spacing:-0.015em;color:var(--mineral-text)}
                     .fs-wl-desc{display:block;margin-top:4px;font-size:11px;font-weight:650;color:var(--mineral-muted);line-height:1.35}
                     /* Le choix du style était une puce grise de 10 px imbriquée
@@ -7213,9 +7227,9 @@
                     .fs-wl-styles:hover{background:rgba(var(--theme-c1-rgb),0.19);
                       border-color:rgba(var(--theme-c1-rgb),0.44)}
                     .fs-wl-styles svg{flex:none}
-                    .fs-wl-styles b{flex:1;text-align:left;font-weight:850}
+                    .fs-wl-styles b{flex:1;text-align:center;font-weight:850}
                     .fs-wl-solo{color:var(--mineral-muted);border-color:rgba(255,255,255,0.08);
-                      background:rgba(255,255,255,0.03);cursor:default}
+                      background:rgba(255,255,255,0.03);cursor:default;justify-content:center}
                     .fs-wl-solo:hover{background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08)}
                     .fs-wl-x{position:absolute;top:18px;right:20px;width:34px;height:34px;border-radius:11px;
                       display:grid;place-items:center;cursor:pointer;color:var(--mineral-muted);
@@ -19930,28 +19944,45 @@ void main(){
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}>
 
-          {/* ── Panneau (survol OU tap) ── */}
-          <div style={{
-            marginBottom: 10, overflow: 'hidden',
-            maxHeight: panelOpen ? 158 : 0,
+          {/* ── Volet d'état (survol OU tap) ──────────────────────────────────
+             ABSOLU au-dessus du disque : sa largeur ne participe plus au flux.
+             Avant, le panneau replié gardait sa largeur dans le conteneur
+             (ancré à droite) — quand la note apparaissait à mi-session, tout
+             s'élargissait vers la gauche et le disque « se décalait », puis
+             revenait à la complétion. Le padding-bottom comble le vide jusqu'au
+             disque pour que le survol ne se coupe pas en chemin. */}
+          <div aria-hidden={!panelOpen} style={{
+            position: 'absolute', bottom: '100%', right: 0,
+            width: 236, paddingBottom: 12, boxSizing: 'border-box',
             opacity: panelOpen ? 1 : 0,
-            transition: 'max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.22s ease',
+            transform: panelOpen ? 'none' : 'translateY(8px) scale(0.96)',
+            transformOrigin: '85% 100%',
+            transition: 'opacity .22s var(--mineral-ease), transform .3s cubic-bezier(.22,1.3,.36,1)',
             pointerEvents: panelOpen ? 'all' : 'none',
           }}>
+            {/* Caret vers le disque, taillé dans la même matière que la carte */}
+            <span aria-hidden="true" style={{ position: 'absolute', bottom: 7, right: 34, width: 11, height: 11, transform: 'rotate(45deg)', background: 'rgba(7,7,16,0.98)', borderRight: `1px solid ${pal.a}3d`, borderBottom: `1px solid ${pal.a}3d`, borderRadius: 2 }} />
             <div style={{
-              background: 'rgba(7,6,17,0.96)',
-              backdropFilter: 'blur(24px)',
-              border: `1px solid ${pal.a}44`,
-              borderRadius: 18,
-              padding: '12px 18px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-              boxShadow: `0 16px 48px rgba(0,0,0,0.6), 0 0 32px ${pal.glow}`,
+              position: 'relative', overflow: 'hidden',
+              background: 'linear-gradient(175deg, rgba(14,13,28,0.97), rgba(7,7,16,0.98))',
+              border: `1px solid ${pal.a}3d`,
+              borderRadius: 20,
+              padding: '15px 16px 14px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9,
+              textAlign: 'center',
+              boxShadow: `0 22px 54px rgba(0,0,0,0.6), 0 0 34px ${pal.a}30, inset 0 1px 0 rgba(255,255,255,0.07)`,
             }}>
-              {/* Rareté (petite capitale) + nom du cristal (lisible, gros) */}
+              {/* Liseré signature + voile haut aux couleurs de la gemme */}
+              <span aria-hidden="true" style={{ position: 'absolute', top: 0, left: '12%', right: '12%', height: 1.5, background: `linear-gradient(90deg, transparent, ${pal.a}, ${pal.b}, transparent)`, opacity: .85 }} />
+              <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: `radial-gradient(95% 62% at 50% -10%, ${pal.a}1c, transparent 58%)`, pointerEvents: 'none' }} />
+              {/* Rareté : pastille lumineuse + capitale espacée */}
               {rarity !== 'standard' && phase !== 'complete' && (
-                <div style={{ fontSize:8.5, fontWeight:900, letterSpacing:'0.16em', textTransform:'uppercase',
-                  color: rarity === 'legendary' ? '#f0abfc' : pal.a }}>
-                  {rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : 'Rare'}
+                <div style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:6 }}>
+                  <span aria-hidden="true" style={{ width:4, height:4, borderRadius:99, background: rarity === 'legendary' ? '#f0abfc' : pal.a, boxShadow:`0 0 8px ${rarity === 'legendary' ? '#f0abfc' : pal.a}` }} />
+                  <span style={{ fontSize:8.5, fontWeight:900, letterSpacing:'0.2em', textTransform:'uppercase',
+                    color: rarity === 'legendary' ? '#f0abfc' : pal.a }}>
+                    {rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : 'Rare'}
+                  </span>
                 </div>
               )}
               {/* Le nom porte les COULEURS FINALES de la gemme (dégradé du
@@ -19964,44 +19995,47 @@ void main(){
                  donc par `text-shadow` (dessiné sur la forme des glyphes, sans
                  casser le découpage), et `-webkit-text-fill-color:transparent`
                  remplace `color:transparent`, plus robuste pour le clip texte. */}
-              <div style={{ fontFamily:T.display, fontSize:15, fontWeight:800, letterSpacing:'-0.01em', lineHeight:1.1,
-                textAlign:'center', whiteSpace:'nowrap',
+              <div style={{ position:'relative', fontFamily:T.display, fontSize:16, fontWeight:800, letterSpacing:'-0.01em', lineHeight:1.1,
+                textAlign:'center', whiteSpace:'nowrap', maxWidth:'100%', overflow:'hidden', textOverflow:'ellipsis',
                 background:`linear-gradient(100deg, ${nameA}, ${nameB})`,
                 WebkitBackgroundClip:'text', backgroundClip:'text',
                 WebkitTextFillColor:'transparent', color:'transparent',
                 textShadow:`0 0 10px ${pal.glow}` }}>
                 {phase==='complete' ? 'Cristal forgé' : phase==='shattered' ? 'Brisé' : pal.name}
               </div>
-              {/* Time */}
+              {/* Chrono + barre de progression aux couleurs de la gemme */}
               {phase === 'growing' && (
-                <div style={{ fontFamily:T.mono, fontSize:20, fontWeight:700, color:T.text, letterSpacing:'-0.02em', lineHeight:1 }}>
-                  {remM}:{remS}
-                  <span style={{ fontSize:10, color:T.muted, fontFamily:T.font, marginLeft:6, fontWeight:500 }}>
-                    {Math.round(progress*100)}%
-                  </span>
+                <div style={{ position:'relative', width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:7 }}>
+                    <span style={{ fontFamily:T.mono, fontSize:21, fontWeight:700, color:T.text, letterSpacing:'-0.02em', lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{remM}:{remS}</span>
+                    <span style={{ fontSize:10, color:T.muted, fontFamily:T.font, fontWeight:700, fontVariantNumeric:'tabular-nums' }}>{Math.round(progress*100)} %</span>
+                  </div>
+                  <div aria-hidden="true" style={{ width:'86%', height:3.5, borderRadius:99, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
+                    <div style={{ width:`${Math.round(progress*100)}%`, height:'100%', borderRadius:99, background:`linear-gradient(90deg, ${pal.a}, ${pal.b})`, boxShadow:`0 0 10px ${pal.a}aa`, transition:'width 1s linear' }} />
+                  </div>
                 </div>
               )}
               {phase === 'complete' && (
-                <div style={{ fontSize:13, fontWeight:700, color:pal.b }}>Session complète !</div>
+                <div style={{ position:'relative', fontSize:13, fontWeight:800, color:pal.b }}>Session complète !</div>
               )}
               {/* Arrêter — bouton neutre, toujours atteignable via le panneau
                  (survol ou tap). Plus de « Forger » anticipé : le cristal ne se
                  récupère qu'à la FIN de la session — on l'annonce dès 50 %. */}
               {phase === 'growing' && (<>
                 <button onClick={(e) => { e.stopPropagation(); handleEnd(); }} style={{
-                  display:'flex', alignItems:'center', gap:7,
-                  background: 'rgba(255,255,255,0.07)',
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  borderRadius:11, padding:'8px 18px', color: T.text,
-                  fontSize:11.5, fontWeight:850, cursor:'pointer', fontFamily:T.font,
-                  transition:'transform 0.15s, filter 0.15s' }}
-                  onMouseEnter={e=>{e.currentTarget.style.filter='brightness(1.08)';e.currentTarget.style.transform='translateY(-1px)';}}
-                  onMouseLeave={e=>{e.currentTarget.style.filter='none';e.currentTarget.style.transform='none';}}>
-                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></svg>
+                  position:'relative', display:'flex', alignItems:'center', gap:7, marginTop:1,
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.13)',
+                  borderRadius:11, padding:'7px 16px', color: 'rgba(244,246,251,0.85)',
+                  fontSize:11, fontWeight:850, cursor:'pointer', fontFamily:T.font,
+                  transition:'transform 0.15s, background 0.15s, border-color 0.15s' }}
+                  onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,113,133,0.10)';e.currentTarget.style.borderColor='rgba(251,113,133,0.30)';e.currentTarget.style.transform='translateY(-1px)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.06)';e.currentTarget.style.borderColor='rgba(255,255,255,0.13)';e.currentTarget.style.transform='none';}}>
+                  <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/></svg>
                   Arrêter la session
                 </button>
                 {progress >= 0.5 && (
-                  <div style={{ fontSize:9.5, fontWeight:700, color:'rgba(207,216,235,0.55)', letterSpacing:'0.02em' }}>
+                  <div style={{ position:'relative', fontSize:9, fontWeight:700, color:'rgba(207,216,235,0.5)', letterSpacing:'0.02em', lineHeight:1.45, maxWidth:'92%' }}>
                     Le cristal n’est gardé qu’à la fin de la session
                   </div>
                 )}
