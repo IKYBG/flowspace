@@ -7121,6 +7121,32 @@
         return candidate.nc1 < wc2 && candidate.nc2 > wc1 && candidate.nr1 < wr2 && candidate.nr2 > wr1;
       });
 
+      /* ── Fantôme de cible : l'emplacement EXACT où le widget atterrira ──────
+         Avant, seuls le clone flottant (qui vire au rouge) et le pointillé
+         d'ORIGINE existaient : impossible de savoir où le drop tomberait ni
+         pourquoi « c'est rouge » — le candidat clampé en bord de grille pouvait
+         chevaucher un voisin hors de vue. Le fantôme rend la cible visible en
+         permanence : thémé quand c'est libre, rouge quand c'est occupé.
+         Mise à jour impérative (zéro re-render pendant le drag), transitions
+         CSS courtes → il GLISSE de cellule en cellule. */
+      const dropGhostRef = _uR9(null);
+      const _paintDropGhost = (m, snap, blocked) => {
+        const g = dropGhostRef.current;
+        if (!g || !snap) return;
+        const L = (snap.nc1 - 1) * (m.cellW + GAP);
+        const Tp = (snap.nr1 - 1) * (m.cellH + GAP);
+        const W = (snap.nc2 - snap.nc1) * m.cellW + Math.max(0, snap.nc2 - snap.nc1 - 1) * GAP;
+        const H = (snap.nr2 - snap.nr1) * m.cellH + Math.max(0, snap.nr2 - snap.nr1 - 1) * GAP;
+        g.style.left = L + 'px';
+        g.style.top = Tp + 'px';
+        g.style.width = W + 'px';
+        g.style.height = H + 'px';
+        g.style.opacity = '1';
+        g.style.border = blocked ? `2px dashed ${T.rose}bb` : `2px dashed ${c1(0.55)}`;
+        g.style.background = blocked ? `${T.rose}12` : c1(0.06);
+        g.style.boxShadow = blocked ? 'none' : `inset 0 0 34px ${c1(0.05)}`;
+      };
+
       const startMove = (e, widgetId) => {
         e.preventDefault();
         e.stopPropagation();
@@ -7130,8 +7156,6 @@
         if (!m) return;
         const [c1, c2] = parseSpan(w.col);
         const [r1, r2] = parseSpan(w.row);
-        const grabCol = Math.max(0, Math.floor((e.clientX - m.rect.left) / (m.cellW + GAP)) + 1 - c1);
-        const grabRow = Math.max(0, Math.floor((e.clientY - m.rect.top) / (m.cellH + GAP)) + 1 - r1);
         const wW = (c2 - c1) * m.cellW + Math.max(0, c2 - c1 - 1) * GAP;
         const wH = (r2 - r1) * m.cellH + Math.max(0, r2 - r1 - 1) * GAP;
         const wL = m.rect.left + (c1 - 1) * (m.cellW + GAP);
@@ -7139,7 +7163,8 @@
         movedRef.current = false;
         snapRef.current = { nc1: c1, nc2: c2, nr1: r1, nr2: r2 };
         canDropRef.current = true;
-        setDrag({ id: widgetId, type: 'move', origCol: w.col, origRow: w.row, grabCol, grabRow, mouseX: e.clientX, mouseY: e.clientY, grabX: e.clientX - wL, grabY: e.clientY - wT, widgetW: wW, widgetH: wH });
+        /* grabX/grabY (pixels) suffisent : le snap dérive du coin du clone. */
+        setDrag({ id: widgetId, type: 'move', origCol: w.col, origRow: w.row, mouseX: e.clientX, mouseY: e.clientY, grabX: e.clientX - wL, grabY: e.clientY - wT, widgetW: wW, widgetH: wH });
       };
 
       const startResize = (e, widgetId, corner) => {
@@ -7190,14 +7215,21 @@
             const [oc1, oc2] = parseSpan(drag.origCol);
             const [or1, or2] = parseSpan(drag.origRow);
             const span_c = oc2 - oc1, span_r = or2 - or1;
-            const mouseCol = Math.floor((e.clientX - m.rect.left) / (m.cellW + GAP)) + 1;
-            const mouseRow = Math.floor((e.clientY - m.rect.top) / (m.cellH + GAP)) + 1;
-            const nc1 = Math.max(1, Math.min(COLS - span_c + 1, mouseCol - drag.grabCol));
-            const nr1 = Math.max(1, Math.min(ROWS - span_r + 1, mouseRow - drag.grabRow));
+            /* WYSIWYG : la cellule cible dérive du COIN HAUT-GAUCHE DU CLONE
+               (position continue, arrondie au plus proche) — plus de la souris
+               quantifiée moins un grab entier. Deux arrondis successifs
+               décalaient le drop d'une cellule par rapport à ce que l'œil
+               voyait : « le widget ne se place pas où je veux ». Désormais le
+               widget atterrit exactement sous le fantôme. */
+            const visL = e.clientX - drag.grabX;
+            const visT = e.clientY - drag.grabY;
+            const nc1 = Math.max(1, Math.min(COLS - span_c + 1, Math.round((visL - m.rect.left) / (m.cellW + GAP)) + 1));
+            const nr1 = Math.max(1, Math.min(ROWS - span_r + 1, Math.round((visT - m.rect.top) / (m.cellH + GAP)) + 1));
             const nc2 = nc1 + span_c, nr2 = nr1 + span_r;
             const blocked = overlapsAnyWidget({ nc1, nc2, nr1, nr2 }, drag.id);
             canDropRef.current = !blocked;
             snapRef.current = { nc1, nc2, nr1, nr2 };
+            _paintDropGhost(m, snapRef.current, blocked);
             // Tint the floating clone to signal validity
             if (floatRef.current) {
               if (blocked) {
@@ -7225,6 +7257,9 @@
             const blocked = overlapsAnyWidget({ nc1, nc2, nr1, nr2 }, drag.id);
             canDropRef.current = !blocked;
             if (!blocked) snapRef.current = { nc1, nc2, nr1, nr2 };
+            /* Le fantôme montre la DERNIÈRE emprise valide (celle qui sera
+               appliquée au lâcher) — rouge quand le geste courant est bloqué. */
+            if (snapRef.current) _paintDropGhost(m, snapRef.current, blocked);
             if (floatRef.current) {
               floatRef.current.style.borderColor = blocked ? `${T.rose}99` : `${c1(0.565)}`;
               floatRef.current.style.background = blocked ? `${T.rose}14` : `${c1(0.078)}`;
@@ -7462,6 +7497,16 @@
               {[...Array(48)].map((_, i) => <div key={i} style={{ borderRadius: 16, border: '1px dashed rgba(255,255,255,0.045)' }} />)}
             </div>
             <div ref={gridRef} className={gridFull ? 'fs-grid-reject' : undefined} style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(4,1fr)', gap: 14 }}>
+              {/* Fantôme de cible : là où le widget atterrira au lâcher —
+                 positionné impérativement (60 fps sans re-render), il glisse
+                 de cellule en cellule via les transitions CSS. */}
+              {drag && (
+                <div ref={dropGhostRef} aria-hidden="true" style={{
+                  position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: 0,
+                  pointerEvents: 'none', zIndex: 9, borderRadius: 20, boxSizing: 'border-box',
+                  transition: 'left .14s cubic-bezier(.22,1,.36,1), top .14s cubic-bezier(.22,1,.36,1), width .14s cubic-bezier(.22,1,.36,1), height .14s cubic-bezier(.22,1,.36,1), opacity .16s ease, border-color .15s, background .15s',
+                }} />
+              )}
               {widgets.map(w => {
                 const isMoving = drag?.id === w.id && drag.type === 'move';
                 const isResizing = drag?.id === w.id && drag.type === 'resize';
