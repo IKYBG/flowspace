@@ -1080,6 +1080,19 @@
       touch-action: manipulation;
     }
     .fs-mobile-nav-btn:active { transform: scale(0.96); }
+    /* Onglet verrouillé (Évolution avant la 1re session) : grisé mais présent. */
+    .fs-mobile-nav-btn.locked { opacity: 0.42; }
+    .fs-mobile-nav-btn.locked:active { transform: none; }
+    /* Avatar du compte dans la barre mobile → Paramètres (déconnexion incluse). */
+    .fs-mobile-nav-ava {
+      position: relative; z-index: 1;
+      width: 24px; height: 24px; border-radius: 50%; overflow: hidden;
+      display: grid; place-items: center; flex-shrink: 0;
+      background: linear-gradient(145deg, var(--theme-c1), var(--theme-c2));
+      color: #070810; font: 800 10px var(--font-body);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
+    }
+    .fs-mobile-nav-ava img { width: 100%; height: 100%; object-fit: cover; }
     .fs-mobile-nav-btn::before {
       content: '';
       position: absolute;
@@ -1487,6 +1500,17 @@
        réseau sur mobile — d'écraser les vraies données au retry (perte de
        données multi-appareils). */
     window._fsLocalTrusted = false;
+    /* A-t-on lu le cloud de façon DÉFINITIVE cette session (données OU vide
+       confirmé — pas un timeout/erreur) ? Permet d'autoriser un push initial
+       quand on SAIT que le cloud est vide, sans jamais risquer d'écraser un
+       cloud dont l'état est resté inconnu (lecture ratée). */
+    window._fsRemoteReadDefinitive = false;
+    /* Verrou d'écriture cloud : un appareil ne pousse RIEN tant qu'il n'a pas
+       (a) hydraté de vraies données depuis le cloud (_fsHydratedSavedData), ou
+       (b) été confirmé propriétaire du cache (_fsLocalTrusted). Sans ce verrou,
+       les défauts d'un boot (échec réseau, cloud lu vide par erreur) pouvaient
+       être poussés et écraser le vrai cloud — perte de données multi-appareils. */
+    window._fsCanPushCloud = () => !!(window._fsLocalTrusted || window._fsHydratedSavedData);
     window._fsDirtyKeys = new Set();
     window._fsImagePublishQueued = false;
     window._fsRemoteTemplateImages = {};
@@ -2490,7 +2514,7 @@
             .select(cols)
             .eq('user_id', userId)
             .maybeSingle(), 12000, { data: null, error: { message: 'load remote timeout' } });
-          if (!error) return data ? _fsSanitizePayload(_fsLiftEmbeddedCols(data), userId) : null;
+          if (!error) { window._fsRemoteReadDefinitive = true; return data ? _fsSanitizePayload(_fsLiftEmbeddedCols(data), userId) : null; }
           lastError = error;
           /* Colonne inconnue (42703) : on l'apprend et on réessaie tout de
              suite avec un SELECT réduit — sinon la sync est morte à jamais. */
@@ -2798,10 +2822,18 @@
           return { source: 'backup', remote: _fsSnapshotLocalData(userId) };
         }
         if (localBelongsToRequestedUser && _fsLocalHasSavedData(userId)) {
+          /* Cache prouvablement de ce compte, avec des données : confiance →
+             on autorise le push (sinon le verrou _fsCanPushCloud le bloquerait). */
+          window._fsLocalTrusted = true;
           window._fsSetSyncReady?.(true);
           await _fsWithTimeout(_fsFlushPush(true), 3500, null);
           return { source: 'local', remote: _fsSnapshotLocalData(userId) };
         }
+        /* Cloud + local vides. On n'autorise l'écriture (donc de futures
+           sauvegardes) QUE si la lecture du cloud a été DÉFINITIVE — vraiment
+           vide, pas une lecture ratée. Sinon on reste en lecture seule pour ne
+           jamais écraser un cloud dont on ignore le contenu. */
+        if (window._fsRemoteReadDefinitive) window._fsLocalTrusted = true;
         _fsClearLocalAppData(userId);
         return { source: 'empty-remote', remote };
       }
@@ -3005,6 +3037,13 @@
     async function _fsFlushPush(force = false) {
       const u = window._fsSbUser;
       if (!u || (!window._fsSyncReady && !force)) return;
+      /* VERROU ANTI-ÉCRASEMENT : tant qu'on n'a pas hydraté de vraies données
+         depuis le cloud (_fsHydratedSavedData) NI établi que ce cache est de
+         confiance (_fsLocalTrusted), on ne pousse RIEN. C'est ce qui rend
+         structurellement impossible qu'un appareil fraîchement connecté (mobile)
+         écrase le cloud avec ses widgets/tâches/notes par défaut. Les branches
+         de réconciliation légitimes posent _fsLocalTrusted avant de flusher. */
+      if (!window._fsCanPushCloud || !window._fsCanPushCloud()) return;
       /* Sync en pause (Paramètres → Données) : aucun envoi, même forcé —
          les clés restent en file et partiront à la réactivation. */
       if (window._fsCloudPaused) return;
@@ -7951,27 +7990,35 @@
               </div>
             );
           })()}
-          {/* Floating clone — follows cursor pixel-precisely via imperative DOM updates (bypasses React for 60fps) */}
+          {/* Floating clone — follows cursor pixel-precisely via imperative DOM updates (bypasses React for 60fps).
+             PORTALISÉ vers <body> : .fs-app-main porte un backdrop-filter (liquid
+             glass) qui en fait un bloc CONTENEUR pour position:fixed → un clone
+             rendu dedans s'ancrait sur .fs-app-main (décalé du viewport par la
+             sidebar/bordure), d'où le « décalage à droite ». Hors de ce bloc, le
+             fixed retrouve le viewport et le clone tombe pile sous le curseur. */}
           {drag?.type === 'move' && (() => {
             const fw = widgets.find(x => x.id === drag.id);
             if (!fw) return null;
-            return (
+            return ReactDOM.createPortal(
               <div ref={floatRef} style={{ position: 'fixed', left: 0, top: 0, width: drag.widgetW, height: drag.widgetH, borderRadius: 20, background: `${c1(0.078)}`, border: `1.5px solid ${c1(0.565)}`, backdropFilter: 'blur(24px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, zIndex: 9999, pointerEvents: 'none', willChange: 'transform', transform: `translate3d(${drag.mouseX - drag.grabX}px,${drag.mouseY - drag.grabY}px,0) scale(1.035)`, boxShadow: `0 32px 80px rgba(0,0,0,0.65), 0 8px 28px rgba(0,0,0,0.4), 0 0 0 1.5px ${c1(0.267)}, 0 0 60px ${c1(0.094)}` }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.c1, pointerEvents: 'none' }}>{fw.label}</span>
-              </div>
+              </div>,
+              document.body
             );
           })()}
-          {/* Resize overlay — pixel-accurate full-widget clone, updated imperatively at 60fps, grid snaps only on mouseup */}
+          {/* Resize overlay — pixel-accurate full-widget clone, updated imperatively at 60fps, grid snaps only on mouseup.
+             Même portalisation que le clone de déplacement (voir ci-dessus). */}
           {drag?.type === 'resize' && (() => {
             const fw = widgets.find(x => x.id === drag.id);
             if (!fw) return null;
             const [fc1, fc2] = parseSpan(fw.col);
             const [fr1, fr2] = parseSpan(fw.row);
-            return (
+            return ReactDOM.createPortal(
               <div ref={floatRef} style={{ position: 'fixed', left: drag.oL, top: drag.oT, width: drag.oR - drag.oL, height: drag.oB - drag.oT, borderRadius: 20, background: `${c1(0.078)}`, border: `1.5px solid ${c1(0.565)}`, backdropFilter: 'blur(24px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, pointerEvents: 'none', zIndex: 9998, boxShadow: `0 28px 70px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.35), 0 0 0 1.5px ${c1(0.267)}` }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.c1 }}>{fw.label}</span>
                 <span ref={resizeBadgeRef} style={{ fontSize: 10, fontWeight: 800, color: `${c1(0.6)}`, letterSpacing: '0.08em' }}>{fc2 - fc1}×{fr2 - fr1}</span>
-              </div>
+              </div>,
+              document.body
             );
           })()}
         </div>
@@ -10636,17 +10683,26 @@
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
               { action: 'friends',   label: 'Amis',    icon: <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-              /* Évolution masqué tant que la 1re session n'est pas terminée */
-              ...(unlockStage >= 1 ? [{ target: 'evolution', label: 'Évolution', icon: <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> }] : []),
+              /* Évolution TOUJOURS visible (comme la nav desktop) — verrouillée
+                 tant que la 1re session n'est pas terminée. La masquer la rendait
+                 introuvable sur mobile, surtout après une resync qui remet
+                 unlockStage à 0. Verrouillée, un tap explique comment la
+                 débloquer. */
+              { target: 'evolution', label: 'Évolution', locked: unlockStage < 1,
+                icon: unlockStage < 1
+                  ? <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                  : <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
             ].map(item => {
               const isFriends = item.action === 'friends';
               const isActive = isFriends ? friendsOpen : screen === item.target;
               return (
                 <button key={item.target || item.action}
-                  className={'fs-mobile-nav-btn' + (isActive ? ' active' : '')}
+                  className={'fs-mobile-nav-btn' + (isActive ? ' active' : '') + (item.locked ? ' locked' : '')}
                   aria-current={!isFriends && isActive ? 'page' : undefined}
+                  aria-disabled={item.locked ? 'true' : undefined}
                   onClick={e => {
                     if (isFriends) { openFriendsPanel(e); return; }
+                    if (item.locked) { addToast({ message: 'Termine ta première session focus pour débloquer l’Évolution', type: 'info', icon: '!', duration: 4000 }); return; }
                     closeAllPanels(); setPopOpen(false); onNavigate(item.target);
                   }}>
                   {item.icon}
@@ -10654,6 +10710,22 @@
                 </button>
               );
             })}
+            {/* Compte : seul accès à Paramètres + Déconnexion sur mobile (le rail
+                latéral qui les portait est masqué). Avatar = convention universelle. */}
+            {(() => {
+              const photo = user?.photo || user?.avatar || null;
+              const initials = ((user?.name || user?.email || 'L').trim().slice(0, 2) || 'L').toUpperCase();
+              return (
+                <button type="button"
+                  className={'fs-mobile-nav-btn' + (screen === 'settings' ? ' active' : '')}
+                  aria-current={screen === 'settings' ? 'page' : undefined}
+                  aria-label="Compte et paramètres"
+                  onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('settings'); }}>
+                  <span className="fs-mobile-nav-ava">{photo ? <img src={photo} alt="" /> : initials}</span>
+                  <span className="fs-mobile-nav-label">Compte</span>
+                </button>
+              );
+            })()}
           </nav>
         </>
       );
@@ -12883,6 +12955,10 @@ void main(){
           }
 
           window._fsSbUser = sbUser;
+          /* Inscription : le compte vient d'être créé, le cloud n'a RIEN à
+             perdre → le cache local (défauts + onboarding) est de confiance,
+             il peut être sauvegardé. */
+          if (mode === 'signup') window._fsLocalTrusted = true;
           let remote = null;
           let syncResult = { source: 'load-failed', remote: null };
           /* ── LOCAL-FIRST au login ─────────────────────────────────────────
@@ -23814,8 +23890,11 @@ void main(){
     try{ localStorage.setItem(`fs_gamif_${uid||'g'}`,JSON.stringify(data)); }catch(e){}
     window.dispatchEvent(new CustomEvent('fs-gamif-update',{detail:data}));
     /* Embarque cristaux + historique dans le blob poussé, sinon cet update
-       direct écraserait la copie cloud des cristaux (perte de données). */
-    if(uid&&window._fsSb){
+       direct écraserait la copie cloud des cristaux (perte de données).
+       + VERROU : tant qu'on n'a pas hydraté/établi la confiance, on NE pousse
+       PAS — sinon un mobile fraîchement connecté écrasait la série et les
+       cristaux du cloud avec sa gamification par défaut (série brisée). */
+    if(uid&&window._fsSb&&(!window._fsCanPushCloud||window._fsCanPushCloud())){
       const blob = window._fsGamifWithLocalData ? window._fsGamifWithLocalData(uid, data) : data;
       /* Estampillé : l'écho realtime de cet update IMMÉDIAT revenait avec les
          colonnes tasks/bg_theme d'AVANT le push débounce → il écrasait la
