@@ -1093,6 +1093,36 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
     }
     .fs-mobile-nav-ava img { width: 100%; height: 100%; object-fit: cover; }
+    /* ── Feuille de compte mobile ── */
+    .fs-acct-scrim { position: fixed; inset: 0; z-index: 520; display: flex; align-items: flex-end; justify-content: center;
+      background: rgba(4,5,12,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      animation: fsAcctScrim .2s ease both; }
+    @keyframes fsAcctScrim { from { opacity: 0 } to { opacity: 1 } }
+    .fs-acct-sheet { width: 100%; max-width: 520px; margin: 0 10px calc(84px + env(safe-area-inset-bottom, 0px)); padding: 8px 16px 18px;
+      border-radius: 26px; border: 1px solid rgba(255,255,255,0.10);
+      background: linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.99), rgba(var(--mineral-bg-rgb),0.99));
+      box-shadow: 0 40px 100px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07);
+      animation: fsAcctSheet .32s cubic-bezier(.22,1,.36,1) both; }
+    @keyframes fsAcctSheet { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: none } }
+    .fs-acct-grab { width: 38px; height: 4px; border-radius: 99px; background: rgba(255,255,255,0.16); margin: 4px auto 14px; }
+    .fs-acct-id { display: flex; align-items: center; gap: 13px; padding: 0 4px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px; }
+    .fs-acct-ava { width: 46px; height: 46px; border-radius: 15px; overflow: hidden; display: grid; place-items: center; flex-shrink: 0;
+      background: linear-gradient(145deg, var(--theme-c1), var(--theme-c2)); color: #070810; font: 850 16px var(--font-body);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.34); }
+    .fs-acct-ava img { width: 100%; height: 100%; object-fit: cover; }
+    .fs-acct-name { font-family: var(--font-display); font-weight: 800; font-size: 16px; letter-spacing: -0.02em; color: var(--mineral-text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fs-acct-mail { font-size: 12px; color: var(--mineral-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fs-acct-actions { display: flex; flex-direction: column; gap: 2px; }
+    .fs-acct-act { display: flex; align-items: center; gap: 13px; width: 100%; height: 50px; padding: 0 12px; border: none; border-radius: 14px;
+      background: transparent; color: var(--mineral-text); font: 750 14px var(--font-body); cursor: pointer; text-align: left;
+      transition: background .16s var(--mineral-ease); -webkit-tap-highlight-color: transparent; }
+    .fs-acct-act:active { background: rgba(255,255,255,0.06); }
+    .fs-acct-act svg { color: var(--theme-c1); flex-shrink: 0; }
+    .fs-acct-act span:first-of-type { flex: 1; }
+    .fs-acct-chev { color: var(--mineral-muted); font-size: 20px; font-weight: 400; }
+    .fs-acct-act.danger { color: #fb7185; }
+    .fs-acct-act.danger svg { color: #fb7185; }
     .fs-mobile-nav-btn::before {
       content: '';
       position: absolute;
@@ -9974,6 +10004,7 @@
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [popOpen, setPopOpen] = React.useState(false);
       const [accountOpen, setAccountOpen] = React.useState(false);
+      const [acctSheet, setAcctSheet] = React.useState(false); /* feuille de compte mobile */
       const [friendsOpen, setFriendsOpen] = React.useState(false);
       const [cristauxOpen, setCristauxOpen] = React.useState(false);
       const [focusMenuOpen, setFocusMenuOpen] = React.useState(false);
@@ -10679,21 +10710,18 @@
             document.body
           )}
 
-          {/* ── Bottom navigation (mobile only) ── */}
+          {/* ── Bottom navigation (mobile only) ──
+             5 onglets cœur + un avatar « Compte » (feuille groupant Amis,
+             Boutique, Paramètres, Déconnexion). Avant : 7 entrées serrées,
+             illisibles. Amis a rejoint la feuille de compte. */}
           <nav className="fs-mobile-nav">
-            {/* Sous-ensemble de la nav desktop : mêmes noms, mêmes cibles, même
-                ordre. Amis ouvre le panneau (feuille basse sur mobile). */}
             {[
               { target: 'dashboard', label: 'Dashboard', icon: <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/></svg> },
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
-              { action: 'friends',   label: 'Amis',    icon: <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
               /* Évolution TOUJOURS visible (comme la nav desktop) — verrouillée
-                 tant que la 1re session n'est pas terminée. La masquer la rendait
-                 introuvable sur mobile, surtout après une resync qui remet
-                 unlockStage à 0. Verrouillée, un tap explique comment la
-                 débloquer. */
+                 tant que la 1re session n'est pas terminée. */
               { target: 'evolution', label: 'Évolution', locked: unlockStage < 1,
                 icon: unlockStage < 1
                   ? <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
@@ -10716,23 +10744,57 @@
                 </button>
               );
             })}
-            {/* Compte : seul accès à Paramètres + Déconnexion sur mobile (le rail
-                latéral qui les portait est masqué). Avatar = convention universelle. */}
+            {/* Compte : ouvre une feuille groupant Amis, Boutique, Paramètres,
+                Déconnexion — regroupe les entrées « meta » hors de la barre. */}
             {(() => {
               const photo = user?.photo || user?.avatar || null;
               const initials = ((user?.name || user?.email || 'L').trim().slice(0, 2) || 'L').toUpperCase();
               return (
                 <button type="button"
-                  className={'fs-mobile-nav-btn' + (screen === 'settings' ? ' active' : '')}
-                  aria-current={screen === 'settings' ? 'page' : undefined}
-                  aria-label="Compte et paramètres"
-                  onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate('settings'); }}>
+                  className={'fs-mobile-nav-btn' + (acctSheet ? ' active' : '')}
+                  aria-label="Compte" aria-expanded={acctSheet}
+                  onClick={() => { closeAllPanels(); setPopOpen(false); setAcctSheet(true); }}>
                   <span className="fs-mobile-nav-ava">{photo ? <img src={photo} alt="" /> : initials}</span>
                   <span className="fs-mobile-nav-label">Compte</span>
                 </button>
               );
             })()}
           </nav>
+
+          {/* ── Feuille de compte (mobile) ── */}
+          {acctSheet && ReactDOM.createPortal(
+            <div className="fs-acct-scrim" onClick={e => { if (e.target === e.currentTarget) setAcctSheet(false); }}>
+              <div className="fs-acct-sheet" role="dialog" aria-modal="true" aria-label="Compte">
+                <div className="fs-acct-grab" aria-hidden="true" />
+                <div className="fs-acct-id">
+                  <span className="fs-acct-ava">{(user?.photo || user?.avatar) ? <img src={user.photo || user.avatar} alt="" /> : ((user?.name || user?.email || 'L').trim().slice(0, 2).toUpperCase())}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fs-acct-name">{user?.name || 'Utilisateur'}</div>
+                    <div className="fs-acct-mail">{user?.email || 'Compte local'}</div>
+                  </div>
+                </div>
+                <div className="fs-acct-actions">
+                  <button type="button" className="fs-acct-act" onClick={e => { setAcctSheet(false); openFriendsPanel(e); }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Amis</span><span className="fs-acct-chev">›</span>
+                  </button>
+                  <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <span>Boutique</span><span className="fs-acct-chev">›</span>
+                  </button>
+                  <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); onNavigate('settings'); }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Paramètres</span><span className="fs-acct-chev">›</span>
+                  </button>
+                  <button type="button" className="fs-acct-act danger" onClick={() => { setAcctSheet(false); onLogout && onLogout(); }}>
+                    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Se déconnecter</span>
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
         </>
       );
     }
