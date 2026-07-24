@@ -24111,6 +24111,29 @@ void main(){
     return true;
   };
 
+  /* ── Parrainage ──────────────────────────────────────────────
+     Branche l'invitation sur une récompense : atteindre des paliers d'amis
+     débloque des cristaux exclusifs. Progression = nombre d'amis (proxy
+     fiable côté client ; l'attribution fine lien→inscription est un chantier
+     backend séparé). */
+  window.FS_REFERRAL_TIERS = [
+    { id:'r1', friends:1, grad:'celadon', rarity:'standard',  reward:'Cristal bonus' },
+    { id:'r3', friends:3, grad:'grenat',  rarity:'rare',      reward:'Cristal rare' },
+    { id:'r5', friends:5, grad:'phenix',  rarity:'legendary', reward:'Cristal légendaire' },
+  ];
+  window._gFriendCount = (uid) => { try { return (JSON.parse(localStorage.getItem('fs_friends_'+uid)||'[]')||[]).length; } catch(_){ return 0; } };
+  window._gClaimReferral = (uid, tierId) => {
+    const g = window._gLoad(uid);
+    const t = (window.FS_REFERRAL_TIERS||[]).find(x=>x.id===tierId);
+    if(!t) return false;
+    if(window._gFriendCount(uid) < t.friends) return false;
+    if((g.referClaimed||[]).includes(tierId)) return false;
+    g.referClaimed=[...(g.referClaimed||[]), tierId];
+    window._gSave(uid,g);
+    window._gGrantCrystal(uid, t.grad, t.rarity);
+    return true;
+  };
+
   /* ── useGamif hook ─────────────────────────────────────────── */
   function useGamif(userId) {
     const [g, setG] = React.useState(() => window._gLoad(userId));
@@ -24787,8 +24810,21 @@ void main(){
     const active = g.activeSkin || 'default';
     const skins = window.SKINS || [];
     const premiumItems = window.FS_PREMIUM_COSMETICS || [];
-    const [showPremium, setShowPremium] = React.useState(false);
     const [notified, setNotified] = React.useState(() => { try { return localStorage.getItem('fs_premium_interest') === '1'; } catch (_) { return false; } });
+    /* Parrainage */
+    const refTiers = window.FS_REFERRAL_TIERS || [];
+    const friendCount = window._gFriendCount ? window._gFriendCount(user?.id) : 0;
+    const referClaimed = g.referClaimed || [];
+    const refLink = (() => { try { return `${location.origin}${location.pathname}#ref=${user?.id || ''}`; } catch (_) { return ''; } })();
+    const [copied, setCopied] = React.useState(false);
+    const copyRef = async () => {
+      try { await navigator.clipboard.writeText(refLink); setCopied(true); setTimeout(() => setCopied(false), 2200); addToast({ message: 'Lien de parrainage copié', type: 'success', icon: '✓' }); }
+      catch (_) { addToast({ message: 'Copie impossible — sélectionne le lien', type: 'info', icon: '!' }); }
+    };
+    const claimRef = (tierId) => {
+      const t = refTiers.find(x => x.id === tierId);
+      if (window._gClaimReferral && window._gClaimReferral(user?.id, tierId)) addToast({ message: `${t ? t.reward : 'Récompense'} débloqué ✦`, type: 'success', icon: '✓', duration: 4000 });
+    };
 
     const buy = id => {
       const r = window._gBuySkin(user?.id, id);
@@ -24855,6 +24891,24 @@ void main(){
             font:850 13px ${T.font};color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
             box-shadow:0 14px 30px rgba(var(--theme-c1-rgb),.24)}
           .fs-shop-prem-btn:disabled{background:rgba(255,255,255,.06);color:${T.muted};cursor:default;box-shadow:none}
+          /* Parrainage */
+          .fs-shop-refer{margin-top:26px;border-radius:20px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:18px 20px}
+          .fs-shop-refer h3{font-family:${T.display};font-size:16px;font-weight:850;letter-spacing:-.025em;margin:0 0 5px}
+          .fs-shop-refer .rp{font-size:12px;color:${T.muted};margin:0 0 14px;line-height:1.5}
+          .fs-refer-link{display:flex;gap:8px;margin-bottom:14px}
+          .fs-refer-link input{flex:1;min-width:0;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.24);color:${T.text};padding:0 12px;font:600 12px ${T.font};outline:none;text-overflow:ellipsis}
+          .fs-refer-copy{height:40px;padding:0 16px;border-radius:12px;border:none;cursor:pointer;font:850 12px ${T.font};color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));flex-shrink:0;transition:filter .15s}
+          .fs-refer-copy:hover{filter:brightness(1.06)}
+          .fs-refer-tiers{display:grid;gap:8px}
+          .fs-refer-tier{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);transition:border-color .3s}
+          .fs-refer-tier.done{border-color:rgba(var(--theme-c1-rgb),.28)}
+          .fs-refer-gem{width:26px;height:32px;flex-shrink:0;clip-path:polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%);transition:opacity .3s}
+          .fs-refer-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em}
+          .fs-refer-sub{font-size:10.5px;color:${T.muted};margin-top:1px;font-variant-numeric:tabular-nums}
+          .fs-refer-btn{flex-shrink:0;height:32px;padding:0 14px;border-radius:11px;border:none;cursor:pointer;font:850 11.5px ${T.font};
+            color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2))}
+          .fs-refer-btn:disabled{background:rgba(255,255,255,.05);color:${T.muted};cursor:default}
+          .fs-refer-got{flex-shrink:0;font-size:11px;font-weight:850;color:${T.c1};display:inline-flex;align-items:center;gap:5px}
           @media(max-width:560px){.fs-shop-scrim{padding:0;place-items:stretch}.fs-shop{max-height:100dvh;border-radius:0}.fs-shop-prem-btn{margin-left:0;width:100%}}
         `}</style>
         <div className="fs-shop">
@@ -24891,6 +24945,35 @@ void main(){
                   </div>
                 );
               })}
+            </div>
+
+            <div className="fs-shop-refer">
+              <h3>Invite tes amis</h3>
+              <p className="rp">Chaque ami qui te rejoint débloque un cristal exclusif. Étudier ensemble, c’est aussi collectionner ensemble.</p>
+              <div className="fs-refer-link">
+                <input readOnly value={refLink} onFocus={e => e.target.select()} aria-label="Ton lien de parrainage" />
+                <button className="fs-refer-copy" onClick={copyRef}>{copied ? 'Copié ✓' : 'Copier'}</button>
+              </div>
+              <div className="fs-refer-tiers">
+                {refTiers.map(t => {
+                  const done = friendCount >= t.friends;
+                  const claimed = referClaimed.includes(t.id);
+                  const grad = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === t.grad);
+                  const gs = grad ? grad.stops : ['#cfd8eb', '#9aa7c0'];
+                  return (
+                    <div key={t.id} className={'fs-refer-tier' + (done ? ' done' : '')}>
+                      <span className="fs-refer-gem" style={{ background: `linear-gradient(158deg,#fff,${gs[0]} 42%,${gs[gs.length - 1]})`, opacity: done ? 1 : 0.45 }} aria-hidden="true" />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fs-refer-name">{t.reward}</div>
+                        <div className="fs-refer-sub">{t.friends} ami{t.friends > 1 ? 's' : ''} · {Math.min(friendCount, t.friends)}/{t.friends}</div>
+                      </div>
+                      {claimed
+                        ? <span className="fs-refer-got"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>Obtenu</span>
+                        : <button type="button" className="fs-refer-btn" disabled={!done} onClick={() => claimRef(t.id)}>{done ? 'Réclamer' : 'Bloqué'}</button>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="fs-shop-prem">
