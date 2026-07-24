@@ -16231,6 +16231,16 @@ void main(){
         window.addEventListener('fs-open-boutique', open);
         return () => window.removeEventListener('fs-open-boutique', open);
       }, []);
+      /* Célébration d'un cristal gagné hors session (quête, parrainage) : même
+         pop-up de forge qu'en fin de session, marquée « quest » pour le libellé. */
+      _uEC(() => {
+        const onCeleb = e => {
+          const crystal = e && e.detail && e.detail.crystal;
+          if (crystal) setSessionResult({ crystal, focusMinutes: 0, source: 'quest' });
+        };
+        window.addEventListener('fs-crystal-celebration', onCeleb);
+        return () => window.removeEventListener('fs-crystal-celebration', onCeleb);
+      }, []);
       const [widgets, setWidgets] = _uSC(() => {
         try { return window._fsStripRetiredWidgets(JSON.parse(localStorage.getItem('fs_widgets') || 'null')) || DEFAULT_WIDGETS; } catch (e) { return DEFAULT_WIDGETS; }
       });
@@ -20579,6 +20589,9 @@ void main(){
     function SessionCompleteModal({ result, onClose, onOpenCave }) {
       const crystal = result?.crystal || null;
       const focusMin = result?.focusMinutes || crystal?.duration || 0;
+      /* Cristal gagné hors session (quête / parrainage) : même pop-up, mais
+         libellé « Quête accomplie » et pas de durée de concentration. */
+      const isQuest = result?.source === 'quest';
       /* « Animation de forge » (Paramètres → Sessions) : OFF → la carte
          apparaît sobrement, sans cinématique (voile/carte/gemme instantanés). */
       const celebrate = (window._fsReadPrefs ? window._fsReadPrefs() : {}).sessionCelebration !== false;
@@ -20621,7 +20634,7 @@ void main(){
           <div className="fs-scm-card" onClick={e => e.stopPropagation()}
             style={{ boxShadow: isRare ? `0 40px 110px rgba(0,0,0,.66), 0 0 60px ${grad ? grad.glow : 'transparent'}, inset 0 1px 0 rgba(255,255,255,.06)` : undefined }}>
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(120% 70% at 50% -6%, ${accent}22, transparent 58%)` }} />
-            <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>Session terminée</div>
+            <div style={{ position: 'relative', fontSize: 9.5, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(207,216,235,0.5)' }}>{isQuest ? 'Quête accomplie' : 'Session terminée'}</div>
 
             {/* Cristal + aura. L'aura vit dans un CADRE centré sur la scène et
                rogné en douceur (masque radial) : sa boîte (2,35-2,9× la gemme)
@@ -20661,13 +20674,16 @@ void main(){
               {crystal.name || 'Cristal forgé'}
             </div>
 
-            {/* Durée de concentration */}
+            {/* Durée de concentration (session) — ou libellé de récompense (quête) */}
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14,
               padding: '9px 16px', borderRadius: 14, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 2.2"/></svg>
-              <span style={{ fontSize: 13, fontWeight: 750, color: 'rgba(244,246,251,0.9)' }}>
-                <b style={{ fontWeight: 900, color: '#fff' }}>{focusMin} min</b> {'de concentration'}
-              </span>
+              {isQuest ? (
+                <><svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 15.4 7.2 17.9l.9-5.4L4.2 8.7l5.4-.8z"/></svg>
+                <span style={{ fontSize: 13, fontWeight: 750, color: 'rgba(244,246,251,0.9)' }}><b style={{ fontWeight: 900, color: '#fff' }}>Récompense</b> {'de quête'}</span></>
+              ) : (
+                <><svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 2.2"/></svg>
+                <span style={{ fontSize: 13, fontWeight: 750, color: 'rgba(244,246,251,0.9)' }}><b style={{ fontWeight: 900, color: '#fff' }}>{focusMin} min</b> {'de concentration'}</span></>
+              )}
             </div>
 
             <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 22 }}>
@@ -24061,31 +24077,40 @@ void main(){
     try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch(_){}
     return crystal;
   };
-  /* Réclame une quête TERMINÉE : marque réclamée, crédite XP + cristal. */
+  /* Un des 5 cristaux LÉGENDAIRES au hasard (récompense d'Endurance / palier 5). */
+  window._gRandomLegendary = () => {
+    const legs = (window.CRYSTAL_GRADIENTS||[]).filter(x=>x.legendary);
+    return legs.length ? legs[Math.floor(Math.random()*legs.length)].id : 'astral';
+  };
+  /* Réclame une quête TERMINÉE : marque réclamée, crédite XP + cristal.
+     Renvoie le CRISTAL forgé (pour déclencher la même célébration qu'en fin de
+     session), ou null si non réclamable. */
   window._gClaimQuest = (uid, questId) => {
     const g = window._gLoad(uid);
     const q = (window.FS_WEEKLY_QUESTS||[]).find(x=>x.id===questId);
     const wk = window._gWeekKey();
-    if(!q || !g.week || g.week.key!==wk) return false;
-    if((g.week.claimed||[]).includes(questId)) return false;
+    if(!q || !g.week || g.week.key!==wk) return null;
+    if((g.week.claimed||[]).includes(questId)) return null;
     const prog = q.metric==='minutes' ? Number(g.week.minutes||0) : Number(g.week.sessions||0);
-    if(prog < q.goal) return false;
+    if(prog < q.goal) return null;
     g.week.claimed=[...(g.week.claimed||[]), questId];
     g.xp=Number(g.xp||0)+q.xp;
     g.shards=Number(g.shards||0)+Math.round(q.xp/2);
     window._gSave(uid,g);
-    window._gGrantCrystal(uid, q.grad, q.rarity);
-    return true;
+    /* Endurance : un des cinq légendaires au hasard. */
+    const gradId = q.rarity==='legendary' ? window._gRandomLegendary() : q.grad;
+    return window._gGrantCrystal(uid, gradId, q.rarity);
   };
 
   /* ── Boutique cosmétique ─────────────────────────────────────
      Skins de cristaux achetables aux Éclats (monnaie gagnée en travaillant),
      déblocages de série, et une vitrine PREMIUM (revenus). Branché sur le
      système de skins existant (SKINS, g.unlocks, g.activeSkin). */
+  /* Cosmétiques Premium : de VRAIS cristaux légendaires (rendus via ShapedCrystalGem). */
   window.FS_PREMIUM_COSMETICS = [
-    { id:'p_solaire',   name:'Couronne solaire', a:'#fff3a3', b:'#ff9d00', glow:'rgba(255,183,50,0.85)' },
-    { id:'p_leviathan', name:'Œil du léviathan', a:'#8df4e0', b:'#0c4a6e', glow:'rgba(94,234,212,0.85)' },
-    { id:'p_neant',     name:'Éclat du néant',   a:'#e9d5ff', b:'#1e1b4b', glow:'rgba(168,85,247,0.85)' },
+    { id:'solaire',   name:'Couronne solaire', grad:'solaire' },
+    { id:'leviathan', name:'Œil du léviathan', grad:'leviathan' },
+    { id:'chronos',   name:'Sablier de Chronos', grad:'chronos' },
   ];
   window._gShards = (uid) => Number(window._gLoad(uid).shards || 0);
   window._gIsPremium = (uid) => !!window._gLoad(uid).premium;
@@ -24125,13 +24150,13 @@ void main(){
   window._gClaimReferral = (uid, tierId) => {
     const g = window._gLoad(uid);
     const t = (window.FS_REFERRAL_TIERS||[]).find(x=>x.id===tierId);
-    if(!t) return false;
-    if(window._gFriendCount(uid) < t.friends) return false;
-    if((g.referClaimed||[]).includes(tierId)) return false;
+    if(!t) return null;
+    if(window._gFriendCount(uid) < t.friends) return null;
+    if((g.referClaimed||[]).includes(tierId)) return null;
     g.referClaimed=[...(g.referClaimed||[]), tierId];
     window._gSave(uid,g);
-    window._gGrantCrystal(uid, t.grad, t.rarity);
-    return true;
+    const gradId = t.rarity==='legendary' ? window._gRandomLegendary() : t.grad;
+    return window._gGrantCrystal(uid, gradId, t.rarity);
   };
 
   /* ── useGamif hook ─────────────────────────────────────────── */
@@ -24475,9 +24500,11 @@ void main(){
     const week = (g.week && g.week.key === _wkKey) ? g.week : { sessions: 0, minutes: 0, claimed: [] };
     const quests = window.FS_WEEKLY_QUESTS || [];
     const claimQuest = (qid) => {
-      const q = quests.find(x => x.id === qid);
-      if (window._gClaimQuest && window._gClaimQuest(user?.id, qid)) {
-        addToast({ message: `${q ? q.reward : 'Récompense'} récupéré · +${q ? q.xp : 0} XP`, type: 'success', icon: '✓', duration: 4200 });
+      const crystal = window._gClaimQuest ? window._gClaimQuest(user?.id, qid) : null;
+      if (crystal) {
+        /* Même célébration qu'en fin de session : le cristal récupéré s'affiche
+           dans la pop-up de forge. */
+        try { window.dispatchEvent(new CustomEvent('fs-crystal-celebration', { detail: { crystal } })); } catch (_) {}
       }
     };
     /* Progression vers le palier suivant — s'appuie sur _gLvlPct (existant). */
@@ -24553,8 +24580,7 @@ void main(){
             transition:border-color .3s,background .3s}
           .fs-quest.done{border-color:rgba(var(--theme-c1-rgb),.30);
             background:radial-gradient(120% 100% at 0 0,rgba(var(--theme-c1-rgb),.10),transparent 60%),rgba(255,255,255,.03)}
-          .fs-quest-gem{width:32px;height:40px;flex-shrink:0;clip-path:polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%);
-            filter:drop-shadow(0 6px 12px rgba(0,0,0,.4));transition:opacity .3s}
+          .fs-quest-gem{width:46px;height:54px;flex-shrink:0;display:grid;place-items:center;transition:opacity .3s}
           .fs-quest-mid{min-width:0}
           .fs-quest-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
           .fs-quest-name{font-family:var(--font-display);font-weight:850;font-size:14px;letter-spacing:-.02em}
@@ -24688,7 +24714,11 @@ void main(){
                   const unit = q.metric === 'minutes' ? ' min' : '';
                   return (
                     <div key={q.id} className={'fs-quest' + (done ? ' done' : '')}>
-                      <div className="fs-quest-gem" style={{ background: `linear-gradient(158deg,#fff,${gs[0]} 42%,${gs[gs.length - 1]})`, opacity: done ? 1 : 0.5 }} />
+                      <div className="fs-quest-gem" style={{ opacity: done ? 1 : 0.45 }}>
+                        {window.ShapedCrystalGem
+                          ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: q.grad, progress: 0.9, size: 42, seed: q.id.charCodeAt(2) * 91 + 7 })
+                          : null}
+                      </div>
                       <div className="fs-quest-mid">
                         <div className="fs-quest-top">
                           <span className="fs-quest-name">{q.label}</span>
@@ -24822,8 +24852,11 @@ void main(){
       catch (_) { addToast({ message: 'Copie impossible — sélectionne le lien', type: 'info', icon: '!' }); }
     };
     const claimRef = (tierId) => {
-      const t = refTiers.find(x => x.id === tierId);
-      if (window._gClaimReferral && window._gClaimReferral(user?.id, tierId)) addToast({ message: `${t ? t.reward : 'Récompense'} débloqué ✦`, type: 'success', icon: '✓', duration: 4000 });
+      const crystal = window._gClaimReferral ? window._gClaimReferral(user?.id, tierId) : null;
+      if (crystal) {
+        onClose();
+        try { window.dispatchEvent(new CustomEvent('fs-crystal-celebration', { detail: { crystal } })); } catch (_) {}
+      }
     };
 
     const buy = id => {
@@ -24834,8 +24867,13 @@ void main(){
     const equip = id => { if (window._gSetActiveSkin(user?.id, id)) addToast({ message: 'Skin équipé', type: 'success', icon: '✓' }); };
     const notifyMe = () => { try { localStorage.setItem('fs_premium_interest', '1'); } catch (_) {} setNotified(true); addToast({ message: 'On te préviendra au lancement de Premium ✦', type: 'success', icon: '✓', duration: 4200 }); };
 
-    const gem = (a, b, glow, size, dim) => (
-      <span aria-hidden="true" style={{ width: size, height: Math.round(size * 1.24), display: 'block', clipPath: 'polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%)', background: `linear-gradient(158deg,#fff,${a} 42%,${b})`, filter: `drop-shadow(0 6px 14px ${glow})`, opacity: dim ? 0.4 : 1, transition: 'opacity .3s' }} />
+    /* Chaque skin de boutique correspond à un VRAI cristal de la grotte : on
+       mappe vers son gradient et on rend le même ShapedCrystalGem. */
+    const SKIN_GRAD = { default: 'argent', lava: 'magma', glacier: 'banquise', meteor: 'meteore', obsidian: 'obsidienne', aurora: 'aurora', void: 'neant' };
+    const gemG = (gradId, size, dim) => (
+      <div aria-hidden="true" style={{ width: size, height: Math.round(size * 1.2), display: 'grid', placeItems: 'center', opacity: dim ? 0.42 : 1, transition: 'opacity .3s' }}>
+        {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: gradId, progress: 0.9, size: Math.round(size * 0.94), seed: (String(gradId || 'x').charCodeAt(0) * 71 + String(gradId || 'x').length * 13) }) : null}
+      </div>
     );
 
     return ReactDOM.createPortal(
@@ -24902,7 +24940,7 @@ void main(){
           .fs-refer-tiers{display:grid;gap:8px}
           .fs-refer-tier{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);transition:border-color .3s}
           .fs-refer-tier.done{border-color:rgba(var(--theme-c1-rgb),.28)}
-          .fs-refer-gem{width:26px;height:32px;flex-shrink:0;clip-path:polygon(50% 0,90% 28%,72% 100%,28% 100%,10% 28%);transition:opacity .3s}
+          .fs-refer-gem{width:34px;height:38px;flex-shrink:0;display:grid;place-items:center;transition:opacity .3s}
           .fs-refer-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em}
           .fs-refer-sub{font-size:10.5px;color:${T.muted};margin-top:1px;font-variant-numeric:tabular-nums}
           .fs-refer-btn{flex-shrink:0;height:32px;padding:0 14px;border-radius:11px;border:none;cursor:pointer;font:850 11.5px ${T.font};
@@ -24935,7 +24973,7 @@ void main(){
                 const canAfford = buyable && shards >= Number(s.price || 0);
                 return (
                   <div key={s.id} className={'fs-skin' + (isActive ? ' on' : '')}>
-                    {gem(s.a, s.b, s.glow, 46, streakLock)}
+                    {gemG(SKIN_GRAD[s.id] || s.id, 46, streakLock)}
                     <div className="fs-skin-name">{s.name}</div>
                     {isActive ? <span className="fs-skin-equipped"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>Équipé</span>
                       : isOwned ? <button className="fs-skin-btn ghost" onClick={() => equip(s.id)}>Équiper</button>
@@ -24958,11 +24996,11 @@ void main(){
                 {refTiers.map(t => {
                   const done = friendCount >= t.friends;
                   const claimed = referClaimed.includes(t.id);
-                  const grad = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === t.grad);
-                  const gs = grad ? grad.stops : ['#cfd8eb', '#9aa7c0'];
                   return (
                     <div key={t.id} className={'fs-refer-tier' + (done ? ' done' : '')}>
-                      <span className="fs-refer-gem" style={{ background: `linear-gradient(158deg,#fff,${gs[0]} 42%,${gs[gs.length - 1]})`, opacity: done ? 1 : 0.45 }} aria-hidden="true" />
+                      <span className="fs-refer-gem" style={{ opacity: done ? 1 : 0.45 }} aria-hidden="true">
+                        {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: t.grad, progress: 0.9, size: 30, seed: t.id.charCodeAt(1) * 51 + 3 }) : null}
+                      </span>
                       <div style={{ minWidth: 0 }}>
                         <div className="fs-refer-name">{t.reward}</div>
                         <div className="fs-refer-sub">{t.friends} ami{t.friends > 1 ? 's' : ''} · {Math.min(friendCount, t.friends)}/{t.friends}</div>
@@ -24985,7 +25023,7 @@ void main(){
               <div className="fs-shop-prem-gems">
                 {premiumItems.map(p => (
                   <div key={p.id} className="fs-shop-prem-gem">
-                    {gem(p.a, p.b, p.glow, 40, true)}
+                    {gemG(p.grad, 40, false)}
                     <span>{p.name}</span>
                   </div>
                 ))}
