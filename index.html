@@ -8886,7 +8886,10 @@
 
       const last = step === STEPS.length - 1;
       const cur = STEPS[step];
-      const next = () => (last ? onDone() : setStep(s => s + 1));
+      /* Onboarding orienté ACTION : la dernière étape ne « fait pas entrer »
+         dans un dashboard à configurer — elle LANCE la première session, qui
+         forge le premier cristal. La perso vient après la récompense. */
+      const next = () => (last ? onDone(true) : setStep(s => s + 1));
       const prev = () => setStep(s => Math.max(0, s - 1));
 
       /* Clavier : Entrée / → avancent, ← recule, Échap passe l'intro. */
@@ -8928,6 +8931,7 @@
               transition:transform .2s var(--mineral-ease),box-shadow .2s}
             .ob-cta:hover{transform:translateY(-1px);box-shadow:0 20px 50px rgba(var(--theme-c1-rgb),.36),inset 0 1px 0 rgba(255,255,255,.46)}
             .ob-cta:active{transform:translateY(0) scale(.98)}
+            .ob-reassure{margin-top:-4px;font-size:11px;font-weight:650;color:rgba(248,246,252,.44);text-align:center}
             .ob-sub{display:flex;align-items:center;gap:18px}
             .ob-link{background:none;border:none;cursor:pointer;font:700 12px var(--font-body);color:rgba(248,246,252,.42);padding:4px 2px}
             .ob-link:hover{color:rgba(248,246,252,.78)}
@@ -9022,11 +9026,13 @@
 
             <div className="ob-actions">
               <button className="ob-cta" onClick={next}>
-                {last ? 'Entrer dans LumenOS' : 'Continuer'}
+                {last ? 'Lance ta première session' : 'Continuer'}
               </button>
+              {last && <div className="ob-reassure">25 min de focus · tu personnaliseras tout après</div>}
               <div className="ob-sub">
                 {step > 0 && <button className="ob-link" onClick={prev}>← Retour</button>}
-                {!last && <button className="ob-link" onClick={onDone}>Passer l’intro</button>}
+                {!last && <button className="ob-link" onClick={() => onDone(false)}>Passer l’intro</button>}
+                {last && <button className="ob-link" onClick={() => onDone(false)}>J’explore d’abord</button>}
               </div>
             </div>
           </div>
@@ -17700,11 +17706,15 @@ void main(){
         return () => { mounted = false; try { sub?.subscription?.unsubscribe(); } catch (_) { } };
       }, []);
 
-      const handleOnboardDone = () => {
+      const handleOnboardDone = (startSession) => {
         try { localStorage.setItem('fs_onboarded', '1'); } catch (e) { }
         try { localStorage.removeItem('fs_intro_pending'); } catch (e) { }
         try { window._fsFlushPush?.(); } catch (e) { }
         setRoutedScreen('dashboard', true);
+        /* Onboarding orienté action : on ouvre directement le lanceur de session
+           pour que le tout premier geste soit de travailler (et forger un
+           cristal), pas de configurer. Le dashboard monte d'abord. */
+        if (startSession) setTimeout(() => { try { requestStartSession(); } catch (_) { } }, 460);
       };
 
       const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
