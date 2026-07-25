@@ -21606,6 +21606,7 @@ void main(){
     }
 
     function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection, onBack }) {
+      const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
       const [sel, setSel] = React.useState(null);
@@ -21895,6 +21896,64 @@ void main(){
         return { isGold, pal, grad, shapeName, isSecret };
       })() : null;
 
+      /* ══ FUSION DE DOUBLONS ══════════════════════════════════════════════
+         Deux cristaux du MÊME type se fondent en un seul, plus grand et plus
+         élancé : la grotte gagne une place, et le monolithe raconte tout le
+         focus qu'il contient. Répétable tant qu'il reste un doublon.
+         `mass` = nombre de cristaux d'origine contenus (1 par défaut, donc
+         toutes les anciennes sauvegardes restent valides). */
+      const massOf = c => Math.max(1, Number(c.mass) || 1);
+      const fusionGroups = React.useMemo(() => {
+        const by = {};
+        crystals.forEach(c => { const g = c.crystalGradient; if (!g) return; (by[g] = by[g] || []).push(c); });
+        return Object.keys(by).filter(gid => by[gid].length >= 2).map(gid => {
+          /* Masse d'abord, puis durée : à masse égale on fond les deux plus
+             longues sessions — le monolithe obtenu est le plus imposant. */
+          const items = [...by[gid]].sort((a, b) => (massOf(b) - massOf(a)) || ((Number(b.duration) || 0) - (Number(a.duration) || 0)));
+          return {
+            gid,
+            meta: (window.CRYSTAL_GRADIENTS || []).find(x => x.id === gid) || null,
+            items, n: items.length,
+            resultMass: massOf(items[0]) + massOf(items[1]),
+          };
+        }).sort((a, b) => b.n - a.n);
+      }, [crystals]);
+      const [fusionOpen, setFusionOpen] = React.useState(false);
+      const [fusedFlash, setFusedFlash] = React.useState(null);
+
+      const doFuse = (gid) => {
+        const grp = fusionGroups.find(g => g.gid === gid);
+        if (!grp) return;
+        /* On fond les DEUX PLUS GROS : le monolithe grandit visiblement au lieu
+           de disperser la masse sur plusieurs pierres moyennes. */
+        const keep = grp.items[0], absorb = grp.items[1];
+        const merged = {
+          ...keep,
+          mass: massOf(keep) + massOf(absorb),
+          /* La durée cumulée : le cristal porte tout le focus qu'il contient. */
+          duration: (Number(keep.duration) || 0) + (Number(absorb.duration) || 0),
+          fusedAt: new Date().toISOString(),
+        };
+        const next = crystals
+          .filter(c => c.id !== absorb.id)
+          .map(c => (c.id === keep.id ? merged : c));
+        try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { }
+        setCrystals(next);
+        try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (e) { }
+        /* On braque la caméra et la sélection sur le résultat, puis l'éclat. */
+        setSel(keep.id);
+        setFusedFlash(keep.id);
+        window.clearTimeout(window.__fsFuseT);
+        window.__fsFuseT = window.setTimeout(() => setFusedFlash(null), 1000);
+        const nom = grp.meta?.name || 'Cristal';
+        addToast({
+          message: `${nom} fusionné — ${merged.mass} cristaux en un seul, une place libérée`,
+          type: 'success', icon: '✦', duration: 4200,
+        });
+        /* Plus de doublon pour ce type → on referme le panneau. */
+        if (grp.n <= 2) setFusionOpen(false);
+      };
+
       return (
         <>
           {!embedded && <div className="fs-cristaux-backdrop" onClick={onClose} />}
@@ -21913,7 +21972,32 @@ void main(){
               @keyframes fsCvGlowBreath{0%,100%{opacity:.36}50%{opacity:.56}}
               html.fs-reduce-motion .fs-cv-glowpad{animation:none}
               .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.045);width:calc(var(--sz)*1.14);height:calc(var(--sz)*0.2);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.66),transparent 70%);pointer-events:none}
-              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+              /* --fy : allongement des cristaux FUSIONNÉS (1 par défaut, donc
+                 aucun effet sur les cristaux simples). Origine au sol : la
+                 gemme grandit vers le haut, elle est « plus longue ». */
+              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%) scaleY(var(--fy,1));transform-origin:50% 100%;display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+              /* ── AURA DE FUSION ── Anneaux concentriques qui montent le long du
+                 monolithe : plus il a absorbé de cristaux, plus ils sont vifs. */
+              .fs-cv-fuse-aura{position:absolute;left:50%;bottom:2%;width:calc(var(--sz)*1.25);height:calc(var(--sz)*1.5*var(--fy,1));transform:translateX(-50%);pointer-events:none;
+                background:repeating-linear-gradient(to top,transparent 0 9px,var(--glow) 9px 10.5px);
+                -webkit-mask:linear-gradient(to top,#000,transparent 88%);mask:linear-gradient(to top,#000,transparent 88%);
+                opacity:calc(.12 + var(--fmass,1)*.05);filter:blur(1px);animation:fsCvFuseRise 3.4s linear infinite}
+              @keyframes fsCvFuseRise{from{background-position-y:0}to{background-position-y:-10.5px}}
+              .fs-cv-fuse-core{position:absolute;left:50%;bottom:8%;width:calc(var(--sz)*.5);height:calc(var(--sz)*.5);transform:translate(-50%,0);border-radius:50%;pointer-events:none;
+                background:radial-gradient(circle,var(--glow),transparent 68%);filter:blur(5px);
+                opacity:calc(.2 + var(--fmass,1)*.07);animation:fsCvGoldPulse 2.8s ease-in-out infinite}
+              /* Éclat de fusion : le cristal encaisse l'absorption */
+              .fs-cv-crystal.is-fused-now .fs-cv-gem{animation:fsCvFuseHit .95s cubic-bezier(.2,1.5,.35,1) both}
+              @keyframes fsCvFuseHit{0%{filter:brightness(3.4) drop-shadow(0 0 34px var(--glow));transform:translateX(-50%) scaleY(calc(var(--fy,1)*.72)) scaleX(1.14)}
+                45%{filter:brightness(1.7) drop-shadow(0 0 22px var(--glow))}
+                100%{filter:drop-shadow(0 4px 12px rgba(0,0,0,.5));transform:translateX(-50%) scaleY(var(--fy,1)) scaleX(1)}}
+              html.fs-reduce-motion .fs-cv-fuse-aura,html.fs-reduce-motion .fs-cv-fuse-core,
+              html.fs-reduce-motion .fs-cv-crystal.is-fused-now .fs-cv-gem{animation:none}
+              /* Badge de masse : combien de cristaux dorment dans celui-là */
+              .fs-cv-mass{position:absolute;left:50%;bottom:calc(var(--sz)*-0.30);transform:translateX(-50%);
+                display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;white-space:nowrap;
+                font:900 9px var(--font-body);letter-spacing:.04em;color:#06101c;
+                background:linear-gradient(135deg,#fff,var(--glow));box-shadow:0 4px 12px rgba(0,0,0,.45)}
               .fs-cv-base{position:absolute;left:50%;bottom:calc(var(--sz)*-0.06);width:calc(var(--sz)*1.24);height:calc(var(--sz)*0.34);transform:translateX(-50%);pointer-events:none}
               .fs-cv-base i{position:absolute;bottom:0;background:linear-gradient(168deg,#2a4066 0%,#101d34 58%,#070e1d 100%);box-shadow:inset 0 1px 0 rgba(170,225,255,.2)}
               .fs-cv-base i:nth-child(1){left:2%;width:30%;height:74%;clip-path:polygon(44% 0,100% 58%,88% 100%,0 100%,8% 46%);transform:rotate(-5deg)}
@@ -21986,6 +22070,53 @@ void main(){
               .fs-cv-hud{position:absolute;right:16px;bottom:16px;display:flex;gap:8px;z-index:70}
               .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(4,10,24,.8);color:#cfeaff;font-size:13px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
               .fs-cv-hud button:hover{background:rgba(14,28,52,.92)}
+              /* Bouton Fusionner : présent seulement s'il existe un doublon */
+              .fs-cv-fusebtn{display:inline-flex;align-items:center;gap:8px;
+                border-color:rgba(255,255,255,.26)!important;color:#f2f7ff!important;
+                background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(140,220,255,.14))!important}
+              .fs-cv-fusebtn i{font-style:normal;display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;
+                border-radius:99px;background:#fff;color:#06101c;font:900 10px var(--font-body)}
+              /* ── Atelier de fusion ── */
+              .fs-fus-scrim{position:absolute;inset:0;z-index:120;display:grid;place-items:center;padding:18px;
+                background:rgba(2,5,12,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+                animation:fsFusIn .2s ease both}
+              @keyframes fsFusIn{from{opacity:0}to{opacity:1}}
+              .fs-fus-card{width:min(470px,100%);max-height:88%;display:flex;flex-direction:column;overflow:hidden;
+                border-radius:26px;border:1px solid rgba(255,255,255,.12);
+                background:radial-gradient(120% 70% at 50% 0%,rgba(140,220,255,.14),transparent 60%),
+                  linear-gradient(180deg,rgba(10,18,32,.99),rgba(4,8,16,.99));
+                box-shadow:0 40px 100px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08);
+                animation:fsFusCard .32s cubic-bezier(.22,1.1,.36,1) both}
+              @keyframes fsFusCard{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+              .fs-fus-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+                padding:20px 22px 15px;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+              .fs-fus-eyebrow{font:900 9px var(--font-body);letter-spacing:.16em;text-transform:uppercase;color:rgba(161,232,255,.8)}
+              .fs-fus-title{margin-top:6px;font-family:var(--font-display);font-size:20px;font-weight:900;letter-spacing:-.035em;color:#f3f7ff}
+              .fs-fus-lede{margin-top:7px;font-size:11.5px;line-height:1.55;color:rgba(220,231,255,.62);max-width:38ch}
+              .fs-fus-x{width:30px;height:30px;border-radius:11px;flex-shrink:0;cursor:pointer;display:grid;place-items:center;
+                border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.05);color:rgba(233,240,255,.7)}
+              .fs-fus-list{flex:1;overflow-y:auto;padding:14px 18px 20px;display:grid;gap:9px;scrollbar-width:thin}
+              .fs-fus-row{display:grid;grid-template-columns:auto auto auto minmax(0,1fr) auto;gap:11px;align-items:center;
+                padding:11px 13px;border-radius:17px;border:1px solid rgba(255,255,255,.08);
+                background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 0 24px -14px var(--fg)}
+              .fs-fus-pair{display:flex;align-items:flex-end;gap:2px;opacity:.75}
+              .fs-fus-plus{font:900 12px var(--font-body);color:rgba(220,231,255,.5);padding:0 1px}
+              .fs-fus-arrow{color:rgba(180,226,255,.55);flex-shrink:0}
+              .fs-fus-result{filter:drop-shadow(0 6px 16px var(--fg))}
+              .fs-fus-meta{min-width:0}
+              .fs-fus-name{font-size:13px;font-weight:900;letter-spacing:-.015em;color:#f2f7ff;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+              .fs-fus-sub{margin-top:3px;font-size:10.5px;color:rgba(220,231,255,.56);font-variant-numeric:tabular-nums}
+              .fs-fus-go{flex-shrink:0;height:34px;padding:0 15px;border-radius:12px;border:none;cursor:pointer;
+                font:900 11.5px var(--font-body);color:#06101c;
+                background:linear-gradient(135deg,#fff,var(--fg));transition:transform .16s,filter .16s}
+              .fs-fus-go:hover{transform:translateY(-1px);filter:brightness(1.06)}
+              @media(max-width:520px){
+                .fs-fus-row{grid-template-columns:auto auto auto minmax(0,1fr);row-gap:9px}
+                .fs-fus-go{grid-column:1/-1;width:100%}
+                .fs-fus-card{border-radius:22px}
+              }
               .fs-cv-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:55;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:rgba(205,232,255,.55);background:rgba(2,7,18,.66);border:1px solid rgba(140,220,255,.1);border-radius:99px;padding:7px 14px;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
               .fs-cv-detail{position:absolute;left:16px;bottom:16px;z-index:80;width:min(300px,calc(100% - 90px));border-radius:20px;border:1px solid rgba(140,220,255,.18);background:rgba(3,8,20,.92);backdrop-filter:blur(14px);padding:15px 16px;box-shadow:0 24px 60px rgba(0,0,0,.55);animation:fsCvDetailIn .22s cubic-bezier(.2,.9,.3,1.2) both}
               @keyframes fsCvDetailIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
@@ -22025,18 +22156,24 @@ void main(){
                     const spot = _caveSpotOf(c, i);
                     const an = _caveAnchor(spot);
                     /* Les secrets sont plus imposants (+16 px) que tout le reste. */
-                    const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0) + (isSecret ? 16 : 0));
+                    const mass = massOf(c);
+                    const fused = mass > 1;
+                    /* Fusionné : plus large ET plus long (scaleY) — un monolithe. */
+                    const szBonus = fused ? Math.min(30, (mass - 1) * 10) : 0;
+                    const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0) + (isSecret ? 16 : 0) + szBonus);
+                    const stretch = fused ? Math.min(1.62, 1 + (mass - 1) * 0.14) : 1;
                     const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
                     return (
                       <button
                         key={c.id}
                         ref={el => { nodeRefs.current[c.id] = el; }}
-                        className={'fs-cv-crystal' + (dragId === c.id ? ' is-drag' : '') + (activeId === c.id ? ' is-active' : '')}
+                        className={'fs-cv-crystal' + (dragId === c.id ? ' is-drag' : '') + (activeId === c.id ? ' is-active' : '') + (fusedFlash === c.id ? ' is-fused-now' : '')}
                         style={{
                           left: (an.xf * 100) + '%',
                           top: (an.yf * 100) + '%',
                           transform: 'translate(-50%,-100%) translateZ(' + (-spot.z) + 'px) rotate(' + spot.rot + 'deg)',
                           '--sz': sz + 'px', '--glow': glow,
+                          '--fy': stretch, '--fmass': mass,
                           '--gd': (((Number(c.seed) || i * 41) % 44) / 10) + 's',
                         }}
                         aria-label={'Cristal de session, ' + durLabel(c)}
@@ -22056,7 +22193,13 @@ void main(){
                             ? React.createElement(window.ShapedCrystalGem, { shape: c.crystalShape, gradientId: isGold ? 'gold' : c.crystalGradient, progress: 0.9, size: sz, seed: c.seed || c.id })
                             : <CrystalGem progress={_cStateProgress(si)} size={sz} />}
                         </span>
+                        {/* Fusionné : veines lumineuses le long du fût + cœur, et
+                           le compte de cristaux absorbés sous le socle. */}
+                        {fused && (window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && (
+                          <><span className="fs-cv-fuse-aura" /><span className="fs-cv-fuse-core" /></>
+                        )}
                         <span className="fs-cv-base"><i /><i /><i /><i /></span>
+                        {fused && <span className="fs-cv-mass">✦ {mass}</span>}
                         {isNew && (
                           <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
                             Nouveau
@@ -22141,8 +22284,64 @@ void main(){
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
                   {shareBusy ? 'Création…' : 'Partager à mes amis'}
                 </button>
+                {fusionGroups.length > 0 && (
+                  <button type="button" className="fs-cv-fusebtn" onClick={() => setFusionOpen(true)}
+                    aria-label={`Fusionner des cristaux en double (${fusionGroups.length} type${fusionGroups.length > 1 ? 's' : ''})`}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v5l5 5 5-5V3"/><path d="M12 13v8"/><path d="M8 21h8"/></svg>
+                    Fusionner<i>{fusionGroups.length}</i>
+                  </button>
+                )}
                 <button type="button" onClick={() => { camRef.current.vz = 0; camRef.current.target = 0; }}>Reset</button>
               </div>
+
+              {/* ══ Atelier de fusion ══════════════════════════════════════════
+                 Chaque doublon est une ligne : les deux pierres à gauche, le
+                 monolithe obtenu à droite. On voit ce qu'on gagne AVANT d'agir. */}
+              {fusionOpen && (
+                <div className="fs-fus-scrim" onClick={e => { if (e.target === e.currentTarget) setFusionOpen(false); }}>
+                  <div className="fs-fus-card" role="dialog" aria-modal="true" aria-label="Fusionner des cristaux">
+                    <div className="fs-fus-head">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fs-fus-eyebrow">Atelier de fusion</div>
+                        <div className="fs-fus-title">Deux pierres, un monolithe</div>
+                        <div className="fs-fus-lede">Fondre deux cristaux identiques donne un cristal plus grand et plus long — et libère une place dans la grotte.</div>
+                      </div>
+                      <button type="button" className="fs-fus-x" onClick={() => setFusionOpen(false)} aria-label="Fermer">
+                        <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" /></svg>
+                      </button>
+                    </div>
+                    <div className="fs-fus-list">
+                      {fusionGroups.map(grp => {
+                        const gm = grp.meta;
+                        const gGlow = gm?.glow || 'rgba(var(--theme-c1-rgb),.6)';
+                        const gemOf = (sz, m) => (
+                          <span style={{ display: 'grid', placeItems: 'center', width: sz, height: Math.round(sz * 1.2 * Math.min(1.5, 1 + (m - 1) * 0.12)) }}>
+                            {window.ShapedCrystalGem
+                              ? React.createElement(window.ShapedCrystalGem, { shape: grp.items[0].crystalShape || 'diamond', gradientId: grp.gid, progress: 0.9, size: sz, seed: grp.items[0].seed || grp.items[0].id })
+                              : null}
+                          </span>
+                        );
+                        return (
+                          <div key={grp.gid} className="fs-fus-row" style={{ '--fg': gGlow }}>
+                            <div className="fs-fus-pair">
+                              {gemOf(30, massOf(grp.items[0]))}
+                              <span className="fs-fus-plus">+</span>
+                              {gemOf(26, massOf(grp.items[1]))}
+                            </div>
+                            <svg className="fs-fus-arrow" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+                            <div className="fs-fus-result">{gemOf(40, grp.resultMass)}</div>
+                            <div className="fs-fus-meta">
+                              <div className="fs-fus-name">{gm?.name || 'Cristal'}</div>
+                              <div className="fs-fus-sub">{grp.n} en double · donne un ✦ {grp.resultMass}</div>
+                            </div>
+                            <button type="button" className="fs-fus-go" onClick={() => doFuse(grp.gid)}>Fusionner</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {crystals.length > 0 && !active && (
                 <div className="fs-cv-hint">Molette ou glisse pour avancer · attrape un cristal pour le replanter</div>
@@ -22168,6 +22367,11 @@ void main(){
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(226,238,255,.66)', lineHeight: 1.6, marginTop: 11 }}>
                     Forgé le {fmtDate(active.completedAt)}.
+                    {massOf(active) > 1 && (
+                      <span style={{ display: 'block', color: '#f2f7ff', fontWeight: 850, marginTop: 4 }}>
+                        Monolithe : {massOf(active)} cristaux fondus en un seul.
+                      </span>
+                    )}
                     {activeInfo.isSecret && <span style={{ display: 'block', color: '#ffffff', fontWeight: 900, marginTop: 4 }}>{activeInfo.grad?.name || 'Cristal secret'} — 1 chance sur 1000. Rien ne l’annonçait.</span>}
                     {!activeInfo.isSecret && activeInfo.isGold && <span style={{ display: 'block', color: '#ffd36a', fontWeight: 850, marginTop: 4 }}>Cristal doré : 1 chance sur 20.</span>}
                   </div>
