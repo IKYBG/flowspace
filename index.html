@@ -8228,13 +8228,18 @@
            Les couleurs rares/légendaires ne sont JAMAIS sélectionnables à la
            main — elles ne s'obtiennent qu'ici, à la forge. */
         const roll = Math.random();
+        const secretPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.secret);
         const legendaryPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
         const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
         let rolledGrad = null, rolledRarity = 'standard';
-        if (roll < 0.005 && legendaryPool.length) {
+        /* SECRET : 1 forge sur 1000 — le palier au-dessus des légendaires. */
+        if (roll < 0.001 && secretPool.length) {
+          rolledGrad = secretPool[Math.floor(Math.random() * secretPool.length)];
+          rolledRarity = 'secret';
+        } else if (roll < 0.006 && legendaryPool.length) {
           rolledGrad = legendaryPool[Math.floor(Math.random() * legendaryPool.length)];
           rolledRarity = 'legendary';
-        } else if (roll < 0.055 && rarePool.length) {
+        } else if (roll < 0.056 && rarePool.length) {
           rolledGrad = rarePool[Math.floor(Math.random() * rarePool.length)];
           rolledRarity = rolledGrad.id === 'gold' ? 'gold' : 'rare';
         }
@@ -16937,14 +16942,16 @@ void main(){
             const pd = Number(p.sessionDuration);
             if (Number.isFinite(pd) && pd > 0 && pd <= 120) cfg.duration = pd;
             /* Même tirage de rareté qu'au lanceur : l'auto-démarrage ne doit
-               pas priver des rares/légendaires. */
+               priver ni des rares/légendaires, ni des secrets (1/1000). */
             let grad = window._randomGradient ? window._randomGradient() : 'aurora';
             let rarity = 'standard';
             const roll = Math.random();
+            const secPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.secret);
             const legPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
             const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
-            if (roll < 0.005 && legPool.length) { const g = legPool[Math.floor(Math.random() * legPool.length)]; grad = g.id; rarity = 'legendary'; }
-            else if (roll < 0.055 && rarePool.length) { const g = rarePool[Math.floor(Math.random() * rarePool.length)]; grad = g.id; rarity = g.id === 'gold' ? 'gold' : 'rare'; }
+            if (roll < 0.001 && secPool.length) { const g = secPool[Math.floor(Math.random() * secPool.length)]; grad = g.id; rarity = 'secret'; }
+            else if (roll < 0.006 && legPool.length) { const g = legPool[Math.floor(Math.random() * legPool.length)]; grad = g.id; rarity = 'legendary'; }
+            else if (roll < 0.056 && rarePool.length) { const g = rarePool[Math.floor(Math.random() * rarePool.length)]; grad = g.id; rarity = g.id === 'gold' ? 'gold' : 'rare'; }
             addToast({ message: `Session lancée — ${cfg.duration} min de focus`, type: 'success', icon: '✓', duration: 3200 });
             handleLaunch({
               type: 'solo', friendEmail: null, friendUser: null, friendId: null, friendIds: null, friendUsers: null,
@@ -17948,7 +17955,8 @@ void main(){
        collection) ; les possédés portent la lumière de leur propre gemme.
        Alimentée par fs_crystals_{uid} — la même source que la vitrine. */
     const FS_COLL_TIERS = [
-      { id: 'legendary', label: 'Légendaires', odds: '1 forge sur 200', hint: 'Le tirage le plus rare de LumenOS.', tint: '#e9d5ff' },
+      { id: 'secret', label: 'Secrets', odds: '1 forge sur 1000', hint: 'Le palier au-dessus des légendaires. Trois pièces, et rien ne les annonce.', tint: '#ffffff' },
+      { id: 'legendary', label: 'Légendaires', odds: '1 forge sur 200', hint: 'Une aura animée qui leur est propre.', tint: '#e9d5ff' },
       { id: 'rare', label: 'Rares', odds: '1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
       { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: '#cfd8eb' },
     ];
@@ -17968,9 +17976,10 @@ void main(){
         owned.forEach(c => { const g = c.crystalGradient; if (g) m[g] = (m[g] || 0) + 1; });
         return m;
       }, [owned]);
-      const tierItems = id => id === 'legendary' ? grads.filter(g => g.legendary)
-        : id === 'rare' ? grads.filter(g => g.rare && !g.legendary)
-        : grads.filter(g => !g.rare && !g.legendary);
+      const tierItems = id => id === 'secret' ? grads.filter(g => g.secret)
+        : id === 'legendary' ? grads.filter(g => g.legendary)
+        : id === 'rare' ? grads.filter(g => g.rare && !g.legendary && !g.secret)
+        : grads.filter(g => !g.rare && !g.legendary && !g.secret);
       const discovered = grads.filter(g => counts[g.id]).length;
       const pct = grads.length ? Math.round((discovered / grads.length) * 100) : 0;
       const totalMin = owned.reduce((n, c) => n + (Number(c.duration) || 0), 0);
@@ -17999,7 +18008,11 @@ void main(){
             .fs-coll-ring-lbl{margin-top:3px;font-size:8.5px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;color:rgba(248,246,252,.42)}
 
             /* ── Bandeau de stats ── */
-            .fs-coll-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:22px 0 30px}
+            .fs-coll-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:22px 0 30px}
+            /* Case « Secrets » : liseré prismatique, la seule du bandeau à briller */
+            .fs-coll-stat.secret{border-color:rgba(255,255,255,.22);
+              background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02));
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 22px rgba(255,255,255,.06)}
             .fs-coll-stat{padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.07);
               background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
               box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
@@ -18054,6 +18067,20 @@ void main(){
               background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));box-shadow:0 6px 14px rgba(var(--theme-c1-rgb),.28)}
             .fs-coll-lock{position:absolute;top:10px;right:11px;color:rgba(248,246,252,.22)}
 
+            /* Cellule SECRET : cadre prismatique + halo qui respire — reconnaissable
+               instantanément dans la grille, même parmi les légendaires. */
+            .fs-coll-cell.secret{border-color:rgba(255,255,255,.26)}
+            .fs-coll-cell.secret.got{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(0,0,0,.2))}
+            .fs-coll-cell.secret.got::after{content:'';position:absolute;inset:-1px;border-radius:20px;pointer-events:none;
+              background:conic-gradient(from 0deg,#ff5f6d,#ffb302,#5eead4,#4facfe,#a78bfa,#ff5f6d);
+              -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+              mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+              -webkit-mask-composite:xor;mask-composite:exclude;padding:1.5px;opacity:.55;
+              animation:fsCollPrism 6s linear infinite}
+            @keyframes fsCollPrism{to{filter:hue-rotate(360deg)}}
+            .fs-coll-cell.secret .fs-coll-name{color:#fff}
+            html.fs-reduce-motion .fs-coll-cell.secret.got::after,
+            html.fs-perf-lite .fs-coll-cell.secret.got::after{animation:none}
             @media (max-width:640px){
               .fs-coll-stats{grid-template-columns:repeat(2,1fr)}
               .fs-coll-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
@@ -18103,6 +18130,7 @@ void main(){
               <div className="fs-coll-stat"><b>{discovered}<span style={{ display: 'inline', fontSize: 13, fontWeight: 800, color: 'rgba(248,246,252,.35)', letterSpacing: 0, textTransform: 'none' }}> / {grads.length}</span></b><span>Découverts</span></div>
               <div className="fs-coll-stat"><b style={{ color: '#9ae8ff' }}>{owned.filter(c => c.rarity === 'rare' || c.rarity === 'gold').length}</b><span>Rares</span></div>
               <div className="fs-coll-stat"><b style={{ color: '#e9d5ff' }}>{owned.filter(c => c.rarity === 'legendary').length}</b><span>Légendaires</span></div>
+              <div className="fs-coll-stat secret"><b style={{ color: '#ffffff' }}>{owned.filter(c => { const m = grads.find(x => x.id === c.crystalGradient); return c.rarity === 'secret' || (m && m.secret); }).length}</b><span>Secrets</span></div>
             </div>
 
             {FS_COLL_TIERS.map(tier => {
@@ -18125,7 +18153,7 @@ void main(){
                       const n = counts[g.id] || 0;
                       const glow = g.glow || 'rgba(var(--theme-c1-rgb),.4)';
                       return (
-                        <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked')}
+                        <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked') + (g.secret ? ' secret' : '')}
                           style={{ '--gem-glow': glow, '--gem-edge': glow.replace(/[\d.]+\)$/, '0.34)'), '--gem-soft': glow.replace(/[\d.]+\)$/, '0.16)') }}
                           title={n ? `${g.name} · ${n} forgé${n > 1 ? 's' : ''}` : `${g.name} — pas encore découvert`}>
                           <div className="fs-coll-gem">
@@ -20407,8 +20435,8 @@ void main(){
       /* Rareté effective : le tirage de la forge (session.crystalRarity) prime,
          sinon on déduit depuis le dégradé (rare/legendary) — pilote l'aura. */
       const _gradRar = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === session?.crystalGradient) || null;
-      const rarity = (session?.crystalRarity && session.crystalRarity !== 'standard')
-        ? session.crystalRarity
+      const rarity = _gradRar?.secret ? 'secret'
+        : (session?.crystalRarity && session.crystalRarity !== 'standard') ? session.crystalRarity
         : _gradRar?.legendary ? 'legendary' : (_gradRar?.rare || isGold) ? 'rare' : 'standard';
       /* Use session gradient if available, otherwise fall back to CRYSTAL_PALETTES */
       const sessionGrad = session?.crystalGradient && window.CRYSTAL_GRADIENTS
@@ -20495,11 +20523,15 @@ void main(){
               {/* Rareté : pastille lumineuse + capitale espacée */}
               {rarity !== 'standard' && phase !== 'complete' && (
                 <div style={{ position:'relative', display:'inline-flex', alignItems:'center', gap:6 }}>
-                  <span aria-hidden="true" style={{ width:4, height:4, borderRadius:99, background: rarity === 'legendary' ? '#f0abfc' : pal.a, boxShadow:`0 0 8px ${rarity === 'legendary' ? '#f0abfc' : pal.a}` }} />
-                  <span style={{ fontSize:8.5, fontWeight:900, letterSpacing:'0.2em', textTransform:'uppercase',
-                    color: rarity === 'legendary' ? '#f0abfc' : pal.a }}>
-                    {rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : 'Rare'}
-                  </span>
+                  {(() => {
+                    const rc = rarity === 'secret' ? '#ffffff' : rarity === 'legendary' ? '#f0abfc' : pal.a;
+                    return <>
+                      <span aria-hidden="true" style={{ width:4, height:4, borderRadius:99, background: rc, boxShadow:`0 0 8px ${rc}` }} />
+                      <span style={{ fontSize:8.5, fontWeight:900, letterSpacing:'0.2em', textTransform:'uppercase', color: rc }}>
+                        {rarity === 'secret' ? 'Secret' : rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : 'Rare'}
+                      </span>
+                    </>;
+                  })()}
                 </div>
               )}
               {/* Le nom porte les COULEURS FINALES de la gemme (dégradé du
@@ -20563,7 +20595,7 @@ void main(){
           {/* ── Compact disc (always visible) ── */}
           <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
           {/* Aura de rareté : rayonne DERRIÈRE le disque (rare/légendaire). */}
-          {window.CrystalAura && (rarity === 'rare' || rarity === 'gold' || rarity === 'legendary')
+          {window.CrystalAura && (rarity === 'rare' || rarity === 'gold' || rarity === 'legendary' || rarity === 'secret')
             ? React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 80, intensity: 0.5 + progress * 0.5 })
             : null}
           <div role="button" tabIndex={0} aria-label={panelOpen ? 'Masquer les options de session' : 'Options de session'}
@@ -20664,13 +20696,16 @@ void main(){
       }, []);
       if (!crystal) return null;
       const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === crystal.crystalGradient) || null;
-      const rarity = crystal.rarity || 'standard';
+      /* Un cristal secret garde son palier même si `rarity` manque (vieille
+         sauvegarde) : le gradient porte l'information. */
+      const isSecret = crystal.rarity === 'secret' || !!(grad && grad.secret);
+      const rarity = isSecret ? 'secret' : (crystal.rarity || 'standard');
       const isLeg = rarity === 'legendary';
-      const isRare = rarity === 'rare' || rarity === 'gold';
+      const isRare = rarity === 'rare' || rarity === 'gold' || isSecret;
       const accent = grad ? grad.stops[0] : '#a5b8ff';
       const accent2 = grad ? grad.stops[grad.stops.length - 1] : '#c084fc';
-      const rarLabel = isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal forgé';
-      const rarColor = isLeg ? '#f0abfc' : accent;
+      const rarLabel = isSecret ? 'Secret' : isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal forgé';
+      const rarColor = isSecret ? '#ffffff' : isLeg ? '#f0abfc' : accent;
       return (
         <div onClick={onClose} className={celebrate ? undefined : 'fs-scm-nocine'} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
           background: 'rgba(4,4,11,0.72)', backdropFilter: 'blur(20px) saturate(1.1)', WebkitBackdropFilter: 'blur(20px) saturate(1.1)',
@@ -20728,6 +20763,7 @@ void main(){
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 99, marginBottom: 8,
                 background: `${rarColor}1a`, border: `1px solid ${rarColor}44` }}>
                 <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', color: rarColor }}>{rarLabel}</span>
+                {isSecret && <span style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.82)' }}>≈ 1/1000</span>}
                 {isLeg && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(240,171,252,0.7)' }}>≈ 1/200</span>}
                 {rarity === 'rare' && <span style={{ fontSize: 9, fontWeight: 800, color: `${rarColor}b3` }}>≈ 1/20</span>}
               </div>
@@ -21720,7 +21756,8 @@ void main(){
         const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
         const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === active.crystalGradient);
         const shapeName = window.CRYSTAL_SHAPE_DEFS?.[active.crystalShape || 'diamond']?.name || 'Cristal';
-        return { isGold, pal, grad, shapeName };
+        const isSecret = active.rarity === 'secret' || !!(grad && grad.secret);
+        return { isGold, pal, grad, shapeName, isSecret };
       })() : null;
 
       return (
@@ -21750,6 +21787,23 @@ void main(){
               .fs-cv-base i:nth-child(4){right:0;width:24%;height:60%;clip-path:polygon(50% 0,100% 70%,88% 100%,4% 100%,0 58%);transform:rotate(9deg)}
               .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(2,5,12,.92),transparent 72%)}
               .fs-cv-gold-aura{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
+              /* ── SECRET dans la grotte : aucun autre cristal ne fait ça ──
+                 Deux couronnes prismatiques contrarotatives + un socle de
+                 lumière. Repérable de l'autre bout de la grotte. */
+              .fs-cv-secret-aura{position:absolute;left:50%;top:42%;width:calc(var(--sz)*2.5);height:calc(var(--sz)*2.5);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
+                background:conic-gradient(from 0deg,rgba(255,95,109,.36),rgba(255,179,2,.3),rgba(94,234,212,.34),rgba(79,172,254,.3),rgba(167,139,250,.36),rgba(255,95,109,.36));
+                -webkit-mask:radial-gradient(circle,transparent 30%,#000 50%,transparent 78%);mask:radial-gradient(circle,transparent 30%,#000 50%,transparent 78%);
+                filter:blur(6px);animation:fsCvSecretSpin 8s linear infinite}
+              .fs-cv-secret-aura::after{content:'';position:absolute;inset:14%;border-radius:50%;
+                background:radial-gradient(circle,rgba(255,255,255,.42),transparent 66%);filter:blur(8px);
+                animation:fsCvGoldPulse 2.2s ease-in-out infinite}
+              .fs-cv-secret-ring{position:absolute;left:50%;top:42%;width:calc(var(--sz)*1.55);height:calc(var(--sz)*1.55);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
+                border:1.5px solid rgba(255,255,255,.5);box-shadow:0 0 18px rgba(255,255,255,.34),inset 0 0 14px rgba(255,255,255,.18);
+                animation:fsCvSecretSpinR 5.5s linear infinite}
+              @keyframes fsCvSecretSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+              @keyframes fsCvSecretSpinR{0%{transform:translate(-50%,-50%) rotate(0deg) scale(1)}50%{transform:translate(-50%,-50%) rotate(-180deg) scale(1.08)}100%{transform:translate(-50%,-50%) rotate(-360deg) scale(1)}}
+              html.fs-reduce-motion .fs-cv-secret-aura,html.fs-reduce-motion .fs-cv-secret-aura::after,html.fs-reduce-motion .fs-cv-secret-ring{animation:none}
+              html.fs-perf-lite .fs-cv-secret-aura{filter:none}
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:9px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
@@ -21831,10 +21885,12 @@ void main(){
                     const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
                     const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
                     const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+                    const isSecret = c.rarity === 'secret' || !!(grad && grad.secret);
                     const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
                     const spot = _caveSpotOf(c, i);
                     const an = _caveAnchor(spot);
-                    const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0));
+                    /* Les secrets sont plus imposants (+16 px) que tout le reste. */
+                    const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0) + (isSecret ? 16 : 0));
                     const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
                     return (
                       <button
@@ -21854,7 +21910,10 @@ void main(){
                         onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(c.id); }}
                         onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(h => h === c.id ? null : h); }}
                       >
-                        {isGold && (window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && <span className="fs-cv-gold-aura" />}
+                        {(window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && (
+                          isSecret ? <><span className="fs-cv-secret-aura" /><span className="fs-cv-secret-ring" /></>
+                            : isGold ? <span className="fs-cv-gold-aura" /> : null
+                        )}
                         <span className="fs-cv-glowpad" />
                         <span className="fs-cv-shadow" />
                         <span className="fs-cv-gem">
@@ -21958,8 +22017,8 @@ void main(){
                 <div className="fs-cv-detail">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '.13em', textTransform: 'uppercase', color: activeInfo.isGold ? '#ffd36a' : activeInfo.pal.b }}>
-                        {activeInfo.isGold ? 'Cristal rare' : 'Session cristallisée'}
+                      <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '.13em', textTransform: 'uppercase', color: activeInfo.isSecret ? '#ffffff' : activeInfo.isGold ? '#ffd36a' : activeInfo.pal.b }}>
+                        {activeInfo.isSecret ? '✦ Cristal secret' : activeInfo.isGold ? 'Cristal rare' : 'Session cristallisée'}
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 920, color: '#f3f7ff', marginTop: 4 }}>{activeInfo.shapeName}</div>
                     </div>
@@ -21974,7 +22033,8 @@ void main(){
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(226,238,255,.66)', lineHeight: 1.6, marginTop: 11 }}>
                     Forgé le {fmtDate(active.completedAt)}.
-                    {activeInfo.isGold && <span style={{ display: 'block', color: '#ffd36a', fontWeight: 850, marginTop: 4 }}>Cristal doré : 1 chance sur 20.</span>}
+                    {activeInfo.isSecret && <span style={{ display: 'block', color: '#ffffff', fontWeight: 900, marginTop: 4 }}>{activeInfo.grad?.name || 'Cristal secret'} — 1 chance sur 1000. Rien ne l’annonçait.</span>}
+                    {!activeInfo.isSecret && activeInfo.isGold && <span style={{ display: 'block', color: '#ffd36a', fontWeight: 850, marginTop: 4 }}>Cristal doré : 1 chance sur 20.</span>}
                   </div>
                 </div>
               )}
@@ -22492,10 +22552,24 @@ void main(){
     { id:'neant',  name:'Éclat du néant', stops:['#e9d5ff','#1e1b4b'], glow:'rgba(168,85,247,0.92)',  legendary:true, aura:['#c084fc','#6d28d9','#312e81'] },
     { id:'chronos',   name:'Sablier de Chronos', stops:['#fde6a8','#7dd3fc'], glow:'rgba(252,211,77,0.92)', legendary:true, aura:['#fcd34d','#7dd3fc','#c084fc'] },
     { id:'leviathan', name:'Œil du léviathan',   stops:['#8df4e0','#0c4a6e'], glow:'rgba(94,234,212,0.92)', legendary:true, aura:['#5eead4','#0ea5e9','#312e81'] },
+    /* ── SECRETS (~1 forge sur 1000) — le palier au-dessus des légendaires ──
+       Trois pièces mythiques : elles ne se racontent pas dans l'interface (aucun
+       indice avant de l'obtenir), portent l'aura la plus spectaculaire du jeu et
+       se distinguent partout — dashboard, collection, grotte. */
+    { id:'singularite', name:'Singularité',  stops:['#f8fafc','#020617'], glow:'rgba(226,232,240,0.98)', secret:true, aura:['#ffffff','#7dd3fc','#0b1020'] },
+    { id:'genese',      name:'Genèse',       stops:['#ffffff','#ffb302'], glow:'rgba(255,236,170,0.98)', secret:true, aura:['#ffffff','#ffd76a','#ff7a45'] },
+    { id:'iris',        name:'Iris du monde', stops:['#ff5f6d','#4facfe'], glow:'rgba(255,255,255,0.96)', secret:true, aura:['#ff5f6d','#5eead4','#a78bfa'] },
   ];
+  /* Le tirage libre (couleur du jour) ne pioche QUE des classiques : rares,
+     légendaires et secrets ne s'obtiennent qu'au tirage de rareté de la forge. */
   window._randomGradient = () => {
-    const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare && !g.legendary);
+    const pool = window.CRYSTAL_GRADIENTS.filter(g => !g.rare && !g.legendary && !g.secret);
     return pool[Math.floor(Math.random() * pool.length)].id;
+  };
+  /* Un des cristaux SECRETS au hasard. */
+  window._gRandomSecret = () => {
+    const s = window.CRYSTAL_GRADIENTS.filter(g => g.secret);
+    return s.length ? s[Math.floor(Math.random() * s.length)].id : 'singularite';
   };
 
   /* ── Auras de rareté — VFX de jeu ─────────────────────────────────────────
@@ -22529,6 +22603,10 @@ void main(){
     runique:    'runic',
     chronos:    'chronal',
     leviathan:  'leviathan',
+    /* Secrets — les trois signatures les plus spectaculaires du jeu. */
+    singularite: 'singularity',
+    genese:      'genesis',
+    iris:        'iris',
   };
   /* bruit déterministe : les particules ne sautent pas d'un rendu à l'autre */
   const _auraN = (i, s) => { const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
@@ -22582,6 +22660,14 @@ void main(){
       @keyframes fsAuComet{0%{opacity:0;transform:translate(46%,-52%) rotate(-38deg) scaleX(.5)}8%{opacity:1}60%{opacity:.9}100%{opacity:0;transform:translate(-58%,54%) rotate(-38deg) scaleX(1.15)}}
       /* Rafale de sable : balayage latéral chaud */
       @keyframes fsAuGust{0%{opacity:0;transform:translate(-46%,0) scaleX(.6)}18%{opacity:.85}100%{opacity:0;transform:translate(52%,var(--dy,0)) scaleX(1.2)}}
+      /* ── SECRETS ── Matière qui tombe vers l'horizon (Singularité) */
+      @keyframes fsAuImplode{0%{opacity:0;transform:translate(-50%,-50%) rotate(var(--a,0deg)) translateX(var(--r,60px)) scale(1)}12%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(calc(var(--a,0deg) + 200deg)) translateX(0) scale(.2)}}
+      /* Onde de choc large (Genèse) */
+      @keyframes fsAuBurst{0%{opacity:.85;transform:scale(.18)}70%{opacity:.18}100%{opacity:0;transform:scale(1.5)}}
+      /* Lentille gravitationnelle : étirement lent du halo */
+      @keyframes fsAuLens{0%,100%{transform:rotate(0deg) scale(1,1)}50%{transform:rotate(180deg) scale(1.1,.9)}}
+      /* Dérive spectrale (Iris) */
+      @keyframes fsAuHue{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
       html.fs-reduce-motion .fs-aura *{animation:none!important}
       html.fs-perf-lite .fs-aura .heavy{display:none}
     `;
@@ -22614,16 +22700,23 @@ void main(){
 
   function CrystalAura({ gradientId, rarity, size = 120, intensity = 1 }) {
     const g = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === gradientId) || null;
-    const tier = rarity === 'legendary' ? 'legendary' : (rarity === 'rare' || rarity === 'gold') ? 'rare' : 'standard';
+    /* Le palier SECRET est déduit du cristal lui-même autant que de la rareté
+       enregistrée : un cristal secret garde son aura même si `rarity` a été
+       perdue par une vieille sauvegarde. */
+    const isSecret = rarity === 'secret' || !!(g && g.secret);
+    const tier = isSecret ? 'secret'
+      : rarity === 'legendary' ? 'legendary'
+      : (rarity === 'rare' || rarity === 'gold') ? 'rare' : 'standard';
     if (tier === 'standard') return null;
     const lite = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-perf-lite');
-    const kind = FS_AURA_ARCH[gradientId] || (tier === 'legendary' ? 'astral' : 'gold');
+    const kind = FS_AURA_ARCH[gradientId] || (tier === 'secret' ? 'singularity' : tier === 'legendary' ? 'astral' : 'gold');
     const cols = (g && g.aura) || (g && g.stops) || ['#a5b8ff', '#c084fc'];
     const c0 = cols[0], c1 = cols[1] || cols[0], c2 = cols[2] || cols[1] || cols[0];
     const glow = (g && g.glow) || 'rgba(165,184,255,0.8)';
     const k = Math.max(0, Math.min(1, intensity));
-    const leg = tier === 'legendary';
-    const box = Math.round(size * (leg ? 2.9 : 2.35));
+    const leg = tier === 'legendary' || tier === 'secret';
+    /* Les secrets rayonnent plus loin que tout le reste (3,4× la gemme). */
+    const box = Math.round(size * (tier === 'secret' ? 3.4 : leg ? 2.9 : 2.35));
     const nP = (base) => Math.max(3, Math.round(base * (lite ? 0.45 : 1)));
     const wrap = { width: box, height: box, opacity: k };
 
@@ -23041,6 +23134,75 @@ void main(){
         {/* nappes d'eau profonde en dérive contrariée */}
         <div className="lay heavy" style={{ inset: '4%', borderRadius: '50%', background: `radial-gradient(ellipse 58% 42% at 32% 62%, ${c2}66, transparent 62%)`, filter: 'blur(18px)', opacity: .6, animation: 'fsAuSpin 36s linear infinite' }} />
         {particles(nP(10), 127, 'fsAuRise', (i, r1) => dot(r1 > 0.55 ? '#c8fff2' : c0, 1.5 + r1 * 2.2, 0.3))}
+      </>;
+    } else if (kind === 'singularity') {
+      /* SINGULARITÉ (secret) — un horizon des événements : cœur noir absolu,
+         disque d'accrétion incandescent en rotation rapide, contre-disque plus
+         lent, lentille gravitationnelle qui étire le halo, et matière qui
+         SPIRALE vers le centre avant de disparaître. Le VFX le plus dense. */
+      layers = <>
+        {bloom('#ffffff', 34, 10, 2.1, 0.55)}
+        {bloom(c1, 12, 26, 3.4, 0.6)}
+        {/* Disque d'accrétion : anneau lumineux étiré, rotation rapide */}
+        <div className="lay" style={{ inset: '14%', borderRadius: '50%', background: `conic-gradient(from 0deg, transparent, ${c1} 14%, #ffffff 22%, ${c1} 30%, transparent 48%, transparent 64%, ${c1}aa 78%, transparent 92%)`, WebkitMask: 'radial-gradient(circle, transparent 46%, #000 54%, #000 82%, transparent 92%)', mask: 'radial-gradient(circle, transparent 46%, #000 54%, #000 82%, transparent 92%)', filter: 'blur(2px)', animation: 'fsAuSpin 3.1s linear infinite' }} />
+        <div className="lay heavy" style={{ inset: '2%', borderRadius: '50%', background: `conic-gradient(from 140deg, transparent, ${c0}88 18%, transparent 42%, ${c1}66 70%, transparent)`, WebkitMask: 'radial-gradient(circle, transparent 62%, #000 72%, transparent 94%)', mask: 'radial-gradient(circle, transparent 62%, #000 72%, transparent 94%)', filter: 'blur(6px)', opacity: .8, animation: 'fsAuSpinR 7.5s linear infinite' }} />
+        {/* Lentille : le halo entier se tord lentement */}
+        <div className="lay heavy" style={{ inset: '8%', borderRadius: '50%', background: `radial-gradient(circle, transparent 44%, ${c1}3a 58%, transparent 76%)`, filter: 'blur(9px)', animation: 'fsAuLens 12s ease-in-out infinite' }} />
+        {/* Cœur : trou noir net, avec un liseré de photons */}
+        <div className="lay" style={{ inset: '35%', borderRadius: '50%', background: 'radial-gradient(circle, #01030a 58%, rgba(2,4,12,0.86) 78%, transparent 92%)', boxShadow: `0 0 0 1.5px ${c1}cc, 0 0 22px ${c1}77, inset 0 0 26px rgba(0,0,0,0.9)` }} />
+        {/* Matière qui spirale et tombe */}
+        {Array.from({ length: nP(10) }, (_, i) => {
+          const r1 = _auraN(i, 149), r2 = _auraN(i + 31, 149);
+          return (
+            <div key={'im' + i} className={i > 4 ? 'heavy' : undefined} style={{
+              left: '50%', top: '50%', width: 2.4 + r1 * 2.6, height: 2.4 + r1 * 2.6, borderRadius: '50%',
+              '--a': (r1 * 360).toFixed(0) + 'deg', '--r': (box * (0.26 + r2 * 0.16)).toFixed(0) + 'px',
+              background: r1 > 0.55 ? '#ffffff' : c1, boxShadow: `0 0 8px ${c1}`, mixBlendMode: 'screen',
+              animation: `fsAuImplode ${2.4 + r2 * 2}s cubic-bezier(.4,0,.9,.5) infinite`,
+              animationDelay: (-r1 * 4).toFixed(2) + 's',
+            }} />
+          );
+        })}
+        {ring('#ffffff88', 1.6, 4.6, 0)}
+      </>;
+    } else if (kind === 'genesis') {
+      /* GENÈSE (secret) — la première lumière : cœur blanc aveuglant qui bat,
+         ondes de choc successives qui se propagent, couronne de rayons dorés,
+         étincelles qui montent. Naissance d'une étoile. */
+      layers = <>
+        {bloom('#ffffff', 30, 14, 1.9, 0.85)}
+        {bloom(c1, 14, 24, 3.1, 0.7)}
+        {bloom(c2, 2, 32, 4.6, 0.45)}
+        {rays(0, 8.5, '#fffdf0', c1, 0.6, false, 5)}
+        {rays(48, 14, c1 + 'cc', c2 + 'aa', 0.42, true, 8)}
+        {/* Ondes de choc : trois fronts décalés qui s'élargissent */}
+        {[0, 1, 2].map(i => (
+          <div key={'bu' + i} className={i > 0 ? 'heavy' : undefined} style={{
+            inset: '20%', borderRadius: '50%', border: `2px solid ${i % 2 ? '#ffffff' : c1}`,
+            mixBlendMode: 'screen', animation: 'fsAuBurst 3.2s cubic-bezier(.2,.7,.3,1) infinite',
+            animationDelay: (-i * 1.07) + 's',
+          }} />
+        ))}
+        {/* Cœur incandescent */}
+        <div className="lay" style={{ inset: '38%', borderRadius: '50%', background: 'radial-gradient(circle, #ffffff 32%, rgba(255,236,170,0.86) 58%, transparent 82%)', filter: 'blur(3px)', animation: 'fsAuBeat 2.4s ease-in-out infinite' }} />
+        {particles(nP(12), 151, 'fsAuRise', (i, r1) => dot(r1 > 0.55 ? '#ffffff' : c1, 1.8 + r1 * 3, 0.35))}
+        {particles(nP(8), 157, 'fsAuTwinkle', (i, r1) => dot('#fff8d8', 1.6 + r1 * 2.4))}
+      </>;
+    } else if (kind === 'iris') {
+      /* IRIS DU MONDE (secret) — spectre complet : deux voiles arc-en-ciel
+         contrarotatifs dont la teinte DÉRIVE en continu, faisceaux prismatiques,
+         poussière irisée. Aucun autre cristal ne change de couleur. */
+      const spectre = 'conic-gradient(from 0deg, #ff5f6d, #ffb302, #7ef29d, #5eead4, #4facfe, #a78bfa, #ff5f6d)';
+      layers = <>
+        {bloom('#ffffff', 32, 12, 2.4, 0.5)}
+        <div className="lay" style={{ borderRadius: '50%', background: spectre, WebkitMask: 'radial-gradient(circle, transparent 30%, #000 52%, transparent 86%)', mask: 'radial-gradient(circle, transparent 30%, #000 52%, transparent 86%)', filter: 'blur(12px) saturate(1.5)', opacity: .72, animation: 'fsAuSpin 9s linear infinite, fsAuHue 14s linear infinite' }} />
+        <div className="lay heavy" style={{ inset: '6%', borderRadius: '50%', background: spectre, WebkitMask: 'radial-gradient(circle, transparent 52%, #000 68%, transparent 92%)', mask: 'radial-gradient(circle, transparent 52%, #000 68%, transparent 92%)', filter: 'blur(18px) saturate(1.7)', opacity: .55, animation: 'fsAuSpinR 15s linear infinite, fsAuHue 11s linear infinite reverse' }} />
+        {/* Faisceaux prismatiques nets */}
+        {rays(20, 11, '#ffffffcc', c1 + 'cc', 0.5, false, 3)}
+        {/* Cœur blanc pur : le prisme qui sépare la lumière */}
+        <div className="lay" style={{ inset: '40%', borderRadius: '50%', background: 'radial-gradient(circle, #ffffff 40%, rgba(255,255,255,0.5) 66%, transparent 86%)', filter: 'blur(4px)', animation: 'fsAuBloom 3.2s ease-in-out infinite' }} />
+        {particles(nP(11), 163, 'fsAuTwinkle', (i, r1) => dot(['#ff5f6d', '#ffb302', '#5eead4', '#4facfe', '#a78bfa'][Math.floor(r1 * 5) % 5], 1.6 + r1 * 2.6))}
+        {ring('#ffffff66', 1.4, 5.4, 0)}
       </>;
     } else { /* gold */
       layers = <>
