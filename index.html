@@ -17986,6 +17986,40 @@ void main(){
       /* Anneau de complétion */
       const R = 34, C = 2 * Math.PI * R;
 
+      /* ── Fiche d'inspection : le cristal en 3D, manipulable ──────────────
+         Cliquer une gemme possédée l'ouvre comme un objet de jeu qu'on prend
+         en main. Les scellés ne s'ouvrent pas : il n'y a rien à examiner. */
+      const [detail, setDetail] = React.useState(null);
+      const openDetail = (g) => {
+        const mine = owned.filter(c => c.crystalGradient === g.id);
+        if (!mine.length) return;
+        /* On examine le PLUS ancien forgé : c'est celui qui a une histoire. */
+        const first = mine.reduce((a, b) => (new Date(a.completedAt || 0) <= new Date(b.completedAt || 0) ? a : b));
+        const best = mine.reduce((a, b) => ((Number(b.duration) || 0) > (Number(a.duration) || 0) ? b : a));
+        setDetail({
+          g,
+          n: mine.length,
+          minutes: mine.reduce((n, c) => n + (Number(c.duration) || 0), 0),
+          firstAt: first.completedAt,
+          shape: best.crystalShape || 'diamond',
+          seed: Number(best.seed || best.id || 7) >>> 0,
+          rarity: g.secret ? 'secret' : g.legendary ? 'legendary' : (g.rare ? (g.id === 'gold' ? 'gold' : 'rare') : 'standard'),
+        });
+      };
+      React.useEffect(() => {
+        if (!detail) return;
+        const onKey = e => { if (e.key === 'Escape') setDetail(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [detail]);
+      const RAR_META = {
+        secret:    { label: 'Secret',      odds: '1 forge sur 1000', tint: '#ffffff' },
+        legendary: { label: 'Légendaire',  odds: '1 forge sur 200',  tint: '#e9d5ff' },
+        gold:      { label: 'Doré',        odds: '1 forge sur 20',   tint: '#ffd36a' },
+        rare:      { label: 'Rare',        odds: '1 forge sur 20',   tint: '#9ae8ff' },
+        standard:  { label: 'Classique',   odds: 'Tirage courant',   tint: '#cfd8eb' },
+      };
+
       return (
         <div className="fs-coll" style={{ width: '100%', height: '100%', overflow: 'auto', color: T.text, fontFamily: T.font }}>
           <style>{`
@@ -18087,6 +18121,60 @@ void main(){
               .fs-coll-ring{margin-left:0}
               .fs-coll-hero{gap:16px}
             }
+            /* ── Fiche d'inspection 3D ─────────────────────────────────────
+               Le « socle » de présentation : la gemme flotte sur un fond teinté
+               de SA couleur, les données sous elle. Pas un formulaire : une
+               vitrine d'objet. */
+            .fs-cd-scrim{position:fixed;inset:0;z-index:6600;display:grid;place-items:center;padding:18px;
+              background:rgba(3,4,10,.74);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+              animation:fsCdIn .22s ease both}
+            @keyframes fsCdIn{from{opacity:0}to{opacity:1}}
+            .fs-cd-card{position:relative;width:min(420px,100%);max-height:min(92dvh,760px);overflow:auto;
+              border-radius:30px;border:1px solid rgba(255,255,255,.11);text-align:center;
+              background:radial-gradient(120% 62% at 50% 0%,color-mix(in srgb,var(--cd-a) 22%,transparent),transparent 62%),
+                linear-gradient(180deg,rgba(18,20,32,.98),rgba(8,9,16,.99));
+              box-shadow:0 46px 120px rgba(0,0,0,.72),0 0 70px var(--cd-glow),inset 0 1px 0 rgba(255,255,255,.08);
+              animation:fsCdCard .38s cubic-bezier(.22,1.1,.36,1) both;scrollbar-width:thin}
+            @keyframes fsCdCard{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
+            .fs-cd-x{position:absolute;top:14px;right:14px;z-index:4;width:32px;height:32px;border-radius:11px;cursor:pointer;
+              display:grid;place-items:center;color:rgba(233,240,255,.7);
+              border:1px solid rgba(255,255,255,.10);background:rgba(10,12,22,.6)}
+            .fs-cd-x:hover{color:#fff;background:rgba(255,255,255,.1)}
+            /* Socle : la gemme posée sur un cercle de lumière + son ombre au sol */
+            .fs-cd-stage{position:relative;display:grid;place-items:center;padding:26px 16px 6px}
+            .fs-cd-stage::after{content:'';position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+              width:56%;height:16px;border-radius:50%;
+              background:radial-gradient(ellipse,var(--cd-glow),transparent 72%);filter:blur(7px);opacity:.7}
+            .fs-cd-body{position:relative;padding:6px 24px 26px}
+            .fs-cd-rar{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:99px;border:1px solid;
+              font:900 9.5px var(--font-body);letter-spacing:.16em;text-transform:uppercase}
+            .fs-cd-rar i{font-style:normal;font-weight:800;letter-spacing:.03em;text-transform:none;opacity:.7;font-size:9.5px}
+            .fs-cd-name{margin:13px 0 0;font-family:var(--font-display);font-size:29px;font-weight:900;letter-spacing:-.04em;line-height:1.02;
+              background:linear-gradient(100deg,#fff,var(--cd-a) 55%,var(--cd-b));
+              -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+              text-shadow:0 0 26px var(--cd-glow)}
+            .fs-cd-shape{margin-top:7px;font-size:11.5px;color:rgba(226,238,255,.52)}
+            .fs-cd-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:20px}
+            .fs-cd-stat{padding:12px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.075);
+              background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015))}
+            .fs-cd-stat.wide{grid-column:1/-1}
+            .fs-cd-stat b{display:block;font-family:var(--font-display);font-size:19px;font-weight:900;letter-spacing:-.03em;
+              line-height:1;font-variant-numeric:tabular-nums;color:#f4f7ff}
+            .fs-cd-stat.wide b{font-size:14px;letter-spacing:-.01em}
+            .fs-cd-stat span{display:block;margin-top:6px;font-size:8.5px;font-weight:850;letter-spacing:.13em;
+              text-transform:uppercase;color:rgba(248,246,252,.4)}
+            /* Affordance : une gemme possédée s'examine */
+            .fs-coll-cell.got{cursor:pointer}
+            .fs-coll-cell.got:focus-visible{outline:2px solid var(--theme-c1);outline-offset:3px}
+            .fs-coll-cell.got .fs-coll-inspect{position:absolute;inset:auto 0 0;padding:5px 0 7px;
+              font:850 9px var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--theme-c1);
+              opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s}
+            .fs-coll-cell.got:hover .fs-coll-inspect,.fs-coll-cell.got:focus-visible .fs-coll-inspect{opacity:1;transform:none}
+            @media (max-width:560px){
+              .fs-cd-card{width:100%;border-radius:24px}
+              .fs-cd-name{font-size:25px}
+              .fs-cd-body{padding:6px 18px 22px}
+            }
             /* PC modestes : on coupe les lueurs floutées (coûteuses en peinture) */
             html.fs-perf-lite .fs-coll-cell.got::before{display:none}
             html.fs-perf-lite .fs-coll-gem{filter:none}
@@ -18155,7 +18243,10 @@ void main(){
                       return (
                         <div key={g.id} className={'fs-coll-cell ' + (n ? 'got' : 'locked') + (g.secret ? ' secret' : '')}
                           style={{ '--gem-glow': glow, '--gem-edge': glow.replace(/[\d.]+\)$/, '0.34)'), '--gem-soft': glow.replace(/[\d.]+\)$/, '0.16)') }}
-                          title={n ? `${g.name} · ${n} forgé${n > 1 ? 's' : ''}` : `${g.name} — pas encore découvert`}>
+                          role={n ? 'button' : undefined} tabIndex={n ? 0 : undefined}
+                          onClick={n ? () => openDetail(g) : undefined}
+                          onKeyDown={n ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(g); } }) : undefined}
+                          title={n ? `${g.name} — examiner en 3D` : `${g.name} — pas encore découvert`}>
                           <div className="fs-coll-gem">
                             {window.ShapedCrystalGem
                               ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: g.id, progress: .88, size: 50, seed: i + 2 })
@@ -18167,6 +18258,7 @@ void main(){
                              sous-titre « Scellé » disent déjà qu'il reste à obtenir. */}
                           <div className="fs-coll-name">{g.name}</div>
                           <div className="fs-coll-sub">{n ? `${n} forgé${n > 1 ? 's' : ''}` : 'Scellé'}</div>
+                          {n > 0 && <span className="fs-coll-inspect">Examiner</span>}
                           {n > 1 && <span className="fs-coll-badge">×{n}</span>}
                           {!n && (
                             <svg className="fs-coll-lock" width={11} height={11} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -18182,6 +18274,49 @@ void main(){
               );
             })}
           </div>
+
+          {/* ── Fiche d'inspection : le cristal comme objet 3D ── */}
+          {detail && ReactDOM.createPortal(
+            (() => {
+              const rm = RAR_META[detail.rarity] || RAR_META.standard;
+              const g = detail.g;
+              const stops = g.stops || ['#a5b8ff', '#c084fc'];
+              const shapeName = (window.CRYSTAL_SHAPE_DEFS || {})[detail.shape]?.name || 'Cristal';
+              const dateStr = (() => {
+                try { return new Date(detail.firstAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
+                catch (_) { return '—'; }
+              })();
+              return (
+                <div className="fs-cd-scrim" onClick={e => { if (e.target === e.currentTarget) setDetail(null); }}>
+                  <div className="fs-cd-card" role="dialog" aria-modal="true" aria-label={`${g.name} — aperçu 3D`}
+                    style={{ '--cd-a': stops[0], '--cd-b': stops[stops.length - 1], '--cd-glow': g.glow || 'rgba(165,184,255,.5)' }}>
+                    <button type="button" className="fs-cd-x" onClick={() => setDetail(null)} aria-label="Fermer">
+                      <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" /></svg>
+                    </button>
+                    <div className="fs-cd-stage">
+                      {window.CrystalOrbit3D && React.createElement(window.CrystalOrbit3D, {
+                        shape: detail.shape, gradientId: g.id, seed: detail.seed, rarity: detail.rarity,
+                        size: Math.min(300, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.7)),
+                      })}
+                    </div>
+                    <div className="fs-cd-body">
+                      <div className="fs-cd-rar" style={{ color: rm.tint, borderColor: rm.tint + '44', background: rm.tint + '14' }}>
+                        {g.secret && <span aria-hidden="true">✦</span>}{rm.label}<i>{rm.odds}</i>
+                      </div>
+                      <h2 className="fs-cd-name">{g.name}</h2>
+                      <div className="fs-cd-shape">Taille {shapeName.toLowerCase()} · forge unique</div>
+                      <div className="fs-cd-stats">
+                        <div className="fs-cd-stat"><b>{detail.n}</b><span>en grotte</span></div>
+                        <div className="fs-cd-stat"><b>{Math.round(detail.minutes)}</b><span>min de focus</span></div>
+                        <div className="fs-cd-stat wide"><b>{dateStr}</b><span>première forge</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })(),
+            document.body
+          )}
         </div>
       );
     }
@@ -23774,12 +23909,218 @@ void main(){
       queue.push({ params, cb });
       if (!pumping) { pumping = true; requestAnimationFrame(pump); }
     };
+    /* Internes partagés avec la VISIONNEUSE 3D orbitale de la Collection : elle
+       ouvre son propre contexte WebGL (haute résolution, orientation libre à la
+       souris) mais doit sculpter EXACTEMENT le même mesh que la gemme affichée
+       partout ailleurs — sinon le cristal examiné ne serait pas le sien. */
+    render.internals = { buildMesh, mul, rotX, rotY, scaleM, perspective, lookAt, hexV, SHAPE_P };
     return render;
   })();
+
+  /* ══════════════════════════════════════════════════════════════
+     VISIONNEUSE 3D ORBITALE — examiner un cristal comme un objet
+     Contexte WebGL dédié (haute résolution), mais MÊME mesh sculpté que la
+     gemme affichée partout ailleurs (render.internals.buildMesh) : le cristal
+     qu'on fait tourner est exactement le sien. Glisser = orbite libre (dessus,
+     dessous, tour complet), molette/pincement = distance, relâcher = inertie
+     puis reprise de la rotation lente. Le contexte est libéré à la fermeture.
+  ══════════════════════════════════════════════════════════════ */
+  function CrystalOrbit3D({ shape = 'diamond', gradientId, seed = 1, size = 300, rarity }) {
+    const canvasRef = React.useRef(null);
+    const stateRef = React.useRef({ yaw: 0.5, pitch: -0.12, dist: 5.0, vy: 0, vp: 0, drag: false, lx: 0, ly: 0, auto: true, pid: null });
+    const [hint, setHint] = React.useState(true);
+
+    React.useEffect(() => {
+      const canvas = canvasRef.current;
+      const R = window._fsGemRender && window._fsGemRender.internals;
+      if (!canvas || !R) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(size * dpr);
+      canvas.height = Math.round(size * 1.12 * dpr);
+      let gl = null;
+      /* preserveDrawingBuffer : le buffer reste lisible après composition —
+         évite les frames blanches sur certains pilotes et rend le canvas
+         capturable. Coût négligeable pour un seul objet à l'écran. */
+      try { gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: false, preserveDrawingBuffer: true }); } catch (_) { }
+      if (!gl) return;
+
+      /* Shader de présentation : plus riche que la vignette (spéculaire serré,
+         rim marqué, léger Fresnel) — on regarde l'objet de près. */
+      const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;
+        uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vN;varying vec3 vW;varying vec3 vC;
+        void main(){vec4 w=uModel*vec4(aPosition,1.0);vW=w.xyz;vN=mat3(uModel)*aNormal;vC=aColor;gl_Position=uMvp*vec4(aPosition,1.0);}`;
+      const fs = `precision mediump float;varying vec3 vN;varying vec3 vW;varying vec3 vC;
+        uniform vec3 uLight;uniform vec3 uLight2;uniform vec3 uEye;uniform vec3 uA1;uniform vec3 uA2;
+        void main(){
+          vec3 n=normalize(vN);vec3 e=normalize(uEye-vW);
+          vec3 l1=normalize(uLight-vW), l2=normalize(uLight2-vW);
+          float d=max(dot(n,l1),0.0)*0.86+max(dot(n,l2),0.0)*0.34;
+          float rim=pow(1.0-max(dot(n,e),0.0),2.0);
+          float sp=pow(max(dot(reflect(-l1,n),e),0.0),58.0)+pow(max(dot(reflect(-l2,n),e),0.0),26.0)*0.5;
+          float side=clamp(n.x*.5+n.y*.2+n.z*.24+.5,0.0,1.0);
+          vec3 theme=mix(uA1,uA2,side);
+          vec3 glass=mix(theme,vec3(1.0),.3);
+          vec3 col=mix(vC,theme,.88)*(0.28+d*0.92)+theme*rim*1.05+glass*sp*0.95;
+          gl_FragColor=vec4(col,0.94+rim*0.06);
+        }`;
+      const compile = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); return o; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+      gl.useProgram(prog);
+      const L = {
+        pos: gl.getAttribLocation(prog, 'aPosition'), nor: gl.getAttribLocation(prog, 'aNormal'), col: gl.getAttribLocation(prog, 'aColor'),
+        mvp: gl.getUniformLocation(prog, 'uMvp'), model: gl.getUniformLocation(prog, 'uModel'),
+        light: gl.getUniformLocation(prog, 'uLight'), light2: gl.getUniformLocation(prog, 'uLight2'),
+        eye: gl.getUniformLocation(prog, 'uEye'), a1: gl.getUniformLocation(prog, 'uA1'), a2: gl.getUniformLocation(prog, 'uA2'),
+      };
+      const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gradientId);
+      const stops = grad ? grad.stops : ['#a5b8ff', '#c084fc'];
+      const c1v = R.hexV(stops[0]), c2v = R.hexV(stops[stops.length - 1]);
+      const mesh = R.buildMesh(shape, (seed >>> 0) || 7, 1);
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+      const stride = 36;
+      gl.enableVertexAttribArray(L.pos); gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(L.nor); gl.vertexAttribPointer(L.nor, 3, gl.FLOAT, false, stride, 12);
+      gl.enableVertexAttribArray(L.col); gl.vertexAttribPointer(L.col, 3, gl.FLOAT, false, stride, 24);
+      gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      const count = mesh.length / 9;
+
+      let raf = 0, alive = true;
+      const reduce = document.documentElement.classList.contains('fs-reduce-motion');
+      /* `paint` ne fait que dessiner — il est appelé aussi bien par la boucle
+         d'animation que DIRECTEMENT au glissement, pour que le geste reste 1:1
+         même si les frames sont bridées (onglet en arrière-plan, machine
+         chargée). `step` porte l'inertie et la rotation d'attente. */
+      const paint = () => {
+        const s = stateRef.current;
+        if (!alive) return;
+        s.pitch = Math.max(-1.45, Math.min(1.45, s.pitch));
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.uniform3f(L.light, -2.6, 3.4, 4.2);
+        gl.uniform3f(L.light2, 3.2, -1.6, 2.4);
+        gl.uniform3f(L.eye, 0, 0, s.dist);
+        gl.uniform3f(L.a1, c1v[0], c1v[1], c1v[2]);
+        gl.uniform3f(L.a2, c2v[0], c2v[1], c2v[2]);
+        const vp = R.mul(R.perspective(Math.PI / 4.4, canvas.width / canvas.height, 0.1, 100), R.lookAt([0, 0, s.dist], [0, 0, 0], [0, 1, 0]));
+        const model = R.mul(R.rotY(s.yaw), R.mul(R.rotX(s.pitch), R.scaleM(1.02)));
+        gl.uniformMatrix4fv(L.model, false, new Float32Array(model));
+        gl.uniformMatrix4fv(L.mvp, false, new Float32Array(R.mul(vp, model)));
+        gl.drawArrays(gl.TRIANGLES, 0, count);
+      };
+      const step = () => {
+        const s = stateRef.current;
+        if (s.drag) return;
+        /* Inertie, puis reprise d'une rotation lente : l'objet reste vivant. */
+        s.yaw += s.vy; s.pitch += s.vp;
+        s.vy *= 0.94; s.vp *= 0.94;
+        if (s.auto && Math.abs(s.vy) < 0.0016 && !reduce) s.yaw += 0.0042;
+      };
+      const loop = () => {
+        if (!alive) return;
+        step(); paint();
+        raf = requestAnimationFrame(loop);
+      };
+      /* Première frame peinte TOUT DE SUITE (pas au prochain rAF) : la fiche
+         s'ouvre avec le cristal déjà là, sans flash de canvas vide. */
+      loop();
+
+      /* ── Orbite : pointeur (souris + tactile) ── */
+      const down = e => {
+        const s = stateRef.current;
+        s.drag = true; s.auto = false; s.pid = e.pointerId;
+        s.lx = e.clientX; s.ly = e.clientY; s.vy = 0; s.vp = 0;
+        setHint(false);
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
+      };
+      const move = e => {
+        const s = stateRef.current;
+        if (!s.drag || (s.pid != null && e.pointerId !== s.pid)) return;
+        const dx = e.clientX - s.lx, dy = e.clientY - s.ly;
+        s.lx = e.clientX; s.ly = e.clientY;
+        s.yaw += dx * 0.0105;
+        s.pitch += dy * 0.0095;
+        s.vy = dx * 0.0075; s.vp = dy * 0.0068;
+        paint(); /* réponse immédiate au geste, sans attendre la frame suivante */
+        e.preventDefault();
+      };
+      const up = e => {
+        const s = stateRef.current;
+        s.drag = false; s.pid = null; s.auto = true;
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
+      };
+      const wheel = e => {
+        const s = stateRef.current;
+        s.dist = Math.max(3.1, Math.min(9, s.dist + (e.deltaY > 0 ? 0.34 : -0.34)));
+        paint();
+        e.preventDefault();
+      };
+      canvas.addEventListener('pointerdown', down);
+      canvas.addEventListener('pointermove', move);
+      canvas.addEventListener('pointerup', up);
+      canvas.addEventListener('pointercancel', up);
+      canvas.addEventListener('wheel', wheel, { passive: false });
+
+      return () => {
+        alive = false; cancelAnimationFrame(raf);
+        canvas.removeEventListener('pointerdown', down);
+        canvas.removeEventListener('pointermove', move);
+        canvas.removeEventListener('pointerup', up);
+        canvas.removeEventListener('pointercancel', up);
+        canvas.removeEventListener('wheel', wheel);
+        try { gl.deleteBuffer(buf); gl.deleteProgram(prog); } catch (_) { }
+        /* Libère franchement le contexte : un onglet ne garde qu'un nombre
+           limité de contextes WebGL vivants. */
+        try { const lo = gl.getExtension('WEBGL_lose_context'); if (lo) lo.loseContext(); } catch (_) { }
+      };
+    }, [shape, gradientId, seed, size]);
+
+    return (
+      <div className="fs-orb3d" style={{ width: size, height: Math.round(size * 1.12) }}>
+        {window.CrystalAura && rarity && rarity !== 'standard' && (
+          <div className="fs-orb3d-aura" aria-hidden="true">
+            {React.createElement(window.CrystalAura, { gradientId, rarity, size: Math.round(size * 0.42), intensity: 0.9 })}
+          </div>
+        )}
+        <canvas ref={canvasRef} className="fs-orb3d-canvas" style={{ width: size, height: Math.round(size * 1.12) }}
+          role="img" aria-label="Aperçu 3D du cristal — glisse pour le faire tourner" />
+        {hint && <div className="fs-orb3d-hint" aria-hidden="true">Glisse pour faire tourner · molette pour zoomer</div>}
+      </div>
+    );
+  }
+  window.CrystalOrbit3D = CrystalOrbit3D;
 
   /* Auras des cristaux rares/légendaires : halo conique tournant pour les
      légendaires (statique en perf-lite / reduce-motion pour les petites
      machines), simple renfort de lueur pour les rares. */
+  if (!document.getElementById('fs-orb3d-css')) {
+    const s = document.createElement('style');
+    s.id = 'fs-orb3d-css';
+    s.textContent = `
+      .fs-orb3d{position:relative;display:grid;place-items:center;flex-shrink:0;touch-action:none}
+      .fs-orb3d-aura{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0;
+        -webkit-mask-image:radial-gradient(circle at 50% 48%,#000 46%,transparent 76%);
+        mask-image:radial-gradient(circle at 50% 48%,#000 46%,transparent 76%)}
+      .fs-orb3d-canvas{position:relative;z-index:1;display:block;cursor:grab;touch-action:none;
+        filter:drop-shadow(0 26px 40px rgba(0,0,0,.55))}
+      .fs-orb3d-canvas:active{cursor:grabbing}
+      .fs-orb3d-hint{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);z-index:2;pointer-events:none;
+        white-space:nowrap;font:800 10px var(--font-body);letter-spacing:.02em;color:rgba(233,240,255,.5);
+        padding:5px 11px;border-radius:99px;background:rgba(8,10,20,.6);border:1px solid rgba(255,255,255,.08);
+        animation:fsOrbHint 2.6s ease-in-out infinite}
+      @keyframes fsOrbHint{0%,100%{opacity:.55}50%{opacity:1}}
+      html.fs-reduce-motion .fs-orb3d-hint{animation:none}
+    `;
+    document.head.appendChild(s);
+  }
+
   if (!document.getElementById('fs-rare-aura-css')) {
     const s = document.createElement('style');
     s.id = 'fs-rare-aura-css';
