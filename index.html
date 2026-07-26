@@ -13117,6 +13117,23 @@ void main(){
       font-size:14px; color:rgba(226,233,255,.56); line-height:1.65;
       max-width:42ch; margin-top:18px;
     }
+    /* CTA de démonstration : secondaire par le traitement (contour, pas de
+       remplissage) — il ne doit pas rivaliser avec la création de compte, juste
+       exister pour qui hésite. */
+    .fs-auth-demo-cta {
+      display:inline-flex; align-items:center; gap:8px; margin-top:22px;
+      height:40px; padding:0 17px; border-radius:14px; cursor:pointer;
+      font-family:inherit; font-size:12.5px; font-weight:800; letter-spacing:.01em;
+      color:rgba(240,244,255,.9);
+      border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.055);
+      backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+      transition:transform .18s var(--mineral-ease), background .18s, border-color .18s;
+    }
+    .fs-auth-demo-cta:hover {
+      transform:translateY(-1px); background:rgba(255,255,255,.1);
+      border-color:rgba(255,255,255,.28);
+    }
+    .fs-auth-demo-cta svg { opacity:.82; flex-shrink:0; }
     .fs-auth-feature-grid {
       position:relative; z-index:3; display:none; grid-template-columns:repeat(3,minmax(0,1fr));
       gap:10px; max-width:560px;
@@ -13190,6 +13207,7 @@ void main(){
         try { return localStorage.getItem('fs_login_theme') === 'vert' ? 'vert' : 'rose'; } catch (_) { return 'rose'; }
       });
       const [ripple, setRipple] = _uSAuth(null);
+      const [demoOpen, setDemoOpen] = _uSAuth(false);
       const LOGIN_SWATCHES = [
         { id: 'rose', label: 'Rose', grad: 'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))', ring: '217,43,214' },
         { id: 'vert', label: 'Vert', grad: 'linear-gradient(145deg,rgb(134,239,172),rgb(34,197,94))', ring: '34,197,94' },
@@ -13518,6 +13536,12 @@ void main(){
             </div>,
             document.body
           )}
+          {demoOpen && window.FsDemo60 && React.createElement(window.FsDemo60, {
+            onClose: () => setDemoOpen(false),
+            /* « Créer mon compte » referme la démo et bascule le formulaire en
+               inscription : on capitalise sur l'élan, sans changer de page. */
+            onSignup: () => { setDemoOpen(false); setMode('signup'); setErrMsg(''); setInfoMsg(''); },
+          })}
           {ripple && (
             <span key={ripple.key} className="fs-login-ripple" aria-hidden="true" style={{
               position:'fixed', left:ripple.x, top:ripple.y, width:'220vmax', height:'220vmax',
@@ -13558,6 +13582,14 @@ void main(){
                   <div className="fs-auth-subtitle">
                     Chaque session de focus forge un cristal. 41 à découvrir — dont 3 que presque personne ne verra.
                   </div>
+                  {/* Démo jouable : on ne DÉCRIT pas la boucle de jeu, on la fait
+                     vivre. Une promesse sur une page de connexion demande de
+                     croire ; quarante secondes de forge accélérée montrent. Aucun
+                     compte, aucune donnée écrite. */}
+                  <button type="button" className="fs-auth-demo-cta" onClick={() => setDemoOpen(true)}>
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+                    Voir en 60 secondes
+                  </button>
                 </div>
 
                 <div className="fs-auth-hero">
@@ -26580,6 +26612,182 @@ void main(){
     );
   }
   window.BoutiqueModal = BoutiqueModal;
+
+  /* ── Démo jouable de 60 secondes (avant inscription) ──────────────────────
+     Le problème qu'elle résout : une page de connexion ne peut que PROMETTRE.
+     « Chaque session forge un cristal » demande de croire sur parole, et un
+     visiteur qui doit créer un compte pour vérifier ne le crée pas.
+     Elle rejoue donc la boucle complète — minuterie, forge, révélation de la
+     rareté — en quarante secondes, sans compte et SANS ÉCRIRE UNE SEULE CLÉ.
+     Choix de conception : un compte à rebours accéléré de 25 min et une gemme
+     qui grandit par PALIERS de progression (pas image par image). Le rendu de
+     gemme est mis en cache par progression quantifiée : animer en continu
+     recalculerait un maillage à chaque frame, alors que douze paliers donnent
+     exactement la même lecture — « ça se forge » — pour douze rendus.
+     La rareté est tirée avec les VRAIES probabilités du jeu : mentir ici
+     (garantir un légendaire pour épater) trahirait la première minute d'usage
+     réel. Un classique reste une belle pierre ; c'est le sujet.  */
+  function FsDemo60({ onClose, onSignup }) {
+    const REEL = 25 * 60;            // la session simulée : 25 min
+    const STEPS = 12;                // paliers de forge
+    const STEP_MS = 2600;            // ≈ 34 s de forge, puis la révélation
+    /* En reduce-motion on ne joue PAS la forge en accéléré : accélérer les
+       paliers donnait un scintillement de trois secondes, illisible et
+       exactement le genre d'effet que ce réglage demande d'éviter. On montre
+       directement le résultat — l'information est la même, sans le mouvement. */
+    const reduce = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-reduce-motion');
+    const [step, setStep] = React.useState(() => (reduce ? STEPS : 0));
+    const [phase, setPhase] = React.useState(() => (reduce ? 'reveal' : 'forge'));
+
+    /* Le cristal est tiré UNE fois, au montage : les mêmes cotes que la forge
+       réelle (secret 1/1000, légendaire ~1/170, rare ~1/18). */
+    const gem = React.useMemo(() => {
+      const grads = window.CRYSTAL_GRADIENTS || [];
+      const roll = Math.random();
+      const pool = roll < 0.001 ? grads.filter(g => g.secret)
+        : roll < 0.006 ? grads.filter(g => g.legendary)
+        : roll < 0.056 ? grads.filter(g => g.rare && !g.legendary && !g.secret)
+        : grads.filter(g => !g.rare && !g.legendary && !g.secret);
+      const list = pool.length ? pool : grads;
+      const g = list[Math.floor(Math.random() * list.length)] || { id: 'aurora', name: 'Aurore', stops: ['#a5b8ff', '#c084fc'] };
+      const tier = g.secret ? 'secret' : g.legendary ? 'legendary' : g.rare ? 'rare' : 'standard';
+      return { g, tier, seed: 3 + Math.floor(Math.random() * 40) };
+    }, []);
+
+    const TIER_TXT = {
+      standard: { label: 'Classique', odds: 'à chaque session réussie', tint: '#cfd8eb' },
+      rare: { label: 'Rare', odds: '1 forge sur 20', tint: '#9ae8ff' },
+      legendary: { label: 'Légendaire', odds: '1 forge sur 200', tint: '#e9d5ff' },
+      secret: { label: 'Secret', odds: '1 forge sur 1000', tint: '#ffffff' },
+    }[gem.tier];
+
+    React.useEffect(() => {
+      if (phase === 'reveal') return;
+      if (step >= STEPS) { const t = setTimeout(() => setPhase('reveal'), 420); return () => clearTimeout(t); }
+      const t = setTimeout(() => setStep(s => s + 1), STEP_MS);
+      return () => clearTimeout(t);
+    }, [step, phase]);
+
+    /* Échap ferme : c'est une démonstration, jamais une impasse. */
+    React.useEffect(() => {
+      const h = e => { if (e.key === 'Escape') onClose && onClose(); };
+      window.addEventListener('keydown', h);
+      return () => window.removeEventListener('keydown', h);
+    }, [onClose]);
+
+    const progress = Math.min(1, step / STEPS);
+    const left = Math.round(REEL * (1 - progress));
+    const mmss = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+    const stops = gem.g.stops || ['#a5b8ff', '#c084fc'];
+
+    return ReactDOM.createPortal(
+      <div className="fs-d60-scrim" onClick={e => { if (e.target === e.currentTarget) onClose && onClose(); }}>
+        <style>{`
+          .fs-d60-scrim{position:fixed;inset:0;z-index:7000;display:grid;place-items:center;padding:22px;
+            background:rgba(3,4,10,.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+            animation:fsD60In .2s ease both}
+          @keyframes fsD60In{from{opacity:0}to{opacity:1}}
+          .fs-d60{position:relative;width:min(430px,100%);padding:30px 28px 26px;border-radius:30px;text-align:center;
+            border:1px solid rgba(255,255,255,.1);
+            background:radial-gradient(120% 74% at 50% -8%,rgba(var(--theme-c1-rgb),.16),transparent 60%),
+              linear-gradient(180deg,rgba(var(--mineral-surface-rgb),.98),rgba(var(--mineral-bg-rgb),.99));
+            box-shadow:0 48px 130px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.08);
+            animation:fsD60Card .34s cubic-bezier(.22,1,.36,1) both}
+          @keyframes fsD60Card{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+          .fs-d60-x{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:11px;cursor:pointer;
+            display:grid;place-items:center;color:rgba(248,246,252,.5);
+            border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);transition:color .16s,background .16s}
+          .fs-d60-x:hover{color:#fff;background:rgba(255,255,255,.1)}
+          .fs-d60-kicker{font-size:9px;font-weight:850;letter-spacing:.14em;text-transform:uppercase;
+            color:rgba(248,246,252,.4);margin-bottom:16px}
+          .fs-d60-stage{height:186px;display:grid;place-items:center;position:relative}
+          .fs-d60-gem{position:relative;z-index:1;transition:transform .5s cubic-bezier(.22,1,.36,1)}
+          .fs-d60-halo{position:absolute;width:210px;height:210px;border-radius:50%;pointer-events:none;
+            transition:opacity .5s ease}
+          .fs-d60-clock{font-variant-numeric:tabular-nums;font-size:34px;font-weight:850;letter-spacing:-.04em;
+            margin-top:6px}
+          .fs-d60-hint{font-size:12px;line-height:1.55;color:rgba(248,246,252,.5);margin-top:8px;min-height:34px}
+          .fs-d60-bar{height:3px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:16px 0 0}
+          .fs-d60-bar i{display:block;height:100%;border-radius:99px;
+            background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),.6),var(--theme-c1));
+            transform-origin:left center;transition:transform .5s cubic-bezier(.4,0,.2,1)}
+          .fs-d60-tier{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 12px;border-radius:99px;
+            font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+          .fs-d60-name{font-size:25px;font-weight:850;letter-spacing:-.04em;line-height:1.1}
+          .fs-d60-odds{font-size:11.5px;color:rgba(248,246,252,.46);margin-top:6px}
+          .fs-d60-note{font-size:11.5px;line-height:1.6;color:rgba(248,246,252,.5);margin-top:16px}
+          .fs-d60-go{width:100%;height:48px;margin-top:18px;border:none;border-radius:16px;cursor:pointer;
+            font-family:inherit;font-size:13.5px;font-weight:900;color:#07070d;
+            background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+            box-shadow:0 16px 40px rgba(var(--theme-c1-rgb),.28);
+            transition:transform .16s var(--mineral-ease),box-shadow .16s}
+          .fs-d60-go:hover{transform:translateY(-1px);box-shadow:0 20px 48px rgba(var(--theme-c1-rgb),.36)}
+          .fs-d60-skip{margin-top:10px;border:none;background:none;cursor:pointer;font-family:inherit;
+            font-size:11.5px;font-weight:750;color:rgba(248,246,252,.42);transition:color .16s}
+          .fs-d60-skip:hover{color:rgba(248,246,252,.78)}
+          html.fs-reduce-motion .fs-d60-scrim,html.fs-reduce-motion .fs-d60{animation:none}
+          @media(max-width:520px){.fs-d60{padding:26px 20px 22px;border-radius:24px}.fs-d60-stage{height:158px}}
+        `}</style>
+        <div className="fs-d60" role="dialog" aria-modal="true" aria-label="Démonstration : forger un cristal">
+          <button className="fs-d60-x" onClick={() => onClose && onClose()} aria-label="Fermer la démonstration">
+            <svg width={12} height={12} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" /></svg>
+          </button>
+
+          <div className="fs-d60-kicker">{phase === 'forge' ? 'Démonstration · session accélérée' : 'Ce que tu viens de gagner'}</div>
+
+          <div className="fs-d60-stage">
+            <div className="fs-d60-halo" style={{
+              background: `radial-gradient(circle, ${stops[0]}55, transparent 62%)`,
+              filter: 'blur(28px)',
+              opacity: phase === 'reveal' ? 0.9 : 0.24 + progress * 0.4,
+            }} />
+            <div className="fs-d60-gem" style={{ transform: phase === 'reveal' ? 'scale(1.1)' : 'scale(1)' }}>
+              {window.ShapedCrystalGem
+                ? React.createElement(window.ShapedCrystalGem, {
+                    shape: 'diamond', gradientId: gem.g.id,
+                    /* jamais 0 : une gemme à progression nulle est invisible et
+                       donnerait l'impression d'un écran cassé */
+                    progress: Math.max(0.14, progress),
+                    size: 132, seed: gem.seed,
+                  })
+                : null}
+            </div>
+          </div>
+
+          {phase === 'forge' ? (
+            <>
+              <div className="fs-d60-clock">{mmss}</div>
+              <div className="fs-d60-hint">
+                {progress < 0.35 ? 'Tu travailles. Le cristal se forme tout seul — rien à cliquer.'
+                  : progress < 0.8 ? 'Sa couleur n’est pas choisie : elle est tirée au sort à la forge.'
+                  : 'Encore un instant… la rareté ne se révèle qu’à la fin.'}
+              </div>
+              <div className="fs-d60-bar"><i style={{ transform: `scaleX(${progress})` }} /></div>
+              <button className="fs-d60-skip" onClick={() => setStep(STEPS)}>Passer à la révélation</button>
+            </>
+          ) : (
+            <>
+              <div className="fs-d60-tier" style={{ color: TIER_TXT.tint, background: `${TIER_TXT.tint}1f`, border: `1px solid ${TIER_TXT.tint}44` }}>
+                {TIER_TXT.label}
+              </div>
+              <div className="fs-d60-name" style={{ color: TIER_TXT.tint }}>{gem.g.name}</div>
+              <div className="fs-d60-odds">{TIER_TXT.odds} · 41 cristaux à découvrir</div>
+              <div className="fs-d60-note">
+                C’était une démonstration : rien n’a été enregistré. Avec un compte, ce
+                cristal rejoindrait ta grotte — et il y resterait.
+              </div>
+              <button className="fs-d60-go" onClick={() => (onSignup ? onSignup() : onClose && onClose())}>
+                Créer mon compte — c’est gratuit
+              </button>
+              <button className="fs-d60-skip" onClick={() => onClose && onClose()}>Plus tard</button>
+            </>
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+  }
+  window.FsDemo60 = FsDemo60;
 
   /* ─────────────────────────────────────────────────────────────
      6. GAMIF MINI WIDGET  (Dashboard compact stats)
