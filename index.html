@@ -17396,6 +17396,18 @@ void main(){
             });
           }
         }
+        /* SESSION ÉCOURTÉE : pas de cristal, mais les minutes travaillées
+           comptent (série + carte d'activité) et l'utilisateur repart avec des
+           Éclats au prorata. Le point de rupture J1 le plus violent disparaît. */
+        if (!hasCrystalData && user?.id && activeSession?.startTime && window._gProcessPartial) {
+          const mins = Math.floor((Date.now() - activeSession.startTime) / 60000);
+          window._gProcessPartial(user.id, mins, (m, sh) => {
+            addToast({
+              message: `${m} min comptées · +${sh} Éclats. Le cristal, lui, attend une session entière.`,
+              type: 'info', icon: '!', duration: 5000,
+            });
+          });
+        }
         /* Invité qui quitte → prévient l'hôte (sa top bar retire l'avatar). */
         if (activeSession?.isGuest && activeSession.hostId) {
           try {
@@ -20665,15 +20677,12 @@ void main(){
       const dashC = Cc * (phase === 'complete' ? 1 : progress);
 
       const handleEnd = () => {
-        /* Le cristal ne se récupère QU'EN FIN de session : l'arrêt anticipé ne
-           forge plus rien à partir de 50 % — cette échappatoire vidait la
-           mécanique (moitié du temps = même récompense). Le panneau prévient
-           dès 50 % que le cristal sera perdu. */
-        addToast({
-          message: 'Session arrêtée — le cristal ne survit qu’à une session complète',
-          type: 'info', icon: '!', duration: 3600,
-        });
-        onEnd && onEnd(null);
+        /* Le cristal ne se récupère QU'EN FIN de session (pas d'échappatoire à
+           50 %), mais l'arrêt n'est plus une punition sèche : les minutes et les
+           Éclats sont crédités par handleEndSession. On joue d'abord le
+           cristal qui se brise — la conséquence se VOIT avant d'être lue. */
+        setPhase('shattered');
+        setTimeout(() => { onEnd && onEnd(null); }, 620);
       };
 
       return (
@@ -22102,16 +22111,33 @@ void main(){
         /* On fond les DEUX PLUS GROS : le monolithe grandit visiblement au lieu
            de disperser la masse sur plusieurs pierres moyennes. */
         const keep = grp.items[0], absorb = grp.items[1];
+        /* Récit : le monolithe GARDE la trace des sessions qu'il contient.
+           C'est ce qui transforme « j'ai perdu deux cristaux » en « j'ai bâti un
+           monument avec deux sessions » — le regret disparaît. */
+        const absorbedLog = [
+          ...(Array.isArray(keep.absorbed) ? keep.absorbed : [{ at: keep.completedAt, duration: Number(keep.duration) || 0 }]),
+          ...(Array.isArray(absorb.absorbed) ? absorb.absorbed : [{ at: absorb.completedAt, duration: Number(absorb.duration) || 0 }]),
+        ].slice(0, 40);
         const merged = {
           ...keep,
           mass: massOf(keep) + massOf(absorb),
           /* La durée cumulée : le cristal porte tout le focus qu'il contient. */
           duration: (Number(keep.duration) || 0) + (Number(absorb.duration) || 0),
           fusedAt: new Date().toISOString(),
+          absorbed: absorbedLog,
         };
         const next = crystals
           .filter(c => c.id !== absorb.id)
           .map(c => (c.id === keep.id ? merged : c));
+        /* ANNULATION : on garde l'état d'avant pendant 10 s. Aucune action
+           irréversible sans filet — convention non négociable. */
+        const before = crystals;
+        const restore = () => {
+          try { localStorage.setItem(key, JSON.stringify(before)); } catch (e) { }
+          setCrystals(before);
+          try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (e) { }
+          addToast({ message: 'Assemblage annulé — tes deux cristaux sont revenus', type: 'info', icon: '↺', duration: 3000 });
+        };
         try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { }
         setCrystals(next);
         try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (e) { }
@@ -22122,8 +22148,9 @@ void main(){
         window.__fsFuseT = window.setTimeout(() => setFusedFlash(null), 1000);
         const nom = grp.meta?.name || 'Cristal';
         addToast({
-          message: `${nom} fusionné — ${merged.mass} cristaux en un seul, une place libérée`,
-          type: 'success', icon: '✦', duration: 4200,
+          message: `${nom} assemblé — ${merged.mass} sessions dans une seule pierre`,
+          type: 'success', icon: '✓', duration: 9000,
+          action: { label: 'Annuler', fn: restore },
         });
         /* Plus de doublon pour ce type → on referme le panneau. */
         if (grp.n <= 2) setFusionOpen(false);
@@ -22461,9 +22488,9 @@ void main(){
                 </button>
                 {fusionGroups.length > 0 && (
                   <button type="button" className="fs-cv-fusebtn" onClick={() => setFusionOpen(true)}
-                    aria-label={`Fusionner des cristaux en double (${fusionGroups.length} type${fusionGroups.length > 1 ? 's' : ''})`}>
+                    aria-label={`Assembler des cristaux en double (${fusionGroups.length} type${fusionGroups.length > 1 ? 's' : ''})`}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v5l5 5 5-5V3"/><path d="M12 13v8"/><path d="M8 21h8"/></svg>
-                    Fusionner<i>{fusionGroups.length}</i>
+                    Assembler<i>{fusionGroups.length}</i>
                   </button>
                 )}
                 <button type="button" onClick={() => { camRef.current.vz = 0; camRef.current.target = 0; }}>Reset</button>
@@ -22474,12 +22501,12 @@ void main(){
                  monolithe obtenu à droite. On voit ce qu'on gagne AVANT d'agir. */}
               {fusionOpen && (
                 <div className="fs-fus-scrim" onClick={e => { if (e.target === e.currentTarget) setFusionOpen(false); }}>
-                  <div className="fs-fus-card" role="dialog" aria-modal="true" aria-label="Fusionner des cristaux">
+                  <div className="fs-fus-card" role="dialog" aria-modal="true" aria-label="Assembler des cristaux">
                     <div className="fs-fus-head">
                       <div style={{ minWidth: 0 }}>
-                        <div className="fs-fus-eyebrow">Atelier de fusion</div>
-                        <div className="fs-fus-title">Deux pierres, un monolithe</div>
-                        <div className="fs-fus-lede">Fondre deux cristaux identiques donne un cristal plus grand et plus long — et libère une place dans la grotte.</div>
+                        <div className="fs-fus-eyebrow">Atelier d’assemblage</div>
+                        <div className="fs-fus-title">Deux sessions, une seule pierre</div>
+                        <div className="fs-fus-lede">Le monolithe obtenu <b style={{color:'#f2f7ff',fontWeight:850}}>contient</b> les deux sessions : rien n’est perdu, tout est réuni — et une place se libère dans la grotte. Annulable pendant 10 s.</div>
                       </div>
                       <button type="button" className="fs-fus-x" onClick={() => setFusionOpen(false)} aria-label="Fermer">
                         <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" /></svg>
@@ -22507,9 +22534,9 @@ void main(){
                             <div className="fs-fus-result">{gemOf(40, grp.resultMass)}</div>
                             <div className="fs-fus-meta">
                               <div className="fs-fus-name">{gm?.name || 'Cristal'}</div>
-                              <div className="fs-fus-sub">{grp.n} en double · donne un ✦ {grp.resultMass}</div>
+                              <div className="fs-fus-sub">{grp.n} en double · pierre de {grp.resultMass} sessions</div>
                             </div>
-                            <button type="button" className="fs-fus-go" onClick={() => doFuse(grp.gid)}>Fusionner</button>
+                            <button type="button" className="fs-fus-go" onClick={() => doFuse(grp.gid)}>Assembler</button>
                           </div>
                         );
                       })}
@@ -22543,8 +22570,22 @@ void main(){
                   <div style={{ fontSize: 11, color: 'rgba(226,238,255,.66)', lineHeight: 1.6, marginTop: 11 }}>
                     Forgé le {fmtDate(active.completedAt)}.
                     {massOf(active) > 1 && (
-                      <span style={{ display: 'block', color: '#f2f7ff', fontWeight: 850, marginTop: 4 }}>
-                        Monolithe : {massOf(active)} cristaux fondus en un seul.
+                      <span style={{ display: 'block', marginTop: 6 }}>
+                        <span style={{ display: 'block', color: '#f2f7ff', fontWeight: 850 }}>
+                          Monolithe · {massOf(active)} sessions réunies
+                        </span>
+                        {/* Le récit : chaque session absorbée est nommée. Le
+                           monolithe est un monument, pas une suppression. */}
+                        {Array.isArray(active.absorbed) && active.absorbed.length > 1 && (
+                          <span style={{ display: 'block', marginTop: 5, fontSize: 10.5, color: 'rgba(220,231,255,.55)', lineHeight: 1.7 }}>
+                            {active.absorbed.slice(0, 6).map((s, i) => (
+                              <span key={i} style={{ display: 'block' }}>
+                                · {(() => { try { return new Date(s.at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); } catch (_) { return '—'; } })()} — {Math.round(Number(s.duration) || 0)} min
+                              </span>
+                            ))}
+                            {active.absorbed.length > 6 && <span style={{ display: 'block' }}>· et {active.absorbed.length - 6} autres</span>}
+                          </span>
+                        )}
                       </span>
                     )}
                     {activeInfo.isSecret && <span style={{ display: 'block', color: '#ffffff', fontWeight: 900, marginTop: 4 }}>{activeInfo.grad?.name || 'Cristal secret'} — 1 chance sur 1000. Rien ne l’annonçait.</span>}
@@ -24981,6 +25022,40 @@ void main(){
     if(g.streaks.daily>=21 &&!g.unlocks.includes('void'))     g.unlocks.push('void');
     window._gSave(uid,g);
     return { g };
+  };
+
+  /* ── SESSION ÉCOURTÉE : l'éclat de consolation ────────────────
+     Abandonner ne donne plus ZÉRO. Les minutes réellement travaillées comptent
+     dans la série et la carte d'activité, et l'utilisateur reçoit des Éclats au
+     prorata. Le CRISTAL, lui, reste réservé à la complétion — la règle
+     anti-triche tient, mais on ne punit plus quelqu'un qui a essayé 20 minutes.
+     `week.sessions` n'est PAS incrémenté (sinon démarrer/arrêter trois fois
+     validerait une quête) ; seules les minutes le sont. */
+  window._gProcessPartial = (uid, minutes, onToast) => {
+    const mins = Math.max(0, Math.round(Number(minutes) || 0));
+    if (mins < 1) return null;
+    const g = window._gLoad(uid), today = window._gToday(), mon = window._gMon();
+    const yest = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    /* La série survit aux mauvais jours : c'est décisif pour l'habitude. */
+    if (g.streaks.lastDate !== today) { g.streaks.daily = (g.streaks.lastDate === yest) ? Number(g.streaks.daily || 0) + 1 : 1; g.streaks.lastDate = today; }
+    g.streaks.weekStart = mon;
+    g.streaks.weekly = Math.floor(Number(g.streaks.daily || 0) / 7);
+    try {
+      const legacy = JSON.parse(localStorage.getItem('fs_streak') || '[]');
+      if (!legacy.includes(today)) localStorage.setItem('fs_streak', JSON.stringify([...legacy, today]));
+      window.dispatchEvent(new CustomEvent('fs-streak-update'));
+    } catch (e) { }
+    if (!g.heatmap) g.heatmap = {};
+    g.heatmap[today] = (g.heatmap[today] || 0) + mins;
+    g.xp = (g.xp || 0) + mins;                 /* moitié du tarif d'une session complète */
+    const wk = window._gWeekKey ? window._gWeekKey() : today;
+    if (!g.week || g.week.key !== wk) g.week = { key: wk, sessions: 0, minutes: 0, claimed: [] };
+    g.week.minutes = Number(g.week.minutes || 0) + mins;
+    const shards = Math.max(1, Math.round(mins / 4));
+    g.shards = Number(g.shards || 0) + shards;
+    window._gSave(uid, g);
+    try { onToast && onToast(mins, shards); } catch (_) { }
+    return { minutes: mins, shards };
   };
 
   /* ── Quêtes hebdomadaires ────────────────────────────────────
