@@ -13062,8 +13062,18 @@ void main(){
         { id: 'rose', label: 'Rose', grad: 'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))', ring: '217,43,214' },
         { id: 'vert', label: 'Vert', grad: 'linear-gradient(145deg,rgb(134,239,172),rgb(34,197,94))', ring: '34,197,94' },
       ];
+      /* Le choix fait sur le login est une PRÉFÉRENCE, pas une décoration : on
+         le reporte sur le thème de l'app. Uniquement si l'utilisateur n'a JAMAIS
+         choisi de thème (clé absente = jamais touché) — sinon on écraserait le
+         thème d'un compte existant qui se reconnecte. */
+      const LOGIN_TO_BG = { rose: 'nebula', vert: 'forest' };
       const pickLogin = (t, e) => {
-        try { localStorage.setItem('fs_login_theme', t); } catch (_) { }
+        try {
+          localStorage.setItem('fs_login_theme', t);
+          if (localStorage.getItem('fs_bgtheme') == null && LOGIN_TO_BG[t]) {
+            localStorage.setItem('fs_bgtheme_pending', LOGIN_TO_BG[t]);
+          }
+        } catch (_) { }
         /* Ripple depuis le point cliqué, dans la nouvelle teinte. La bascule
            elle-même est instantanée (variables CSS + crossfade d'opacité). */
         if (t !== loginTheme && e) {
@@ -13340,25 +13350,42 @@ void main(){
 
       return (
         <div className="fs-auth-shell" data-login={loginTheme}>
-          {/* ── Cercles de thème (rose / vert) : retentent toute la page + le
-             dashboard flottant à chaque clic. Flottent en haut à droite. ── */}
-          <div className="fs-auth-theme-dots" role="group" aria-label="Couleur de la page" style={{ position:'absolute', top:'max(18px, env(safe-area-inset-top))', right:20, zIndex:6, display:'flex', alignItems:'center', gap:10, padding:'8px 11px', borderRadius:999, background:'rgba(10,8,20,.42)', border:'1px solid rgba(255,255,255,.10)', backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)', boxShadow:'0 10px 30px rgba(0,0,0,.34)' }}>
-            {LOGIN_SWATCHES.map(s => {
-              const on = loginTheme === s.id;
-              return (
-                <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
-                  aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
-                  style={{ width:24, height:24, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
-                    background:s.grad,
-                    border:on ? '2px solid #fff' : '2px solid rgba(255,255,255,.28)',
-                    boxShadow:on ? `0 0 0 3px rgba(${s.ring},.34), 0 4px 16px rgba(${s.ring},.5)` : '0 2px 8px rgba(0,0,0,.4)',
-                    transform:on ? 'scale(1.06)' : 'scale(1)',
-                    transition:'transform .2s var(--mineral-ease), box-shadow .2s var(--mineral-ease), border-color .2s' }}
-                  onMouseEnter={e => { if (!on) e.currentTarget.style.transform = 'scale(1.12)'; }}
-                  onMouseLeave={e => { if (!on) e.currentTarget.style.transform = 'scale(1)'; }} />
-              );
-            })}
-          </div>
+          {/* ── Cercles de thème (rose / vert) ────────────────────────────
+             Ils restent — changer la couleur de toute la page en un clic est un
+             vrai moment de plaisir. Mais ils sont RÉTROGRADÉS : deux pastilles
+             de 16 px, étiquetées « Thème », en BAS à droite. En haut à droite et
+             en 24 px sans libellé, elles étaient le premier objet interactif
+             que l'œil trouvait — sur une page dont le travail est de faire
+             comprendre à quoi sert le produit. La hiérarchie appartient à la
+             promesse et au bouton de création de compte ; la couleur vient
+             après. Le choix est reporté sur le thème de l'app (LOGIN_TO_BG),
+             donc ce n'est plus un gadget sans conséquence. ── */}
+          {/* `fixed` ET portail vers <body> : la coque du login est plus HAUTE
+             que le viewport (elle défile), et `.fs-auth-wrap` porte un
+             `transform` — qui fait de lui le bloc conteneur de tout `fixed`
+             descendant. Rendu sur place, le contrôle partait 570 px sous le bas
+             de l'écran, injoignable. Même piège que les clones de resize. */}
+          {ReactDOM.createPortal(
+            <div className="fs-auth-theme-dots" role="group" aria-label="Thème de la page" style={{ position:'fixed', bottom:'max(16px, env(safe-area-inset-bottom))', right:18, zIndex:60, display:'flex', alignItems:'center', gap:8, padding:'6px 10px 6px 12px', borderRadius:999, background:'rgba(10,8,20,.34)', border:'1px solid rgba(255,255,255,.07)', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)' }}>
+              <span style={{ fontSize:9.5, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(248,246,252,.42)', userSelect:'none' }}>Thème</span>
+              {LOGIN_SWATCHES.map(s => {
+                const on = loginTheme === s.id;
+                return (
+                  <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
+                    aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
+                    style={{ width:16, height:16, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
+                      background:s.grad,
+                      border:on ? '2px solid rgba(255,255,255,.92)' : '1.5px solid rgba(255,255,255,.2)',
+                      boxShadow:on ? `0 0 0 2px rgba(${s.ring},.28)` : 'none',
+                      transform:'scale(1)', opacity:on ? 1 : .68,
+                      transition:'transform .18s var(--mineral-ease), opacity .18s, box-shadow .18s var(--mineral-ease), border-color .18s' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.14)'; e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = on ? '1' : '.68'; }} />
+                );
+              })}
+            </div>,
+            document.body
+          )}
           {ripple && (
             <span key={ripple.key} className="fs-login-ripple" aria-hidden="true" style={{
               position:'fixed', left:ripple.x, top:ripple.y, width:'220vmax', height:'220vmax',
@@ -17528,7 +17555,18 @@ void main(){
         setActiveSession(null);
       };
       const [bgThemeId, setBgThemeId] = _uSC(() => {
-        try { return localStorage.getItem('fs_bgtheme') || 'cosmos'; } catch (e) { return 'cosmos'; }
+        try {
+          const saved = localStorage.getItem('fs_bgtheme');
+          if (saved) return saved;
+          /* Reprise du choix fait sur la page de connexion (rose → Nebula,
+             vert → Forest) : la première impression de couleur ne doit pas être
+             démentie par l'app. Consommé une seule fois ; un thème venu du cloud
+             écrase ensuite normalement via _fsSeedLocalFromRemote. */
+          const pending = localStorage.getItem('fs_bgtheme_pending');
+          localStorage.removeItem('fs_bgtheme_pending');
+          if (pending && (window.BG_THEMES || []).some(t => t.id === pending)) return pending;
+          return 'cosmos';
+        } catch (e) { return 'cosmos'; }
       });
       const applyThemeVars = theme => {
         if (!theme) return;
