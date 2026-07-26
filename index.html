@@ -1142,7 +1142,8 @@
     .fs-acct-act:active { background: rgba(255,255,255,0.06); }
     .fs-acct-act svg { color: var(--theme-c1); flex-shrink: 0; }
     .fs-acct-act span:first-of-type { flex: 1; }
-    .fs-acct-chev { color: var(--mineral-muted); font-size: 20px; font-weight: 400; }
+    .fs-acct-chev { color: var(--mineral-muted); flex-shrink: 0; }
+    .fs-acct-act.locked { opacity: 0.46; }
     .fs-acct-act.danger { color: #fb7185; }
     .fs-acct-act.danger svg { color: #fb7185; }
     .fs-mobile-nav-btn::before {
@@ -8745,8 +8746,29 @@
     }
 
     function FocusScreen({ user, sessions, onStart, initialTab = 'focus', onOpenCollection, onBack, hotkeyEnabled = true }) {
-      const [tab, setTab] = React.useState(initialTab);
-      React.useEffect(() => setTab(initialTab), [initialTab]);
+      /* `window._fsFocusTab` : demande d'ouverture sur un onglet précis venue
+         d'ailleurs (bouton Boutique de l'Évolution, feuille Compte). Consommée
+         une seule fois — même motif que _fsOpenTaskViewPicker. */
+      const [tab, setTab] = React.useState(() => {
+        const req = window._fsFocusTab; window._fsFocusTab = null;
+        return req || initialTab;
+      });
+      /* L'effet ne doit PAS tourner au montage : l'initialiseur vient de
+         consommer `_fsFocusTab`, et un `setTab(initialTab)` immédiat écraserait
+         l'onglet demandé. Il ne sert qu'aux CHANGEMENTS ultérieurs d'initialTab. */
+      const tabMounted = React.useRef(false);
+      React.useEffect(() => {
+        if (!tabMounted.current) { tabMounted.current = true; return; }
+        if (window._fsFocusTab) { setTab(window._fsFocusTab); window._fsFocusTab = null; return; }
+        setTab(initialTab);
+      }, [initialTab]);
+      /* Cas où l'écran est DÉJÀ monté : `onNavigate('cristaux')` ne remonte rien
+         et initialTab ne change pas. L'événement, lui, arrive toujours. */
+      React.useEffect(() => {
+        const h = e => { const t = e?.detail; if (t) { window._fsFocusTab = null; setTab(t); } };
+        window.addEventListener('fs-focus-tab', h);
+        return () => window.removeEventListener('fs-focus-tab', h);
+      }, []);
       /* Entrée / Espace → ouvre le lanceur, comme « Démarrer une session ». */
       window.useStartHotkey(hotkeyEnabled, () => onStart && onStart());
       const crystalKey = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
@@ -8775,10 +8797,19 @@
         window.addEventListener('fs-crystal-update', calc);
         return () => window.removeEventListener('fs-crystal-update', calc);
       }, [crystalKey]);
+      /* La Boutique était une modale ouverte depuis deux endroits sans rapport
+         (un bouton de l'Évolution, la feuille Compte) : impossible à retrouver
+         quand on la cherche. Elle devient le 4e onglet de ce hub — un seul
+         endroit pour tout ce qui touche aux cristaux : forger, posséder,
+         collectionner, dépenser. Comme le reste du palier boutique, l'onglet
+         n'existe qu'une fois le déverrouillage acquis. */
+      const shopUnlocked = window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'shop') : true;
+      const shards = React.useMemo(() => (window._gShards ? window._gShards(user?.id) : 0), [user?.id, crystalCount]);
       const TABS = [
         { id:'focus', label:'Focus', meta:'Démarrer' },
         { id:'cristaux', label:'Cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
         { id:'collection', label:'Collection', meta:decouverte.total ? `${decouverte.vus} / ${decouverte.total} découverts` : 'Le codex' },
+        ...(shopUnlocked ? [{ id:'boutique', label:'Boutique', meta:`${shards} Éclat${shards > 1 ? 's' : ''}` }] : []),
       ];
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
@@ -8818,6 +8849,7 @@
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
               {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection:() => setTab('collection'), onBack })}
               {tab === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { user, embedded:true, onNavigate:() => setTab('cristaux') })}
+              {tab === 'boutique' && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, embedded:true, onClose:() => setTab('cristaux') })}
             </div>
           </div>
         </div>
@@ -10828,12 +10860,13 @@
               { target: 'tasks',     label: 'Tâches',  icon: <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3.5 6h.01"/><path d="M3.5 12h.01"/><path d="M3.5 18h.01"/></svg> },
               { target: 'notes',     label: 'Notes',   icon: <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z"/><path d="M15 4v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/></svg> },
               { target: 'session',   label: 'Focus',   icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M5 3 3 5"/><path d="M19 3l2 2"/></svg> },
-              /* Évolution TOUJOURS visible (comme la nav desktop) — verrouillée
-                 tant que la 1re session n'est pas terminée. */
-              { target: 'evolution', label: 'Évolution', locked: unlockStage < 1,
-                icon: unlockStage < 1
-                  ? <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-                  : <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg> },
+              /* Évolution N'EST PLUS dans la barre : elle vit dans la feuille
+                 Compte. Une barre de navigation mobile porte les destinations
+                 QUOTIDIENNES ; Évolution est un bilan qu'on consulte, pas un
+                 endroit où l'on travaille. À six boutons, chaque cible tombait
+                 sous les 48 px recommandés et le libellé se tronquait. Quatre
+                 onglets + Compte : chaque cible est confortable, et la barre
+                 répond à « où vais-je faire quelque chose ? ». */
             ].map(item => {
               const isFriends = item.action === 'friends';
               const isActive = isFriends ? friendsOpen : screen === item.target;
@@ -10883,17 +10916,32 @@
                 </div>
                 <FsSyncPill />
                 <div className="fs-acct-actions">
+                  {/* Évolution en tête de feuille : c'est l'entrée « bilan ».
+                     Verrouillée tant que la 1re session n'est pas terminée —
+                     même règle qu'avant, autre emplacement. */}
+                  <button type="button" className={'fs-acct-act' + (unlockStage < 1 ? ' locked' : '')}
+                    onClick={() => {
+                      if (unlockStage < 1) { addToast({ message: 'Termine ta première session focus pour débloquer l’Évolution', type: 'info', icon: '!', duration: 4000 }); return; }
+                      setAcctSheet(false); onNavigate('evolution');
+                    }}>
+                    {unlockStage < 1
+                      ? <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                      : <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg>}
+                    <span>Évolution</span><svg className="fs-acct-chev" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
                   {friendsUnlocked && <button type="button" className="fs-acct-act" onClick={e => { setAcctSheet(false); openFriendsPanel(e); }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>Amis</span><span className="fs-acct-chev">›</span>
+                    <span>Amis</span><svg className="fs-acct-chev" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>}
-                  {shopUnlocked && <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }}>
+                  {/* Vers l'ONGLET Boutique du hub Cristaux, plus vers une modale
+                     flottante : un seul endroit, atteignable et mémorisable. */}
+                  {shopUnlocked && <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); window._fsFocusTab = 'boutique'; onNavigate('cristaux'); try { window.dispatchEvent(new CustomEvent('fs-focus-tab', { detail: 'boutique' })); } catch (_) {} }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-                    <span>Boutique</span><span className="fs-acct-chev">›</span>
+                    <span>Boutique</span><svg className="fs-acct-chev" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>}
                   <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); onNavigate('settings'); }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    <span>Paramètres</span><span className="fs-acct-chev">›</span>
+                    <span>Paramètres</span><svg className="fs-acct-chev" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                   <button type="button" className="fs-acct-act danger" onClick={() => { setAcctSheet(false); onLogout && onLogout(); }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -26055,7 +26103,7 @@ void main(){
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
               {shopUnlocked && (
-                <button type="button" className="fs-evo2-link" onClick={() => { try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }} title="Boutique cosmétique">
+                <button type="button" className="fs-evo2-link" onClick={() => { window._fsFocusTab = 'boutique'; onNavigate && onNavigate('cristaux'); try { window.dispatchEvent(new CustomEvent('fs-focus-tab', { detail: 'boutique' })); } catch (_) {} }} title="Boutique cosmétique">
                   <FsShardIcon size={12} /> Boutique
                   <span style={{ fontVariantNumeric: 'tabular-nums', color: T.muted, fontWeight: 800 }}>{Number(g.shards || 0)}</span>
                 </button>
@@ -26255,7 +26303,7 @@ void main(){
      Le moteur de revenus, branché sur la gamification : on gagne des Éclats
      en travaillant, on les dépense en skins de cristaux ; une vitrine Premium
      présente les cosmétiques exclusifs (upsell honnête, sans paiement ici). */
-  function BoutiqueModal({ user, onClose }) {
+  function BoutiqueModal({ user, onClose, embedded = false }) {
     const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
     const [g] = useGamif(user?.id);
     const shards = Number(g.shards || 0);
@@ -26320,9 +26368,17 @@ void main(){
       );
     };
 
-    return ReactDOM.createPortal(
-      <div className="fs-shop-scrim" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    const shell = (
+      <>
         <style>{`
+          /* Variante embarquée : la Boutique devient un onglet du hub Cristaux.
+             Elle perd sa coque de modale (fond, rayon, ombre, animation
+             d'entrée) et remplit son conteneur — le même contenu, deux
+             présentations, une seule source de vérité. */
+          .fs-shop-embed{height:100%;min-height:0;display:flex;overflow:hidden}
+          .fs-shop-embed .fs-shop{width:100%;max-height:none;height:100%;border:none;border-radius:0;
+            box-shadow:none;background:transparent;animation:none}
+          .fs-shop-embed .fs-shop-x{display:none}
           .fs-shop-scrim{position:fixed;inset:0;z-index:6500;display:grid;place-items:center;padding:20px;
             background:rgba(4,5,12,0.66);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);animation:fsShopIn .22s ease both}
           @keyframes fsShopIn{from{opacity:0}to{opacity:1}}
@@ -26514,7 +26570,12 @@ void main(){
             </div>
           </div>
         </div>
-      </div>,
+      </>
+    );
+
+    if (embedded) return <div className="fs-shop-embed">{shell}</div>;
+    return ReactDOM.createPortal(
+      <div className="fs-shop-scrim" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>{shell}</div>,
       document.body
     );
   }
