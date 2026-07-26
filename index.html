@@ -389,12 +389,16 @@
       animation-duration: 260ms !important;
       will-change: opacity, transform !important;
     }
+    /* Le flou n'est coupé que sur les surfaces PERMANENTES à l'écran : leur coût
+       est payé à chaque frame de défilement, sous le doigt. Les overlays
+       transitoires (popover, feuille Compte, panneau Amis, aperçu) gardent leur
+       verre : ils apparaissent brièvement, par-dessus, et c'est précisément là
+       que la matière se remarque. Un utilisateur ne défile pas pendant qu'un
+       popover est ouvert — le coût par frame ne se cumule jamais.
+       Les deux surfaces ci-dessous reçoivent en échange un fond opaque (voir
+       --lg-solid) : sans flou, la translucidité ne rend plus service. */
     html.fs-perf-lite .fs-mobile-nav,
-    html.fs-perf-lite .fs-sidebar,
-    html.fs-perf-lite .fs-popover,
-    html.fs-perf-lite .fs-account-panel,
-    html.fs-perf-lite .fs-friends-panel,
-    html.fs-perf-lite .fs-preview-inner {
+    html.fs-perf-lite .fs-sidebar {
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
@@ -404,15 +408,44 @@
        certains Chrome mobiles) rendent NOIR — au lieu du contenu — quand on
        empile, sur beaucoup de couches, backdrop-filter + content-visibility
        :auto + contain:paint + translateZ(0). Les cartes widgets du dashboard
-       cumulent précisément ces propriétés. On neutralise donc ces pièges de
-       compositing sur tout appareil mobile (où perf-lite est maintenant
-       toujours actif), en gardant le rendu visuellement identique.        */
-    html.fs-perf-lite,
-    html.fs-perf-lite *,
-    html.fs-perf-lite *::before,
-    html.fs-perf-lite *::after {
+       cumulent précisément ces propriétés.
+
+       CIBLÉ, PAS GLOBAL. Ce bloc coupait le flou sur `html.fs-perf-lite *` :
+       une seule règle qui tuait les 29 surfaces de verre de l'app d'un coup.
+       Comme perf-lite est actif sur TOUT mobile, la couche « liquid glass »
+       n'existait pour personne sauf un desktop puissant — et le design, lui,
+       suppose le flou : un fond à rgba(255,255,255,.05) sans flou derrière ne
+       lit pas comme du verre mais comme du gris plat. D'où l'impression de
+       rendu bon marché, et un bug visible (le texte des widgets traversait la
+       carte d'activité translucide).
+       On ne coupe donc le flou que sur les surfaces qui EMPILENT réellement le
+       combo dangereux — les cartes de la grille du dashboard — et on laisse
+       respirer les panneaux plats (sidebar, nav, popovers, feuilles), qui n'ont
+       jamais fait partie du problème de compositing.                        */
+    html.fs-perf-lite .fs-dashboard-grid,
+    html.fs-perf-lite .fs-dashboard-grid *,
+    html.fs-perf-lite .fs-dashboard-grid *::before,
+    html.fs-perf-lite .fs-dashboard-grid *::after,
+    html.fs-perf-lite .fs-dashboard-widget-in,
+    html.fs-perf-lite .fs-dashboard-widget-wait,
+    html.fs-perf-lite [data-cr-widget],
+    html.fs-perf-lite [data-cr-widget]::before,
+    html.fs-perf-lite [data-cr-widget]::after {
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
+    }
+    /* COMPENSATION — sans flou, la translucidité doit céder la place à
+       l'opacité. Une surface opaque bien teintée paraît plus soignée qu'une
+       surface transparente posée sur du vide ; et c'est ce qui empêche
+       mécaniquement le texte d'un calque de traverser celui du dessus.
+       Coût : zéro (une couleur de fond, aucune couche composited de plus). */
+    html.fs-perf-lite {
+      --lg-solid: rgba(20, 23, 35, 0.97);
+      --lg-solid-2: rgba(26, 30, 45, 0.97);
+    }
+    html.fs-perf-lite .fs-dashboard-widget-in,
+    html.fs-perf-lite [data-cr-widget] {
+      background-color: var(--lg-solid) !important;
     }
     html.fs-perf-lite .fs-dashboard-widget-in,
     html.fs-perf-lite .fs-dashboard-widget-wait,
@@ -1493,6 +1526,42 @@
       window.__fsAutoPerfLite = !!(lowMemory || lowCpu || reduceMotion || mobileDevice);
       if (window.__fsAutoPerfLite || userPerfLite) document.documentElement.classList.add('fs-perf-lite');
       if (reduceMotion || userReduceMotion) document.documentElement.classList.add('fs-reduce-motion');
+
+      /* ── Ne pas VERROUILLER la détection sur l'instant du chargement ──
+         `mobileDevice` teste une LARGEUR DE FENÊTRE, pas un appareil. Cette
+         détection ne tournant qu'une fois au boot, tout desktop chargé dans une
+         fenêtre ≤ 768 px (demi-écran, fenêtre restaurée petite, tablette en
+         portrait) restait en perf-lite pour TOUTE la session, même agrandi en
+         plein écran ensuite : constaté sur une machine 16 cœurs / 16 Go à
+         1134 px de large. L'utilisateur perdait le rendu premium sans raison et
+         sans moyen de le récupérer.
+         On réévalue donc la seule condition qui peut changer — la largeur — au
+         redimensionnement. lowMemory / lowCpu sont des propriétés matérielles
+         figées : inutile de les retester. Le choix explicite de l'utilisateur
+         (userPerfLite) et les vraies contraintes matérielles gagnent toujours,
+         donc on ne peut jamais retirer perf-lite à un appareil qui en a besoin.
+         Coût : un rAF débouncé sur resize, aucun travail par frame. */
+      (function () {
+        if (lowMemory || lowCpu || reduceMotion || userPerfLite) return;   // rien à réévaluer
+        var raf = 0;
+        var reeval = function () {
+          if (raf) return;
+          raf = requestAnimationFrame(function () {
+            raf = 0;
+            var coarse = false, narrow = false;
+            try {
+              narrow = window.matchMedia('(max-width: 768px)').matches;
+              coarse = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+            } catch (_) { return; }
+            var need = narrow || coarse;
+            if (need === window.__fsAutoPerfLite) return;
+            window.__fsAutoPerfLite = need;
+            document.documentElement.classList.toggle('fs-perf-lite', need);
+          });
+        };
+        window.addEventListener('resize', reeval, { passive: true });
+        window.addEventListener('orientationchange', reeval, { passive: true });
+      })();
       /* Password-recovery deep link (Supabase appends #...type=recovery). Flag it
          before React mounts so the auth screen opens directly on the reset form. */
       try { if (/type=recovery/i.test(window.location.hash || '')) window.__fsRecovery = true; } catch (_) {}
@@ -15569,8 +15638,14 @@ void main(){
             @keyframes fsProdRing{0%{opacity:.85;transform:scale(1)}100%{opacity:0;transform:scale(1.22)}}
             @keyframes fsProdCheck{to{stroke-dashoffset:0}}
             @keyframes fsProdDotPop{0%{transform:scale(1)}45%{transform:scale(1.55)}100%{transform:scale(1.2)}}
+            /* Fond OPAQUE (0.985 et non 0.90) : cette carte flotte au-dessus des
+               widgets, et sans flou derrière — le cas de tout mobile — 10 % de
+               transparence suffisaient à faire traverser le texte du widget
+               Tâches (« Ta liste est prête » se lisait entre les boutons). Le
+               flou reste un bonus décoratif ; la lisibilité ne peut pas en
+               dépendre. */
             .fs-prod-card{position:relative;border-radius:20px;padding:18px 18px 16px;overflow:hidden;
-              background:linear-gradient(168deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-surface-rgb),0.90));
+              background:linear-gradient(168deg, rgba(var(--mineral-surface-rgb),0.99), rgba(var(--mineral-surface-rgb),0.985));
               border:1px solid rgba(255,255,255,0.10);
               box-shadow:0 28px 80px rgba(0,0,0,0.52), 0 3px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.09);
               backdrop-filter:blur(24px) saturate(1.25);-webkit-backdrop-filter:blur(24px) saturate(1.25)}
