@@ -1093,6 +1093,15 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
     }
     .fs-mobile-nav-ava img { width: 100%; height: 100%; object-fit: cover; }
+    /* Pastille de synchronisation : discrète, mais elle DIT que les données sont
+       parties. Aucune animation (elle ne doit pas attirer l'œil en continu). */
+    .fs-sync-pill { display: flex; align-items: center; gap: 7px; margin: 0 4px 10px;
+      padding: 7px 10px; border-radius: 11px; border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.028); }
+    .fs-sync-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .fs-sync-txt { font: 750 10.5px var(--font-body); letter-spacing: 0.01em;
+      color: var(--mineral-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fs-sync-pill.compact { margin: 0; padding: 5px 9px; }
     /* ── Feuille de compte mobile ── */
     .fs-acct-scrim { position: fixed; inset: 0; z-index: 520; display: flex; align-items: flex-end; justify-content: center;
       background: rgba(4,5,12,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -3103,7 +3112,15 @@
         return _fsRunSchemaAware(_fsSanitizePayload({ images, updated_at: payload.updated_at }, u.id),
           p => _fsSb.from('user_data').update(p).eq('user_id', u.id));
       };
+      /* Trace de la dernière sauvegarde RÉUSSIE : la pastille de synchro s'en
+         sert pour dire à l'utilisateur que ses données sont bien parties. Après
+         les incidents de perte, la confiance ne se répare pas en silence. */
+      const _markSynced = () => {
+        window._fsLastSyncAt = Date.now();
+        try { window.dispatchEvent(new CustomEvent('fs-sync-ok')); } catch (_) { }
+      };
       const clearDirtyAfterPush = (keepImageDirty = false) => {
+        _markSynced();
         if (!keepImageDirty) {
           window._fsDirtyThisSession = false;
           window._fsDirtyKeys.clear();
@@ -3135,6 +3152,7 @@
             }
           }
         } else {
+          _markSynced();
           dirtyKeys.forEach(k => window._fsDirtyKeys.delete(k));
           if (window._fsDirtyKeys.size === 0) window._fsDirtyThisSession = false;
         }
@@ -5848,7 +5866,7 @@
                         ))}
                         <button type="button" className={'fs-textw-chip' + (cfg.italic ? ' on' : '')} style={{ fontStyle: 'italic', fontFamily: 'Georgia,serif' }} onClick={() => save({ italic: !cfg.italic })}>Italique</button>
                         <button type="button" className={'fs-textw-chip' + (cfg.upper ? ' on' : '')} onClick={() => save({ upper: !cfg.upper })}>MAJ</button>
-                        <button type="button" className={'fs-textw-chip' + (cfg.glow ? ' on' : '')} onClick={() => save({ glow: !cfg.glow })}>✦ Lueur</button>
+                        <button type="button" className={'fs-textw-chip' + (cfg.glow ? ' on' : '')} onClick={() => save({ glow: !cfg.glow })}>Lueur</button>
                       </div>
                       <div className="fs-textw-sliderrow" style={{ marginTop: 12 }}>
                         <span className="fs-textw-slbl">Espacement</span>
@@ -10032,6 +10050,44 @@
       };
     }
 
+    /* ── Pastille de synchronisation ──────────────────────────────────────────
+       Le correctif anti-perte de données est en place, mais RIEN ne le disait à
+       l'utilisateur. Un étudiant qui doute de la persistance de ses notes n'y met
+       plus rien — et part. On l'affirme donc, sobrement.
+       Perf : aucun timer permanent — on se réveille sur l'événement fs-sync-ok
+       et on rafraîchit le libellé toutes les 30 s seulement s'il y a eu une
+       sauvegarde à afficher. */
+    function FsSyncPill({ compact = false }) {
+      const [, setTick] = React.useState(0);
+      React.useEffect(() => {
+        const bump = () => setTick(n => n + 1);
+        window.addEventListener('fs-sync-ok', bump);
+        const iv = setInterval(bump, 30000);
+        return () => { window.removeEventListener('fs-sync-ok', bump); clearInterval(iv); };
+      }, []);
+      const paused = !!window._fsCloudPaused;
+      const at = Number(window._fsLastSyncAt || 0);
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const label = offline ? 'Hors ligne — tout est gardé'
+        : paused ? 'Sauvegarde en pause'
+        : !at ? 'Synchronisation…'
+        : (() => {
+            const s = Math.round((Date.now() - at) / 1000);
+            if (s < 45) return 'Synchronisé · à l’instant';
+            const m = Math.round(s / 60);
+            if (m < 60) return `Synchronisé · il y a ${m} min`;
+            return `Synchronisé · il y a ${Math.round(m / 60)} h`;
+          })();
+      const tone = offline || paused ? '#ffd27d' : (at ? '#4ade80' : 'rgba(206,214,231,.5)');
+      return (
+        <div className={'fs-sync-pill' + (compact ? ' compact' : '')} title={label}>
+          <span className="fs-sync-dot" style={{ background: tone, boxShadow: `0 0 7px ${tone}` }} />
+          <span className="fs-sync-txt">{label}</span>
+        </div>
+      );
+    }
+    window.FsSyncPill = FsSyncPill;
+
     function Sidebar({ screen, onNavigate, user, onLogout, onUserUpdate }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const [popOpen, setPopOpen] = React.useState(false);
@@ -10155,10 +10211,14 @@
       /* Déverrouillage progressif : 0 = nouveau, 1 = 1re session, 2 = confirmé.
          Recalculé quand le nombre de cristaux change. */
       const unlockStage = React.useMemo(() => window._fsUnlockStage ? window._fsUnlockStage(user?.id) : 2, [user?.id, crystalCount]);
+      /* Amis et Boutique n'apparaissent qu'une fois utiles : une section vide
+         fait plus de mal qu'une section absente. */
+      const friendsUnlocked = React.useMemo(() => (window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'friends') : true), [user?.id, crystalCount]);
+      const shopUnlocked = React.useMemo(() => (window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'shop') : true), [user?.id, crystalCount]);
       const prevStageRef = React.useRef(unlockStage);
       React.useEffect(() => {
         if (unlockStage > prevStageRef.current) {
-          if (unlockStage === 1) addToast({ message: 'Évolution débloquée ✦ Suis ta régularité et ta progression.', type: 'success', icon: '✦', duration: 5200 });
+          if (unlockStage === 1) addToast({ message: 'Évolution débloquée — suis ta régularité et ta progression.', type: 'success', icon: '✓', duration: 5200 });
         }
         prevStageRef.current = unlockStage;
       }, [unlockStage]);
@@ -10544,15 +10604,18 @@
                     </span>
                     <span className="fs-label-wrap">
                       <span className="fs-label">Évolution</span>
-                      <span className="fs-meta"><span className="fs-lock-morph" aria-hidden="true">🔒</span> Termine ta 1<sup>re</sup> session</span>
+                      <span className="fs-meta"><span className="fs-lock-morph" aria-hidden="true" /> Termine ta 1<sup>re</sup> session</span>
                     </span>
                   </button>
                 )}
                 </div>
 
+                {/* Confiance : l'état de sauvegarde, affirmé sobrement. */}
+                <div style={{ marginTop: 18 }}><FsSyncPill /></div>
+
                 {!isInstalled && !installDismissed && (
                   <div className="fs-install-card" style={{
-                    margin: '72px 2px 14px',
+                    margin: '54px 2px 14px',
                     borderRadius: 16,
                     background: 'linear-gradient(145deg, rgba(var(--mineral-surface-2-rgb),0.95) 0%, rgba(var(--mineral-bg-2-rgb),0.9) 100%)',
                     border: '1px solid rgba(var(--theme-c1-rgb),0.13)',
@@ -10805,15 +10868,16 @@
                     <div className="fs-acct-mail">{user?.email || 'Compte local'}</div>
                   </div>
                 </div>
+                <FsSyncPill />
                 <div className="fs-acct-actions">
-                  <button type="button" className="fs-acct-act" onClick={e => { setAcctSheet(false); openFriendsPanel(e); }}>
+                  {friendsUnlocked && <button type="button" className="fs-acct-act" onClick={e => { setAcctSheet(false); openFriendsPanel(e); }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <span>Amis</span><span className="fs-acct-chev">›</span>
-                  </button>
-                  <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }}>
+                  </button>}
+                  {shopUnlocked && <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                     <span>Boutique</span><span className="fs-acct-chev">›</span>
-                  </button>
+                  </button>}
                   <button type="button" className="fs-acct-act" onClick={() => { setAcctSheet(false); onNavigate('settings'); }}>
                     <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     <span>Paramètres</span><span className="fs-acct-chev">›</span>
@@ -17968,7 +18032,7 @@ void main(){
         return (
           <div style={{ position: 'fixed', inset: 0, background: '#07070d', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 999999, fontFamily: 'system-ui,-apple-system,sans-serif' }}>
             <div style={{ maxWidth: 380, textAlign: 'center', color: '#f4f6fb' }}>
-              <div style={{ fontSize: 30, marginBottom: 12 }}>✦</div>
+              <div style={{ marginBottom: 12, display:'grid', placeItems:'center' }}>{window.FsShardIcon ? React.createElement(window.FsShardIcon,{size:26}) : null}</div>
               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>On remet ton espace en place</div>
               <div style={{ fontSize: 13, lineHeight: 1.6, color: 'rgba(207,216,235,0.62)', marginBottom: 18 }}>Un souci d'affichage est survenu. Recharge la page — tes données sont en sécurité.</div>
               <button onClick={() => { try { window.__fsSelfHeal && window.__fsSelfHeal(); } catch (_) { location.reload(); } }}
@@ -18370,7 +18434,7 @@ void main(){
                     </div>
                     <div className="fs-cd-body">
                       <div className="fs-cd-rar" style={{ color: rm.tint, borderColor: rm.tint + '44', background: rm.tint + '14' }}>
-                        {g.secret && <span aria-hidden="true">✦</span>}{rm.label}<i>{rm.odds}</i>
+                        {g.secret && window.FsShardIcon ? React.createElement(window.FsShardIcon,{size:10}) : null}{rm.label}<i>{rm.odds}</i>
                       </div>
                       <h2 className="fs-cd-name">{g.name}</h2>
                       <div className="fs-cd-shape">Taille {shapeName.toLowerCase()} · forge unique</div>
@@ -21817,7 +21881,7 @@ void main(){
           const blob = await (await fetch(shareUrl)).blob();
           const file = new File([blob], 'ma-grotte-lumenos.png', { type: 'image/png' });
           if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Ma grotte de cristaux', text: 'Ma grotte de cristaux sur LumenOS ✦ lumenos.vercel.app' });
+            await navigator.share({ files: [file], title: 'Ma grotte de cristaux', text: 'Ma grotte de cristaux sur LumenOS — lumenos.vercel.app' });
           } else { downloadShare(); }
         } catch (e) { if (String(e && e.name) !== 'AbortError') downloadShare(); }
       };
@@ -22401,7 +22465,7 @@ void main(){
                           <><span className="fs-cv-fuse-aura" /><span className="fs-cv-fuse-core" /></>
                         )}
                         <span className="fs-cv-base"><i /><i /><i /><i /></span>
-                        {fused && <span className="fs-cv-mass">✦ {mass}</span>}
+                        {fused && <span className="fs-cv-mass">{window.FsShardIcon ? React.createElement(window.FsShardIcon,{size:9,color:'#06101c'}) : null}{mass}</span>}
                         {isNew && (
                           <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
                             Nouveau
@@ -22554,7 +22618,7 @@ void main(){
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: '.13em', textTransform: 'uppercase', color: activeInfo.isSecret ? '#ffffff' : activeInfo.isGold ? '#ffd36a' : activeInfo.pal.b }}>
-                        {activeInfo.isSecret ? '✦ Cristal secret' : activeInfo.isGold ? 'Cristal rare' : 'Session cristallisée'}
+                        {activeInfo.isSecret ? 'Cristal secret' : activeInfo.isGold ? 'Cristal rare' : 'Session cristallisée'}
                       </div>
                       <div style={{ fontSize: 17, fontWeight: 920, color: '#f3f7ff', marginTop: 4 }}>{activeInfo.shapeName}</div>
                     </div>
@@ -22602,7 +22666,7 @@ void main(){
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div>
                     <div style={{ fontFamily: T.display, fontWeight: 850, fontSize: 19, color: T.text, letterSpacing: '-0.02em' }}>Partage ta grotte</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Montre tes cristaux à tes amis ✦</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Montre tes cristaux à tes amis</div>
                   </div>
                   <button onClick={() => setShareUrl(null)} aria-label="Fermer" style={{ width: 32, height: 32, borderRadius: 11, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: T.muted, cursor: 'pointer', flexShrink: 0 }}>✕</button>
                 </div>
@@ -24839,6 +24903,43 @@ void main(){
       return stage;
     } catch (e) { return 2; }
   };
+  /* ── ÉCHELLE DE DÉVERROUILLAGE ────────────────────────────────
+     Huit systèmes de progression présentés d'un coup rendaient le produit
+     illisible en semaine 1. Ils arrivent maintenant l'un après l'autre, et
+     chaque ouverture devient une petite fête — donc une raison de revenir.
+       1 session ....... Cristal + Série (rien d'autre)
+       3 sessions ...... Évolution, Amis
+       5 sessions ...... Quêtes hebdomadaires
+       1er rare ........ Boutique + Éclats
+       1er doublon ..... Atelier d'assemblage (naturel : le bouton n'existe
+                         que s'il y a un doublon)
+     « fail-open » : au moindre doute, tout est ouvert — on ne cache jamais
+     par erreur une fonctionnalité à quelqu'un qui y avait droit. */
+  window._fsFeatureUnlocked = function (userId, feature) {
+    try {
+      const ckey = userId ? 'fs_crystals_' + userId : 'fs_crystals';
+      const owned = JSON.parse(localStorage.getItem(ckey) || '[]') || [];
+      const n = owned.length;
+      let g = {};
+      try { g = JSON.parse(localStorage.getItem(userId ? 'fs_gamif_' + userId : 'fs_gamif') || '{}') || {}; } catch (e) { }
+      /* Un compte déjà engagé garde tout, quoi qu'il arrive. */
+      const veteran = (g.xp || 0) > 150 || Number(g.shards || 0) > 0 || (Array.isArray(g.unlocks) && g.unlocks.length > 1);
+      if (veteran) return true;
+      const grads = window.CRYSTAL_GRADIENTS || [];
+      const hasRare = owned.some(c => {
+        const m = grads.find(x => x.id === c.crystalGradient);
+        return c.rarity === 'rare' || c.rarity === 'gold' || c.rarity === 'legendary' || c.rarity === 'secret'
+          || !!(m && (m.rare || m.legendary || m.secret));
+      });
+      switch (feature) {
+        case 'evolution':
+        case 'friends':  return n >= 3;
+        case 'quests':   return n >= 5;
+        case 'shop':     return hasRare || n >= 5;
+        default:         return true;
+      }
+    } catch (e) { return true; }
+  };
   window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
   /* Mois courant (YYYY-MM) — cadence de la dotation de jokers. */
@@ -25522,6 +25623,18 @@ void main(){
        Activité → carte de chaleur
        Régularité → paliers hebdomadaires et jokers
        Cristaux → un aperçu court qui renvoie au codex complet */
+  /* Éclat : icône SVG maison. Le CLAUDE.md interdit les glyphes de police et les
+     emoji dans l'UI — le « ✦ » utilisé partout pour la monnaie était une
+     incohérence visible (et rendue différemment selon les polices système). */
+  function FsShardIcon({ size = 13, color = 'currentColor' }) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+        <path d="M12 2.5 14.1 9.9 21.5 12 14.1 14.1 12 21.5 9.9 14.1 2.5 12 9.9 9.9z" fill={color} />
+      </svg>
+    );
+  }
+  window.FsShardIcon = FsShardIcon;
+
   function EvolutionScreen({ user, initialTab = null, onNavigate }) {
     const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
     const [g] = useGamif(user?.id);
@@ -25530,7 +25643,12 @@ void main(){
     /* Quêtes de la semaine : progression lue depuis g.week (réactive au claim). */
     const _wkKey = window._gWeekKey ? window._gWeekKey() : '';
     const week = (g.week && g.week.key === _wkKey) ? g.week : { sessions: 0, minutes: 0, claimed: [] };
-    const quests = window.FS_WEEKLY_QUESTS || [];
+    /* Quêtes et Boutique arrivent plus tard (voir _fsFeatureUnlocked) : on ne
+       montre pas huit systèmes de progression à quelqu'un qui vient de forger
+       son premier cristal. */
+    const questsUnlocked = window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'quests') : true;
+    const shopUnlocked = window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'shop') : true;
+    const quests = questsUnlocked ? (window.FS_WEEKLY_QUESTS || []) : [];
     const claimQuest = (qid) => {
       const crystal = window._gClaimQuest ? window._gClaimQuest(user?.id, qid) : null;
       if (crystal) {
@@ -25693,10 +25811,12 @@ void main(){
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-              <button type="button" className="fs-evo2-link" onClick={() => { try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }} title="Boutique cosmétique">
-                <span style={{ color: T.c1, fontWeight: 900 }}>✦</span> Boutique
-                <span style={{ fontVariantNumeric: 'tabular-nums', color: T.muted, fontWeight: 800 }}>{Number(g.shards || 0)}</span>
-              </button>
+              {shopUnlocked && (
+                <button type="button" className="fs-evo2-link" onClick={() => { try { window.dispatchEvent(new CustomEvent('fs-open-boutique')); } catch (_) {} }} title="Boutique cosmétique">
+                  <FsShardIcon size={12} /> Boutique
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: T.muted, fontWeight: 800 }}>{Number(g.shards || 0)}</span>
+                </button>
+              )}
               <span className="xp-badge">{xp.toLocaleString('fr')} XP</span>
             </div>
           </div>
@@ -25922,11 +26042,11 @@ void main(){
 
     const buy = id => {
       const r = window._gBuySkin(user?.id, id);
-      if (r.ok) addToast({ message: 'Skin acheté et équipé ✦', type: 'success', icon: '✓' });
+      if (r.ok) addToast({ message: 'Skin acheté et équipé', type: 'success', icon: '✓' });
       else if (r.reason === 'insufficient') addToast({ message: 'Pas assez d’Éclats — forge plus de cristaux', type: 'info', icon: '!', duration: 3600 });
     };
     const equip = id => { if (window._gSetActiveSkin(user?.id, id)) addToast({ message: 'Skin équipé', type: 'success', icon: '✓' }); };
-    const notifyMe = () => { try { localStorage.setItem('fs_premium_interest', '1'); } catch (_) {} setNotified(true); addToast({ message: 'On te préviendra au lancement de Premium ✦', type: 'success', icon: '✓', duration: 4200 }); };
+    const notifyMe = () => { try { localStorage.setItem('fs_premium_interest', '1'); } catch (_) {} setNotified(true); addToast({ message: 'On te préviendra au lancement de Premium.', type: 'success', icon: '✓', duration: 4200 }); };
 
     /* Chaque skin de boutique correspond à un VRAI cristal de la grotte : on
        mappe vers son gradient et on rend le même ShapedCrystalGem. */
@@ -25950,7 +26070,7 @@ void main(){
           <div className="fs-skin-name">{s.name}</div>
           {isActive ? <span className="fs-skin-equipped"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>Équipé</span>
             : isOwned ? <button className="fs-skin-btn ghost" onClick={() => equip(s.id)}>Équiper</button>
-            : buyable ? <button className="fs-skin-btn" disabled={!canAfford} onClick={() => buy(s.id)}><span className="fs-skin-price">✦ {s.price}</span></button>
+            : buyable ? <button className="fs-skin-btn" disabled={!canAfford} onClick={() => buy(s.id)}><span className="fs-skin-price"><FsShardIcon size={11} /> {s.price}</span></button>
             : streakLock ? <button className="fs-skin-btn locked" disabled>Série {s.streak} j</button>
             : <button className="fs-skin-btn locked" disabled>Verrouillé</button>}
         </div>
@@ -26053,7 +26173,7 @@ void main(){
               <div className="fs-shop-sub">Gagne des Éclats en travaillant, dépense-les en cristaux.</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="fs-shop-bal">✦ {shards}</span>
+              <span className="fs-shop-bal"><FsShardIcon size={12} /> {shards}</span>
               <button className="fs-shop-x" onClick={onClose} aria-label="Fermer">
                 <svg width={13} height={13} viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" /></svg>
               </button>
@@ -26128,7 +26248,7 @@ void main(){
 
             <div className="fs-shop-prem">
               <div className="fs-shop-prem-top">
-                <span className="fs-shop-prem-badge">✦ Premium</span>
+                <span className="fs-shop-prem-badge"><FsShardIcon size={10} /> Premium</span>
                 <h3>Des cristaux que personne d’autre n’a.</h3>
                 <p>Auras légendaires exclusives, skins signature, statistiques approfondies et salles d’étude privées. Le gratuit te rend productif ; Premium te rend unique.</p>
               </div>
@@ -26142,7 +26262,7 @@ void main(){
               </div>
               <div className="fs-shop-prem-cta">
                 <div className="fs-shop-prem-price">3,99 €<small>/mois</small> · <span style={{ color: T.c1 }}>29 €<small style={{ color: T.muted }}>/an</small></span></div>
-                <button className="fs-shop-prem-btn" disabled={notified} onClick={notifyMe}>{notified ? 'Tu seras prévenu ✦' : 'Préviens-moi au lancement'}</button>
+                <button className="fs-shop-prem-btn" disabled={notified} onClick={notifyMe}>{notified ? 'Tu seras prévenu' : 'Préviens-moi au lancement'}</button>
               </div>
             </div>
           </div>
