@@ -18106,6 +18106,15 @@ void main(){
       { id: 'rare', label: 'Rares', odds: '1 forge sur 20', hint: 'Tirés au sort à la forge — jamais sélectionnables à la main.', tint: '#9ae8ff' },
       { id: 'standard', label: 'Classiques', odds: 'À chaque session réussie', hint: 'La couleur du jour, choisie par la forge.', tint: '#cfd8eb' },
     ];
+    /* Trois emplacements qui ne se rempliront jamais en travaillant. Ils
+       n'entrent PAS dans le décompte du codex (grads.length) : on ne pénalise
+       pas la complétion d'un joueur gratuit. Ils apparaissent seulement après
+       le 1er cristal rare — quand la notion de rareté a déjà un sens vécu. */
+    const FS_COLL_EXCL = [
+      { id: 'x1', name: '· · · · ·', grad: 'solaire' },
+      { id: 'x2', name: '· · · · ·', grad: 'leviathan' },
+      { id: 'x3', name: '· · · · ·', grad: 'chronos' },
+    ];
     /* `embedded` : rendu comme onglet de Focus. La barre d'onglets fait alors
        office de navigation, donc le bouton retour ferait doublon. */
     function CollectionScreen({ onNavigate, user, embedded = false }) {
@@ -18128,6 +18137,13 @@ void main(){
         : grads.filter(g => !g.rare && !g.legendary && !g.secret);
       const discovered = grads.filter(g => counts[g.id]).length;
       const pct = grads.length ? Math.round((discovered / grads.length) * 100) : 0;
+      /* Rareté déduite du gradient AUSSI (les vieilles sauvegardes n'ont pas
+         de champ `rarity`) — même règle que partout ailleurs. */
+      const hasRare = React.useMemo(() => owned.some(c => {
+        if (c.rarity === 'rare' || c.rarity === 'gold' || c.rarity === 'legendary' || c.rarity === 'secret') return true;
+        const m = grads.find(x => x.id === c.crystalGradient);
+        return !!(m && (m.rare || m.legendary || m.secret));
+      }), [owned, grads]);
       const totalMin = owned.reduce((n, c) => n + (Number(c.duration) || 0), 0);
       /* Anneau de complétion */
       const R = 34, C = 2 * Math.PI * R;
@@ -18261,6 +18277,15 @@ void main(){
             .fs-coll-cell.secret .fs-coll-name{color:#fff}
             html.fs-reduce-motion .fs-coll-cell.secret.got::after,
             html.fs-perf-lite .fs-coll-cell.secret.got::after{animation:none}
+            /* ── Palier « Exclusifs » ────────────────────────────────────────
+               Un rayon vide dans la vitrine. Il ne se remplit pas en travaillant :
+               il existe pour qu'on sache qu'il existe. Volontairement sobre —
+               aucune animation, aucun prix : la rareté n'a pas besoin de crier. */
+            .fs-coll-cell.excl{border-style:dashed;border-color:rgba(255,214,140,.22);background:linear-gradient(180deg,rgba(255,214,140,.045),rgba(0,0,0,.16))}
+            .fs-coll-cell.excl .fs-coll-gem{filter:brightness(0) drop-shadow(0 6px 10px rgba(0,0,0,.5));opacity:.3}
+            .fs-coll-cell.excl .fs-coll-name{color:rgba(255,214,140,.7);letter-spacing:.14em}
+            .fs-coll-cell.excl .fs-coll-sub{color:rgba(255,214,140,.42)}
+            .fs-coll-cell.excl .fs-coll-lock{color:rgba(255,214,140,.5)}
             @media (max-width:640px){
               .fs-coll-stats{grid-template-columns:repeat(2,1fr)}
               .fs-coll-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
@@ -18419,6 +18444,40 @@ void main(){
                 </section>
               );
             })}
+
+            {/* ── Exclusifs : le rayon qu'on ne peut pas atteindre ──
+               Montrer un manque précis (3 pièces, scellées, nommées par des
+               points) crée plus de désir qu'une page tarifaire. Et comme il
+               n'apparaît qu'après le 1er rare, il n'ajoute AUCUNE charge
+               cognitive au nouvel utilisateur. */}
+            {hasRare && (
+              <section className="fs-coll-sec">
+                <div className="fs-coll-sec-head">
+                  <span className="fs-coll-rail" style={{ background: 'linear-gradient(180deg, #ffd68c, #ffd68c33)', boxShadow: '0 0 10px #ffd68c55' }} />
+                  <span className="fs-coll-sec-name" style={{ color: '#ffd68c' }}>Exclusifs</span>
+                  <span className="fs-coll-odds">Impossible à forger</span>
+                  <span className="fs-coll-sec-count">0/{FS_COLL_EXCL.length}</span>
+                </div>
+                <div className="fs-coll-sec-hint">Trois pièces qui n’apparaîtront jamais à la forge. Elles arriveront avec Premium — sans rien retirer de ce que tu as déjà.</div>
+                <div className="fs-coll-grid">
+                  {FS_COLL_EXCL.map((x, i) => (
+                    <div key={x.id} className="fs-coll-cell locked excl" title="Cristal exclusif — pas encore disponible">
+                      <div className="fs-coll-gem">
+                        {window.ShapedCrystalGem
+                          ? React.createElement(window.ShapedCrystalGem, { shape: 'diamond', gradientId: x.grad, progress: .88, size: 50, seed: 40 + i })
+                          : null}
+                      </div>
+                      <div className="fs-coll-name">{x.name}</div>
+                      <div className="fs-coll-sub">Exclusif</div>
+                      <svg className="fs-coll-lock" width={11} height={11} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="2" />
+                        <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
 
           {/* ── Fiche d'inspection : le cristal comme objet 3D ── */}
@@ -26277,7 +26336,11 @@ void main(){
                 ))}
               </div>
               <div className="fs-shop-prem-cta">
-                <div className="fs-shop-prem-price">3,99 €<small>/mois</small> · <span style={{ color: T.c1 }}>29 €<small style={{ color: T.muted }}>/an</small></span></div>
+                {/* Pas de prix affiché tant que le paiement n'existe pas : annoncer
+                   « 3,99 €/mois » sans pouvoir encaisser transforme une promesse en
+                   soupçon (« encore un free trial déguisé »). On promet le contraire :
+                   ce qui est déjà gratuit le reste. */}
+                <div className="fs-shop-prem-price">Bientôt — <span style={{ color: T.c1 }}>tout ce qui est gratuit aujourd’hui le restera</span></div>
                 <button className="fs-shop-prem-btn" disabled={notified} onClick={notifyMe}>{notified ? 'Tu seras prévenu' : 'Préviens-moi au lancement'}</button>
               </div>
             </div>
