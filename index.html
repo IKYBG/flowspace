@@ -3989,7 +3989,22 @@
     function Sub({ ch, style }) {
       return <div style={{ fontSize: 12, color: T.muted, fontFamily: T.font, lineHeight: 1.4, ...style }}>{ch}</div>;
     }
-    function Ring({ value = 0.7, size = 140, stroke = 3.5, color = T.c1, bg = 'rgba(255,255,255,0.06)', children }) {
+    /* L'anneau est l'objet CENTRAL du produit : c'est lui qui matérialise la
+       session en cours. Sa piste était à 6 % de blanc pour 3,5 px de trait — sur
+       un fond sombre, une trace à peine perceptible. À 25:00, avant démarrage,
+       le widget minuteur n'affichait donc quasiment rien : un chiffre flottant
+       au milieu d'un cercle fantôme. 11 % lui rend son statut d'objet sans rien
+       coûter (une couleur, zéro couche composited).
+
+       La transition passe de 0,9 s à 0,3 s. Motif de performance, pas
+       d'esthétique : animer strokeDasharray force une RE-RASTÉRISATION du tracé
+       SVG à chaque frame (ce n'est ni transform ni opacity, donc jamais
+       composité par le GPU). Avec 0,9 s sur un minuteur qui se met à jour
+       chaque seconde, l'anneau re-rastérisait ~90 % du temps, en continu,
+       pendant toute la session. À 0,3 s il se stabilise et reste inerte les
+       deux tiers de chaque seconde — le pas de progression par seconde est de
+       toute façon trop petit pour qu'on voie la différence. */
+    function Ring({ value = 0.7, size = 140, stroke = 3.5, color = T.c1, bg = 'rgba(255,255,255,0.11)', children }) {
       const r = (size - stroke * 2) / 2, circ = 2 * Math.PI * r, filled = circ * Math.max(0, Math.min(1, value));
       return (
         <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
@@ -3997,7 +4012,7 @@
             <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={bg} strokeWidth={stroke} />
             <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
               strokeDasharray={`${filled} ${circ}`} strokeLinecap="round"
-              style={{ filter: `drop-shadow(0 0 5px ${color.includes('var(') ? c1(0.333) : color + '55'})`, transition: 'stroke-dasharray 0.9s cubic-bezier(0.4,0,0.2,1)' }} />
+              style={{ filter: `drop-shadow(0 0 5px ${color.includes('var(') ? c1(0.333) : color + '55'})`, transition: 'stroke-dasharray 0.3s cubic-bezier(0.4,0,0.2,1)' }} />
           </svg>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>{children}</div>
         </div>
