@@ -6847,7 +6847,7 @@
       );
     }
 
-    function DashboardScreen({ onNavigate, widgets, session, onEndSession, user, animateWidgets = true, focusNudgeOpen = false }) {
+    function DashboardScreen({ onNavigate, widgets, session, onEndSession, user, animateWidgets = true, focusNudgeOpen = false, onQuickStart, onCustomizeSession }) {
       /* Entrée / Espace → même effet que le bouton « Démarrer ». Inactif
          pendant une session (le bouton n'y est pas affiché). */
       window.useStartHotkey(!session, () => onNavigate('session'));
@@ -6898,6 +6898,18 @@
             .fs-dash-start-btn:hover::after{opacity:1;animation:fsDhxSheen .7s ease both}
             @keyframes fsDhxSheen{from{left:-50%}to{left:120%}}
             .fs-dhx-play{width:20px;height:20px;border-radius:50%;background:rgba(7,8,16,.15);display:grid;place-items:center;flex-shrink:0}
+            /* Bouton scindé : une seule pièce visuelle, deux zones de frappe */
+            .fs-dash-start-split{display:flex;align-items:stretch;flex-shrink:0;border-radius:15px;overflow:hidden;
+              box-shadow:0 12px 30px rgba(var(--theme-c1-rgb),.18),inset 0 1px 0 rgba(255,255,255,.36);
+              transition:transform .22s var(--mineral-ease),box-shadow .22s var(--mineral-ease)}
+            .fs-dash-start-split:hover{transform:translateY(-1px);box-shadow:0 16px 38px rgba(var(--theme-c1-rgb),.28),inset 0 1px 0 rgba(255,255,255,.42)}
+            .fs-dash-start-split .fs-dash-start-btn{border-radius:0;box-shadow:none}
+            .fs-dash-start-split .fs-dash-start-btn:hover{transform:none;box-shadow:none}
+            .fs-dash-start-more{width:34px;flex-shrink:0;display:grid;place-items:center;border:none;cursor:pointer;
+              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));color:#070810;
+              box-shadow:inset 1px 0 0 rgba(7,8,16,.18)}
+            .fs-dash-start-more:hover{filter:brightness(1.06)}
+            .fs-dash-start-more:active{transform:scale(.96)}
             html.fs-reduce-motion .fs-dhx-anim{animation:none!important}
             html.fs-reduce-motion .fs-dash-start-btn::after{animation:none!important;opacity:0!important}
             @media(max-width:768px){.fs-dhx-group{height:40px}.fs-dhx-icon{width:42px!important}}
@@ -6945,10 +6957,19 @@
                       <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                     </button>
                   </div>
-                  <button className="fs-dash-start-btn" onClick={() => onNavigate('session')} style={{ fontFamily: T.font }}>
-                    <span className="fs-dhx-play"><svg width={9} height={9} viewBox="0 0 12 12"><polygon points="3.4,2.2 10,6 3.4,9.8" fill="#07070d"/></svg></span>
-                    <span className="fs-dash-start-label">Démarrer</span>
-                  </button>
+                  {/* Bouton SCINDÉ : le corps démarre en un tap avec le dernier
+                     format (aucune décision au moment d'agir), le chevron ouvre
+                     le lanceur pour qui veut choisir (Ensemble, durée, tâches). */}
+                  <div className="fs-dash-start-split">
+                    <button className="fs-dash-start-btn" onClick={() => (onQuickStart ? onQuickStart() : onNavigate('session'))} style={{ fontFamily: T.font }}>
+                      <span className="fs-dhx-play"><svg width={9} height={9} viewBox="0 0 12 12"><polygon points="3.4,2.2 10,6 3.4,9.8" fill="#07070d"/></svg></span>
+                      <span className="fs-dash-start-label">Démarrer</span>
+                    </button>
+                    <button className="fs-dash-start-more" onClick={() => (onCustomizeSession ? onCustomizeSession() : onNavigate('session'))}
+                      title="Personnaliser cette session" aria-label="Personnaliser cette session">
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                    </button>
+                  </div>
                 </>
               ) : (
                 <div className="fs-dhx-group">
@@ -8089,7 +8110,9 @@
       });
       const [emailUser, setEmailUser] = _uSA(null);
       const [emailLooking, setEmailLooking] = _uSA(false);
-      const [crystalShape, setCrystalShape] = _uSA('diamond');
+      /* Forme = préférence cosmétique de l'utilisateur (Boutique), plus un choix
+         imposé avant chaque session. */
+      const [crystalShape] = _uSA(() => (window._gDefaultShape ? window._gDefaultShape(window._fsSbUser?.id) : 'diamond'));
       const [focusTaskIds, setFocusTaskIds] = _uSA([]);
       const [advancedOpen, setAdvancedOpen] = _uSA(false);
       /* ── Mode Ensemble : sélection dans la liste d'amis + salle d'attente ── */
@@ -8188,10 +8211,6 @@
       const onlineFriends = friends.filter(f => presenceIds.has(f.id) || selIds.includes(f.id));
       const allTasks = React.useMemo(() => { try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || []; } catch(e) { return []; } }, []);
       const activeFocusTasks = allTasks.filter(t => !t.done).slice(0, 5);
-      const SHAPES = [
-        { id:'diamond', name:'Diamant' }, { id:'shard', name:'Éclat' }, { id:'geode', name:'Géode' },
-        { id:'prism', name:'Prisme' }, { id:'cluster', name:'Grappe' }, { id:'quartz', name:'Quartz' },
-      ];
       const emailTyped = email.trim().length > 0;
       const emailValid = emailTyped && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
       /* On peut lancer dès qu'un ami est SÉLECTIONNÉ (plus besoin d'attendre
@@ -8453,9 +8472,17 @@
                       <div className="fs-launch-blender-floor" />
                     </div>
                   </div>
-                  <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:14}}>
-                    <div style={{display:'flex',justifyContent:'space-between',gap:12,fontSize:11,fontWeight:900,letterSpacing:'.10em',textTransform:'uppercase',color:'rgba(248,246,252,.45)',marginBottom:12}}><span>Ton cristal</span></div>
-                    <div className="fs-session-launch-shapes" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:9}}>{SHAPES.map(s => <button key={s.id} type="button" onClick={()=>setCrystalShape(s.id)} style={{height:86,borderRadius:18,border:'1px solid ' + (crystalShape===s.id?c1(.34):'rgba(255,255,255,.075)'),background:crystalShape===s.id?c1(.13):'rgba(255,255,255,.035)',color:T.text,cursor:'pointer',fontFamily:T.font,fontSize:10,fontWeight:850,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:7}}>{window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:s.id, gradientId:null, colorProgress:0, progress:0, size:34, seed:s.id.charCodeAt(0)*137 }) : null}<span>{s.name}</span></button>)}</div>
+                  {/* Le choix de FORME a quitté le pré-session : c'était une
+                     décision sans conséquence comprise, sur le chemin critique de
+                     « je m'y mets ». C'est devenu une préférence cosmétique
+                     (Boutique → Forme de tes cristaux). On rappelle juste laquelle
+                     est active. */}
+                  <div style={{border:'1px solid rgba(255,255,255,.075)',background:'rgba(255,255,255,.04)',borderRadius:22,padding:'12px 14px',display:'flex',alignItems:'center',gap:11}}>
+                    {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape:crystalShape, gradientId:null, colorProgress:0, progress:0, size:30, seed:crystalShape.charCodeAt(0)*137 }) : null}
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontSize:11.5,fontWeight:900,color:T.text}}>{(window.CRYSTAL_SHAPE_DEFS||{})[crystalShape]?.name || 'Diamant'}</div>
+                      <div style={{fontSize:10.5,color:T.muted,marginTop:2}}>Ta forme de cristal · réglable en Boutique</div>
+                    </div>
                   </div>
                   <button type="button" disabled={!canLaunch} onClick={launch} style={{width:'100%',height:54,border:0,borderRadius:19,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#06070d',fontFamily:T.font,fontSize:14,fontWeight:950,cursor:canLaunch?'pointer':'not-allowed',opacity:canLaunch?1:.44,boxShadow:'0 20px 54px ' + c1(.30) + ', inset 0 1px 0 rgba(255,255,255,.44)'}}>{canLaunch ? 'Démarrer maintenant' : (mode === 'together' && lobby) ? 'En attente de tes amis…' : (mode === 'together' && !byEmail) ? 'Sélectionne et invite tes amis' : 'Ajoute un email valide'}</button>
                 </div>
@@ -13285,11 +13312,15 @@ void main(){
                     <span className="fs-auth-dot" />
                     Dashboard de productivité · Gratuit
                   </div>
+                  {/* Promesse : le différenciateur AVANT la catégorie. « Espace de
+                     travail pour la concentration » nous mettait en concurrence
+                     avec cinq cents clones ; la collection n'appartient qu'à nous,
+                     et « 3 que presque personne ne verra » allume la curiosité. */}
                   <div className="fs-auth-title">
-                    Un espace de travail fait pour la concentration.
+                    Tes heures de travail deviennent une collection.
                   </div>
                   <div className="fs-auth-subtitle">
-                    Réunis tâches, notes et sessions focus dans un seul dashboard personnalisable — et transforme ton temps de travail en progression visible.
+                    Chaque session de focus forge un cristal. 41 à découvrir — dont 3 que presque personne ne verra.
                   </div>
                 </div>
 
@@ -16293,6 +16324,10 @@ void main(){
       /* Boutique cosmétique : ouverte via l'événement global fs-open-boutique
          (déclenché depuis Évolution / le compte), montée en modale portail. */
       const [showBoutique, setShowBoutique] = _uSC(false);
+      /* Scène de focus : ouverte à chaque NOUVELLE session (le cristal se montre),
+         refermable par « Voir mon dashboard » sans nag ensuite. L'effet de
+         réouverture vit après la déclaration d'activeSession (plus bas). */
+      const [focusStageOpen, setFocusStageOpen] = _uSC(true);
       _uEC(() => {
         const open = () => setShowBoutique(true);
         window.addEventListener('fs-open-boutique', open);
@@ -16397,6 +16432,9 @@ void main(){
           return _restoreSession(u?.id);
         } catch(e) { return null; }
       });
+      /* Toute NOUVELLE session rouvre la scène de focus : le cristal doit se
+         montrer, c'est là que la valeur du produit se comprend. */
+      _uEC(() => { if (activeSession?.startTime) setFocusStageOpen(true); }, [activeSession?.startTime]);
       /* Cristal récupéré à la fin d'une session → pop-up de célébration. */
       const [sessionResult, setSessionResult] = _uSC(null);
       /* Rupture de série constatée à l'ouverture (une seule fois par jour). */
@@ -16921,49 +16959,62 @@ void main(){
       /* Point d'entrée UNIQUE pour ouvrir le lanceur. Interdit une 2e session
          tant qu'une est active (sinon la nouvelle écrasait l'active en silence).
          La topbar tressaille + un toast explique pourquoi rien ne s'est lancé. */
-      const requestStartSession = () => {
-        if (activeSessionRef.current) {
-          try { window.dispatchEvent(new CustomEvent('fs-session-active-nudge')); } catch (_) {}
-          addToast({ message: 'Une session est déjà en cours — termine-la d’abord', type: 'info', icon: '!', duration: 3600 });
-          setRoutedScreen('dashboard', true);
-          return;
-        }
-        /* « Démarrer le focus automatiquement » (Paramètres → Sessions) : le
-           lanceur est sauté, la session solo part immédiatement avec le
-           dernier format connu (ou la durée par défaut). */
+      /* Une session déjà active bloque tout : on le dit au lieu de l'écraser. */
+      const _sessionBusy = () => {
+        if (!activeSessionRef.current) return false;
+        try { window.dispatchEvent(new CustomEvent('fs-session-active-nudge')); } catch (_) {}
+        addToast({ message: 'Une session est déjà en cours — termine-la d’abord', type: 'info', icon: '!', duration: 3600 });
+        setRoutedScreen('dashboard', true);
+        return true;
+      };
+      /* DÉMARRAGE EN UN TAP : reprend le dernier format connu et part. Aucune
+         décision demandée au moment exact où l'utilisateur doit AGIR — c'est ce
+         qui fait passer de 1 à 3 sessions par jour. Le paramétrage reste
+         accessible par le chevron « Personnaliser ». */
+      const quickStartSession = () => {
+        if (_sessionBusy()) return;
+        const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
+        let cfg = { duration: 25, music: 'Ambient', breaks: p.smartBreaks !== false };
         try {
-          const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
-          if (p.autoStartFocus) {
-            let cfg = { duration: 50, music: 'Ambient', breaks: p.smartBreaks !== false };
-            try {
-              const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || 'null');
-              if (last && Number(last.duration) > 0) cfg = { duration: Number(last.duration), music: last.music || 'Ambient', breaks: typeof last.breaks === 'boolean' ? last.breaks : cfg.breaks };
-            } catch (_) { }
-            const pd = Number(p.sessionDuration);
-            if (Number.isFinite(pd) && pd > 0 && pd <= 120) cfg.duration = pd;
-            /* Même tirage de rareté qu'au lanceur : l'auto-démarrage ne doit
-               priver ni des rares/légendaires, ni des secrets (1/1000). */
-            let grad = window._randomGradient ? window._randomGradient() : 'aurora';
-            let rarity = 'standard';
-            const roll = Math.random();
-            const secPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.secret);
-            const legPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
-            const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
-            if (roll < 0.001 && secPool.length) { const g = secPool[Math.floor(Math.random() * secPool.length)]; grad = g.id; rarity = 'secret'; }
-            else if (roll < 0.006 && legPool.length) { const g = legPool[Math.floor(Math.random() * legPool.length)]; grad = g.id; rarity = 'legendary'; }
-            else if (roll < 0.056 && rarePool.length) { const g = rarePool[Math.floor(Math.random() * rarePool.length)]; grad = g.id; rarity = g.id === 'gold' ? 'gold' : 'rare'; }
-            addToast({ message: `Session lancée — ${cfg.duration} min de focus`, type: 'success', icon: '✓', duration: 3200 });
-            handleLaunch({
-              type: 'solo', friendEmail: null, friendUser: null, friendId: null, friendIds: null, friendUsers: null,
-              duration: cfg.duration, music: cfg.music, breaks: cfg.breaks,
-              crystalShape: 'diamond',
-              crystalGradient: grad,
-              crystalRarity: rarity,
-              focusTaskIds: null, startTime: Date.now(),
-            });
-            return;
+          const last = JSON.parse(localStorage.getItem('fs_last_session_cfg') || 'null');
+          if (last && Number(last.duration) > 0) cfg = { duration: Number(last.duration), music: last.music || 'Ambient', breaks: typeof last.breaks === 'boolean' ? last.breaks : cfg.breaks };
+          else {
+            /* Première session : 10 min, pas 25. On ne demande pas 25 minutes
+               d'engagement à quelqu'un qui n'a encore rien reçu. */
+            const forged = (() => { try { return (JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []).length; } catch (_) { return 0; } })();
+            if (forged === 0) cfg.duration = 10;
           }
         } catch (_) { }
+        const pd = Number(p.sessionDuration);
+        if (Number.isFinite(pd) && pd > 0 && pd <= 120 && cfg.duration !== 10) cfg.duration = pd;
+        /* Même tirage de rareté qu'au lanceur : ne priver ni des rares/légendaires,
+           ni des secrets (1/1000). */
+        let grad = window._randomGradient ? window._randomGradient() : 'aurora';
+        let rarity = 'standard';
+        const roll = Math.random();
+        const secPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.secret);
+        const legPool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.legendary);
+        const rarePool = (window.CRYSTAL_GRADIENTS || []).filter(g => g.rare);
+        if (roll < 0.001 && secPool.length) { const g = secPool[Math.floor(Math.random() * secPool.length)]; grad = g.id; rarity = 'secret'; }
+        else if (roll < 0.006 && legPool.length) { const g = legPool[Math.floor(Math.random() * legPool.length)]; grad = g.id; rarity = 'legendary'; }
+        else if (roll < 0.056 && rarePool.length) { const g = rarePool[Math.floor(Math.random() * rarePool.length)]; grad = g.id; rarity = g.id === 'gold' ? 'gold' : 'rare'; }
+        setRoutedScreen('dashboard', true);
+        handleLaunch({
+          type: 'solo', friendEmail: null, friendUser: null, friendId: null, friendIds: null, friendUsers: null,
+          duration: cfg.duration, music: cfg.music, breaks: cfg.breaks,
+          /* Forme = préférence cosmétique de l'utilisateur (Boutique), plus une
+             décision imposée avant chaque session. */
+          crystalShape: (window._gDefaultShape ? window._gDefaultShape(user?.id) : 'diamond'),
+          crystalGradient: grad,
+          crystalRarity: rarity,
+          focusTaskIds: null, startTime: Date.now(),
+        });
+      };
+      /* Ouvre le lanceur (mode Ensemble, durée précise, tâches liées). */
+      const requestStartSession = () => {
+        if (_sessionBusy()) return;
+        const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
+        if (p.autoStartFocus) { quickStartSession(); return; }
         setShowSession(true);
       };
 
@@ -17836,7 +17887,7 @@ void main(){
               <Sidebar screen={screen} onNavigate={go} user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               <div className="fs-app-main" style={{ position: 'relative', overflow: 'hidden', borderRadius: 34, background: 'linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 34px rgba(0,0,0,0.28)' }}>
                 <ScreenErrorBoundary resetKey={screen} onNavigate={go}>
-                {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} />}
+                {screen === 'dashboard' && <DashboardScreen onNavigate={go} widgets={widgets} session={activeSession} onEndSession={handleEndSession} user={user} animateWidgets={dashboardReady} focusNudgeOpen={!!focusNudge} onQuickStart={quickStartSession} onCustomizeSession={() => { if (!_sessionBusy()) setShowSession(true); }} />}
                 {screen === 'tasks' && <TasksScreen />}
                 {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: requestStartSession, initialTab: 'cristaux', onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
@@ -17861,7 +17912,13 @@ void main(){
           {isApp && screen === 'dashboard' && !activeSession && user?.id && window.ProdRatingPrompt && React.createElement(window.ProdRatingPrompt, { user, key: user.id })}
           {isApp && pendingSession && !activeSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: pendingSession, user, onStart: () => startPendingSession(), onCancel: cancelPendingSession })}
           {isApp && guestLobby && !activeSession && !pendingSession && window.SessionWaitRoom && React.createElement(window.SessionWaitRoom, { pending: guestLobby, user, isGuest: true, hostName: (guestLobby.host?.name || '').replace(' (hôte)', ''), onCancel: leaveGuestLobby })}
-          {isApp && activeSession && window.FocusCrystalOverlay && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
+          {/* Le cristal en formation est HÉROS sur le dashboard, et se replie en
+             disque de coin partout ailleurs (ou si l'utilisateur le réduit) —
+             jamais les deux à la fois. */}
+          {isApp && activeSession && screen === 'dashboard' && focusStageOpen && window.FocusStage
+            && React.createElement(window.FocusStage, { session: activeSession, onMinimize: () => setFocusStageOpen(false), onEnd: handleEndSession })}
+          {isApp && activeSession && !(screen === 'dashboard' && focusStageOpen) && window.FocusCrystalOverlay
+            && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
           {isApp && sessionResult && window.SessionCompleteModal && React.createElement(window.SessionCompleteModal, { result: sessionResult, onClose: () => setSessionResult(null), onOpenCave: () => { setSessionResult(null); go('cristaux'); } })}
           {isApp && showBoutique && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, onClose: () => setShowBoutique(false) })}
           {isApp && streakBreak && !activeSession && !sessionResult && window.StreakBreakModal && React.createElement(window.StreakBreakModal, {
@@ -20786,6 +20843,124 @@ void main(){
         </div>
       );
     }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCÈNE DE FOCUS — le cristal devient le héros de l'écran
+       Le disque de 80 px en bas à droite ne montrait pas la valeur : on
+       travaillait 25 minutes sans rien voir grandir. Ici la gemme occupe le
+       centre du dashboard et POUSSE en temps réel — la valeur se comprend en
+       quelques secondes au lieu d'une session entière.
+       Perf : la gemme est un canvas déjà mis en cache par palier de progression
+       (12 rendus maximum sur toute la session) ; l'unique animation permanente
+       est un `transform` de flottement, désactivé en reduce-motion. Aucun
+       backdrop-filter, aucune ombre animée.
+    ══════════════════════════════════════════════════════════════ */
+    function FocusStage({ session, onMinimize, onEnd }) {
+      const [elapsed, setElapsed] = React.useState(0);
+      const totalMs = Math.max(1, (Number(session?.duration) || 25) * 60000);
+      React.useEffect(() => {
+        if (!session) return;
+        const start = session.startTime || Date.now();
+        const tick = () => setElapsed(Date.now() - start);
+        tick();
+        /* 1 Hz : le chrono affiche des secondes, inutile de réveiller plus. */
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+      }, [session?.startTime]);
+      if (!session) return null;
+
+      const progress = Math.min(elapsed / totalMs, 1);
+      const done = progress >= 1;
+      const remaining = Math.max(0, totalMs - elapsed);
+      const mm = String(Math.floor(remaining / 60000)).padStart(2, '0');
+      const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0');
+      const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === session.crystalGradient) || null;
+      const isGold = session.crystalRarity === 'gold' || session.crystalGradient === 'gold';
+      const rarity = grad?.secret ? 'secret'
+        : (session.crystalRarity && session.crystalRarity !== 'standard') ? session.crystalRarity
+        : grad?.legendary ? 'legendary' : (grad?.rare || isGold) ? 'rare' : 'standard';
+      const a = grad ? grad.stops[0] : '#a5b8ff';
+      const b = grad ? grad.stops[grad.stops.length - 1] : '#c084fc';
+      /* La rareté ne se révèle qu'à la fin : le mystère fait tenir la session. */
+      const reveal = progress > 0.999;
+
+      return (
+        <div className="fs-stage" role="region" aria-label="Session de focus en cours">
+          <style>{`
+            .fs-stage{position:absolute;inset:0;z-index:40;display:grid;place-items:center;
+              padding:22px;pointer-events:none;
+              background:radial-gradient(70% 55% at 50% 42%,rgba(4,6,14,.72),rgba(4,6,14,.93) 78%);
+              animation:fsStageIn .42s cubic-bezier(.22,1,.36,1) both}
+            @keyframes fsStageIn{from{opacity:0}to{opacity:1}}
+            .fs-stage-inner{display:flex;flex-direction:column;align-items:center;gap:0;pointer-events:auto;max-width:100%}
+            .fs-stage-gemwrap{position:relative;display:grid;place-items:center;
+              animation:fsStageFloat 6.5s ease-in-out infinite;will-change:transform}
+            @keyframes fsStageFloat{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-9px,0)}}
+            .fs-stage-aura{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0;
+              -webkit-mask-image:radial-gradient(circle at 50% 48%,#000 44%,transparent 74%);
+              mask-image:radial-gradient(circle at 50% 48%,#000 44%,transparent 74%)}
+            .fs-stage-gem{position:relative;z-index:1}
+            .fs-stage-clock{margin-top:6px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+              font-size:clamp(38px,9vw,60px);font-weight:700;letter-spacing:-.03em;line-height:1;color:#f4f7ff;
+              text-shadow:0 0 34px rgba(0,0,0,.6)}
+            .fs-stage-sub{margin-top:9px;font:800 11px var(--font-body);letter-spacing:.13em;text-transform:uppercase;
+              color:rgba(226,238,255,.5)}
+            .fs-stage-bar{margin-top:16px;width:min(260px,72vw);height:4px;border-radius:99px;
+              background:rgba(255,255,255,.09);overflow:hidden}
+            .fs-stage-bar i{display:block;height:100%;border-radius:99px;transform-origin:left center;
+              background:linear-gradient(90deg,var(--sa),var(--sb));transition:transform 1s linear}
+            .fs-stage-name{margin-top:14px;font-family:var(--font-display);font-size:15px;font-weight:850;
+              letter-spacing:-.02em;background:linear-gradient(100deg,var(--sa),var(--sb));
+              -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+            .fs-stage-acts{margin-top:22px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center}
+            .fs-stage-btn{height:40px;padding:0 18px;border-radius:14px;cursor:pointer;
+              font:850 12px var(--font-body);transition:transform .16s var(--mineral-ease),background .18s var(--mineral-ease)}
+            .fs-stage-btn:active{transform:scale(.97)}
+            .fs-stage-ghost{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.055);color:rgba(244,246,251,.86)}
+            .fs-stage-ghost:hover{background:rgba(255,255,255,.1)}
+            .fs-stage-stop{border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.035);color:rgba(226,238,255,.62)}
+            .fs-stage-stop:hover{background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3);color:#fb7185}
+            .fs-stage-note{margin-top:12px;font-size:10.5px;color:rgba(226,238,255,.42);text-align:center;max-width:30ch;line-height:1.5}
+            html.fs-reduce-motion .fs-stage,html.fs-reduce-motion .fs-stage-gemwrap{animation:none!important}
+            @media(max-width:640px){
+              .fs-stage{padding:16px}
+              .fs-stage-bar{width:min(230px,78vw)}
+            }
+          `}</style>
+          <div className="fs-stage-inner" style={{ '--sa': a, '--sb': b }}>
+            <div className="fs-stage-gemwrap">
+              {window.CrystalAura && reveal && rarity !== 'standard' && (
+                <div className="fs-stage-aura">
+                  {React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 118, intensity: 1 })}
+                </div>
+              )}
+              <div className="fs-stage-gem">
+                {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+                  shape: session.crystalShape || 'diamond',
+                  gradientId: isGold ? 'gold' : (session.crystalGradient || 'aurora'),
+                  /* Plancher de présence : une forme visible dès la première
+                     seconde, qui se sature à mesure que la session avance. */
+                  progress: 0.16 + progress * 0.84,
+                  colorProgress: Math.min(1, progress * 1.35),
+                  size: 150,
+                  seed: session.startTime || 1,
+                })}
+              </div>
+            </div>
+            <div className="fs-stage-clock">{done ? '00:00' : `${mm}:${ss}`}</div>
+            <div className="fs-stage-sub">{done ? 'Cristal prêt' : 'de focus restant'}</div>
+            <div className="fs-stage-bar"><i style={{ transform: `scaleX(${progress.toFixed(3)})` }} /></div>
+            {reveal && <div className="fs-stage-name">{grad?.name || 'Cristal forgé'}</div>}
+            <div className="fs-stage-acts">
+              <button type="button" className="fs-stage-btn fs-stage-ghost" onClick={onMinimize}>Voir mon dashboard</button>
+              <button type="button" className="fs-stage-btn fs-stage-stop" onClick={() => onEnd && onEnd(null)}>Arrêter</button>
+            </div>
+            {!done && <div className="fs-stage-note">Le cristal n’est gardé qu’à la fin — mais tes minutes comptent déjà.</div>}
+          </div>
+        </div>
+      );
+    }
+    window.FocusStage = FocusStage;
 
     function _buildCrystal(progress, session) {
       const si = _cStateIdx(Math.min(progress, 1));
@@ -24897,6 +25072,19 @@ void main(){
     window._gSave(uid, g);
     return { ok:true };
   };
+  /* Forme par défaut des cristaux : préférence COSMÉTIQUE (réglée en Boutique)
+     au lieu d'une décision imposée avant chaque session. */
+  window._gDefaultShape = (uid) => {
+    const s = window._gLoad(uid).defaultShape;
+    return (window.CRYSTAL_SHAPE_DEFS && window.CRYSTAL_SHAPE_DEFS[s]) ? s : 'diamond';
+  };
+  window._gSetDefaultShape = (uid, shape) => {
+    if (!window.CRYSTAL_SHAPE_DEFS || !window.CRYSTAL_SHAPE_DEFS[shape]) return false;
+    const g = window._gLoad(uid);
+    g.defaultShape = shape;
+    window._gSave(uid, g);
+    return true;
+  };
   window._gSetActiveSkin = (uid, skinId) => {
     const g = window._gLoad(uid);
     if (skinId !== 'default' && !(g.unlocks || []).includes(skinId)) return false;
@@ -25638,6 +25826,7 @@ void main(){
     const skins = window.SKINS || [];
     const premiumItems = window.FS_PREMIUM_COSMETICS || [];
     const [notified, setNotified] = React.useState(() => { try { return localStorage.getItem('fs_premium_interest') === '1'; } catch (_) { return false; } });
+    const [curShape, setCurShape] = React.useState(() => (window._gDefaultShape ? window._gDefaultShape(user?.id) : 'diamond'));
     /* Parrainage */
     const refTiers = window.FS_REFERRAL_TIERS || [];
     const friendCount = window._gFriendCount ? window._gFriendCount(user?.id) : 0;
@@ -25752,6 +25941,16 @@ void main(){
             font:850 13px ${T.font};color:#070810;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
             box-shadow:0 14px 30px rgba(var(--theme-c1-rgb),.24)}
           .fs-shop-prem-btn:disabled{background:rgba(255,255,255,.06);color:${T.muted};cursor:default;box-shadow:none}
+          /* Forme par défaut : rangée compacte, scroll horizontal sur mobile */
+          .fs-shape-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+          .fs-shape-row::-webkit-scrollbar{display:none}
+          .fs-shape-cell{flex:0 0 auto;width:70px;display:flex;flex-direction:column;align-items:center;gap:6px;
+            padding:10px 6px;border-radius:15px;cursor:pointer;
+            border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.028);
+            color:${T.muted};font:850 9.5px ${T.font};
+            transition:border-color .18s var(--mineral-ease),background .18s var(--mineral-ease),transform .18s var(--mineral-ease)}
+          .fs-shape-cell:hover{transform:translateY(-2px)}
+          .fs-shape-cell.on{border-color:rgba(var(--theme-c1-rgb),.42);background:rgba(var(--theme-c1-rgb),.12);color:${T.text}}
           /* Parrainage */
           .fs-shop-refer{margin-top:26px;border-radius:20px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:18px 20px}
           .fs-shop-refer h3{font-family:${T.display};font-size:16px;font-weight:850;letter-spacing:-.025em;margin:0 0 5px}
@@ -25805,6 +26004,23 @@ void main(){
                 <div className="fs-shop-grid">{rest.map(skinCell)}</div>
               </>);
             })()}
+
+            {/* Forme de tes cristaux : la décision retirée du pré-session vit ici,
+               là où on choisit son identité — hors du chemin critique. */}
+            <div className="fs-shop-seclbl" style={{ marginTop: 22 }}>Forme de tes cristaux</div>
+            <div className="fs-shape-row">
+              {Object.keys(window.CRYSTAL_SHAPE_DEFS || {}).map(sid => {
+                const on = curShape === sid;
+                return (
+                  <button key={sid} type="button" className={'fs-shape-cell' + (on ? ' on' : '')}
+                    onClick={() => { if (window._gSetDefaultShape(user?.id, sid)) { setCurShape(sid); addToast({ message: `Forme ${(window.CRYSTAL_SHAPE_DEFS[sid].name || '').toLowerCase()} choisie`, type: 'success', icon: '✓', duration: 2400 }); } }}
+                    aria-pressed={on} title={window.CRYSTAL_SHAPE_DEFS[sid].desc || ''}>
+                    {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape: sid, gradientId: SKIN_GRAD[active] || active, progress: 0.9, size: 30, seed: sid.charCodeAt(0) * 137 }) : null}
+                    <span>{window.CRYSTAL_SHAPE_DEFS[sid].name}</span>
+                  </button>
+                );
+              })}
+            </div>
 
             <div className="fs-shop-refer">
               <h3>Invite tes amis</h3>
