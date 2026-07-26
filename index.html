@@ -140,6 +140,10 @@
       --t-fast: 0.17s;   /* réponse tactile : hover, press */
       --t-base: 0.22s;   /* transition standard */
       --t-slow: 0.3s;    /* entrée de surface */
+      /* Réserve sous le contenu pour la barre de nav mobile (bottom:10 +
+         height:66 = 76px) + l'encoche iOS + une marge de respiration. Le
+         94px codé en dur à cinq endroits ne couvrait pas la safe-area. */
+      --fs-navspace: calc(76px + env(safe-area-inset-bottom, 0px) + 18px);
       /* 3 élévations, 1 style de label. */
       --fs-elev-1: 0 10px 26px rgba(0, 0, 0, 0.28);
       --fs-elev-2: 0 22px 58px rgba(0, 0, 0, 0.42);
@@ -1003,12 +1007,12 @@
       /* Choix de style : header, onglets et grille compactés. */
       .fs-edit-vp-head { padding: 12px 14px !important; flex-wrap: wrap !important; gap: 10px !important; }
       .fs-edit-vp-tabs { padding: 10px 14px 0 !important; }
-      .fs-edit-vp-body { padding: 16px 14px 90px !important; }
+      .fs-edit-vp-body { padding: 16px 14px var(--fs-navspace) !important; }
       .fs-edit-vp-body > div { grid-template-columns: 1fr !important; gap: 16px !important; }
       .fs-dashboard-grid {
         display: flex !important; flex-direction: column !important;
         overflow-y: auto !important; overflow-x: hidden !important;
-        padding: 10px 12px 94px !important; gap: 10px !important;
+        padding: 10px 12px var(--fs-navspace) !important; gap: 10px !important;
         height: auto !important; max-height: 100% !important;
         -webkit-overflow-scrolling: touch;
       }
@@ -1024,12 +1028,12 @@
       .fs-focus-screen-title { font-size: 30px !important; letter-spacing: -0.04em !important; }
       .fs-focus-screen-desc { display: block !important; font-size: 13px !important; margin-top: 4px !important; max-width: 100% !important; }
       .fs-focus-screen-badges { gap: 6px !important; align-self: flex-start !important; }
-      .fs-focus-screen-content { padding: 10px 12px 94px !important; }
+      .fs-focus-screen-content { padding: 10px 12px var(--fs-navspace) !important; }
       /* Focus tabs */
       .fs-focus-tabs { gap: 6px !important; padding: 3px !important; border-radius: 18px !important; }
       .fs-focus-tab-btn { padding: 14px 10px !important; border-radius: 18px !important; min-height: 64px !important; }
       /* FocusHomeTab grid → single column on mobile */
-      .fs-fht-root { padding: 14px 14px 94px !important; }
+      .fs-fht-root { padding: 14px 14px var(--fs-navspace) !important; }
       .fs-fht-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
       .fs-fht-cta { min-height: auto !important; padding: 22px 20px 20px !important; border-radius: 22px !important; }
       .fs-fht-cta-title { font-size: 26px !important; line-height: 1.1 !important; }
@@ -1049,10 +1053,10 @@
       .fs-evo-tabs { display: flex !important; overflow-x: auto !important; gap: 6px !important; padding: 4px !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch; border-radius: 18px !important; }
       .fs-evo-tabs::-webkit-scrollbar { display: none !important; }
       .fs-evo-tab-btn { flex: 0 0 auto !important; min-width: 100px !important; padding: 11px 13px !important; border-radius: 16px !important; }
-      .fs-evo-content { padding: 10px 12px 94px !important; }
+      .fs-evo-content { padding: 10px 12px var(--fs-navspace) !important; }
       .fs-evo-stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 8px !important; margin-bottom: 10px !important; }
       .fs-evo-content-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
-      .fs-prog-body { padding: 16px 14px 94px !important; }
+      .fs-prog-body { padding: 16px 14px var(--fs-navspace) !important; }
       .fs-prog-stats { grid-template-columns: repeat(3,1fr) !important; gap: 8px !important; }
       .fs-heatmap-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
 
@@ -1085,7 +1089,7 @@
 
     @media (max-width: 480px) {
       .fs-dashboard-header { padding: 12px 12px 0 !important; }
-      .fs-dashboard-grid { padding: 8px 10px 94px !important; gap: 8px !important; }
+      .fs-dashboard-grid { padding: 8px 10px var(--fs-navspace) !important; gap: 8px !important; }
       .fs-note-edit-dialog { height: 96dvh !important; max-height: 96dvh !important; }
       .fs-focus-screen-title { font-size: 24px !important; }
       /* Petits téléphones (iPhone SE, etc.) : encore trop étroit pour
@@ -1105,7 +1109,7 @@
         .fs-task-list,
         .fs-notes-list,
         .fs-notes-body {
-          padding-bottom: calc(94px + env(safe-area-inset-bottom)) !important;
+          padding-bottom: var(--fs-navspace) !important;
         }
         .fs-note-edit-dialog {
           padding-bottom: env(safe-area-inset-bottom) !important;
@@ -8783,10 +8787,20 @@
             .fs-focus-3d-particle{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.86);box-shadow:0 0 16px rgba(var(--theme-c1-rgb),.72);animation:fsFocusParticle3D 4.6s ease-in-out infinite;animation-delay:var(--d)}
             .fs-focus-3d-base{position:absolute;bottom:34px;width:174px;height:34px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--theme-c1-rgb),.28),transparent 68%);filter:blur(7px);transform:rotateX(72deg)}
             @media (max-width: 768px){
-              .fs-fht-root{padding:14px 14px 94px!important}
-              .fs-focus-hero{padding:22px 16px 20px!important;border-radius:22px!important}
+              /* --fs-navspace : la barre de nav occupe 76 px (bottom:10 +
+                 height:66) plus la safe-area iOS. Le 94px codé en dur à cinq
+                 endroits ne la couvrait qu'à peu près et jamais l'encoche. */
+              .fs-fht-root{padding:14px 14px var(--fs-navspace)!important}
+              /* 26px de padding bas : le bouton affleurait le bord arrondi de la
+                 carte, qui a overflow:hidden — il paraissait rogné. */
+              .fs-focus-hero{padding:22px 16px 26px!important;border-radius:22px!important}
               .fs-focus-hero-inner{grid-template-columns:1fr!important;gap:12px!important;text-align:center!important}
-              .fs-focus-3d-scene{width:min(260px,100%)!important;height:220px!important;order:-1;margin:0 auto!important}
+              /* Scène 3D ramenée de 220 à 168 px : c'est le plus gros bloc de
+                 l'écran, et à 220 px il repoussait à lui seul le bouton
+                 « Démarrer une session » sous la barre de navigation (88 % du
+                 bouton masqué, mesuré). Le cristal reste le héros visuel — il
+                 n'a pas besoin de coûter le tiers de l'écran pour ça. */
+              .fs-focus-3d-scene{width:min(222px,100%)!important;height:152px!important;order:-1;margin:0 auto!important}
               .fs-fht-cta-title{font-size:30px!important}
               .fs-fht-cta-desc{display:block!important;font-size:12px!important;max-width:100%!important}
               .fs-fht-start-btn{width:100%!important;justify-content:center!important;align-self:stretch!important}
@@ -8806,8 +8820,12 @@
                   <span style={{width:7,height:7,borderRadius:'50%',background:'var(--theme-c1)',boxShadow:'0 0 16px rgba(var(--theme-c1-rgb),0.75)'}} />
                   Session prête
                 </div>
-                <div className="fs-fht-cta-title" style={{fontFamily:T.display,fontWeight:900,fontSize:46,letterSpacing:'-0.052em',lineHeight:1.02,color:T.text,marginTop:18,maxWidth:660}}>Lance ton focus en un clic.</div>
-                <div className="fs-fht-cta-desc" style={{fontSize:14,color:T.muted,lineHeight:1.7,marginTop:14,maxWidth:560}}>Choisis une session solo ou ensemble, garde le timer actif, puis transforme chaque effort en progression claire.</div>
+                {/* Titre raccourci : « Lance ton focus en un clic. » cassait en
+                    TROIS lignes sur 343 px, avec une dernière ligne d'un seul mot
+                    (« clic. ») — la pire coupe possible pour un display serré.
+                    Et il répétait « focus », déjà présent 4 fois autour. */}
+                <div className="fs-fht-cta-title" style={{fontFamily:T.display,fontWeight:900,fontSize:46,letterSpacing:'-0.052em',lineHeight:1.02,color:T.text,marginTop:18,maxWidth:660,textWrap:'balance'}}>Un clic, et c’est parti.</div>
+                <div className="fs-fht-cta-desc" style={{fontSize:14,color:T.muted,lineHeight:1.7,marginTop:14,maxWidth:560}}>Seul ou avec un ami. À la fin de la session, ton cristal se forge.</div>
                 <button className="fs-fht-start-btn" onClick={onStart} style={{marginTop:24,alignSelf:'center',display:'flex',alignItems:'center',justifyContent:'center',gap:12,border:'none',borderRadius:18,padding:'16px 28px',minWidth:240,background:'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))',color:'#070810',fontSize:14,fontWeight:900,fontFamily:T.font,cursor:'pointer',boxShadow:'0 20px 52px rgba(var(--theme-c1-rgb),0.30), inset 0 1px 0 rgba(255,255,255,0.42)',transition:'transform .22s cubic-bezier(.16,1,.3,1), box-shadow .22s ease'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px) scale(1.015)';e.currentTarget.style.boxShadow='0 26px 62px rgba(var(--theme-c1-rgb),0.38), inset 0 1px 0 rgba(255,255,255,0.48)';}} onMouseLeave={e=>{e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='0 20px 52px rgba(var(--theme-c1-rgb),0.30), inset 0 1px 0 rgba(255,255,255,0.42)';}}>
                   <svg width={17} height={17} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
                   Démarrer une session
@@ -8925,22 +8943,47 @@
       const shards = React.useMemo(() => (window._gShards ? window._gShards(user?.id) : 0), [user?.id, crystalCount]);
       const TABS = [
         { id:'focus', label:'Focus', meta:'Démarrer' },
-        { id:'cristaux', label:'Cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'Grotte vide' },
-        { id:'collection', label:'Collection', meta:decouverte.total ? `${decouverte.vus} / ${decouverte.total} découverts` : 'Le codex' },
+        /* « Grotte vide » disait à l'utilisateur que son espace est vide avant
+           qu'il ait rien pu y faire — cadrage négatif au premier contact. Et
+           « N / 41 découverts » était TRONQUÉ par l'onglet (ellipsis à 94 px) :
+           le mot coupé n'apportait rien, le ratio porte déjà tout le sens. */
+        { id:'cristaux', label:'Cristaux', meta:crystalCount > 0 ? `${crystalCount} gemme${crystalCount>1?'s':''}` : 'À forger' },
+        { id:'collection', label:'Collection', meta:decouverte.total ? `${decouverte.vus} / ${decouverte.total}` : 'Le codex' },
         ...(shopUnlocked ? [{ id:'boutique', label:'Boutique', meta:`${shards} Éclat${shards > 1 ? 's' : ''}` }] : []),
       ];
       return (
         <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:T.font}}>
           <div className="fs-focus-screen-head" style={{padding:'32px 36px 0',flexShrink:0}}>
             <div className="fs-focus-screen-head-inner" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:24,marginBottom:24}}>
+              {/* Sur-titre « LumenOS · Focus » SUPPRIMÉ : le mot « Focus »
+                  apparaissait 7 fois sur cet écran (sur-titre, titre, sous-titre,
+                  onglet, label du minuteur, nav…). C'était 120 px de hauteur
+                  consommés en redondance pure, avant tout contenu utile — et sur
+                  un écran de téléphone cette hauteur est ce qui repoussait le
+                  bouton d'action sous la barre de navigation. */}
               <div style={{minWidth:0}}>
-                <div style={{fontSize: 10,fontWeight:800,letterSpacing:'0.12em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Focus</div>
                 <div className="fs-focus-screen-title" style={{fontFamily:T.display,fontWeight:800,fontSize:36,letterSpacing:'-0.045em',lineHeight:1.02,color:T.text}}>Focus</div>
-                <div className="fs-focus-screen-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:560,lineHeight:1.55}}>Focus, sessions et cristaux regroupés dans un seul espace à onglets.</div>
+                {/* Le sous-titre décrivait notre propre architecture (« regroupés
+                    dans un seul espace à onglets »). L'utilisateur voit les
+                    onglets ; il n'a pas besoin qu'on lui enseigne notre plan de
+                    navigation. Un sous-titre vend un bénéfice ou disparaît. */}
+                <div className="fs-focus-screen-desc" style={{fontSize:13,color:T.muted,marginTop:8,maxWidth:560,lineHeight:1.55}}>Une session, un cristal. C'est tout le principe.</div>
               </div>
+              {/* Les deux pastilles portaient DEUX couleurs d'accent différentes
+                  (ambre, bleu) pour deux métriques voisines sans raison
+                  sémantique — et affichaient « 0 min » et « 0 cristaux » au tout
+                  premier contact. Le premier message chiffré de l'app était un
+                  double zéro. Avant la 1re session on invite ; après, on compte,
+                  d'une seule voix. */}
               <div className="fs-focus-screen-badges" style={{display:'flex',gap:10,alignItems:'center',flexShrink:0}}>
-                <span className="fp-badge">{Math.round(total)} min</span>
-                <span className="xp-badge">{crystalCount} cristaux</span>
+                {crystalCount > 0 || total > 0 ? (
+                  <>
+                    <span className="fp-badge">{Math.round(total)} min</span>
+                    <span className="fp-badge">{crystalCount} cristaux</span>
+                  </>
+                ) : (
+                  <span className="fp-badge">Ta première pierre t’attend</span>
+                )}
               </div>
             </div>
             <div className="fs-focus-tabs" style={{display:'grid',gridTemplateColumns:`repeat(${TABS.length},minmax(0,1fr))`,gap:10,padding:4,borderRadius:22,background:'rgba(255,255,255,0.035)',border:'1px solid rgba(255,255,255,0.065)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
