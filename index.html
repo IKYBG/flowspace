@@ -10429,7 +10429,7 @@
         prevStageRef.current = unlockStage;
       }, [unlockStage]);
       const displayName = user?.name || 'LumenOS';
-      const displayEmail = user?.email || 'Crystal Productivity Focus';
+      const displayEmail = user?.email || 'OS personnel de productivité';
       const userInitial = (displayName || displayEmail || 'F')[0].toUpperCase();
       const readProfilePhoto = () => {
         try { return user?.photo || user?.avatar || (window._fsLocalProfilePhoto ? window._fsLocalProfilePhoto() : localStorage.getItem('fs_img_profile')) || null; }
@@ -10697,7 +10697,7 @@
                 </div>
                 <div className="fs-brand-copy">
                   <div className="fs-brand-title">LumenOS</div>
-                  <div className="fs-brand-sub">Crystal Productivity </div>
+                  <div className="fs-brand-sub">OS personnel de productivité</div>
                 </div>
                 <button ref={gearRef} type="button" className={'fs-gear-dot' + (screen === 'settings' ? ' fs-account-open' : '')}
                   onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(screen === 'settings' ? 'dashboard' : 'settings'); }}
@@ -13369,6 +13369,16 @@ void main(){
       });
       const [ripple, setRipple] = _uSAuth(null);
       const [demoOpen, setDemoOpen] = _uSAuth(false);
+      /* Cet appareil a-t-il DÉJÀ servi ? On ne peut pas savoir si le compte
+         existe avant que l'utilisateur tape son email — mais on n'en a pas
+         besoin : ce qui choisit le ton d'accueil, c'est de savoir si on parle à
+         quelqu'un qui découvre. Ces clés ne sont écrites qu'après un vrai
+         passage dans l'app. Lu une seule fois, au montage. */
+      const isReturning = React.useMemo(() => {
+        try {
+          return ['fs_onboarded', 'fs_widgets', 'fs_user'].some(k => localStorage.getItem(k) != null);
+        } catch (_) { return false; }
+      }, []);
       const LOGIN_SWATCHES = [
         { id: 'rose', label: 'Rose', grad: 'linear-gradient(145deg,rgb(214,162,255),rgb(217,43,214))', ring: '217,43,214' },
         { id: 'vert', label: 'Vert', grad: 'linear-gradient(145deg,rgb(134,239,172),rgb(34,197,94))', ring: '34,197,94' },
@@ -13651,8 +13661,14 @@ void main(){
       const busy = status === 'loading' || status === 'success';
       const isOk = status === 'success';
 
-      const FL = ({ ch, htmlFor, required }) => (
-        <label htmlFor={htmlFor} style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0, textTransform: 'uppercase', color: 'rgba(248,246,252,0.65)', marginBottom: 8, display: 'block', cursor: htmlFor ? 'pointer' : 'default' }}>{ch}{required && <span style={{ color: '#fb7185', marginLeft: 4 }}>*</span>}</label>
+      /* L'astérisque rouge « obligatoire » a disparu. Sur un formulaire de
+         connexion à deux champs, les deux sont évidemment requis : l'astérisque
+         n'apportait aucune information, seulement de l'anxiété — et c'est un tic
+         d'intranet des années 2010, exactement le signal contraire du haut de
+         gamme. Les champs restent `required` côté HTML (validation et lecteurs
+         d'écran inchangés) ; c'est la décoration qui part, pas la sémantique. */
+      const FL = ({ ch, htmlFor }) => (
+        <label htmlFor={htmlFor} style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0, textTransform: 'uppercase', color: 'rgba(248,246,252,0.65)', marginBottom: 8, display: 'block', cursor: htmlFor ? 'pointer' : 'default' }}>{ch}</label>
       );
 
       const EyeIcon = () => showPw
@@ -13671,32 +13687,10 @@ void main(){
              promesse et au bouton de création de compte ; la couleur vient
              après. Le choix est reporté sur le thème de l'app (LOGIN_TO_BG),
              donc ce n'est plus un gadget sans conséquence. ── */}
-          {/* `fixed` ET portail vers <body> : la coque du login est plus HAUTE
-             que le viewport (elle défile), et `.fs-auth-wrap` porte un
-             `transform` — qui fait de lui le bloc conteneur de tout `fixed`
-             descendant. Rendu sur place, le contrôle partait 570 px sous le bas
-             de l'écran, injoignable. Même piège que les clones de resize. */}
-          {ReactDOM.createPortal(
-            <div className="fs-auth-theme-dots" role="group" aria-label="Thème de la page" style={{ position:'fixed', bottom:'max(16px, env(safe-area-inset-bottom))', right:18, zIndex:60, display:'flex', alignItems:'center', gap:8, padding:'6px 10px 6px 12px', borderRadius:99, background:'rgba(10,8,20,.34)', border:'1px solid rgba(255,255,255,.07)', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)' }}>
-              <span style={{ fontSize: 10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(248,246,252,.42)', userSelect:'none' }}>Thème</span>
-              {LOGIN_SWATCHES.map(s => {
-                const on = loginTheme === s.id;
-                return (
-                  <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
-                    aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
-                    style={{ width:16, height:16, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
-                      background:s.grad,
-                      border:on ? '2px solid rgba(255,255,255,.92)' : '1.5px solid rgba(255,255,255,.2)',
-                      boxShadow:on ? `0 0 0 2px rgba(${s.ring},.28)` : 'none',
-                      transform:'scale(1)', opacity:on ? 1 : .68,
-                      transition:'transform .17s var(--mineral-ease), opacity .17s, box-shadow .17s var(--mineral-ease), border-color .17s' }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.14)'; e.currentTarget.style.opacity = '1'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = on ? '1' : '.68'; }} />
-                );
-              })}
-            </div>,
-            document.body
-          )}
+          {/* Le sélecteur vit désormais DANS la carte du formulaire (voir plus
+             bas, sous « Connexion sécurisée ») : en flux normal, plus besoin ni
+             de `fixed` ni du portail vers <body> qui contournait le `transform`
+             de .fs-auth-wrap. */}
           {demoOpen && window.FsDemo60 && React.createElement(window.FsDemo60, {
             onClose: () => setDemoOpen(false),
             /* « Créer mon compte » referme la démo et bascule le formulaire en
@@ -13808,11 +13802,18 @@ void main(){
               <section className="fs-auth-form-pane">
               <div style={{position:'relative',zIndex:1}}>
               <div style={{marginBottom:22}}>
+                {/* « Bon retour » était le titre par défaut — donc le PREMIER mot
+                    que lisait un visiteur qui n'avait jamais mis les pieds ici.
+                    L'app parlait à un habitué à quelqu'un qui découvre : il
+                    comprend en une seconde que personne n'a pensé à son cas.
+                    On ne peut pas savoir si le compte existe avant qu'il tape son
+                    email, mais on sait si CET APPAREIL a déjà servi — et c'est la
+                    seule chose qui compte pour choisir le ton. */}
                 <div style={{fontFamily:"'Plus Jakarta Sans', 'Inter', sans-serif",fontSize:27,fontWeight:800,letterSpacing:0,lineHeight:1}}>
-                  {mode === 'login' ? 'Bon retour' : mode === 'signup' ? 'Créer ton espace' : mode === 'forgot' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
+                  {mode === 'login' ? (isReturning ? 'Bon retour' : 'Bienvenue') : mode === 'signup' ? 'Créer ton espace' : mode === 'forgot' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
                 </div>
                 <div style={{fontSize:12,color:'rgba(248,246,252,.68)',marginTop:8,lineHeight:1.5}}>
-                  {mode === 'login' ? 'Connecte-toi pour retrouver ton dashboard.' : mode === 'signup' ? 'Lance ton cockpit de focus synchronisé.' : mode === 'forgot' ? "Entre ton email : on t'envoie un lien pour le réinitialiser." : 'Choisis un nouveau mot de passe pour ton compte.'}
+                  {mode === 'login' ? (isReturning ? 'Connecte-toi pour retrouver ton dashboard.' : 'Connecte-toi, ou crée ton espace en 30 secondes.') : mode === 'signup' ? 'Lance ton cockpit de focus synchronisé.' : mode === 'forgot' ? "Entre ton email : on t'envoie un lien pour le réinitialiser." : 'Choisis un nouveau mot de passe pour ton compte.'}
                 </div>
               </div>
 
@@ -13941,6 +13942,33 @@ void main(){
               <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,marginTop:16,color:'rgba(248,246,252,0.58)',fontSize:10,lineHeight:1.4}}>
                 <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                 Connexion sécurisée. Données synchronisées.
+              </div>
+              {/* Sélecteur de thème ANCRÉ dans la carte, au lieu de flotter en
+                  bas à droite du viewport. Détaché de tout, il se lisait comme un
+                  contrôle de debug oublié : j'avais voulu le rendre discret et je
+                  l'avais rendu orphelin. Ici il appartient enfin à quelque chose.
+                  Bénéfice technique : en flux normal, il n'a plus besoin d'être
+                  `fixed` — donc plus besoin du portail qui contournait le
+                  `transform` de .fs-auth-wrap (celui-ci faisait de lui le bloc
+                  conteneur et envoyait le contrôle 570 px sous l'écran). */}
+              <div className="fs-auth-theme-dots" role="group" aria-label="Thème de la page"
+                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginTop:14, paddingTop:14, borderTop:'1px solid rgba(255,255,255,.06)' }}>
+                <span style={{ fontSize: 10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(248,246,252,.42)', userSelect:'none' }}>Thème</span>
+                {LOGIN_SWATCHES.map(s => {
+                  const on = loginTheme === s.id;
+                  return (
+                    <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
+                      aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
+                      style={{ width:16, height:16, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
+                        background:s.grad,
+                        border:on ? '2px solid rgba(255,255,255,.92)' : '1.5px solid rgba(255,255,255,.2)',
+                        boxShadow:on ? `0 0 0 2px rgba(${s.ring},.28)` : 'none',
+                        transform:'scale(1)', opacity:on ? 1 : .68,
+                        transition:'transform .17s var(--mineral-ease), opacity .17s, box-shadow .17s var(--mineral-ease), border-color .17s' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.14)'; e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = on ? '1' : '.68'; }} />
+                  );
+                })}
               </div>
               </div>
               </section>
