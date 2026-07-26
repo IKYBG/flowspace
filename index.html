@@ -423,7 +423,20 @@
     /* Perf-lite étendu (PC low cost) : les décors ANIMÉS EN BOUCLE passent en
        statique — l'aura reste visible (bloom, anneaux) mais ne tourne plus,
        les reflets/sheens décoratifs sont coupés. Zéro coût par frame. */
+    /* Auras en perf-lite : DÉGRADER, pas ÉTEINDRE. Tout couper rendait les auras
+       rares/légendaires/secrètes parfaitement statiques sur mobile — c'est-à-dire
+       là où vit l'utilisateur, et là où se joue l'envie du cosmétique. On garde
+       donc UNE seule couche vivante (le halo de fond, `.fs-aura-keep`) dont
+       l'animation est une pure opacité/scale composée par le GPU : une couche,
+       coût négligeable, payoff préservé. Le reste est figé.
+       reduce-motion, lui, reste un arrêt total (accessibilité, pas performance)
+       — voir la règle dédiée près de @keyframes fsAuBloom. */
     html.fs-perf-lite .fs-aura * { animation: none !important; }
+    html.fs-perf-lite .fs-aura .fs-aura-keep { animation: fsAuBloom 3.4s ease-in-out infinite !important; }
+    /* Cette ligne DOIT suivre la précédente : à spécificité égale, la dernière
+       gagne. Sans elle, la couche « keep » continuait de respirer même en
+       prefers-reduced-motion (elle battait `.fs-aura *` en spécificité). */
+    html.fs-reduce-motion .fs-aura .fs-aura-keep { animation: none !important; }
     html.fs-perf-lite .fsThemeCrystalAura,
     html.fs-perf-lite .fs-session-launch-shell:before,
     html.fs-perf-lite .fs-session-launch-preview:before,
@@ -23847,8 +23860,11 @@ void main(){
 
     return (
       <div className={'fs-aura fs-aura-' + kind} style={wrap} aria-hidden="true">
-        {/* halo de fond commun : ancre l'effet et unifie la lumière */}
-        <div className="lay" style={{
+        {/* Halo de fond commun : ancre l'effet et unifie la lumière. C'est aussi
+           la SEULE couche qui continue de respirer en perf-lite (classe
+           fs-aura-keep) : une animation d'opacité, la moins coûteuse qui existe,
+           pour que les auras ne soient jamais mortes sur mobile. */}
+        <div className="lay fs-aura-keep" style={{
           inset: leg ? '2%' : '10%', borderRadius: '50%',
           background: `radial-gradient(circle, ${glow} 0%, transparent 62%)`,
           filter: `blur(${leg ? 26 : 20}px)`, opacity: leg ? 0.5 : 0.36,
