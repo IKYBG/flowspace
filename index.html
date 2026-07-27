@@ -13444,13 +13444,31 @@ void main(){
       transform:translateY(-1px);
     }
     .fs-ai:disabled { opacity:.5; cursor:default; }
+    /* Masqué par défaut : sur desktop la vitrine de gauche porte déjà la marque
+       et la promesse. La media query mobile le repasse en flex. */
+    .fs-auth-mini-head { display:none; }
     @media(max-width:900px){
       .fs-auth-wrap{overflow:hidden;max-width:100vw;touch-action:pan-y;overscroll-behavior:contain}
       .fs-auth-shell{align-items:flex-start;padding:18px 14px;overflow-y:auto;overflow-x:hidden;max-width:100vw;overscroll-behavior-y:contain;overscroll-behavior-x:none;touch-action:pan-y;-webkit-overflow-scrolling:touch}
       .fs-auth-card{max-width:100%;overflow:hidden}
       .fs-auth-panel-grid{grid-template-columns:1fr;min-height:0;gap:14px;max-width:100%;overflow:hidden}
       .fs-auth-stage{min-height:0;padding:28px;border-radius:28px;justify-content:flex-start}
-      .fs-auth-form-pane{padding:22px;border-radius:28px}
+      /* ══ LE FORMULAIRE PASSE DEVANT ══
+         La grille desktop (vitrine | formulaire) était simplement EMPILÉE sur
+         mobile : les 682 px de pitch marketing passaient devant le login.
+         Mesuré sur iPhone 14 : champ email à y=997 (153 px sous le pli), bouton
+         d'entrée à y=1162 (369 px sous le pli). Un utilisateur qui revient
+         chaque jour devait défiler 370 px avant de pouvoir taper quoi que ce
+         soit — sur l'écran qu'il voit le plus souvent de toute l'app.
+         La propriété order sur une grille ne coûte rien : aucun DOM déplacé,
+         aucune duplication, et le desktop garde sa mise en page côte à côte. */
+      .fs-auth-form-pane{padding:22px;border-radius:28px;order:-1}
+      .fs-auth-mini-head{display:flex!important;align-items:center;gap:11px;margin-bottom:18px;
+        padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.07)}
+      /* La vitrine reste, mais SOUS le formulaire : le nouveau visiteur qui
+         hésite défile et trouve la promesse, la capture produit et la démo de
+         60 s. L'habitué, lui, n'a plus rien à faire défiler. */
+      .fs-auth-stage{order:1}
       .fs-auth-stage::after{width:100%;background:linear-gradient(180deg,rgba(7,3,13,.76),rgba(18,5,27,.24) 54%,rgba(18,5,27,0))}
       .fs-auth-hero{position:relative;right:auto;bottom:auto;width:100%;height:260px;margin-top:26px;opacity:.86;mask-image:none;-webkit-mask-image:none;z-index:2}
       .fs-auth-product-card{inset:8px -42px 18px -16px}
@@ -13930,6 +13948,23 @@ void main(){
 
               <section className="fs-auth-form-pane">
               <div style={{position:'relative',zIndex:1}}>
+              {/* En-tête compact MOBILE UNIQUEMENT (masqué en CSS au-delà de
+                  900 px, où la vitrine de gauche joue ce rôle). Le formulaire
+                  étant passé devant sur mobile, un nouveau visiteur atterrirait
+                  sinon sur un champ email sans savoir ce qu'est LumenOS. Une
+                  ligne de promesse suffit à situer le produit ; le pitch complet
+                  reste sous le pli, pour qui défile.
+                  Affiché seulement aux nouveaux : l'habitué sait déjà, et chaque
+                  ligne au-dessus du champ est une ligne qu'il ne veut pas. */}
+              {!isReturning && (
+                <div className="fs-auth-mini-head">
+                  <img src="logo.png" alt="" width={30} height={30} decoding="async" style={{ objectFit:'contain', flexShrink:0 }} />
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontFamily:T.display, fontWeight:800, fontSize:15, letterSpacing:'-0.02em', lineHeight:1.1 }}>LumenOS</div>
+                    <div style={{ fontSize:12, color:'rgba(248,246,252,.6)', marginTop:2, lineHeight:1.3 }}>Chaque session de focus forge un cristal.</div>
+                  </div>
+                </div>
+              )}
               <div style={{marginBottom:22}}>
                 {/* « Bon retour » était le titre par défaut — donc le PREMIER mot
                     que lisait un visiteur qui n'avait jamais mis les pieds ici.
@@ -13956,31 +13991,51 @@ void main(){
               </div>
               </>)}
 
+              {/* ══ UN VRAI <form> ══
+                  Il n'y en avait AUCUN dans le DOM (formCount: 0), et les champs
+                  n'avaient ni `name` ni `autocomplete`. Conséquences, toutes
+                  mobiles et toutes graves :
+                  · Le trousseau iCloud, Google Password Manager, 1Password et
+                    Bitwarden se déclenchent sur la présence d'un <form> + des
+                    attributs autocomplete. Sans eux, l'utilisateur tapait son
+                    email et son mot de passe AU POUCE, à chaque connexion, à vie
+                    — et le gestionnaire ne proposait jamais de les enregistrer,
+                    donc un oubli = compte perdu. C'est le point de sortie n°1.
+                  · Sans <form>, la touche « Go » du clavier ne valide rien : il
+                    fallait refermer le clavier, retrouver le bouton, le viser.
+                  onSubmit remplace les onKeyDown Enter posés champ par champ :
+                  une seule voie de soumission, clavier et bouton confondus.
+                  Le <form> n'a aucun style : en flux normal il se comporte comme
+                  le <div> qu'il remplace, donc zéro changement visuel. */}
+              <form onSubmit={e => { e.preventDefault(); if (!busy) onPrimary(); }} noValidate>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 13, marginBottom: 18 }}>
                 {mode === 'signup' && (
                   <div className="fs-auth-field">
-                    <FL ch="Nom d'utilisateur" htmlFor="auth-username" required />
-                    <input id="auth-username" className="fs-ai" type="text" placeholder="Alex" value={uname} onChange={e => setUname(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} disabled={busy} />
+                    <FL ch="Nom d'utilisateur" htmlFor="auth-username" />
+                    <input id="auth-username" name="nickname" className="fs-ai" type="text" placeholder="Alex" value={uname} onChange={e => setUname(e.target.value)} disabled={busy}
+                      autoComplete="nickname" autoCapitalize="words" autoCorrect="off" spellCheck={false} enterKeyHint="next" />
                   </div>
                 )}
                 {mode !== 'recovery' && (
                 <div>
                   <FL ch="Email" htmlFor="auth-email" required />
-                  <input id="auth-email" className="fs-ai" type="email" placeholder="alex@domain.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} />
+                  <input id="auth-email" name="email" className="fs-ai" type="email" placeholder="alex@domain.com" value={email} onChange={e => setEmail(e.target.value)} disabled={busy}
+                    autoComplete="username" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="next" />
                 </div>
                 )}
                 {mode !== 'forgot' && (
                 <div>
                   <FL ch={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} htmlFor="auth-password" required />
                   <div style={{ position: 'relative' }}>
-                    <input id="auth-password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} style={{ paddingRight: 48 }} />
+                    <input id="auth-password" name="password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} value={pass} onChange={e => setPass(e.target.value)} disabled={busy} style={{ paddingRight: 52 }}
+                      autoComplete={mode === 'signup' || mode === 'recovery' ? 'new-password' : 'current-password'} autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" />
                     {/* Zone tactile portée de 23 à 44 px. L'icône garde sa taille
                         — c'est la surface CLIQUABLE qui grandit, via le padding et
                         un centrage. Viser 23 px au pouce, sur le champ qu'on rate
                         le plus souvent, produisait des appuis manqués juste avant
                         de valider. right passe à 6px pour que la nouvelle boîte
                         reste alignée sur le bord du champ. */}
-                    <button onClick={() => setShowPw(v => !v)} disabled={busy}
+                    <button type="button" onClick={() => setShowPw(v => !v)} disabled={busy}
                       aria-label={showPw ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                       style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,246,252,0.55)', width: 44, height: 44, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.17s' }}
                       onMouseEnter={e => e.currentTarget.style.color = 'rgba(248,246,252,0.85)'}
@@ -13998,7 +14053,7 @@ void main(){
                       15 px de haut. Au doigt on le rate, et on rate un lien de
                       récupération de mot de passe au pire moment — celui où on
                       vient déjà d'échouer à se connecter. */}
-                  <button onClick={() => goMode('forgot')} disabled={busy}
+                  <button type="button" onClick={() => goMode('forgot')} disabled={busy}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(var(--la-soft-rgb),0.9)', fontSize: 12, fontWeight: 700, fontFamily: T.font, minHeight: 44, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}>
                     Mot de passe oublié ?
                   </button>
@@ -14013,7 +14068,7 @@ void main(){
               )}
 
               {awaitingConfirm && (
-                <button onClick={resendConfirmation} disabled={busy} className="fs-auth-alt-btn" style={{ width: '100%', marginBottom: 16, height: 42, fontSize: 12 }}>
+                <button type="button" onClick={resendConfirmation} disabled={busy} className="fs-auth-alt-btn" style={{ width: '100%', marginBottom: 16, height: 42, fontSize: 12 }}>
                   Renvoyer l'email de confirmation
                 </button>
               )}
@@ -14027,7 +14082,7 @@ void main(){
                 </div>
               )}
 
-              <button onClick={onPrimary} disabled={busy}
+              <button type="submit" disabled={busy}
                 style={{
                   width: '100%', height: 54, borderRadius: 18, border: 'none',
                   cursor: busy ? 'default' : 'pointer', fontFamily: T.font, fontWeight: 900, fontSize: 14,
@@ -14059,6 +14114,7 @@ void main(){
                 {!busy && (mode === 'login' ? 'Entrer dans LumenOS' : mode === 'signup' ? 'Créer mon cockpit' : mode === 'forgot' ? 'Envoyer le lien' : 'Mettre à jour le mot de passe')}
                 {isOk && <span style={{ position: 'relative' }}>{mode === 'recovery' ? 'Mot de passe mis à jour' : 'Bienvenue'}</span>}
               </button>
+              </form>
 
               {(mode === 'login' || mode === 'signup') && (
                 <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(248,246,252,0.62)' }}>
