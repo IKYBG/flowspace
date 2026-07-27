@@ -25181,6 +25181,204 @@ void main(){
        collection sans jamais gonfler la mémoire. */
     const CACHE_MAX = 120;
     const W = 256, H = 372; /* même ratio que le viewBox 100×145 */
+
+    /* ══════════════════════════════════════════════════════════════
+       SHADER DE GEMME — partagé par la vignette et la visionneuse 3D
+       Le modèle d'éclairage des pierres précieuses de jeu AAA, complet :
+         · Fresnel de Schlick, F0 déduit de l'INDICE DE RÉFRACTION du minéral
+           (diamant 2,42 → 17 % de réflexion de face ; quartz 1,55 → 4,6 %)
+         · réfraction avec DISPERSION : trois indices R/G/B légèrement décalés
+           → le « feu » arc-en-ciel sur les arêtes, la signature du diamant
+         · absorption de Beer-Lambert : la couleur se densifie avec l'épaisseur
+           traversée au lieu d'être peinte à plat — c'est ce qui fait « pierre »
+           et non « volume coloré »
+         · environnement de studio procédural (ciel, sol, key light serrée,
+           bandeau d'horizon) échantillonné par les vecteurs réfléchi ET
+           réfracté → des reflets NETS qui balaient les facettes en rotation
+       aColor ne transporte plus une couleur mais la CARTE DE FACETTE :
+         x = teinte de zonage · y = épaisseur traversée · z = famille de facette
+       Deux passes de rendu (faces arrière puis avant) : on voit à travers la
+       pierre, les facettes du fond transparaissent sous celles du dessus.
+    ══════════════════════════════════════════════════════════════ */
+    const GEM_STRIDE = 48; /* 3 pos + 3 normale + 3 facette + 3 barycentrique */
+    const GEM_VS = `
+      attribute vec3 aPosition; attribute vec3 aNormal; attribute vec3 aFacet; attribute vec3 aBary;
+      uniform mat4 uMvp; uniform mat4 uModel;
+      varying vec3 vN; varying vec3 vW; varying vec3 vF; varying vec3 vB;
+      void main(){
+        vec4 w = uModel * vec4(aPosition, 1.0);
+        vW = w.xyz; vN = mat3(uModel) * aNormal; vF = aFacet; vB = aBary;
+        gl_Position = uMvp * vec4(aPosition, 1.0);
+      }`;
+    const GEM_FS = `
+      #extension GL_OES_standard_derivatives : enable
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
+      precision highp float;
+      #else
+      precision mediump float;
+      #endif
+      varying vec3 vN; varying vec3 vW; varying vec3 vF; varying vec3 vB;
+      uniform vec3 uEye; uniform vec3 uA1; uniform vec3 uA2;
+      uniform vec3 uKey; uniform vec3 uFill; uniform vec3 uRim;
+      uniform float uIor; uniform float uF0; uniform float uAbsorb;
+      uniform float uPass; uniform float uAlpha; uniform float uSpark; uniform float uGlow;
+      uniform float uEdge;
+
+      /* Studio de packshot de joaillerie, procédural : un plafond très clair,
+         un sol sombre teinté, un BANDEAU D'HORIZON net (la « strip light » qui
+         signe toutes les photos de pierres) et trois sources franches. C'est
+         l'écart brutal entre ces zones qui sépare visuellement deux facettes
+         voisines — sans lui, la pierre s'aplatit en volume coloré. */
+      vec3 envStudio(vec3 d){
+        float up = d.y * 0.5 + 0.5;
+        vec3 c = mix(uA2 * 0.30 + 0.04, vec3(0.96, 1.00, 1.10), smoothstep(0.06, 0.94, up));
+        c += vec3(1.0) * pow(max(1.0 - abs(d.y) * 3.0, 0.0), 4.0) * 0.42;
+        /* PANNEAUX VERTICAUX — la pièce maîtresse.
+           Un environnement qui ne varie qu'en élévation laisse toutes les faces
+           d'un prisme vertical (normales à y ≈ 0) recevoir la même valeur : la
+           pierre s'aplatit en volume uni. Ces bandes azimutales donnent à chaque
+           face du prisme une valeur nettement différente, et c'est de leur bord
+           franc que naissent les éclats qui balaient la gemme en rotation. */
+        float az = atan(d.z, d.x);
+        c *= 0.72 + 0.52 * pow(abs(cos(az * 1.5)), 2.0);
+        c += vec3(0.92, 0.96, 1.0) * pow(max(cos(az * 3.0), 0.0), 10.0)
+             * 0.85 * smoothstep(-0.35, 0.45, d.y);
+        c += vec3(1.0) * pow(max(dot(d, uKey), 0.0), 60.0) * 5.0;
+        c += (uA1 * 0.5 + 0.6) * pow(max(dot(d, uFill), 0.0), 18.0) * 1.7;
+        c += (uA2 * 0.7 + 0.4) * pow(max(dot(d, uRim), 0.0), 12.0) * 1.2;
+        return c;
+      }
+
+      void main(){
+        vec3 n = normalize(vN);
+        if (uPass < 0.5) n = -n;              /* passe arrière : on voit l'envers */
+        vec3 e = normalize(uEye - vW);
+        vec3 v = -e;
+        float ndv = clamp(dot(n, e), 0.0, 1.0);
+        /* Exposant 4.0 au lieu des 5.0 physiques, plus un léger plancher de
+           réflexion : toute facette renvoie un peu de studio. Sans ce plancher,
+           une pierre à faible indice (quartz, F0 = 4,6 %) ne serait que
+           transmission — donc mate. Plancher gardé BAS : au-delà, le blanc de
+           la réflexion mange la couleur et la pierre se délave. */
+        float F = clamp(uF0 + (1.0 - uF0) * pow(1.0 - ndv, 4.0) + 0.08, 0.0, 1.0);
+
+        float zone = clamp(n.x * 0.40 + n.y * 0.34 + 0.5, 0.0, 1.0);
+        vec3 tint = clamp(mix(uA1, uA2, zone) * vF.x, 0.0, 1.0);
+        float thick = clamp(vF.y, 0.04, 1.0);
+        vec3 absorb = exp(-uAbsorb * thick * (1.0 - tint));
+
+        /* Dispersion : trois indices écartés de ±7 %. Le « feu » n'apparaît que
+           si l'environnement a des bords francs à échantillonner — d'où les
+           panneaux ci-dessus. Écart exagéré par rapport à la physique, sinon
+           l'arc-en-ciel est invisible à la taille d'une vignette. */
+        float eta = 1.0 / uIor;
+        vec3 refr = vec3(
+          envStudio(refract(v, n, eta * 0.930)).r,
+          envStudio(refract(v, n, eta)).g,
+          envStudio(refract(v, n, eta * 1.072)).b);
+        vec3 R = reflect(v, n);
+        /* La réflexion de surface est physiquement achromatique, mais laissée
+           blanche elle décolore la pierre : on la reteinte d'un tiers, comme le
+           fait tout rendu de gemme stylisé. */
+        vec3 refl = envStudio(R) * mix(vec3(1.0), tint, 0.35);
+        vec3 transm = refr * absorb * mix(vec3(1.0), tint, 0.80);
+        /* Rayonnement interne : sur un fond sombre, une pierre purement
+           transmissive s'éteint. Les gemmes de jeu rayonnent toujours un peu. */
+        transm += tint * uGlow * (0.22 + 0.78 * thick);
+
+        /* Trois lobes d'éclat, du large au très serré : il y a toujours une
+           facette qui accroche, et les plus alignées partent en étoile blanche. */
+        float spec = pow(max(dot(R, uKey), 0.0), 220.0) * 3.4
+                   + pow(max(dot(R, uKey), 0.0), 34.0) * 0.55
+                   + pow(max(dot(R, uFill), 0.0), 90.0) * 1.1
+                   + pow(max(dot(R, uRim), 0.0), 46.0) * 0.7;
+        spec *= uSpark;
+
+        vec3 col = mix(transm, refl, F) + vec3(spec);
+        col += tint * pow(1.0 - ndv, 2.6) * 0.55;   /* la silhouette reste lisible */
+
+        /* ARÊTES DE FACETTE — le marqueur visuel de la pierre taillée coûteuse.
+           Coordonnées barycentriques : la composante à 10 marque la diagonale
+           interne d'un quad, qu'il ne faut PAS souligner (sinon chaque face
+           porte un trait en travers). */
+        float bmin = min(min(vB.x, vB.y), vB.z);
+        #ifdef GL_OES_standard_derivatives
+          float bw = fwidth(bmin) * 1.1;
+        #else
+          float bw = 0.028;
+        #endif
+        float edge = 1.0 - smoothstep(0.0, max(bw, 0.004), bmin);
+        col += edge * uEdge * (0.45 + 0.55 * F) * mix(vec3(1.0), tint, 0.35);
+
+        if (uPass < 0.5) col *= 0.55;               /* facettes du fond, en retrait */
+        col = col / (1.0 + col * 0.42);             /* compression douce des hautes lumières */
+        col = pow(max(col, 0.0), vec3(0.92));
+        /* La compression désature : on rend sa vivacité à la pierre après coup. */
+        col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, 1.20);
+
+        /* Alpha bas de face, haut de profil : les facettes vues à plat laissent
+           voir la passe arrière (l'intérieur de la pierre), celles vues en
+           tranche restent opaques. La silhouette, elle, est déjà couverte par
+           la passe arrière — baisser cet alpha ne troue jamais la gemme. */
+        float a = (uPass < 0.5) ? 1.0
+                : clamp(uAlpha * (0.46 + F * 0.56 + vF.z * 0.12) + spec * 0.8 + edge * 0.35, 0.0, 1.0);
+        gl_FragColor = vec4(col, a);
+      }`;
+    const makeGemProgram = (g) => {
+      /* Dérivées d'écran : elles donnent aux arêtes une épaisseur CONSTANTE en
+         pixels, quelle que soit la taille du triangle. Absente (pilote ancien),
+         le shader retombe sur un seuil fixe — arêtes présentes, un peu inégales. */
+      try { g.getExtension('OES_standard_derivatives'); } catch (_) { }
+      const compile = (t, src) => { const s = g.createShader(t); g.shaderSource(s, src); g.compileShader(s); return s; };
+      const prog = g.createProgram();
+      g.attachShader(prog, compile(g.VERTEX_SHADER, GEM_VS));
+      g.attachShader(prog, compile(g.FRAGMENT_SHADER, GEM_FS));
+      g.linkProgram(prog);
+      if (!g.getProgramParameter(prog, g.LINK_STATUS)) return null;
+      g.useProgram(prog);
+      const A = n => g.getAttribLocation(prog, n), U = n => g.getUniformLocation(prog, n);
+      return { prog, pos: A('aPosition'), normal: A('aNormal'), facet: A('aFacet'), bary: A('aBary'),
+        mvp: U('uMvp'), model: U('uModel'), eye: U('uEye'), a1: U('uA1'), a2: U('uA2'),
+        key: U('uKey'), fill: U('uFill'), rim: U('uRim'), ior: U('uIor'), f0: U('uF0'),
+        absorb: U('uAbsorb'), pass: U('uPass'), alpha: U('uAlpha'), spark: U('uSpark'),
+        glow: U('uGlow'), edge: U('uEdge') };
+    };
+    const bindGemMesh = (g, l) => {
+      g.enableVertexAttribArray(l.pos);    g.vertexAttribPointer(l.pos,    3, g.FLOAT, false, GEM_STRIDE, 0);
+      g.enableVertexAttribArray(l.normal); g.vertexAttribPointer(l.normal, 3, g.FLOAT, false, GEM_STRIDE, 12);
+      g.enableVertexAttribArray(l.facet);  g.vertexAttribPointer(l.facet,  3, g.FLOAT, false, GEM_STRIDE, 24);
+      g.enableVertexAttribArray(l.bary);   g.vertexAttribPointer(l.bary,   3, g.FLOAT, false, GEM_STRIDE, 36);
+    };
+    /* Éclairage de studio FIXE dans le monde (le maillage tourne, pas les
+       lampes) : les éclats balaient les facettes au lieu d'être collés dessus. */
+    const setGemLights = (g, l, a1, a2, ior, absorb, spark, glow, edge) => {
+      const f0 = Math.pow((ior - 1) / (ior + 1), 2);
+      g.uniform3f(l.a1, a1[0], a1[1], a1[2]);
+      g.uniform3f(l.a2, a2[0], a2[1], a2[2]);
+      g.uniform3f(l.key, -0.4243, 0.7879, 0.4647);   /* clé, en haut à gauche */
+      g.uniform3f(l.fill, 0.6935, -0.3131, 0.6489);  /* appoint, en bas à droite */
+      g.uniform3f(l.rim, 0.2801, 0.4268, -0.8598);   /* contre-jour, derrière */
+      g.uniform1f(l.ior, ior);
+      g.uniform1f(l.f0, f0);
+      g.uniform1f(l.absorb, absorb);
+      g.uniform1f(l.spark, spark);
+      g.uniform1f(l.glow, glow);
+      g.uniform1f(l.edge, edge);
+    };
+    /* Deux passes : faces ARRIÈRE opaques (l'intérieur de la pierre), puis
+       faces AVANT en fondu par-dessus. Sans cela on obtient un volume plein —
+       c'est ce passage qui donne la profondeur d'une vraie gemme taillée. */
+    const drawGem = (g, l, count) => {
+      g.enable(g.DEPTH_TEST); g.depthFunc(g.LEQUAL); g.depthMask(true);
+      g.enable(g.CULL_FACE);
+      g.disable(g.BLEND);
+      g.cullFace(g.FRONT); g.uniform1f(l.pass, 0);
+      g.drawArrays(g.TRIANGLES, 0, count);
+      g.enable(g.BLEND); g.blendFunc(g.SRC_ALPHA, g.ONE_MINUS_SRC_ALPHA);
+      g.cullFace(g.BACK); g.uniform1f(l.pass, 1);
+      g.drawArrays(g.TRIANGLES, 0, count);
+    };
+
     const init = () => {
       if (gl || dead) return !!gl;
       try {
@@ -25188,33 +25386,45 @@ void main(){
         canvas.width = W; canvas.height = H;
         gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
         if (!gl) { dead = true; return false; }
-        const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;void main(){vec4 world=uModel*vec4(aPosition,1.0);vWorld=world.xyz;vNormal=mat3(uModel)*aNormal;vColor=aColor;gl_Position=uMvp*vec4(aPosition,1.0);}`;
-        const fs = `precision mediump float;varying vec3 vNormal;varying vec3 vWorld;varying vec3 vColor;uniform vec3 uLight;uniform vec3 uEye;uniform vec3 uAccent1;uniform vec3 uAccent2;uniform float uAlpha;void main(){vec3 n=normalize(vNormal);vec3 l=normalize(uLight-vWorld);vec3 e=normalize(uEye-vWorld);float d=max(dot(n,l),0.0);float rim=pow(1.0-max(dot(n,e),0.0),2.1);float sp=pow(max(dot(reflect(-l,n),e),0.0),40.0);float side=clamp(n.x*.5+n.z*.22+.5,0.0,1.0);vec3 theme=mix(uAccent1,uAccent2,side);vec3 glass=mix(theme,vec3(1.0),.22);vec3 color=mix(vColor,theme,.86)*(0.32+d*0.80)+theme*rim*.82+glass*sp*.38;gl_FragColor=vec4(color,uAlpha+rim*.06);}`;
-        const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
-        program = gl.createProgram();
-        gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
-        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
-        gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { dead = true; gl = null; return false; }
-        gl.useProgram(program);
-        loc = { pos: gl.getAttribLocation(program,'aPosition'), normal: gl.getAttribLocation(program,'aNormal'), color: gl.getAttribLocation(program,'aColor'), mvp: gl.getUniformLocation(program,'uMvp'), model: gl.getUniformLocation(program,'uModel'), light: gl.getUniformLocation(program,'uLight'), eye: gl.getUniformLocation(program,'uEye'), accent1: gl.getUniformLocation(program,'uAccent1'), accent2: gl.getUniformLocation(program,'uAccent2'), alpha: gl.getUniformLocation(program,'uAlpha') };
+        loc = makeGemProgram(gl);
+        if (!loc) { dead = true; gl = null; return false; }
+        program = loc.prog;
         return true;
       } catch (e) { dead = true; gl = null; return false; }
     };
     const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
     const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
     const norm = v => { const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; };
-    /* Paramètres par famille de forme (mêmes familles que CRYSTAL_SHAPE_DEFS) */
+    /* ── Minéralogie par famille (mêmes clés que CRYSTAL_SHAPE_DEFS) ──
+       `cut` choisit le constructeur : `brilliant` = pierre TAILLÉE (table,
+       couronne, rondiste, pavillon, culasse — 80 facettes) ; `natural` =
+       cristal BRUT (prisme + terminaison rhomboédrique biterminée).
+       `ior`/`absorb` pilotent le shader : un diamant réfracte fort et absorbe
+       peu, une géode absorbe beaucoup et rend une pierre dense et profonde.
+       `tilt` incline la présentation : un brillant vu strictement de profil ne
+       montrerait jamais sa table, la facette qui porte tout son éclat. */
     const SHAPE_P = {
-      diamond: { sides: 6, tall: 2.55, girth: .62, sats: 0, belly: .34, lean: 0 },
-      shard:   { sides: 5, tall: 2.95, girth: .44, sats: 1, belly: .52, lean: .22 },
-      geode:   { sides: 8, tall: 1.80, girth: .86, sats: 3, belly: .46, lean: 0 },
-      prism:   { sides: 6, tall: 2.40, girth: .58, sats: 0, belly: .58, lean: 0 },
-      cluster: { sides: 6, tall: 2.25, girth: .50, sats: 3, belly: .50, lean: .07 },
-      quartz:  { sides: 6, tall: 2.75, girth: .52, sats: 2, belly: .55, lean: 0 },
+      diamond: { cut:'brilliant', sides:8, tall:3.05, girth:.82, sats:0, ior:2.42, absorb:0.95, glow:.10, tilt:-.36, lean:0,   term:0,    foot:0,   zig:0   },
+      shard:   { cut:'natural',   sides:5, tall:2.95, girth:.40, sats:1, ior:1.62, absorb:1.85, glow:.16, tilt:-.14, lean:.20, term:1.10, foot:.30, zig:.34 },
+      geode:   { cut:'natural',   sides:8, tall:2.15, girth:.60, sats:3, ior:1.52, absorb:2.30, glow:.20, tilt:-.18, lean:0,   term:.58,  foot:.40, zig:.20 },
+      prism:   { cut:'natural',   sides:6, tall:2.45, girth:.55, sats:0, ior:1.58, absorb:1.70, glow:.15, tilt:-.14, lean:0,   term:.66,  foot:.48, zig:.08 },
+      cluster: { cut:'natural',   sides:6, tall:2.20, girth:.45, sats:3, ior:1.58, absorb:1.75, glow:.16, tilt:-.14, lean:.06, term:.84,  foot:.42, zig:.28 },
+      quartz:  { cut:'natural',   sides:6, tall:2.80, girth:.48, sats:2, ior:1.55, absorb:1.65, glow:.15, tilt:-.14, lean:0,   term:.95,  foot:.50, zig:.36 },
     };
-    /* Mesh sculpté : bruit seedé dont l'amplitude = morph (progress) →
-       à 0 la forme canonique régulière, à 1 la sculpture unique. */
+
+    /* ══════════════════════════════════════════════════════════════
+       MAILLAGE DE CRISTAL
+       Principe directeur : un vrai cristal N'EST PAS bruité. Ses faces
+       prismatiques sont planes et parallèles, ses arêtes rectilignes — c'est
+       précisément ce qui le distingue d'un caillou. L'unicité de chaque pierre
+       vient donc des PROPORTIONS (élancement, inclinaison, longueur de
+       terminaison, alternance des épaules, satellites), jamais d'un
+       déplacement par sommet.
+       Chaque triangle porte, en plus de sa normale plate, sa carte de facette :
+       teinte de zonage, épaisseur de matière traversée, famille de facette.
+       La topologie est constante quel que soit `morph` : la croissance de la
+       session interpole proprement de la forme canonique à la forme unique.
+    ══════════════════════════════════════════════════════════════ */
     const buildMesh = (shape, seed, morph) => {
       let _t = ((seed >>> 0) || 7) + 0x9E3779B9;
       const rand = () => {
@@ -25223,46 +25433,142 @@ void main(){
         r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
         return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
       };
-      /* déviation autour de la moyenne, amortie par morph */
-      const rng = () => 0.5 + (rand() - 0.5) * morph;
+      /* Écart signé autour de 0 et facteur multiplicatif, tous deux amortis par
+         `morph` → à 0 la forme canonique parfaite, à 1 la pierre unique. */
+      const dev = amp => (rand() - 0.5) * amp * morph;
+      const jit = (base, amp) => base * (1 + (rand() - 0.5) * amp * morph);
       const P = SHAPE_P[shape] || SHAPE_P.diamond;
       const data = [];
-      const tri = (a, b, c, col) => { const n = norm(cross(sub(b, a), sub(c, a))); [a, b, c].forEach(p => data.push(...p, ...n, ...col)); };
-      const addPrism = (cx, cz, Hh, girth, leanX, leanZ, tone) => {
+      let ctr = [0, 0, 0]; /* centre de la pièce en cours, pour orienter les faces */
+      /* Barycentriques pour le tracé des arêtes. Une composante portée à 10 ne
+         redescend jamais près de 0 : elle éteint le soulignement de l'arête
+         correspondante. On s'en sert pour masquer la DIAGONALE interne des
+         quads, qui n'est pas une vraie arête de la pierre. */
+      const B_FULL = [[1,0,0], [0,1,0], [0,0,1]];
+      const B_NO1  = [[1,10,0], [0,11,0], [0,10,1]]; /* arête a–c muette */
+      const B_NO2  = [[1,0,10], [0,1,10], [0,0,11]]; /* arête a–b muette */
+      /* Éventail : seule l'arête b–c (le pourtour) est réelle, les deux rayons
+         vers le centre ne le sont pas — une table de brillant est UNE facette. */
+      const B_FAN  = [[1,10,10], [0,11,10], [0,10,11]];
+      /* Enroulement forcé vers l'EXTÉRIEUR : le rendu deux passes s'appuie sur
+         le culling, une face à l'envers trouerait la pierre. Les barycentriques
+         suivent leur sommet dans l'échange, la suppression reste donc valide. */
+      const tri = (a, b, c, f, bary) => {
+        const bs = bary || B_FULL;
+        let B = b, C = c, b1 = bs[1], b2 = bs[2];
+        let n = norm(cross(sub(B, a), sub(C, a)));
+        const gx = (a[0]+B[0]+C[0])/3 - ctr[0], gy = (a[1]+B[1]+C[1])/3 - ctr[1], gz = (a[2]+B[2]+C[2])/3 - ctr[2];
+        if (n[0]*gx + n[1]*gy + n[2]*gz < 0) {
+          const t = B; B = C; C = t;
+          const u = b1; b1 = b2; b2 = u;
+          n = [-n[0], -n[1], -n[2]];
+        }
+        const bb = [bs[0], b1, b2];
+        [a, B, C].forEach((p, i) => data.push(p[0], p[1], p[2], n[0], n[1], n[2], f[0], f[1], f[2], bb[i][0], bb[i][1], bb[i][2]));
+      };
+      /* Quad = 2 triangles partageant la diagonale a–c : muette des deux côtés. */
+      const quad = (a, b, c, d, f) => { tri(a, b, c, f, B_NO1); tri(a, c, d, f, B_NO2); };
+
+      /* ── Cristal BRUT : prisme à faces parallèles + double terminaison ──
+         Les épaules alternent en hauteur (`zig`) : c'est la symétrie trigonale
+         du quartz, le détail qui fait lire « cristal » et non « cône ». */
+      const addNatural = (cx, cy, cz, Hh, girth, leanX, leanZ) => {
         const sides = P.sides;
-        const apexY = Hh * .55, baseY = -Hh * .18, footY = -Hh * .45;
-        const bellyY = baseY + (apexY - baseY) * (P.belly + rng() * .12);
-        const angs = [], radB = [], radM = [];
+        const apexY = cy + Hh * 0.55, footY = cy - Hh * 0.45;
+        const termLen = jit(Hh * 0.30 * P.term, 0.30);
+        const footLen = jit(Hh * 0.22 * P.foot, 0.30);
+        const topY = apexY - termLen, botY = footY + footLen;
+        const midY = (topY + botY) * 0.5;
+        const spin = rand() * Math.PI * 2;
+        const angs = [], rs = [];
+        for (let i = 0; i < sides; i++) { angs.push(spin + (i / sides) * Math.PI * 2); rs.push(1 + dev(0.10)); }
+        const at = (y, k) => {
+          const o = [];
+          for (let i = 0; i < sides; i++) o.push([cx + Math.cos(angs[i]) * girth * rs[i] * k + leanX * (y - cy), y, cz + Math.sin(angs[i]) * girth * rs[i] * k + leanZ * (y - cy)]);
+          return o;
+        };
+        const gTop = at(topY, 1), gBot = at(botY, 1);
+        const zig = Hh * 0.055 * P.zig;
+        const shTop = [], shBot = [];
         for (let i = 0; i < sides; i++) {
-          angs.push((i / sides) * Math.PI * 2 + (rng() - .5) * .40);
-          const r = girth * (.68 + rng() * .6);
-          radB.push(r * (.76 + rng() * .2));
-          radM.push(r * (.94 + rng() * .22));
+          const s = (i % 2 ? -1 : 1) * jit(zig, 0.7);
+          const yT = topY + termLen * 0.52 + s, yB = botY - footLen * 0.50 - s;
+          shTop.push([cx + Math.cos(angs[i]) * girth * rs[i] * 0.60 + leanX * (yT - cy), yT, cz + Math.sin(angs[i]) * girth * rs[i] * 0.60 + leanZ * (yT - cy)]);
+          shBot.push([cx + Math.cos(angs[i]) * girth * rs[i] * 0.62 + leanX * (yB - cy), yB, cz + Math.sin(angs[i]) * girth * rs[i] * 0.62 + leanZ * (yB - cy)]);
         }
-        const apex = [cx + leanX * apexY + (rng() - .5) * girth * .55, apexY + (rng() - .5) * Hh * .06, cz + leanZ * apexY + (rng() - .5) * girth * .55];
-        const foot = [cx - leanX * .25, footY, cz - leanZ * .25];
-        const baseR = [], midR = [];
+        const apex = [cx + leanX * (apexY - cy) + dev(girth * 0.22), apexY + dev(Hh * 0.04), cz + leanZ * (apexY - cy) + dev(girth * 0.22)];
+        const foot = [cx + leanX * (footY - cy) + dev(girth * 0.16), footY + dev(Hh * 0.03), cz + leanZ * (footY - cy) + dev(girth * 0.16)];
+        ctr = [cx + leanX * (midY - cy), midY, cz + leanZ * (midY - cy)];
+        /* Matière traversée : maximale au cœur du prisme, quasi nulle en pointe. */
+        const thickAt = y => Math.max(0.06, 1 - Math.abs(y - midY) / (Hh * 0.62));
         for (let i = 0; i < sides; i++) {
-          baseR.push([cx + Math.cos(angs[i]) * radB[i], baseY + (rng() - .5) * Hh * .04, cz + Math.sin(angs[i]) * radB[i]]);
-          const my = bellyY + (rng() - .5) * Hh * .07;
-          midR.push([cx + Math.cos(angs[i] + .09) * radM[i] + leanX * (my - baseY), my, cz + Math.sin(angs[i] + .09) * radM[i] + leanZ * (my - baseY)]);
-        }
-        for (let i = 0; i < sides; i++) {
-          const j = (i + 1) % sides;
-          const shade = .5 + rng() * .5;
-          const col = [tone[0] * shade, tone[1] * shade, tone[2] * shade];
-          const colB = col.map(v => v * .74);
-          tri(baseR[i], baseR[j], midR[j], colB);
-          tri(baseR[i], midR[j], midR[i], col);
-          tri(midR[i], midR[j], apex, col.map(v => Math.min(1, v * 1.28)));
-          tri(baseR[j], baseR[i], foot, colB.map(v => v * .62));
+          const j = (i + 1) % sides, tint = 1 + dev(0.06);
+          quad(gBot[i], gBot[j], gTop[j], gTop[i], [tint, thickAt(midY) * 0.98, 0.0]);
+          quad(gTop[i], gTop[j], shTop[j], shTop[i], [tint * 1.02, thickAt((topY + shTop[i][1]) * 0.5) * 0.80, 0.55]);
+          tri(shTop[i], shTop[j], apex, [tint * 1.04, thickAt(apex[1]) * 0.55, 0.90]);
+          quad(gBot[j], gBot[i], shBot[i], shBot[j], [tint * 0.98, thickAt((botY + shBot[i][1]) * 0.5) * 0.78, 0.55]);
+          tri(shBot[j], shBot[i], foot, [tint * 0.96, thickAt(foot[1]) * 0.50, 0.90]);
         }
       };
-      addPrism(0, 0, P.tall, P.girth, P.lean * morph, 0, [.90, .93, 1.0]);
-      for (let s = 0; s < P.sats; s++) {
-        const a = (s / Math.max(P.sats, 1)) * Math.PI * 2 + rand() * 1.4;
-        const dist = P.girth * (1.02 + rng() * .5);
-        addPrism(Math.cos(a) * dist, Math.sin(a) * dist, P.tall * (.32 + rng() * .22), P.girth * (.30 + rng() * .2), Math.cos(a) * .38, Math.sin(a) * .38, [.78, .85, 1.0]);
+
+      /* ── Pierre TAILLÉE : proportions réelles du brillant rond ──
+         Table à 54 % du diamètre, couronne, rondiste, pavillon, culasse. Les
+         deux couronnes de sommets sont décalées d'un demi-pas : c'est ce qui
+         engendre les facettes en étoile et en losange alternées d'un brillant,
+         et non une bête pyramide à N faces. */
+      const addBrilliant = (cx, cy, cz, Hh, girth) => {
+        const sides = P.sides;
+        const R = jit(girth, 0.10);
+        const crownH = jit(Hh * 0.20, 0.16);
+        const pavH = jit(Hh * 0.52, 0.14);
+        const girdH = Hh * 0.035;
+        const yOff = cy + (pavH + girdH - crownH) * 0.5;
+        const tableY = yOff + crownH, culetY = yOff - girdH - pavH;
+        ctr = [cx, yOff, cz];
+        const step = Math.PI * 2 / sides, spin = rand() * step;
+        const pt = (i, half, k, y) => [cx + Math.cos(spin + (i + half) * step) * R * k, y, cz + Math.sin(spin + (i + half) * step) * R * k];
+        const table = [], upper = [], gU = [], gL = [], lower = [];
+        for (let i = 0; i < sides; i++) {
+          table.push(pt(i, 0, 0.54, tableY));
+          upper.push(pt(i, 0.5, 0.82, yOff + crownH * 0.44));
+          gU.push(pt(i, 0, 1, yOff));
+          gL.push(pt(i, 0, 1, yOff - girdH));
+          lower.push(pt(i, 0.5, 0.50, yOff - girdH - pavH * 0.56));
+        }
+        const culet = [cx + dev(R * 0.05), culetY, cz + dev(R * 0.05)];
+        const tCtr = [cx, tableY, cz];
+        for (let i = 0; i < sides; i++) {
+          const j = (i + 1) % sides, tint = 1 + dev(0.05);
+          /* Table : la grande facette plane, celle qui renvoie l'éclat franc. */
+          tri(tCtr, table[i], table[j], [tint, 0.34, 1.0], B_FAN);
+          /* Couronne : losanges vers le bas, étoiles vers le haut. */
+          tri(table[i], table[j], upper[i], [tint * 1.02, 0.52, 0.80]);
+          tri(table[j], upper[j], upper[i], [tint * 1.01, 0.56, 0.80]);
+          /* Halefis : de la couronne au rondiste. */
+          tri(upper[i], gU[i], gU[j], [tint, 0.74, 0.55]);
+          tri(upper[i], gU[j], upper[j], [tint * 0.99, 0.70, 0.55]);
+          /* Rondiste : bande verticale fine — elle capte un trait de lumière net. */
+          quad(gU[i], gU[j], gL[j], gL[i], [tint, 1.0, 1.0]);
+          /* Pavillon : c'est lui qui renvoie la lumière vers l'œil. */
+          tri(gL[i], gL[j], lower[i], [tint * 0.99, 0.92, 0.30]);
+          tri(gL[j], lower[j], lower[i], [tint, 0.86, 0.30]);
+          tri(lower[i], lower[j], culet, [tint * 1.02, 0.46, 0.60]);
+        }
+      };
+
+      if (P.cut === 'brilliant') {
+        addBrilliant(0, 0, 0, P.tall, P.girth);
+      } else {
+        addNatural(0, 0, 0, P.tall, P.girth, P.lean * morph, 0);
+        /* Satellites : de jeunes cristaux nés au pied du principal, inclinés
+           vers l'extérieur comme dans une vraie druse. */
+        for (let s = 0; s < P.sats; s++) {
+          const a = (s / Math.max(P.sats, 1)) * Math.PI * 2 + rand() * 1.4;
+          const dist = jit(P.girth * 1.05, 0.34);
+          addNatural(Math.cos(a) * dist, -P.tall * 0.20, Math.sin(a) * dist,
+            jit(P.tall * 0.40, 0.34), jit(P.girth * 0.36, 0.30),
+            Math.cos(a) * 0.34, Math.sin(a) * 0.34);
+        }
       }
       return new Float32Array(data);
     };
@@ -25281,33 +25587,32 @@ void main(){
       if (hit) return hit;
       if (!init()) return null;
       try {
+        const P = SHAPE_P[shape] || SHAPE_P.diamond;
         const mesh = buildMesh(shape, seed, 0.2 + q * 0.8);
         const buffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
-        const stride = 36;
-        gl.enableVertexAttribArray(loc.pos); gl.vertexAttribPointer(loc.pos,3,gl.FLOAT,false,stride,0);
-        gl.enableVertexAttribArray(loc.normal); gl.vertexAttribPointer(loc.normal,3,gl.FLOAT,false,stride,12);
-        gl.enableVertexAttribArray(loc.color); gl.vertexAttribPointer(loc.color,3,gl.FLOAT,false,stride,24);
+        bindGemMesh(gl, loc);
         gl.viewport(0, 0, W, H);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        gl.enable(gl.DEPTH_TEST);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        const a1 = hexV(c1), a2 = hexV(c2);
-        gl.uniform3f(loc.light, -2.6, 3.6, 3.8);
-        gl.uniform3f(loc.eye, 0, .1, 5.2);
-        gl.uniform3f(loc.accent1, a1[0], a1[1], a1[2]);
-        gl.uniform3f(loc.accent2, a2[0], a2[1], a2[2]);
-        gl.uniform1f(loc.alpha, .92);
-        const vp = mul(perspective(Math.PI/4, W/H, .1, 100), lookAt([0, .1, 5.0], [0, 0, 0], [0, 1, 0]));
+        /* Vignette : éclat un cran en dessous de la visionneuse — à 40 px, un
+           spéculaire trop serré scintille en un pixel blanc au lieu de briller. */
+        setGemLights(gl, loc, hexV(c1), hexV(c2), P.ior, P.absorb, 0.85, P.glow, 0.30);
+        /* Caméra RAPPROCHÉE (3,4 au lieu de 5,0, champ élargi pour conserver le
+           cadrage). De loin, la direction de vue est quasi constante sur toute
+           une facette : celle-ci se remplit d'une valeur unique et la pierre
+           retombe en aplat facetté. De près, réflexion et réfraction varient
+           À L'INTÉRIEUR de chaque facette — c'est ce dégradé qui fait le verre. */
+        gl.uniform3f(loc.eye, 0, .1, 3.4);
+        gl.uniform1f(loc.alpha, .96);
+        const vp = mul(perspective(1.093, W/H, .1, 100), lookAt([0, .1, 3.4], [0, 0, 0], [0, 1, 0]));
         /* angle de présentation seedé → chaque cristal a « son » profil */
         const ang = ((seed % 97) / 97) * Math.PI * 2;
-        const model = mul(rotY(ang), mul(rotX(-.14), scaleM(.98)));
+        const model = mul(rotY(ang), mul(rotX(P.tilt), scaleM(.98)));
         gl.uniformMatrix4fv(loc.model, false, new Float32Array(model));
         gl.uniformMatrix4fv(loc.mvp, false, new Float32Array(mul(vp, model)));
-        gl.drawArrays(gl.TRIANGLES, 0, mesh.length / 9);
+        drawGem(gl, loc, mesh.length / 12);
         gl.deleteBuffer(buffer);
         /* Snapshot par drawImage (copie GPU ~0,02 ms) et non toDataURL
            (readback + encodage PNG ~7 ms SYNCHRONES par gemme : c'est lui qui
@@ -25353,7 +25658,8 @@ void main(){
        ouvre son propre contexte WebGL (haute résolution, orientation libre à la
        souris) mais doit sculpter EXACTEMENT le même mesh que la gemme affichée
        partout ailleurs — sinon le cristal examiné ne serait pas le sien. */
-    render.internals = { buildMesh, mul, rotX, rotY, scaleM, perspective, lookAt, hexV, SHAPE_P };
+    render.internals = { buildMesh, mul, rotX, rotY, scaleM, perspective, lookAt, hexV, SHAPE_P,
+                         makeGemProgram, bindGemMesh, setGemLights, drawGem, GEM_STRIDE };
     return render;
   })();
 
@@ -25367,7 +25673,7 @@ void main(){
   ══════════════════════════════════════════════════════════════ */
   function CrystalOrbit3D({ shape = 'diamond', gradientId, seed = 1, size = 300, rarity }) {
     const canvasRef = React.useRef(null);
-    const stateRef = React.useRef({ yaw: 0.5, pitch: -0.12, dist: 5.0, vy: 0, vp: 0, drag: false, lx: 0, ly: 0, auto: true, pid: null });
+    const stateRef = React.useRef({ yaw: 0.5, pitch: -0.12, dist: 3.4, vy: 0, vp: 0, drag: false, lx: 0, ly: 0, auto: true, pid: null });
     const [hint, setHint] = React.useState(true);
 
     React.useEffect(() => {
@@ -25384,53 +25690,26 @@ void main(){
       try { gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: false, preserveDrawingBuffer: true }); } catch (_) { }
       if (!gl) return;
 
-      /* Shader de présentation : plus riche que la vignette (spéculaire serré,
-         rim marqué, léger Fresnel) — on regarde l'objet de près. */
-      const vs = `attribute vec3 aPosition;attribute vec3 aNormal;attribute vec3 aColor;
-        uniform mat4 uMvp;uniform mat4 uModel;varying vec3 vN;varying vec3 vW;varying vec3 vC;
-        void main(){vec4 w=uModel*vec4(aPosition,1.0);vW=w.xyz;vN=mat3(uModel)*aNormal;vC=aColor;gl_Position=uMvp*vec4(aPosition,1.0);}`;
-      const fs = `precision mediump float;varying vec3 vN;varying vec3 vW;varying vec3 vC;
-        uniform vec3 uLight;uniform vec3 uLight2;uniform vec3 uEye;uniform vec3 uA1;uniform vec3 uA2;
-        void main(){
-          vec3 n=normalize(vN);vec3 e=normalize(uEye-vW);
-          vec3 l1=normalize(uLight-vW), l2=normalize(uLight2-vW);
-          float d=max(dot(n,l1),0.0)*0.86+max(dot(n,l2),0.0)*0.34;
-          float rim=pow(1.0-max(dot(n,e),0.0),2.0);
-          float sp=pow(max(dot(reflect(-l1,n),e),0.0),58.0)+pow(max(dot(reflect(-l2,n),e),0.0),26.0)*0.5;
-          float side=clamp(n.x*.5+n.y*.2+n.z*.24+.5,0.0,1.0);
-          vec3 theme=mix(uA1,uA2,side);
-          vec3 glass=mix(theme,vec3(1.0),.3);
-          vec3 col=mix(vC,theme,.88)*(0.28+d*0.92)+theme*rim*1.05+glass*sp*0.95;
-          gl_FragColor=vec4(col,0.94+rim*0.06);
-        }`;
-      const compile = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); return o; };
-      const prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
-      gl.useProgram(prog);
-      const L = {
-        pos: gl.getAttribLocation(prog, 'aPosition'), nor: gl.getAttribLocation(prog, 'aNormal'), col: gl.getAttribLocation(prog, 'aColor'),
-        mvp: gl.getUniformLocation(prog, 'uMvp'), model: gl.getUniformLocation(prog, 'uModel'),
-        light: gl.getUniformLocation(prog, 'uLight'), light2: gl.getUniformLocation(prog, 'uLight2'),
-        eye: gl.getUniformLocation(prog, 'uEye'), a1: gl.getUniformLocation(prog, 'uA1'), a2: gl.getUniformLocation(prog, 'uA2'),
-      };
+      /* EXACTEMENT le shader de la vignette (réfraction dispersive, absorption,
+         studio) : la pierre qu'on examine de près doit être la même matière que
+         celle de la grotte — simplement rendue plus grand et en mouvement. */
+      const L = R.makeGemProgram(gl);
+      if (!L) return;
+      const prog = L.prog;
       const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gradientId);
       const stops = grad ? grad.stops : ['#a5b8ff', '#c084fc'];
       const c1v = R.hexV(stops[0]), c2v = R.hexV(stops[stops.length - 1]);
+      const P = R.SHAPE_P[shape] || R.SHAPE_P.diamond;
       const mesh = R.buildMesh(shape, (seed >>> 0) || 7, 1);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
-      const stride = 36;
-      gl.enableVertexAttribArray(L.pos); gl.vertexAttribPointer(L.pos, 3, gl.FLOAT, false, stride, 0);
-      gl.enableVertexAttribArray(L.nor); gl.vertexAttribPointer(L.nor, 3, gl.FLOAT, false, stride, 12);
-      gl.enableVertexAttribArray(L.col); gl.vertexAttribPointer(L.col, 3, gl.FLOAT, false, stride, 24);
-      gl.enable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      R.bindGemMesh(gl, L);
+      /* Plein cadre : éclats à pleine intensité, la pierre est l'objet du plan. */
+      R.setGemLights(gl, L, c1v, c2v, P.ior, P.absorb, 1.0, P.glow, 0.34);
+      gl.uniform1f(L.alpha, 0.97);
       gl.viewport(0, 0, canvas.width, canvas.height);
-      const count = mesh.length / 9;
+      const count = mesh.length / 12;
 
       let raf = 0, alive = true;
       const reduce = document.documentElement.classList.contains('fs-reduce-motion');
@@ -25444,16 +25723,12 @@ void main(){
         s.pitch = Math.max(-1.45, Math.min(1.45, s.pitch));
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        gl.uniform3f(L.light, -2.6, 3.4, 4.2);
-        gl.uniform3f(L.light2, 3.2, -1.6, 2.4);
         gl.uniform3f(L.eye, 0, 0, s.dist);
-        gl.uniform3f(L.a1, c1v[0], c1v[1], c1v[2]);
-        gl.uniform3f(L.a2, c2v[0], c2v[1], c2v[2]);
-        const vp = R.mul(R.perspective(Math.PI / 4.4, canvas.width / canvas.height, 0.1, 100), R.lookAt([0, 0, s.dist], [0, 0, 0], [0, 1, 0]));
+        const vp = R.mul(R.perspective(1.04, canvas.width / canvas.height, 0.1, 100), R.lookAt([0, 0, s.dist], [0, 0, 0], [0, 1, 0]));
         const model = R.mul(R.rotY(s.yaw), R.mul(R.rotX(s.pitch), R.scaleM(1.02)));
         gl.uniformMatrix4fv(L.model, false, new Float32Array(model));
         gl.uniformMatrix4fv(L.mvp, false, new Float32Array(R.mul(vp, model)));
-        gl.drawArrays(gl.TRIANGLES, 0, count);
+        R.drawGem(gl, L, count);
       };
       const step = () => {
         const s = stateRef.current;
@@ -25498,7 +25773,7 @@ void main(){
       };
       const wheel = e => {
         const s = stateRef.current;
-        s.dist = Math.max(3.1, Math.min(9, s.dist + (e.deltaY > 0 ? 0.34 : -0.34)));
+        s.dist = Math.max(2.4, Math.min(6.2, s.dist + (e.deltaY > 0 ? 0.26 : -0.26)));
         paint();
         e.preventDefault();
       };
