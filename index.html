@@ -214,6 +214,58 @@
       color: var(--mineral-text);
       font-family: var(--font-body);
       -webkit-font-smoothing: antialiased;
+      /* Tirer vers le bas en haut d'une liste rechargeait la PWA sur Android
+         Chrome — et faisait perdre la saisie en cours. Une app ne se recharge
+         pas parce qu'on a scrollé trop fort. */
+      overscroll-behavior: none;
+    }
+
+    /* ══════════════ SOCLE TACTILE ══════════════
+       Quatre défauts qui, ensemble, signalaient « page web » plutôt que
+       « application » dès le premier appui. Aucun n'a de coût de rendu. */
+
+    /* 1. Le flash bleu. -webkit-tap-highlight-color valait sa couleur par
+          DÉFAUT (rgba(51,181,229,.4)) : chaque appui peignait un rectangle
+          cyan Android par-dessus une interface sombre soignée. C'est le tell
+          le plus universel du web mobile non travaillé. On le coupe, mais on
+          le REMPLACE — un bouton qui ne réagit pas à l'appui donne
+          l'impression d'un tap raté et provoque un double appui. */
+    * { -webkit-tap-highlight-color: transparent; }
+
+    /* 2. Le retour d'appui maison : un enfoncement de 3 % en transform, donc
+          composité par le GPU, sans layout ni paint. `:active` seulement sur
+          appareil tactile — sur desktop c'est le :hover qui joue ce rôle. */
+    @media (hover: none) and (pointer: coarse) {
+      button:active, [role="button"]:active, a:active, .fs-nav-item:active,
+      .fs-mobile-nav-btn:active, .fs-focus-tab-btn:active {
+        transform: scale(0.97);
+        transition: transform 90ms cubic-bezier(.4, 0, .6, 1);
+      }
+      /* Ces éléments pilotent déjà leur propre transform (translateY, scale
+         d'état actif) : les écraser ferait sauter leur position. */
+      .fs-dash-start-btn:active, .fs-task-pri:active { transform: none; }
+    }
+
+    /* 3. L'appui long ouvrait la loupe de sélection de texte iOS sur les
+          LIBELLÉS de boutons et de navigation. Le chrome n'est pas du texte à
+          copier ; le contenu de l'utilisateur, si. */
+    button, [role="button"], .fs-nav-item, .fs-mobile-nav-btn, .fs-label,
+    .fs-focus-tab-btn, nav, .fs-mobile-nav {
+      -webkit-user-select: none; user-select: none;
+    }
+    input, textarea, [contenteditable], .fs-note-body, .fs-task-title {
+      -webkit-user-select: text; user-select: text;
+    }
+
+    /* 4. iOS Safari ZOOME la page dès qu'un champ passe sous 16px, et ne
+          dézoome jamais : l'utilisateur finit sa saisie sur une page agrandie
+          qu'il doit pincer pour remettre d'aplomb. Les champs étaient à 13px.
+          On force 16px sur mobile UNIQUEMENT — sur desktop la taille d'origine
+          reste, car la densité y est un choix de design assumé.
+          (Ne jamais « corriger » ça avec maximum-scale=1 : ça désactive le
+          zoom d'accessibilité pour tout le monde.) */
+    @media (max-width: 768px) {
+      input, textarea, select { font-size: 16px !important; }
     }
 
     #root {
@@ -1144,7 +1196,13 @@
     .fs-mobile-nav {
       display: none;
       position: fixed;
-      bottom: 10px; left: 12px; right: 12px;
+      /* La barre était à bottom:10px SANS safe-area : sur tout iPhone à
+         indicateur d'accueil, son tiers bas tombait dans la zone que le système
+         réserve au geste de retour à l'accueil — visuellement sous l'indicateur,
+         et avec des appuis captés par iOS plutôt que par l'app. Le contenu, lui,
+         respectait déjà la safe-area (--fs-navspace) ; c'est la barre elle-même
+         qui avait été oubliée. */
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px;
       height: 66px;
       z-index: 200;
       background: rgba(9,10,22,0.92);
@@ -4611,7 +4669,17 @@
               </div>
             </Ring>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={reset} style={{ background: 'none', border: 'none', color: T.muted, fontSize: 16, cursor: 'pointer', padding: 4 }}>↺</button>
+              {/* Le glyphe de police ↺ (19 x 28 px de zone tactile) devient une
+                  icône SVG dans une cible de 44 px. Deux règles du projet étaient
+                  enfreintes d'un coup : jamais de glyphe dans l'UI, et une cible
+                  tactile ne descend pas sous 44 px. C'était le bouton le plus
+                  petit du dashboard, à côté du bouton le plus important. */}
+              <button onClick={reset} aria-label="Réinitialiser le minuteur"
+                style={{ background: 'none', border: 'none', color: T.muted, cursor: 'pointer', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
+                </svg>
+              </button>
               <button onClick={toggle} style={{ background: run ? 'rgba(255,255,255,0.08)' : modeColor, border: 'none', borderRadius: 99, padding: '9px 24px', color: run ? T.text : '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s' }}>{run ? 'Pause' : 'Démarrer'}</button>
               <div style={{ display: 'flex', gap: 5 }}>
                 {[...Array(4)].map((_, i) => <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: i < sess ? modeColor : 'rgba(255,255,255,0.1)', boxShadow: i < sess ? `0 0 6px ${modeColor}88` : '' }} />)}
@@ -13344,7 +13412,7 @@ void main(){
        exister pour qui hésite. */
     .fs-auth-demo-cta {
       display:inline-flex; align-items:center; gap:8px; margin-top:22px;
-      height:40px; padding:0 17px; border-radius:16px; cursor:pointer;
+      height:44px; padding:0 18px; border-radius:16px; cursor:pointer;
       font-family:inherit; font-size:13px; font-weight:800; letter-spacing:.01em;
       color:rgba(240,244,255,.9);
       border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.055);
@@ -13906,8 +13974,15 @@ void main(){
                   <FL ch={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} htmlFor="auth-password" required />
                   <div style={{ position: 'relative' }}>
                     <input id="auth-password" className="fs-ai" type={showPw ? 'text' : 'password'} placeholder={mode === 'recovery' ? 'Nouveau mot de passe' : 'Mot de passe'} value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && onPrimary()} disabled={busy} style={{ paddingRight: 48 }} />
+                    {/* Zone tactile portée de 23 à 44 px. L'icône garde sa taille
+                        — c'est la surface CLIQUABLE qui grandit, via le padding et
+                        un centrage. Viser 23 px au pouce, sur le champ qu'on rate
+                        le plus souvent, produisait des appuis manqués juste avant
+                        de valider. right passe à 6px pour que la nouvelle boîte
+                        reste alignée sur le bord du champ. */}
                     <button onClick={() => setShowPw(v => !v)} disabled={busy}
-                      style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,246,252,0.55)', padding: 4, display: 'flex', alignItems: 'center', transition: 'color 0.17s' }}
+                      aria-label={showPw ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,246,252,0.55)', width: 44, height: 44, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.17s' }}
                       onMouseEnter={e => e.currentTarget.style.color = 'rgba(248,246,252,0.85)'}
                       onMouseLeave={e => e.currentTarget.style.color = 'rgba(248,246,252,0.55)'}>
                       <EyeIcon />
@@ -13919,8 +13994,12 @@ void main(){
 
               {mode === 'login' && (
                 <div style={{ textAlign: 'right', marginTop: -4, marginBottom: 14 }}>
+                  {/* minHeight 44 + padding : un lien texte nu ne faisait que
+                      15 px de haut. Au doigt on le rate, et on rate un lien de
+                      récupération de mot de passe au pire moment — celui où on
+                      vient déjà d'échouer à se connecter. */}
                   <button onClick={() => goMode('forgot')} disabled={busy}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(var(--la-soft-rgb),0.9)', fontSize: 12, fontWeight: 700, fontFamily: T.font }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(var(--la-soft-rgb),0.9)', fontSize: 12, fontWeight: 700, fontFamily: T.font, minHeight: 44, padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}>
                     Mot de passe oublié ?
                   </button>
                 </div>
@@ -13985,7 +14064,7 @@ void main(){
                 <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(248,246,252,0.62)' }}>
                   {mode === 'login' ? 'Nouveau ici ?' : 'Déjà un compte ?'}{' '}
                   <button onClick={switchMode}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 800, fontFamily: T.font, fontSize: 13, opacity: 0.94, transition: 'opacity 0.17s' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 800, fontFamily: T.font, fontSize: 13, opacity: 0.94, transition: 'opacity 0.17s', minHeight: 44, padding: '0 6px', display: 'inline-flex', alignItems: 'center' }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={e => e.currentTarget.style.opacity = '0.94'}>
                     {mode === 'login' ? 'Créer un compte' : 'Se connecter'}
@@ -14020,14 +14099,23 @@ void main(){
                   return (
                     <button key={s.id} type="button" onClick={e => pickLogin(s.id, e)}
                       aria-label={`Thème ${s.label}`} aria-pressed={on} title={s.label}
-                      style={{ width:16, height:16, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
+                      /* La pastille MESURE 16 px mais sa zone d'appui en fait 44 :
+                         le disque est peint en ::before via un fond centré, et le
+                         bouton lui-même est une cible réglementaire transparente.
+                         Sans ça je livrais des cibles de 15 px — c'est le défaut
+                         que j'avais introduit en ancrant ce sélecteur dans la carte. */
+                      style={{ width:44, height:44, borderRadius:'50%', padding:0, cursor:'pointer', flexShrink:0,
+                        border:'none', background:'none', display:'grid', placeItems:'center',
+                        transform:'scale(1)', opacity:on ? 1 : .68,
+                        transition:'transform .17s var(--mineral-ease), opacity .17s' }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.14)'; e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = on ? '1' : '.68'; }}>
+                      <span style={{ display:'block', width:16, height:16, borderRadius:'50%',
                         background:s.grad,
                         border:on ? '2px solid rgba(255,255,255,.92)' : '1.5px solid rgba(255,255,255,.2)',
                         boxShadow:on ? `0 0 0 2px rgba(${s.ring},.28)` : 'none',
-                        transform:'scale(1)', opacity:on ? 1 : .68,
-                        transition:'transform .17s var(--mineral-ease), opacity .17s, box-shadow .17s var(--mineral-ease), border-color .17s' }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.14)'; e.currentTarget.style.opacity = '1'; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = on ? '1' : '.68'; }} />
+                        transition:'box-shadow .17s var(--mineral-ease), border-color .17s' }} />
+                    </button>
                   );
                 })}
               </div>
