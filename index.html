@@ -1064,9 +1064,15 @@
       .fs-gamif-mini { gap: 5px !important; flex-shrink: 1 !important; min-width: 0 !important; }
       .fs-gamif-chip { padding: 5px 8px !important; gap: 4px !important; flex-shrink: 0 !important; }
       .fs-gamif-quest { display: none !important; }
-      .fs-dash-addwidget-btn { width: 40px !important; height: 40px !important; padding: 0 !important; justify-content: center !important; }
+      /* 44 px : la grappe de la top bar tournait entre 34 et 42 px, or ce sont
+         les quatre commandes les plus hautes de l'ecran, donc les plus dures a
+         atteindre au pouce. */
+      .fs-dash-addwidget-btn { width: 44px !important; height: 44px !important; padding: 0 !important; justify-content: center !important; }
+      .fs-dhx-group { height: 44px !important; }
+      .fs-dhx-ghost { min-width: 44px !important; }
+      .fs-dash-start-more { min-width: 44px !important; }
       .fs-dash-addwidget-label { display: none !important; }
-      .fs-dash-start-btn { padding: 10px 13px !important; gap: 6px !important; }
+      .fs-dash-start-btn { padding: 0 15px !important; min-height: 44px !important; gap: 6px !important; }
       /* Mode édition : le picker de widgets devient une feuille pleine largeur
          (ancré right:0 sur le header, il débordait de l'écran). */
       .fs-edit-picker-sheet {
@@ -1094,11 +1100,30 @@
         height: auto !important; max-height: 100% !important;
         -webkit-overflow-scrolling: touch;
       }
+      /* ══ UNE PILE DE CARTES, PAS UNE GRILLE À HAUTEUR FIXE ══
+         Tous les widgets étaient forcés à la MÊME hauteur, quel que soit leur
+         contenu (168 px, 238 px pour les « tall »). C'est de la pensée grille
+         desktop transposée telle quelle, et ça produisait deux dégâts opposés :
+           · le widget Notes recevait 238 px pour afficher un mot ;
+           · le minuteur, qui doit loger un mode, un anneau, un chrono, un reset
+             et un bouton, recevait les mêmes 238 px et ÉCRASAIT ses contrôles à
+             24 et 31 px de haut.
+         Les cibles tactiles trop petites du dashboard n'étaient donc pas des
+         oublis de style : elles étaient la conséquence mécanique de cette
+         hauteur uniforme.
+         Sur mobile, un dashboard est une PILE : chaque carte prend la place que
+         son contenu demande. On garde un plancher pour que les cartes vides
+         gardent une présence, et un plafond pour qu'un widget bavard ne pousse
+         pas les autres hors de vue — mais entre les deux, c'est le contenu qui
+         décide. */
       .fs-dashboard-grid > * {
         grid-column: unset !important; grid-row: unset !important;
-        min-height: 168px !important; height: 168px !important; flex-shrink: 0 !important;
+        height: auto !important;
+        min-height: 172px !important;
+        max-height: 460px !important;
+        flex-shrink: 0 !important;
       }
-      .fs-widget-tall { height: 238px !important; min-height: 238px !important; }
+      .fs-widget-tall { min-height: 244px !important; }
 
       /* ─── Focus / Session ──────────────────────────── */
       .fs-focus-screen-head { padding: 22px 16px 0 !important; }
@@ -4739,7 +4764,7 @@
             <div style={{ display: 'flex', gap: 6 }}>
               {['focus', 'break'].map(m => (
                 <button key={m} onClick={() => { setMode(m); setSecs(m === 'focus' ? 25 * 60 : 5 * 60); setRun(false); }}
-                  style={{ background: mode === m ? `${modeColor}22` : 'transparent', border: `1px solid ${mode === m ? `${modeColor}55` : 'rgba(255,255,255,0.08)'}`, borderRadius: 99, padding: '5px 14px', fontSize: 11, fontWeight: 600, color: mode === m ? modeColor : T.muted, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.25s' }}>
+                  style={{ background: mode === m ? `${modeColor}22` : 'transparent', border: `1px solid ${mode === m ? `${modeColor}55` : 'rgba(255,255,255,0.08)'}`, borderRadius: 99, padding: '0 16px', minHeight: 44, fontSize: 11, fontWeight: 600, color: mode === m ? modeColor : T.muted, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.25s' }}>
                   {m}
                 </button>
               ))}
@@ -4762,7 +4787,7 @@
                   <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
                 </svg>
               </button>
-              <button onClick={toggle} style={{ background: run ? 'rgba(255,255,255,0.08)' : modeColor, border: 'none', borderRadius: 99, padding: '9px 24px', color: run ? T.text : '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s' }}>{run ? 'Pause' : 'Démarrer'}</button>
+              <button onClick={toggle} style={{ background: run ? 'rgba(255,255,255,0.08)' : modeColor, border: 'none', borderRadius: 99, padding: '0 28px', minHeight: 46, color: run ? T.text : '#07070d', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s' }}>{run ? 'Pause' : 'Démarrer'}</button>
               <div style={{ display: 'flex', gap: 5 }}>
                 {[...Array(4)].map((_, i) => <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: i < sess ? modeColor : 'rgba(255,255,255,0.1)', boxShadow: i < sess ? `0 0 6px ${modeColor}88` : '' }} />)}
               </div>
@@ -16079,7 +16104,9 @@ void main(){
             .fs-prod-sheen{position:absolute;top:0;left:-55%;width:42%;height:100%;transform:skewX(-18deg);pointer-events:none;
               background:linear-gradient(90deg,transparent,rgba(255,255,255,0.05),transparent);
               animation:fsProdSheen 1.8s .55s cubic-bezier(.4,0,.2,1) both}
-            .fs-prod-close{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:10px;
+            /* 26 -> 40 px : fermer une carte qui recouvre le contenu ne doit jamais
+               demander de viser. */
+            .fs-prod-close{position:absolute;top:8px;right:8px;width:40px;height:40px;border-radius:12px;
               border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:rgba(244,246,251,0.55);
               display:grid;place-items:center;cursor:pointer;transition:background .22s,color .22s,transform .22s}
             .fs-prod-close:hover{background:rgba(255,255,255,0.09);color:rgba(244,246,251,0.9);transform:scale(1.06)}
