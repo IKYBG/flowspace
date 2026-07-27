@@ -1064,12 +1064,26 @@
       .fs-gamif-mini { gap: 5px !important; flex-shrink: 1 !important; min-width: 0 !important; }
       .fs-gamif-chip { padding: 5px 8px !important; gap: 4px !important; flex-shrink: 0 !important; }
       .fs-gamif-quest { display: none !important; }
-      /* 44 px : la grappe de la top bar tournait entre 34 et 42 px, or ce sont
-         les quatre commandes les plus hautes de l'ecran, donc les plus dures a
-         atteindre au pouce. */
-      .fs-dash-addwidget-btn { width: 44px !important; height: 44px !important; padding: 0 !important; justify-content: center !important; }
-      .fs-dhx-group { height: 44px !important; }
-      .fs-dhx-ghost { min-width: 44px !important; }
+      /* ══ LA GRAPPE « + / CRAYON » ══
+         Deux défauts se cumulaient ici.
+         1) GÉOMÉTRIE. Le groupe est en border-box avec 1 px de bordure et
+            `overflow:hidden` : à 44 px de haut, sa boîte de contenu n'en fait
+            que 42. Le « + » était forcé à `height:44px` → il dépassait de 2 px
+            et se faisait ROGNER, pendant que le crayon, lui, s'étirait
+            sagement à 42. D'où deux boutons de hauteurs différentes dans une
+            même pilule, l'un coupé : le « bug » visible à l'œil.
+            On ne force plus la hauteur des enfants — `align-items:stretch` du
+            groupe s'en charge — et le groupe passe à 46 px pour que sa boîte
+            de CONTENU fasse les 44 px de cible tactile visés.
+         2) REDONDANCE. « + » et crayon mènent au MÊME écran ('edit') ; le « + »
+            y pré-ouvre seulement le tiroir de widgets. Sur desktop leurs
+            libellés les distinguent — sur mobile le libellé du « + » est
+            masqué, et il ne reste que deux pastilles fantômes identiques côte
+            à côte. Le « + » se retire donc du mobile : le tiroir de widgets
+            s'ouvre depuis l'écran de personnalisation, à un tap de là. */
+      .fs-dash-addwidget-btn { display: none !important; }
+      .fs-dhx-group { height: 46px !important; }
+      .fs-dhx-ghost { min-width: 44px !important; height: auto !important; }
       .fs-dash-start-more { min-width: 44px !important; }
       .fs-dash-addwidget-label { display: none !important; }
       .fs-dash-start-btn { padding: 0 15px !important; min-height: 44px !important; gap: 6px !important; }
@@ -1251,10 +1265,13 @@
       .fs-dashboard-grid { padding: 8px 10px var(--fs-navspace) !important; gap: 8px !important; }
       .fs-note-edit-dialog { height: 96dvh !important; max-height: 96dvh !important; }
       .fs-focus-screen-title { font-size: 24px !important; }
-      /* Petits téléphones (iPhone SE, etc.) : encore trop étroit pour
-         "Démarrer" en toutes lettres à côté du reste du header. */
+      /* Petits téléphones : le libellé long ne passe pas, mais un bouton
+         principal SANS libellé n'est pas une option — c'est l'action que
+         l'écran existe pour porter. On bascule sur le repli court, rendu
+         possible par la place que libère le « + » retiré juste au-dessus. */
       .fs-dash-start-label { display: none !important; }
-      .fs-dash-start-btn { width: 40px !important; padding: 0 !important; justify-content: center !important; }
+      .fs-dash-start-label-short { display: inline !important; }
+      .fs-dash-start-btn { padding: 0 13px !important; justify-content: center !important; }
     }
 
     /* Safe area — notch / home indicator */
@@ -7344,6 +7361,7 @@
             .fs-dash-start-btn:hover::after{opacity:1;animation:fsDhxSheen .7s ease both}
             @keyframes fsDhxSheen{from{left:-50%}to{left:120%}}
             .fs-dhx-play{width:20px;height:20px;border-radius:50%;background:rgba(7,8,16,.15);display:grid;place-items:center;flex-shrink:0}
+            .fs-dash-start-label-short{display:none}
             /* Bouton scindé : une seule pièce visuelle, deux zones de frappe */
             .fs-dash-start-split{display:flex;align-items:stretch;flex-shrink:0;border-radius:16px;overflow:hidden;
               box-shadow:0 12px 30px rgba(var(--theme-c1-rgb),.18),inset 0 1px 0 rgba(255,255,255,.36);
@@ -7358,7 +7376,11 @@
             .fs-dash-start-more:active{transform:scale(.96)}
             html.fs-reduce-motion .fs-dhx-anim{animation:none!important}
             html.fs-reduce-motion .fs-dash-start-btn::after{animation:none!important;opacity:0!important}
-            @media(max-width:768px){.fs-dhx-group{height:40px}.fs-dhx-icon{width:42px!important}}
+            /* Les hauteurs/largeurs mobiles de cette grappe vivent dans la
+               feuille globale (bloc « + / crayon »). Les redéclarer ici les
+               mettait en conflit — 40 px contre 44, 42 px contre min-width 44 —
+               et c'est de ce désaccord que venait le rognage. */
+            @media(max-width:768px){.fs-dhx-icon{width:auto!important}}
           `}</style>
           <div className="fs-dashboard-header" style={{ padding: '16px 28px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexShrink: 0 }}>
             <div className="fs-dashboard-header-left" style={{ display: 'flex', alignItems: 'center', justifyContent: session ? 'center' : 'flex-start', gap: 16, minWidth: 0, flex: session ? 1 : 'initial' }}>
@@ -7417,7 +7439,7 @@
                      format (aucune décision au moment d'agir), le chevron ouvre
                      le lanceur pour qui veut choisir (Ensemble, durée, tâches). */}
                   <div className="fs-dash-start-split">
-                    <button className="fs-dash-start-btn" onClick={() => (onQuickStart ? onQuickStart() : onNavigate('session'))} style={{ fontFamily: T.font }}>
+                    <button className="fs-dash-start-btn" aria-label="Nouvelle session" onClick={() => (onQuickStart ? onQuickStart() : onNavigate('session'))} style={{ fontFamily: T.font }}>
                       <span className="fs-dhx-play"><svg width={9} height={9} viewBox="0 0 12 12"><polygon points="3.4,2.2 10,6 3.4,9.8" fill="#07070d"/></svg></span>
                       {/* « Nouvelle session » et non « Démarrer » : le widget
                           minuteur porte DÉJÀ un bouton « Démarrer » rempli, à
@@ -7428,6 +7450,14 @@
                           lance CE minuteur — et le libellé dit maintenant
                           laquelle est laquelle. */}
                       <span className="fs-dash-start-label">Nouvelle session</span>
+                      {/* Repli court pour les petits écrans : sous 480 px le
+                          libellé complet ne passait pas et on le SUPPRIMAIT —
+                          l'action principale de l'app devenait un ▶ muet de
+                          40 px, collé à un chevron de 44 px qui lui ressemblait.
+                          Un mot suffit à lever l'ambiguïté. `aria-hidden` +
+                          `aria-label` sur le bouton : le nom accessible reste
+                          « Nouvelle session » quel que soit l'écran. */}
+                      <span className="fs-dash-start-label-short" aria-hidden="true">Session</span>
                     </button>
                     <button className="fs-dash-start-more" onClick={() => (onCustomizeSession ? onCustomizeSession() : onNavigate('session'))}
                       title="Personnaliser cette session" aria-label="Personnaliser cette session">
@@ -12204,11 +12234,24 @@ void main(){
 
             /* ── Mobile ── */
             @media (max-width: 768px) {
+              /* ══ UN SEUL ASCENSEUR, ET L'EN-TÊTE PEUT PARTIR ══
+                 L'écran était scindé en deux : un en-tête FIGÉ (titre, stats,
+                 champ, priorités, filtres, sélecteur d'affichage = 342 px) et
+                 une liste qui défilait dans ce qui restait. Sur un écran de
+                 700 px, 57 % de la hauteur était donc consommée AVANT la
+                 première tâche, et il n'en restait que 358 px de lecture —
+                 trois tâches. Or on ouvre cet écran sur téléphone pour LIRE sa
+                 liste, pas pour la composer.
+                 La page redevient un seul document : on défile, l'en-tête
+                 s'efface, la liste occupe tout l'écran. Rien n'est retiré —
+                 le composeur reste à un geste de défilement vers le haut. */
               .fs-tasks-screen {
                 background:
                   radial-gradient(circle at 18% 0%, rgba(var(--theme-c1-rgb), 0.08), transparent 30%),
                   linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
-                overflow: hidden !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                -webkit-overflow-scrolling: touch;
               }
               .fs-tasks-head { padding: 18px 16px 0 !important; flex-shrink: 0 !important; }
               .fs-tasks-hero { align-items: center !important; margin-bottom: 14px !important; gap: 12px !important; }
@@ -12238,13 +12281,35 @@ void main(){
               .fs-task-zen { margin-top: 2px !important; }
               .fs-task-zcard { padding: 20px 18px 18px !important; }
               .fs-task-fbtn { flex-shrink: 0 !important; padding: 8px 13px !important; font-size: 12px !important; }
-              .fs-task-list { padding: 10px 16px 94px !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+              /* La liste ne défile plus pour son compte : c'est la page entière
+                 qui défile. Elle se dimensionne donc à son contenu. */
+              .fs-task-list { padding: 10px 16px var(--fs-navspace) !important; overflow: visible !important; flex: 0 0 auto !important; height: auto !important; }
               .fs-task-section-list { gap: 8px !important; }
               .fs-task-row { align-items: flex-start !important; padding: 15px 15px 15px 17px !important; border-radius: 18px !important; min-height: 56px !important; }
-              .fs-task-check { width: 24px !important; height: 24px !important; border-radius: 10px !important; margin-top: 1px !important; }
+              /* ══ CIBLES TACTILES ══
+                 La case à cocher — la commande la plus utilisée de l'écran —
+                 n'offrait que 24 px, la pastille de priorité 21 px de haut.
+                 On garde le dessin (une grosse case alourdirait la rangée) et
+                 on étend la ZONE DE FRAPPE par un pseudo-élément : 44 px de
+                 cible pour 24 px de trait. */
+              .fs-task-check { width: 24px !important; height: 24px !important; border-radius: 10px !important; margin-top: 1px !important; position: relative; }
+              .fs-task-check::after { content: ''; position: absolute; inset: -10px; border-radius: 16px; }
               .fs-task-text { white-space: normal !important; font-size: 14px !important; line-height: 1.38 !important; }
-              .fs-task-pri { margin-top: 3px !important; }
-              .fs-task-del { opacity: 1 !important; transform: scale(1) !important; width: 32px !important; height: 32px !important; border-radius: 10px !important; }
+              .fs-task-pri { margin-top: 3px !important; min-height: 30px !important; padding: 6px 10px !important; position: relative; }
+              .fs-task-pri::after { content: ''; position: absolute; inset: -7px -9px; }
+              /* « Haute / Moyenne / Basse » écrit en toutes lettres coûtait
+                 45 px de la rangée et n'apprenait rien : la barre d'accent à
+                 gauche ET le losange de la pastille portent déjà la priorité
+                 par la couleur. Sur un téléphone de 360 px, ces 45 px sont la
+                 différence entre 113 px de texte (13 signes par ligne) et une
+                 tâche qui se lit. Le nom accessible de la pastille, lui, reste
+                 « Priorité haute — changer » : rien n'est perdu au lecteur
+                 d'écran, seul le pixel est économisé. */
+              .fs-task-pri .fs-task-pri-txt { display: none !important; }
+              /* La corbeille est une action DESTRUCTIVE qui se tenait à 13 px
+                 d'une pastille anodine — au pouce, c'est un piège. Elle garde
+                 sa cible confortable mais s'écarte franchement du voisinage. */
+              .fs-task-del { opacity: 1 !important; transform: scale(1) !important; width: 38px !important; height: 38px !important; border-radius: 12px !important; margin-left: 8px !important; }
               .fs-task-done-head { margin: 18px 0 10px !important; }
               .fs-task-done-head button { height: 34px !important; padding: 0 12px !important; transform: none !important; font-size: 11px !important; }
               .fs-task-empty { height: 260px !important; padding-bottom: 82px !important; }
@@ -23349,8 +23414,23 @@ void main(){
                 .fs-cv-collection-lbl{font-size:12px}
                 .fs-cv-collection-num{font-size:10px}
                 .fs-cv-hint{display:none}
-                .fs-cv-detail{left:10px;right:10px;bottom:10px;width:auto}
-                .fs-cv-hud{bottom:auto;top:74px}
+                .fs-cv-detail{left:10px;right:10px;bottom:calc(var(--fs-navspace) + 4px);width:auto}
+                /* ══ LE HUD N'ÉCRASE PLUS LE TITRE ══
+                   Il était calé à 74 px du haut — soit exactement dans la bande
+                   du titre, qui passait dessous, illisible sur 120 px. Il avait
+                   été remonté là pour fuir le bas de l'écran, et à raison : le
+                   bas est pris par la nav flottante ET par la fiche cristal,
+                   pleine largeur sur mobile.
+                   La bonne place n'est ni l'un ni l'autre : c'est JUSTE SOUS
+                   l'en-tête. La grotte y est vide sur toute sa largeur, aucune
+                   collision n'est possible, et les deux actions restent à
+                   portée de pouce. Libellé raccourci et boutons compacts en
+                   prime — « Partager à mes amis » pesait 178 px sur 390. */
+                .fs-cv-hud{bottom:auto;top:170px;gap:6px}
+                .fs-cv-hud button{height:36px;min-width:36px;padding:0 11px;font-size:12px}
+                .fs-cv-hud-long{display:none}
+                /* Libéré de la contrainte du HUD, le titre tient sur une ligne. */
+                .fs-cv-title{font-size:21px!important}
               }
             `}</style>
             <div
@@ -23441,7 +23521,7 @@ void main(){
                     </button>
                   )}
                   <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(161,232,255,0.72)', marginBottom: 6 }}>focus grotto</div>
-                  <div style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
+                  <div className="fs-cv-title" style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
                   <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.66)', marginTop: 7, maxWidth: 340 }}>
                     {crystals.length > 0
                       ? 'Tout est là. Avance dans la grotte pour approcher les cristaux du fond.'
@@ -23501,7 +23581,7 @@ void main(){
                 <button type="button" onClick={shareCave} disabled={shareBusy} aria-label="Partager ma grotte à mes amis"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.9), rgba(var(--theme-c2-rgb),0.9))', border: '1px solid rgba(255,255,255,0.22)', color: '#06140a', fontWeight: 900 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-                  {shareBusy ? 'Création…' : 'Partager à mes amis'}
+                  {shareBusy ? 'Création…' : <>Partager<span className="fs-cv-hud-long"> à mes amis</span></>}
                 </button>
                 {fusionGroups.length > 0 && (
                   <button type="button" className="fs-cv-fusebtn" onClick={() => setFusionOpen(true)}
