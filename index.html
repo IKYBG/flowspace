@@ -3403,6 +3403,11 @@
     }
     window._fsGamifWithLocalData = _fsGamifWithLocalData;
 
+    /* Plafond de cristaux conservés. Exposé pour que la grotte puisse
+       prévenir à l'approche au lieu de laisser tronquer en silence. */
+    const CRYSTAL_CAP = 400;
+    window.CRYSTAL_CAP = CRYSTAL_CAP;
+
     function _fsExtractGamifLocalData(userId, remoteGamif) {
       if (!remoteGamif || typeof remoteGamif !== 'object') return remoteGamif;
       const g = { ...remoteGamif };
@@ -3419,7 +3424,16 @@
             if (c.id != null) { if (!byId.has(c.id)) byId.set(c.id, c); }
             else noId.push(c);
           });
-          const merged = [...byId.values(), ...noId].slice(0, 100);
+          /* ══ PLUS DE PERTE SILENCIEUSE AU PLAFOND ══
+             La fusion tronquait sèchement à 100 : un utilisateur régulier
+             atteint ce seuil en quelques mois et perdait alors ses PREMIÈRES
+             pierres — celles qui comptent le plus — sans aucun avertissement,
+             pour ne s'en apercevoir que bien plus tard. Dans un produit dont
+             la promesse est l'accumulation, c'est une rupture de contrat.
+             Le plafond quadruple (l'élagage par profondeur rend le nombre
+             indolore à l'affichage) et la grotte prévient à l'approche, en
+             orientant vers l'assemblage — la soupape prévue pour ça. */
+          const merged = [...byId.values(), ...noId].slice(0, CRYSTAL_CAP);
           _fsRawSet(`fs_crystals_${userId}`, JSON.stringify(merged));
         } catch (_) { }
       }
@@ -9348,7 +9362,7 @@
           <div className="fs-focus-screen-content" style={{flex:1,overflow:'hidden',padding:'20px 36px 36px'}}>
             <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:28,background:'rgba(255,255,255,0.025)',border:'1px solid rgba(255,255,255,0.06)',boxShadow:'inset 0 1px 0 rgba(255,255,255,0.035)'}}>
               {tab === 'focus' && <FocusHomeTab user={user} sessions={sessions} onStart={onStart} />}
-              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection:() => setTab('collection'), onBack })}
+              {tab === 'cristaux' && window.MesCristauxPanel && React.createElement(window.MesCristauxPanel, { open:true, user, embedded:true, onOpenCollection:() => setTab('collection'), onBack, onStart })}
               {tab === 'collection' && window.CollectionScreen && React.createElement(window.CollectionScreen, { user, embedded:true, onNavigate:() => setTab('cristaux') })}
               {tab === 'boutique' && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, embedded:true, onClose:() => setTab('cristaux') })}
             </div>
@@ -22871,7 +22885,66 @@ void main(){
       return cv;
     }
 
-    function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection, onBack }) {
+    /* Seuil de déverrouillage du partage : en dessous, la carte générée ne
+       montrerait rien dont on puisse être fier. */
+    const SHARE_MIN = 3;
+
+    /* ══ UNE PIERRE DE LA GROTTE ═══════════════════════════════════════════
+       Extrait du panneau et MÉMOÏSÉ. Avant, survoler un cristal re-rendait
+       les 40 : chaque pierre refaisait un `.find()` dans les 41 dégradés et
+       un `localStorage.getItem` + `JSON.parse` SYNCHRONES via `_fsReadPrefs`.
+       Mesuré : 98 ms de blocage et 40 accès disque par survol. Ici la pierre
+       ne se redessine que si l'une de ses propres props change. */
+    const CaveCrystal = React.memo(function CaveCrystal({
+      c, spot, an, sz, glow, pal, mass, fused, isSecret, isGold, isNew,
+      showRarity, isDrag, isActive, isFused, nodeRef, onDown, onUp, onEnter, onLeave, onFocus, label,
+    }) {
+      return (
+        <button
+          ref={nodeRef}
+          data-cid={c.id}
+          className={'fs-cv-crystal' + (isDrag ? ' is-drag' : '') + (isActive ? ' is-active' : '') + (isFused ? ' is-fused-now' : '')}
+          style={{
+            left: (an.xf * 100) + '%',
+            top: (an.yf * 100) + '%',
+            transform: 'translate(-50%,-100%) translateZ(' + (-spot.z) + 'px) rotate(' + spot.rot + 'deg)',
+            '--sz': sz + 'px', '--glow': glow,
+            '--fy': fused ? Math.min(1.62, 1 + (mass - 1) * 0.14) : 1, '--fmass': mass,
+            '--gd': (((Number(c.seed) || 0) % 44) / 10) + 's',
+          }}
+          aria-label={label}
+          onPointerDown={onDown}
+          onPointerUp={onUp}
+          onPointerEnter={onEnter}
+          onPointerLeave={onLeave}
+          onFocus={onFocus}
+        >
+          {showRarity && (
+            isSecret ? <><span className="fs-cv-secret-aura" /><span className="fs-cv-secret-ring" /></>
+              : isGold ? <span className="fs-cv-gold-aura" /> : null
+          )}
+          <span className="fs-cv-glowpad" />
+          <span className="fs-cv-shadow" />
+          <span className="fs-cv-gem">
+            {c.crystalShape && window.ShapedCrystalGem
+              ? React.createElement(window.ShapedCrystalGem, { shape: c.crystalShape, gradientId: isGold ? 'gold' : c.crystalGradient, progress: 0.9, size: sz, seed: c.seed || c.id })
+              : <CrystalGem progress={_cStateProgress(Math.min(c.stateIdx ?? 3, 3))} size={sz} />}
+          </span>
+          {fused && showRarity && (
+            <><span className="fs-cv-fuse-aura" /><span className="fs-cv-fuse-core" /></>
+          )}
+          <span className="fs-cv-base"><i /><i /><i /><i /></span>
+          {fused && <span className="fs-cv-mass">{window.FsShardIcon ? React.createElement(window.FsShardIcon, { size: 9, color: '#06101c' }) : null}{mass}</span>}
+          {isNew && (
+            <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
+              Nouveau
+            </span>
+          )}
+        </button>
+      );
+    });
+
+    function MesCristauxPanel({ open, onClose, user, embedded = false, onOpenCollection, onBack, onStart }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const key = user?.id ? `fs_crystals_${user.id}` : 'fs_crystals';
       const [crystals, setCrystals] = React.useState([]);
@@ -22880,6 +22953,18 @@ void main(){
       const [dragId, setDragId] = React.useState(null);
       const [shareUrl, setShareUrl] = React.useState(null);
       const [shareBusy, setShareBusy] = React.useState(false);
+      /* L'indice d'interaction disparaît au premier geste réussi, définitivement. */
+      const [hinted, setHinted] = React.useState(() => {
+        try { return localStorage.getItem('fs_cave_hinted') === '1'; } catch (e) { return false; }
+      });
+      /* Message annoncé aux lecteurs d'écran (sélection, assemblage, annulation). */
+      const [liveMsg, setLiveMsg] = React.useState('');
+      const markHinted = React.useCallback(() => {
+        setHinted(h => {
+          if (!h) { try { localStorage.setItem('fs_cave_hinted', '1'); } catch (e) { } }
+          return true;
+        });
+      }, []);
       const shareCave = () => {
         setShareBusy(true);
         try {
@@ -22907,7 +22992,18 @@ void main(){
       const canvasRef = React.useRef(null);
       const worldRef = React.useRef(null);
       const nodeRefs = React.useRef({});
-      const camRef = React.useRef({ z: 0, vz: 0, target: 0, lt: 0 });
+      /* Libellés accessibles indexés au rendu : les gestionnaires stables y
+         puisent de quoi annoncer la sélection sans recalculer. */
+      const labelsRef = React.useRef({});
+      /* Identifiants déjà connus : sert à repérer la pierre qui vient de naître. */
+      const seenRef = React.useRef(null);
+      /* La position dans la grotte survit aux allers-retours vers les onglets
+         voisins : les quatre onglets se montent en `tab === 'x' && …`, donc
+         passer sur Collection démontait tout — caméra, sélection, contexte
+         canvas — et revenir ramenait à l'entrée. L'exploration recommençait
+         au lieu de se poursuivre. */
+      const camRef = React.useRef({ z: window.__fsCaveZ || 0, vz: 0, target: window.__fsCaveZ || 0, lt: 0 });
+      React.useEffect(() => () => { window.__fsCaveZ = camRef.current.target; }, []);
       const sizeRef = React.useRef({ w: 800, h: 560 });
       const panRef = React.useRef(null);
       const grabRef = React.useRef(null);
@@ -22918,14 +23014,108 @@ void main(){
       const crystalsRef = React.useRef([]);
       const reduce = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-reduce-motion');
       const perfLite = typeof document !== 'undefined' && document.documentElement.classList.contains('fs-perf-lite');
+      /* `reduce` était lu une fois puis CAPTURÉ dans la closure de la boucle
+         rAF (dépendances : `[open]`). Activer « animations réduites » pendant
+         que la grotte était ouverte ne changeait donc rien : poussière et
+         chauves-souris continuaient. C'est pourtant souvent quelqu'un en
+         situation d'inconfort qui active ce réglage — le délai n'est pas neutre.
+         Le ref est tenu à jour par un observateur sur la classe racine. */
+      const reduceRef = React.useRef(reduce);
+      const wakeRef = React.useRef(null);
+      const mkDust = React.useCallback(() => {
+        const rng = _caveRng(97);
+        return Array.from({ length: perfLite ? 12 : 32 }, () => ({
+          xf: 0.04 + rng() * 0.92, yf: 0.2 + rng() * 0.6, z: 60 + rng() * 1300,
+          r: 0.8 + rng() * 1.8, sp: 0.00012 + rng() * 0.00042, ph: rng() * 6.3, a: 0.1 + rng() * 0.3,
+        }));
+      }, [perfLite]);
+      React.useEffect(() => {
+        const read = () => {
+          const r = document.documentElement.classList.contains('fs-reduce-motion');
+          if (r !== reduceRef.current) {
+            reduceRef.current = r;
+            /* `_caveDraw` ne filtre pas la poussière : c'est le tableau lui-même
+               qui doit être vidé — donc régénéré si le réglage est désactivé. */
+            dustRef.current = r ? [] : mkDust();
+            if (!r && wakeRef.current) wakeRef.current();
+          }
+        };
+        read();
+        const mo = new MutationObserver(read);
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        return () => mo.disconnect();
+      }, []);
+
+      /* Index O(1) des dégradés : on faisait un `.find()` linéaire dans 41
+         entrées POUR CHAQUE cristal À CHAQUE rendu. */
+      const gradById = React.useMemo(() => {
+        const m = new Map();
+        (window.CRYSTAL_GRADIENTS || []).forEach(g => m.set(g.id, g));
+        return m;
+      }, []);
+      /* Préférences lues UNE fois pour tout le panneau (et réactives), au lieu
+         d'un accès localStorage synchrone par cristal et par rendu. */
+      const prefs = window.useFsPrefs ? window.useFsPrefs() : (window._fsReadPrefs ? window._fsReadPrefs() : {});
+      const showRarity = prefs.crystalRarity !== false;
 
       React.useEffect(() => {
         if (!open) return;
-        try {
-          const cs = JSON.parse(localStorage.getItem(key) || '[]');
-          setCrystals(Array.isArray(cs) ? cs : []);
-        } catch (e) { setCrystals([]); }
-      }, [open, key]);
+        const load = () => {
+          try {
+            /* ── RATTRAPAGE DES CRISTAUX D'AVANT L'INSCRIPTION ──
+               Sans compte, les pierres s'écrivent dans la clé globale
+               `fs_crystals` ; avec compte, dans `fs_crystals_{uid}`. Rien ne
+               faisait le pont : créer un compte après avoir travaillé, c'était
+               arriver dans une grotte vide au moment précis de l'engagement.
+               On fusionne par identifiant (le cloud gagne en cas de doublon),
+               puis on vide la clé anonyme pour ne le faire qu'une fois. */
+            if (user?.id) {
+              const anon = JSON.parse(localStorage.getItem('fs_crystals') || '[]');
+              if (Array.isArray(anon) && anon.length) {
+                const mine = JSON.parse(localStorage.getItem(key) || '[]') || [];
+                const byId = new Map();
+                [...mine, ...anon].forEach(c => { if (c && c.id != null && !byId.has(c.id)) byId.set(c.id, c); });
+                localStorage.setItem(key, JSON.stringify([...byId.values()]));
+                localStorage.removeItem('fs_crystals');
+              }
+            }
+            const cs = JSON.parse(localStorage.getItem(key) || '[]');
+            const list = Array.isArray(cs) ? cs : [];
+            /* ══ LA NAISSANCE DU CRISTAL SE REGARDE ══
+               C'est l'instant qui justifie toute la session — il n'existait pas.
+               Dès qu'une pierre inconnue apparaît (et que ce n'est pas le
+               chargement initial), la caméra s'y porte et la sélectionne. */
+            const known = seenRef.current;
+            if (known) {
+              const born = list.find(c => c && !known.has(String(c.id)));
+              if (born) {
+                const spot = _caveSpotOf(born, 0);
+                camRef.current.vz = 0;
+                camRef.current.target = clampZ(spot.z - 300);
+                setSel(born.id);
+                setFusedFlash(born.id);
+                setLiveMsg(`Nouveau cristal forgé : ${window.CRYSTAL_SHAPE_DEFS?.[born.crystalShape || 'diamond']?.name || 'Cristal'}, ${(Number(born.duration) || 0)} minutes de focus.`);
+                window.clearTimeout(window.__fsBornT);
+                window.__fsBornT = window.setTimeout(() => setFusedFlash(null), 1100);
+                if (wakeRef.current) wakeRef.current();
+              }
+            }
+            seenRef.current = new Set(list.map(c => String(c && c.id)));
+            setCrystals(list);
+          } catch (e) { setCrystals([]); }
+        };
+        load();
+        /* La grotte est le SEUL écran qui n'écoutait pas cet événement — cinq
+           autres consommateurs le faisaient déjà. Résultat : la session se
+           terminait, le compteur d'onglet passait à 12, la grotte en montrait
+           11. Le paiement de la boucle cœur échouait en silence. */
+        window.addEventListener('fs-crystal-update', load);
+        window.addEventListener('fs-remote-update', load);
+        return () => {
+          window.removeEventListener('fs-crystal-update', load);
+          window.removeEventListener('fs-remote-update', load);
+        };
+      }, [open, key, user?.id]);
 
       /* Profondeur de galerie adaptée au nombre de cristaux : la caméra doit
          pouvoir atteindre les amas les plus profonds quand la grotte se remplit. */
@@ -22958,10 +23148,47 @@ void main(){
         spotsRef.current = spots;
       }, [crystals]);
 
+      /* ══ CULLING PAR PROFONDEUR ════════════════════════════════════════════
+         LE correctif de performance. Avant, 100 % des cristaux étaient montés
+         dans le DOM, animés et filtrés en permanence — y compris ceux enfouis
+         hors du champ de la caméra. Mesuré : 64,5 FPS à 10 cristaux, 12,1 à
+         100. La mécanique de rétention dégradait donc le produit à mesure que
+         l'utilisateur réussissait.
+         Désormais seules les pierres proches de la caméra existent en DOM. Les
+         autres restent visibles : `_caveDraw` dessine déjà leurs lueurs sur le
+         canvas depuis `glowsRef`. On y gagne aussi en lecture — une grotte de
+         100 pierres empilées était illisible — et en mystère : le fond n'est
+         plus un mur d'objets, c'est une profondeur qui s'éclaire en avançant. */
+      const CULL_MAX = perfLite ? 10 : 16;
+      const CULL_FAR = 1700;
+      const spotList = React.useMemo(() => crystals.map((c, i) => {
+        const spot = _caveSpotOf(c, i);
+        return { c, i, spot, an: _caveAnchor(spot) };
+      }), [crystals]);
+      const spotListRef = React.useRef(spotList);
+      spotListRef.current = spotList;
+      const [visIds, setVisIds] = React.useState(null);
+      const visSigRef = React.useRef('');
+      const recomputeVisible = () => {
+        const camZ = camRef.current.z;
+        const near = [];
+        for (const it of spotListRef.current) {
+          const live = spotsRef.current[it.c.id] || it.spot;
+          const rel = live.z - camZ;
+          if (rel > -60 && rel < CULL_FAR) near.push({ id: it.c.id, rel });
+        }
+        near.sort((a, b) => a.rel - b.rel);
+        const keep = near.slice(0, CULL_MAX).map(n => n.id);
+        const sig = keep.join(',');
+        if (sig !== visSigRef.current) { visSigRef.current = sig; setVisIds(new Set(keep)); }
+      };
+
       const applyDepthStyles = () => {
         const camZ = camRef.current.z;
         Object.entries(nodeRefs.current).forEach(([id, node]) => {
-          if (!node) return;
+          /* L'élagage retire des pierres du DOM : on purge les références
+             mortes plutôt que de styler des nœuds détachés. */
+          if (!node || !node.isConnected) { delete nodeRefs.current[id]; return; }
           const spot = spotsRef.current[id];
           if (!spot) return;
           const rel = spot.z - camZ;
@@ -22996,6 +23223,7 @@ void main(){
         camRef.current.z = clampZ(camRef.current.z);
         if (worldRef.current) worldRef.current.style.transform = 'translateZ(' + camRef.current.z + 'px)';
         applyDepthStyles();
+        recomputeVisible();
       };
 
       React.useEffect(() => {
@@ -23017,16 +23245,27 @@ void main(){
         resize();
         const ro = new ResizeObserver(resize);
         ro.observe(view);
-        const rng = _caveRng(97);
-        dustRef.current = Array.from({ length: reduce ? 0 : (perfLite ? 12 : 32) }, () => ({
-          xf: 0.04 + rng() * 0.92, yf: 0.2 + rng() * 0.6, z: 60 + rng() * 1300,
-          r: 0.8 + rng() * 1.8, sp: 0.00012 + rng() * 0.00042, ph: rng() * 6.3, a: 0.1 + rng() * 0.3,
-        }));
+        dustRef.current = reduceRef.current ? [] : mkDust();
         batsRef.current = { next: performance.now() + 1600, flocks: [] };
-        let raf = 0;
+        /* ══ LA BOUCLE S'ARRÊTE QUAND RIEN NE BOUGE ════════════════════════
+           Elle redessinait la grotte 60 fois par seconde en continu, sans
+           condition d'arrêt — y compris onglet en arrière-plan, panneau hors
+           écran, et même en « animations réduites » où poussière et
+           chauves-souris sont pourtant désactivées. Sur mobile, l'écran où
+           l'utilisateur s'attarde le plus vidait la batterie sans rien
+           animer. Le contexte 2D, lui, était redemandé à chaque frame. */
+        const ctx2d = canvas.getContext('2d');
+        let raf = 0, running = false, onScreen = true;
+        const io = new IntersectionObserver(es => {
+          onScreen = es.some(e => e.isIntersecting);
+          if (onScreen) start(); else stop();
+        }, { threshold: 0 });
+        io.observe(view);
+        const onVis = () => { if (document.visibilityState === 'visible' && onScreen) start(); else stop(); };
+        document.addEventListener('visibilitychange', onVis);
         const loop = t => {
-          raf = requestAnimationFrame(loop);
           const cam = camRef.current;
+          const red = reduceRef.current;
           const dtMs = Math.min(50, t - (cam.lt || t));
           cam.lt = t;
           /* élan du glisser → poursuit la cible */
@@ -23041,20 +23280,37 @@ void main(){
           }
           /* vols de chauves-souris */
           const bats = batsRef.current;
-          if (!reduce) {
+          if (!red) {
             if (t > bats.next) { spawnFlock(t); bats.next = t + 9000 + Math.random() * 15000; }
             bats.flocks.forEach(fl => { fl.prog += (t - fl.lastT) * fl.speed; fl.lastT = t; });
             bats.flocks = bats.flocks.filter(fl => fl.prog < 1.3);
           }
           canvas.__fsBats = bats.flocks.length;
-          const ctx = canvas.getContext('2d');
-          if (ctx) _caveDraw(ctx, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, bats, reduce);
+          if (ctx2d) _caveDraw(ctx2d, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, bats, red);
+          /* En « animations réduites », la poussière est vide et les
+             chauves-souris désactivées : plus rien ne bouge une fois la
+             caméra posée. On rend la main au lieu de repeindre un plan fixe
+             soixante fois par seconde. Le moindre geste réveille la boucle. */
+          const moving = Math.abs(cam.target - cam.z) > 0.08 || Math.abs(cam.vz) > 0.05 || !!panRef.current;
+          if (red && !moving) { running = false; return; }
+          raf = requestAnimationFrame(loop);
         };
-        loop(performance.now());
-        return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+        function start() {
+          if (running || document.visibilityState !== 'visible' || !onScreen) return;
+          running = true; camRef.current.lt = 0;
+          raf = requestAnimationFrame(loop);
+        }
+        function stop() { running = false; cancelAnimationFrame(raf); }
+        wakeRef.current = start;
+        start();
+        return () => {
+          stop(); ro.disconnect(); io.disconnect();
+          document.removeEventListener('visibilitychange', onVis);
+          wakeRef.current = null;
+        };
       }, [open]);
 
-      React.useEffect(() => { applyDepthStyles(); }, [crystals]);
+      React.useEffect(() => { applyDepthStyles(); recomputeVisible(); }, [crystals]);
 
       if (!open) return null;
 
@@ -23069,10 +23325,13 @@ void main(){
         /* on ne déplace que la CIBLE : la boucle rAF amortit le mouvement */
         camRef.current.vz = 0;
         camRef.current.target = clampZ(camRef.current.target + dz);
-        if (!reduce && dz > 0 && Math.random() < 0.25) spawnFlock(performance.now());
+        if (!reduceRef.current && dz > 0 && Math.random() < 0.25) spawnFlock(performance.now());
+        if (wakeRef.current) wakeRef.current();
+        markHinted();
       };
       const onViewDown = e => {
         if (e.target.closest?.('.fs-cv-crystal,.fs-cv-hud,.fs-cv-detail,.fs-cv-header')) return;
+        if (wakeRef.current) wakeRef.current();
         camRef.current.vz = 0;
         panRef.current = { py: e.clientY, cz: camRef.current.z, ly: e.clientY, lt: performance.now() };
         try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (err) { }
@@ -23092,7 +23351,22 @@ void main(){
         }
         const g = grabRef.current;
         if (g) {
-          if (!g.moved && Math.hypot(e.clientX - g.px, e.clientY - g.py) > 7) { g.moved = true; setDragId(g.id); }
+          if (!g.moved) {
+            const dist = Math.hypot(e.clientX - g.px, e.clientY - g.py);
+            /* Doigt posé sur un cristal mais appui long pas encore atteint :
+               le glissement doit faire AVANCER dans la grotte, pas déplacer la
+               pierre. Sans cela, les cristaux — nombreux et dispersés —
+               bloquaient la navigation partout où ils se trouvaient. */
+            if (g.touch && !g.armed) {
+              if (dist > 10) {
+                clearTimeout(g.armT);
+                grabRef.current = null;
+                panRef.current = { py: g.py, cz: camRef.current.z, ly: e.clientY, lt: performance.now() };
+              }
+              return;
+            }
+            if (dist > (g.touch ? 10 : 7)) { g.moved = true; clearTimeout(g.armT); setDragId(g.id); }
+          }
           if (g.moved) {
             const { w, h } = sizeRef.current;
             const spot = g.spot;
@@ -23119,12 +23393,14 @@ void main(){
         }
       };
       const onViewUp = () => {
+        if (panRef.current) markHinted();
         panRef.current = null;
         const g = grabRef.current;
+        if (g) clearTimeout(g.armT);
         grabRef.current = null;
         if (g && g.moved) {
           const spot = g.spot;
-          const next = crystalsRef.current.map(c => c.id === g.id
+          const next = crystalsRef.current.map(c => String(c.id) === String(g.id)
             ? { ...c, cave: { v: 2, surf: spot.surf, a: Math.round(g.a * 1000) / 1000, z: Math.round(g.z), rot: Math.round(spot.rot * 10) / 10, tj: spot.tj || 0 } }
             : c);
           try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { }
@@ -23136,27 +23412,103 @@ void main(){
         e.preventDefault();
         dollyBy(e.deltaY < 0 ? 105 : -105);
       };
-
-      const onCrystalDown = (e, c, spot) => {
-        e.stopPropagation();
-        camRef.current.vz = 0;
-        grabRef.current = { id: c.id, spot, a0: spot.a, z0: spot.z, a: spot.a, z: spot.z, px: e.clientX, py: e.clientY, moved: false };
-        try { viewRef.current?.setPointerCapture?.(e.pointerId); } catch (err) { }
+      const onStageKey = e => {
+        const k = e.key;
+        if (k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); dollyBy(e.shiftKey ? 420 : 140); }
+        else if (k === 'ArrowDown' || k === 'PageDown') { e.preventDefault(); dollyBy(e.shiftKey ? -420 : -140); }
+        else if (k === 'Home') { e.preventDefault(); camRef.current.vz = 0; camRef.current.target = 0; if (wakeRef.current) wakeRef.current(); }
+        else if (k === 'Escape') { if (sel) { e.preventDefault(); setSel(null); } }
       };
-      const onCrystalUp = (e, c) => {
-        if (grabRef.current && grabRef.current.id === c.id && !grabRef.current.moved) {
-          grabRef.current = null;
-          setSel(s => s === c.id ? null : c.id);
+      /* Le focus clavier ne déplaçait pas la caméra : une pierre profonde
+         pouvait recevoir le focus hors du champ visible (échec WCAG 2.4.7). */
+      const onCrystalFocus = React.useCallback(e => {
+        const id = e.currentTarget.dataset.cid;
+        const spot = findSpot(id);
+        if (!spot) return;
+        const rel = spot.z - camRef.current.z;
+        if (rel < 60 || rel > 900) {
+          camRef.current.vz = 0;
+          camRef.current.target = clampZ(spot.z - 320);
+          if (wakeRef.current) wakeRef.current();
         }
-      };
+      }, []);
 
+      /* Ces quatre gestionnaires sont STABLES (aucune dépendance) : c'est ce
+         qui permet à `CaveCrystal` d'être réellement mémoïsé. L'identité du
+         cristal transite par `data-cid` plutôt que par une closure. */
+      const setNodeRef = React.useCallback(el => {
+        if (el) nodeRefs.current[el.dataset.cid] = el;
+      }, []);
+      const findSpot = id => {
+        const live = spotsRef.current[id];
+        if (live) return live;
+        const it = spotListRef.current.find(x => String(x.c.id) === String(id));
+        return it ? it.spot : null;
+      };
+      const onCrystalDown = React.useCallback(e => {
+        e.stopPropagation();
+        const id = e.currentTarget.dataset.cid;
+        const spot = findSpot(id);
+        if (!spot) return;
+        camRef.current.vz = 0;
+        const touch = e.pointerType !== 'mouse';
+        const g = {
+          id, spot, a0: spot.a, z0: spot.z, a: spot.a, z: spot.z,
+          px: e.clientX, py: e.clientY, moved: false,
+          /* ══ REPLANTAGE SUR APPUI LONG ══
+             Le seuil de glissement était à 7 px — en deçà du tremblement
+             naturel du pouce — et le déplacement était persisté DANS LA
+             FOULÉE en localStorage, sans annulation. Viser un cristal de
+             21 px et le déplacer définitivement par accident était la norme.
+             Au doigt, il faut désormais maintenir 350 ms pour armer le
+             déplacement ; avant cela, glisser fait avancer dans la grotte.
+             À la souris, le geste reste immédiat : il est précis. */
+          touch, armed: !touch,
+        };
+        grabRef.current = g;
+        if (touch) {
+          clearTimeout(g.armT);
+          g.armT = setTimeout(() => {
+            if (grabRef.current === g && !g.moved) {
+              g.armed = true;
+              try { navigator.vibrate && navigator.vibrate(12); } catch (_) { }
+            }
+          }, 350);
+        }
+        try { viewRef.current?.setPointerCapture?.(e.pointerId); } catch (err) { }
+      }, []);
+      const onCrystalUp = React.useCallback(e => {
+        const id = e.currentTarget.dataset.cid;
+        const g = grabRef.current;
+        if (g) clearTimeout(g.armT);
+        if (g && String(g.id) === String(id) && !g.moved) {
+          grabRef.current = null;
+          setSel(s => {
+            const next = String(s) === String(id) ? null : id;
+            setLiveMsg(next ? (labelsRef.current[id] || 'Cristal sélectionné') : 'Sélection annulée');
+            return next;
+          });
+        }
+      }, []);
+      const onCrystalEnter = React.useCallback(e => {
+        if (e.pointerType === 'mouse') setHover(e.currentTarget.dataset.cid);
+      }, []);
+      const onCrystalLeave = React.useCallback(e => {
+        if (e.pointerType === 'mouse') {
+          const id = e.currentTarget.dataset.cid;
+          setHover(h => (String(h) === String(id) ? null : h));
+        }
+      }, []);
+
+      /* `data-cid` renvoie toujours une chaîne, alors que `c.id` peut être un
+         nombre : la comparaison stricte ne trouvait plus rien. */
       const activeId = sel || hover;
-      const active = crystals.find(c => c.id === activeId);
+      const active = activeId == null ? null : crystals.find(c => String(c.id) === String(activeId));
       const activeInfo = active ? (() => {
         const isGold = active.rarity === 'gold' || active.crystalGradient === 'gold' || active.palette === 'gold';
         const si = isGold ? 4 : Math.min(active.stateIdx ?? 3, 3);
         const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
-        const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === active.crystalGradient);
+        const grad = gradById.get(active.crystalGradient);
         const shapeName = window.CRYSTAL_SHAPE_DEFS?.[active.crystalShape || 'diamond']?.name || 'Cristal';
         const isSecret = active.rarity === 'secret' || !!(grad && grad.secret);
         return { isGold, pal, grad, shapeName, isSecret };
@@ -23219,6 +23571,7 @@ void main(){
           setCrystals(before);
           try { window.dispatchEvent(new CustomEvent('fs-crystal-update')); } catch (e) { }
           addToast({ message: 'Assemblage annulé — tes deux cristaux sont revenus', type: 'info', icon: '↺', duration: 3000 });
+          setLiveMsg('Assemblage annulé, tes deux cristaux sont revenus');
         };
         try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) { }
         setCrystals(next);
@@ -23229,6 +23582,7 @@ void main(){
         window.clearTimeout(window.__fsFuseT);
         window.__fsFuseT = window.setTimeout(() => setFusedFlash(null), 1000);
         const nom = grp.meta?.name || 'Cristal';
+        setLiveMsg(`${nom} assemblé, ${merged.mass} sessions réunies dans une seule pierre. Annulable pendant 10 secondes.`);
         addToast({
           message: `${nom} assemblé — ${merged.mass} sessions dans une seule pierre`,
           type: 'success', icon: '✓', duration: 9000,
@@ -23246,9 +23600,20 @@ void main(){
               .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#01040c;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
               .fs-cv-stage.is-panning{cursor:grabbing}
               .fs-cv-canvas{position:absolute;inset:0;display:block}
+              .fs-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+              .fs-cv-stage:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:-3px}
               .fs-cv-3d{position:absolute;inset:0;perspective:${CAVE_F}px;perspective-origin:50% ${CAVE_OY * 100}%}
               .fs-cv-world{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
               .fs-cv-crystal{position:absolute;background:none;border:0;padding:0;margin:0;cursor:grab;transform-origin:50% 100%;width:var(--sz);height:calc(var(--sz)*1.18);-webkit-tap-highlight-color:transparent;transition:opacity .3s linear,filter .22s linear}
+              /* ══ CIBLE TACTILE ══
+                 30 cristaux sur 40 tombaient sous les 44 px, le plus petit à
+                 21 px — et ce sont les objets interactifs principaux de
+                 l'écran. La taille du dessin encode la durée de la session :
+                 c'est une bonne idée qu'on ne sacrifie pas. On dissocie donc
+                 le dessin de la zone de frappe, comme pour les cases des
+                 Tâches : la pierre garde sa taille, sa cible fait 44 px. */
+              .fs-cv-crystal::before{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+                width:max(44px,100%);height:max(44px,100%)}
               .fs-cv-crystal:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:4px;border-radius:10px}
               .fs-cv-crystal.is-drag{cursor:grabbing;filter:brightness(1.3) drop-shadow(0 0 26px var(--glow))!important}
               .fs-cv-crystal.is-active .fs-cv-gem{filter:brightness(1.26) drop-shadow(0 0 18px var(--glow))}
@@ -23402,10 +23767,31 @@ void main(){
                 .fs-fus-card{border-radius:22px}
               }
               .fs-cv-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:55;font-size:11px;font-weight:700;letter-spacing:.04em;color:rgba(205,232,255,.55);background:rgba(2,7,18,.66);border:1px solid rgba(140,220,255,.1);border-radius:99px;padding:7px 14px;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
+              .fs-cv-hint-sm{display:none}
               .fs-cv-detail{position:absolute;left:16px;bottom:16px;z-index:80;width:min(300px,calc(100% - 90px));border-radius:18px;border:1px solid rgba(140,220,255,.18);background:rgba(3,8,20,.92);backdrop-filter:blur(14px);padding:15px 16px;box-shadow:0 24px 60px rgba(0,0,0,.55);animation:fsCvDetailIn .22s cubic-bezier(.2,.9,.3,1.2) both}
               @keyframes fsCvDetailIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
               html.fs-reduce-motion .fs-cv-detail{animation:none}
               .fs-cv-empty{position:absolute;inset:0;display:grid;place-items:center;z-index:50;pointer-events:none;text-align:center}
+              /* Le conteneur reste transparent aux clics (la grotte se pilote
+                 derrière), mais son contenu redevient cliquable — sans quoi le
+                 CTA d'activation serait inerte. */
+              .fs-cv-empty-in{pointer-events:auto}
+              .fs-cv-empty-cta{display:inline-flex;align-items:center;justify-content:center;gap:9px;margin-top:20px;
+                min-height:46px;padding:0 22px;border-radius:15px;border:1px solid rgba(255,255,255,.24);cursor:pointer;
+                font:900 13.5px var(--font-body);letter-spacing:-.01em;color:#06140a;
+                background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.95),rgba(var(--theme-c2-rgb),.95));
+                box-shadow:0 16px 40px rgba(var(--theme-c1-rgb),.32),inset 0 1px 0 rgba(255,255,255,.42);
+                transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}
+              .fs-cv-empty-cta:hover{transform:translateY(-2px);box-shadow:0 22px 52px rgba(var(--theme-c1-rgb),.4),inset 0 1px 0 rgba(255,255,255,.5)}
+              .fs-cv-empty-cta:active{transform:translateY(0) scale(.98)}
+              html.fs-reduce-motion .fs-cv-empty-cta{transition:none}
+              /* Palier de partage : on montre la progression plutôt qu'un bouton
+                 qui produirait une carte vide. */
+              .fs-cv-lock{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:11px;
+                font:800 11.5px var(--font-body);color:rgba(205,232,255,.62);
+                background:rgba(4,10,22,.6);border:1px solid rgba(140,220,255,.12);white-space:nowrap}
+              .fs-cv-lock i{font-style:normal;font-weight:900;font-size:10.5px;color:#8ef6ff;
+                background:rgba(140,220,255,.14);padding:2px 6px;border-radius:99px}
               @media (max-width:680px){
                 .fs-cv-stats{display:none}
                 /* Mobile : les stats cèdent la place, le bouton garde sa
@@ -23413,7 +23799,11 @@ void main(){
                 .fs-cv-collection{height:42px;padding:0 13px;gap:8px}
                 .fs-cv-collection-lbl{font-size:12px}
                 .fs-cv-collection-num{font-size:10px}
-                .fs-cv-hint{display:none}
+                /* L'indice reste, en version courte : c'est le seul endroit où
+                   le modèle d'interaction est expliqué. */
+                .fs-cv-hint{bottom:calc(var(--fs-navspace) + 4px);font-size:10.5px;padding:6px 12px;max-width:calc(100% - 24px);white-space:normal;text-align:center;line-height:1.45}
+                .fs-cv-hint-lg{display:none}
+                .fs-cv-hint-sm{display:inline}
                 .fs-cv-detail{left:10px;right:10px;bottom:calc(var(--fs-navspace) + 4px);width:auto}
                 /* ══ LE HUD N'ÉCRASE PLUS LE TITRE ══
                    Il était calé à 74 px du haut — soit exactement dans la bande
@@ -23441,70 +23831,64 @@ void main(){
               onPointerUp={onViewUp}
               onPointerCancel={onViewUp}
               onWheel={onViewWheel}
+              /* ══ LA PROFONDEUR EST UNE DIMENSION DE NAVIGATION ══
+                 La scène n'avait ni rôle, ni libellé, ni gestionnaire clavier :
+                 avancer dans la grotte — tout l'intérêt de l'écran — était
+                 impossible sans pointeur. Les flèches la parcourent comme
+                 elles parcourent une liste, Échap désélectionne. */
+              tabIndex={0}
+              role="application"
+              aria-label="Grotte aux cristaux — flèches haut et bas pour avancer et reculer dans la profondeur"
+              aria-roledescription="scène explorable"
+              onKeyDown={onStageKey}
             >
               <canvas ref={canvasRef} className="fs-cv-canvas" aria-hidden="true" />
+              {/* Sélection, assemblage et annulation étaient totalement muets :
+                  toute la dimension collection — rareté, doublons, progression —
+                  était inaccessible sans la vue. */}
+              <div className="fs-sr-only" role="status" aria-live="polite">{liveMsg}</div>
               <div className="fs-cv-3d">
                 <div ref={worldRef} className="fs-cv-world">
-                  {crystals.map((c, i) => {
+                  {spotList.map(({ c, i, spot, an }) => {
+                    /* Élagage : hors de la fenêtre de profondeur, la pierre
+                       n'existe pas en DOM — sa lueur reste peinte au canvas. */
+                    if (visIds && !visIds.has(c.id)) return null;
                     const isGold = c.rarity === 'gold' || c.crystalGradient === 'gold' || c.palette === 'gold';
                     const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
                     const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
-                    const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+                    const grad = gradById.get(c.crystalGradient);
                     const isSecret = c.rarity === 'secret' || !!(grad && grad.secret);
                     const glow = isGold ? 'rgba(255,202,75,0.92)' : (grad?.glow || pal.glow);
-                    const spot = _caveSpotOf(c, i);
-                    const an = _caveAnchor(spot);
                     /* Les secrets sont plus imposants (+16 px) que tout le reste. */
                     const mass = massOf(c);
                     const fused = mass > 1;
                     /* Fusionné : plus large ET plus long (scaleY) — un monolithe. */
                     const szBonus = fused ? Math.min(30, (mass - 1) * 10) : 0;
                     const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0) + (isSecret ? 16 : 0) + szBonus);
-                    const stretch = fused ? Math.min(1.62, 1 + (mass - 1) * 0.14) : 1;
                     const isNew = i === 0 && Date.now() - new Date(c.completedAt).getTime() < 15000;
+                    /* Le libellé ne disait que « Cristal de session, 15 min » —
+                       ni le type, ni la rareté, ni la date, c'est-à-dire tout ce
+                       que la fiche affiche à l'écran. Sans la vue, la dimension
+                       collection n'existait pas. */
+                    const shapeNm = window.CRYSTAL_SHAPE_DEFS?.[c.crystalShape || 'diamond']?.name || 'Cristal';
+                    const label = [
+                      shapeNm, grad?.name, isSecret ? 'secret' : (grad?.legendary ? 'légendaire' : (grad?.rare ? 'rare' : null)),
+                      durLabel(c), fused ? `${mass} sessions assemblées` : null, fmtDate(c.completedAt),
+                    ].filter(Boolean).join(', ');
+                    labelsRef.current[c.id] = label;
                     return (
-                      <button
+                      <CaveCrystal
                         key={c.id}
-                        ref={el => { nodeRefs.current[c.id] = el; }}
-                        className={'fs-cv-crystal' + (dragId === c.id ? ' is-drag' : '') + (activeId === c.id ? ' is-active' : '') + (fusedFlash === c.id ? ' is-fused-now' : '')}
-                        style={{
-                          left: (an.xf * 100) + '%',
-                          top: (an.yf * 100) + '%',
-                          transform: 'translate(-50%,-100%) translateZ(' + (-spot.z) + 'px) rotate(' + spot.rot + 'deg)',
-                          '--sz': sz + 'px', '--glow': glow,
-                          '--fy': stretch, '--fmass': mass,
-                          '--gd': (((Number(c.seed) || i * 41) % 44) / 10) + 's',
-                        }}
-                        aria-label={'Cristal de session, ' + durLabel(c)}
-                        onPointerDown={e => onCrystalDown(e, c, spot)}
-                        onPointerUp={e => onCrystalUp(e, c)}
-                        onPointerEnter={e => { if (e.pointerType === 'mouse') setHover(c.id); }}
-                        onPointerLeave={e => { if (e.pointerType === 'mouse') setHover(h => h === c.id ? null : h); }}
-                      >
-                        {(window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && (
-                          isSecret ? <><span className="fs-cv-secret-aura" /><span className="fs-cv-secret-ring" /></>
-                            : isGold ? <span className="fs-cv-gold-aura" /> : null
-                        )}
-                        <span className="fs-cv-glowpad" />
-                        <span className="fs-cv-shadow" />
-                        <span className="fs-cv-gem">
-                          {c.crystalShape && window.ShapedCrystalGem
-                            ? React.createElement(window.ShapedCrystalGem, { shape: c.crystalShape, gradientId: isGold ? 'gold' : c.crystalGradient, progress: 0.9, size: sz, seed: c.seed || c.id })
-                            : <CrystalGem progress={_cStateProgress(si)} size={sz} />}
-                        </span>
-                        {/* Fusionné : veines lumineuses le long du fût + cœur, et
-                           le compte de cristaux absorbés sous le socle. */}
-                        {fused && (window._fsReadPrefs ? window._fsReadPrefs() : {}).crystalRarity !== false && (
-                          <><span className="fs-cv-fuse-aura" /><span className="fs-cv-fuse-core" /></>
-                        )}
-                        <span className="fs-cv-base"><i /><i /><i /><i /></span>
-                        {fused && <span className="fs-cv-mass">{window.FsShardIcon ? React.createElement(window.FsShardIcon,{size:9,color:'#06101c'}) : null}{mass}</span>}
-                        {isNew && (
-                          <span className="fs-cv-new" style={{ background: isGold ? 'linear-gradient(135deg,#fff8c7,#ffd36a,#f59e0b)' : pal.a }}>
-                            Nouveau
-                          </span>
-                        )}
-                      </button>
+                        c={c} spot={spot} an={an} sz={sz} glow={glow} pal={pal}
+                        mass={mass} fused={fused} isSecret={isSecret} isGold={isGold} isNew={isNew}
+                        showRarity={showRarity}
+                        isDrag={String(dragId) === String(c.id)} isActive={String(activeId) === String(c.id)} isFused={String(fusedFlash) === String(c.id)}
+                        nodeRef={setNodeRef}
+                        onDown={onCrystalDown} onUp={onCrystalUp}
+                        onEnter={onCrystalEnter} onLeave={onCrystalLeave}
+                        onFocus={onCrystalFocus}
+                        label={label}
+                      />
                     );
                   })}
                 </div>
@@ -23520,7 +23904,9 @@ void main(){
                       Dashboard
                     </button>
                   )}
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(161,232,255,0.72)', marginBottom: 6 }}>focus grotto</div>
+                  {/* « FOCUS GROTTO » : anglais dans une UI française, contraire
+                      au glossaire tranché du projet. */}
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(161,232,255,0.72)', marginBottom: 6 }}>grotte de focus</div>
                   <div className="fs-cv-title" style={{ fontFamily: T.display, fontWeight: 900, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
                   <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.66)', marginTop: 7, maxWidth: 340 }}>
                     {crystals.length > 0
@@ -23565,33 +23951,79 @@ void main(){
                 </div>
               </div>
 
+              {/* ══ L'ÉTAT VIDE EST UN ÉCRAN D'ACTIVATION ═══════════════════
+                 Il disait « Lance une session de focus pour planter ton premier
+                 cristal » — sans aucun bouton pour le faire, et le bloc entier
+                 était en `pointer-events:none`. Les trois seules commandes
+                 offertes à un nouvel utilisateur étaient : partir, partager une
+                 grotte vide, et « Reset ». On donnait la consigne en retirant
+                 le moyen de l'exécuter, au moment précis où l'intention est la
+                 plus haute. Un écran de récompense vide n'informe pas : il
+                 active. */}
               {crystals.length === 0 && (
                 <div className="fs-cv-empty">
-                  <div>
+                  <div className="fs-cv-empty-in">
                     <div style={{ opacity: 0.55, animation: reduce ? 'none' : 'float 4s ease-in-out infinite', display: 'inline-block' }}>
                       <CrystalGem progress={0.08} size={88} />
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#f3f7ff', marginTop: 14, marginBottom: 8 }}>Grotte vierge</div>
-                    <div style={{ fontSize: 12, color: 'rgba(220,231,255,0.66)', lineHeight: 1.75 }}>Lance une session de focus<br />pour planter ton premier cristal ici.</div>
+                    <div style={{ fontSize: 12, color: 'rgba(220,231,255,0.66)', lineHeight: 1.75 }}>Une session terminée,<br />un cristal qui naît ici.</div>
+                    {onStart && (
+                      <button type="button" className="fs-cv-empty-cta" onClick={onStart}>
+                        <svg width={13} height={13} viewBox="0 0 12 12" aria-hidden="true"><polygon points="3.4,2.2 10,6 3.4,9.8" fill="currentColor" /></svg>
+                        Forger mon premier cristal
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
 
-              <div className="fs-cv-hud">
-                <button type="button" onClick={shareCave} disabled={shareBusy} aria-label="Partager ma grotte à mes amis"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.9), rgba(var(--theme-c2-rgb),0.9))', border: '1px solid rgba(255,255,255,0.22)', color: '#06140a', fontWeight: 900 }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-                  {shareBusy ? 'Création…' : <>Partager<span className="fs-cv-hud-long"> à mes amis</span></>}
-                </button>
-                {fusionGroups.length > 0 && (
-                  <button type="button" className="fs-cv-fusebtn" onClick={() => setFusionOpen(true)}
-                    aria-label={`Assembler des cristaux en double (${fusionGroups.length} type${fusionGroups.length > 1 ? 's' : ''})`}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v5l5 5 5-5V3"/><path d="M12 13v8"/><path d="M8 21h8"/></svg>
-                    Assembler<i>{fusionGroups.length}</i>
-                  </button>
-                )}
-                <button type="button" onClick={() => { camRef.current.vz = 0; camRef.current.target = 0; }}>Reset</button>
-              </div>
+              {/* Sur une grotte vide, le HUD n'offrait que des actions creuses —
+                 et « Partager » y était l'élément le plus voyant de l'écran.
+                 Il n'apparaît qu'une fois qu'il y a quelque chose à montrer. */}
+              {crystals.length > 0 && (
+                <div className="fs-cv-hud">
+                  {/* ══ LE PARTAGE SE MÉRITE ══
+                     Sur une grotte vide, il générait bel et bien une carte
+                     1080 × 1350 « Ma grotte — 0 cristaux · 0 min de focus » et
+                     proposait de la diffuser : le mécanisme de croissance
+                     fabriquait une preuve publique de n'avoir rien accompli.
+                     Sous le seuil, on affiche la progression vers le
+                     déverrouillage — même grammaire que le bouton Collection. */}
+                  {crystals.length >= SHARE_MIN ? (
+                    <button type="button" onClick={shareCave} disabled={shareBusy} aria-label="Partager ma grotte à mes amis"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.9), rgba(var(--theme-c2-rgb),0.9))', border: '1px solid rgba(255,255,255,0.22)', color: '#06140a', fontWeight: 900 }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+                      {shareBusy ? 'Création…' : <>Partager<span className="fs-cv-hud-long"> à mes amis</span></>}
+                    </button>
+                  ) : (
+                    <span className="fs-cv-lock" aria-label={`Partage débloqué à ${SHARE_MIN} cristaux`}>
+                      Partage à {SHARE_MIN} cristaux<i>{crystals.length}/{SHARE_MIN}</i>
+                    </span>
+                  )}
+                  {fusionGroups.length > 0 && (
+                    <button type="button" className="fs-cv-fusebtn" onClick={() => setFusionOpen(true)}
+                      aria-label={`Assembler des cristaux en double (${fusionGroups.length} type${fusionGroups.length > 1 ? 's' : ''})`}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3v5l5 5 5-5V3"/><path d="M12 13v8"/><path d="M8 21h8"/></svg>
+                      Assembler<i>{fusionGroups.length}</i>
+                    </button>
+                  )}
+                  {/* À l'approche du plafond, on prévient AVANT la perte et on
+                      oriente vers l'assemblage — qui libère des places sans
+                      rien détruire. Avant, la troncature était muette. */}
+                  {crystals.length >= (window.CRYSTAL_CAP || 400) * 0.8 && (
+                    <span className="fs-cv-lock" style={{ color: '#ffd48a', borderColor: 'rgba(255,196,80,.3)' }}>
+                      Grotte presque pleine<i style={{ color: '#ffd48a', background: 'rgba(255,196,80,.16)' }}>{crystals.length}/{window.CRYSTAL_CAP || 400}</i>
+                    </span>
+                  )}
+                  {/* « Reset » : anglais contraire au glossaire du projet, sans
+                     `aria-label`, et posé au-dessus d'une collection patiemment
+                     accumulée il se lit comme « effacer mes cristaux ». Il ne
+                     fait que recentrer la caméra. Un contrôle nomme son effet. */}
+                  <button type="button" aria-label="Recentrer la vue sur l'entrée de la grotte"
+                    onClick={() => { camRef.current.vz = 0; camRef.current.target = 0; if (wakeRef.current) wakeRef.current(); }}>Recentrer</button>
+                </div>
+              )}
 
               {/* ══ Atelier de fusion ══════════════════════════════════════════
                  Chaque doublon est une ligne : les deux pierres à gauche, le
@@ -23642,8 +24074,20 @@ void main(){
                 </div>
               )}
 
-              {crystals.length > 0 && !active && (
-                <div className="fs-cv-hint">Molette ou glisse pour avancer · attrape un cristal pour le replanter</div>
+              {/* ══ LE MODE D'EMPLOI EXISTE AUSSI SUR MOBILE ═══════════════════
+                 Cet indice était la SEULE explication du modèle d'interaction,
+                 et il était en `display:none` sous 680 px. Un utilisateur
+                 mobile voyait une image fixe : il ignorait qu'on peut avancer
+                 dans la profondeur et saisir ses cristaux. La fonctionnalité
+                 principale de l'écran était invisible pour la majorité de la
+                 base. Le texte avait été coupé pour gagner de la place — il
+                 fallait le REFORMULER, pas le supprimer. Il s'efface au premier
+                 geste réussi et ne revient plus. */}
+              {crystals.length > 0 && !active && !hinted && (
+                <div className="fs-cv-hint">
+                  <span className="fs-cv-hint-lg">Molette ou glisse pour avancer · attrape un cristal pour le replanter</span>
+                  <span className="fs-cv-hint-sm">Glisse pour entrer · appui long sur une pierre pour la déplacer</span>
+                </div>
               )}
 
               {active && activeInfo && (
@@ -26820,7 +27264,26 @@ void main(){
 
   function ProgressScreen({ onNavigate, user, embedded = false }) {
     const [g] = useGamif(user?.id);
-    const crystals = React.useMemo(()=>{ try{ return JSON.parse(localStorage.getItem(`fs_crystals_${user?.id}`))||[]; }catch(e){ return []; } },[user?.id]);
+    /* Cette lecture omettait le repli présent dans les dix autres appels du
+       fichier : sans utilisateur résolu, elle interrogeait la clé
+       `fs_crystals_undefined`, qui n'existe jamais. Elle était de plus figée
+       sur `[user?.id]` sans écouter `fs-crystal-update` — l'écran de
+       progression affichait donc zéro, ou une valeur périmée, pendant que la
+       grotte en montrait trente. */
+    const [crystals, setCrystals] = React.useState([]);
+    React.useEffect(() => {
+      const read = () => {
+        try { setCrystals(JSON.parse(localStorage.getItem(user?.id ? `fs_crystals_${user.id}` : 'fs_crystals') || '[]') || []); }
+        catch (e) { setCrystals([]); }
+      };
+      read();
+      window.addEventListener('fs-crystal-update', read);
+      window.addEventListener('fs-remote-update', read);
+      return () => {
+        window.removeEventListener('fs-crystal-update', read);
+        window.removeEventListener('fs-remote-update', read);
+      };
+    }, [user?.id]);
     const { heatmap={} } = g;
     /* Notes de productivité quotidiennes (rouge/jaune/vert) — colorent la carte */
     const [ratings, setRatings] = React.useState(() => window._fsProdRatings ? window._fsProdRatings(user?.id) : {});
