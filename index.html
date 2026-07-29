@@ -10418,6 +10418,103 @@
       background: linear-gradient(90deg, transparent, rgba(255,255,255,0.58), transparent);
       pointer-events: none;
     }
+    /* ══ RECTANGLE DE BANNIÈRE ═══════════════════════════════════════════════
+       Il occupe toute la largeur du panneau, au-dessus de la photo, et l'avatar
+       vient chevaucher son bord bas : c'est ce chevauchement qui fait lire
+       « carte de profil » plutôt que « image décorative ». Ratio proche de
+       celui du recadrage (1280x448) pour que l'aperçu ne mente pas. */
+    .fs-account-banner {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1280 / 448;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      position: relative;
+      background-color: rgba(255,255,255,0.035);
+      background-size: cover;
+      background-position: center;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      transition: filter 0.18s var(--mineral-ease);
+    }
+    /* Vide : une invitation explicite, pas un carré gris muet. */
+    .fs-account-banner:not(.has-img) {
+      background-image:
+        radial-gradient(circle at 22% 12%, rgba(var(--theme-c1-rgb),0.26), transparent 46%),
+        linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.14), rgba(var(--theme-c2-rgb),0.08));
+    }
+    .fs-account-banner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(6,8,16,0.05), rgba(6,8,16,0.52));
+      pointer-events: none;
+    }
+    .fs-account-banner:hover { filter: brightness(1.1); }
+    .fs-account-banner.busy { cursor: default; filter: grayscale(0.4) brightness(0.8); }
+    .fs-account-banner-cta {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%,-50%);
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 14px;
+      border-radius: 11px;
+      white-space: nowrap;
+      font-family: var(--font-body);
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: rgba(248,246,252,0.96);
+      background: rgba(6,8,16,0.62);
+      border: 1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: opacity 0.18s var(--mineral-ease);
+    }
+    /* Une fois l'image posée, l'invitation s'efface : elle ne doit pas masquer
+       ce que l'utilisateur vient de choisir. Elle revient au survol. */
+    .fs-account-banner.has-img .fs-account-banner-cta { opacity: 0; }
+    .fs-account-banner.has-img:hover .fs-account-banner-cta,
+    .fs-account-banner.has-img:focus-visible .fs-account-banner-cta { opacity: 1; }
+    .fs-account-banner:focus-visible { outline: 2px solid var(--theme-c1); outline-offset: -3px; }
+    .fs-account-banner-x {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 2;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: rgba(248,246,252,0.86);
+      background: rgba(6,8,16,0.6);
+      border: 1px solid rgba(255,255,255,0.16);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .fs-account-banner-x:hover { background: rgba(251,113,133,0.22); border-color: rgba(251,113,133,0.44); color: #fff; }
+    /* La croix est petite par nécessité (elle se pose sur l'image) : sa zone de
+       frappe est étendue au-delà de son dessin. */
+    .fs-account-banner-x::before { content: ""; position: absolute; inset: -8px; border-radius: 15px; }
+    .fs-account-banner-err {
+      margin: 0 24px;
+      margin-top: 12px;
+      font-size: 11.5px;
+      font-weight: 700;
+      line-height: 1.45;
+      color: #fda4af;
+      background: rgba(251,113,133,0.10);
+      border: 1px solid rgba(251,113,133,0.24);
+      border-radius: 11px;
+      padding: 9px 12px;
+    }
     .fs-account-hero {
       padding: 24px 24px 20px;
       display: grid;
@@ -10425,6 +10522,13 @@
       gap: 18px;
       align-items: center;
       position: relative;
+    }
+    /* Sous une bannière, l'avatar remonte pour la chevaucher et gagne un
+       liseré sombre qui le détache de l'image, quelle qu'elle soit. */
+    .fs-account-hero.with-banner { padding-top: 0; align-items: flex-end; }
+    .fs-account-hero.with-banner .fs-account-photo-button {
+      margin-top: -34px;
+      box-shadow: 0 18px 42px rgba(0,0,0,0.5), 0 0 0 4px rgba(11,10,24,0.94);
     }
     .fs-account-photo-button {
       width: 88px;
@@ -10753,6 +10857,42 @@
       const gearRef = React.useRef(null);
       const accountRef = React.useRef(null);
       const fileRef = React.useRef(null);
+      /* ── Bannière de profil ─────────────────────────────────────────────── */
+      const bannerFileRef = React.useRef(null);
+      const [profileBanner, setProfileBanner] = React.useState(() => (window._fsBannerRead ? window._fsBannerRead() : null));
+      const [bannerBusy, setBannerBusy] = React.useState(false);
+      const [bannerErr, setBannerErr] = React.useState('');
+      /* Réévalué à chaque OUVERTURE du panneau : le palier dépend du nombre de
+         cristaux et d'amis, qui changent pendant la session. Le compteur
+         `friends` est déclaré plus bas dans ce composant — s'y référer ici
+         lèverait une erreur de portée, et l'ouverture du panneau suffit
+         puisque c'est le seul moment où le rectangle peut apparaître. */
+      const bannerUnlocked = React.useMemo(
+        () => (window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'banner') : false),
+        [user?.id, accountOpen]
+      );
+      React.useEffect(() => {
+        const h = () => setProfileBanner(window._fsBannerRead ? window._fsBannerRead() : null);
+        window.addEventListener('fs-banner-update', h);
+        return () => window.removeEventListener('fs-banner-update', h);
+      }, []);
+      const handleBannerFile = async e => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        setBannerErr(''); setBannerBusy(true);
+        try {
+          const url = await window._fsBannerFromFile(file);
+          window._fsBannerSave(url);
+          setProfileBanner(url);
+        } catch (err) {
+          setBannerErr(err && err.message === 'poids'
+            ? 'Image trop lourde même après compression — essaie une photo moins dense.'
+            : 'Ce fichier n’a pas pu être lu. Formats acceptés : JPG, PNG, WebP.');
+        }
+        setBannerBusy(false);
+      };
+      const clearBanner = () => { window._fsBannerSave(null); setProfileBanner(null); setBannerErr(''); };
       const friendsOpenedAtRef = React.useRef(0);
       const sidebarActionRef = React.useRef({ key: '', at: 0 });
       const navGroupRef = React.useRef(null);
@@ -11300,6 +11440,26 @@
               {popOpen && ReactDOM.createPortal((
                 <div ref={popoverRef} className="fs-popover" style={{ bottom: popPos.bottom, left: popPos.left, width: popPos.width }} onClick={e => e.stopPropagation()}>
                   <div className="fs-pop-actions">
+                    {/* ══ LE PANNEAU PROFIL ÉTAIT INATTEIGNABLE ══
+                       `openAccountPanel` existait, complet, mais n'était branché
+                       sur AUCUN élément : tout le panneau compte — dont l'éditeur
+                       de photo de profil — était du code mort. Le seul chemin
+                       depuis le pied de barre menait à « Se déconnecter ».
+                       C'est ici que vit désormais l'accès au profil, et donc à
+                       la bannière. */}
+                    <button type="button" className="fs-pop-action" onClick={e => { setPopOpen(false); openAccountPanel(e); }} aria-label="Ouvrir mon profil">
+                      <span className="fs-pop-action-copy">
+                        <span className="fs-pop-action-icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="8" r="3.6" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+                          </svg>
+                        </span>
+                        <span>Mon profil</span>
+                      </span>
+                      <svg className="fs-pop-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
                     <button type="button" className="fs-pop-action" onClick={() => { setPopOpen(false); onLogout(); }} aria-label="Se deconnecter de LumenOS">
                       <span className="fs-pop-action-copy">
                         <span className="fs-pop-action-icon" aria-hidden="true">
@@ -11337,7 +11497,40 @@
           {accountOpen && (
             <div ref={accountRef} className="fs-account-panel" style={{ top: accountPos.top, left: accountPos.left }} onClick={e => e.stopPropagation()}>
               <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoFile} />
-              <div className="fs-account-hero">
+              {/* ══ BANNIÈRE, LÀ OÙ ELLE SE COMPREND ═══════════════════════════
+                 Elle vit AU-DESSUS de la photo, dans le panneau du profil : le
+                 seul endroit où l'on voit du premier coup d'œil ce que
+                 l'ensemble donne — grande image, avatar par-dessus, nom à côté.
+                 C'est le motif que tout le monde connaît déjà, et il rend
+                 l'aperçu inutile : le panneau EST l'aperçu.
+                 Le rectangle n'apparaît qu'une fois le palier atteint (10
+                 cristaux et au moins un ami) — avant, il n'y aurait personne
+                 pour la regarder. */}
+              {bannerUnlocked && (
+                <>
+                  <input ref={bannerFileRef} type="file" accept="image/jpeg,image/png,image/webp"
+                    style={{ display:'none' }} onChange={handleBannerFile} />
+                  <button type="button"
+                    className={'fs-account-banner' + (profileBanner ? ' has-img' : '') + (bannerBusy ? ' busy' : '')}
+                    onClick={() => bannerFileRef.current && bannerFileRef.current.click()}
+                    style={profileBanner ? { backgroundImage: `url(${profileBanner})` } : undefined}
+                    aria-label={profileBanner ? 'Remplacer la bannière de profil' : 'Ajouter une bannière de profil'}>
+                    <span className="fs-account-banner-cta">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+                      </svg>
+                      {bannerBusy ? 'Préparation…' : profileBanner ? 'Remplacer la bannière' : 'Ajouter une bannière'}
+                    </span>
+                  </button>
+                  {profileBanner && !bannerBusy && (
+                    <button type="button" className="fs-account-banner-x" onClick={clearBanner} aria-label="Retirer la bannière">
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </button>
+                  )}
+                  {bannerErr && <div className="fs-account-banner-err" role="alert">{bannerErr}</div>}
+                </>
+              )}
+              <div className={'fs-account-hero' + (bannerUnlocked ? ' with-banner' : '')}>
                 <button type="button" className="fs-account-photo-button" onClick={() => fileRef.current && fileRef.current.click()} title="Changer la photo de profil">
                   {profilePhoto ? <img src={profilePhoto} alt={displayName} /> : userInitial}
                   <span className="fs-account-photo-edit">
