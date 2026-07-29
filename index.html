@@ -1931,7 +1931,7 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
-                       'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked', 'fs_dash_presets'];
+                       'fs_showcase', 'fs_profile_banner', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked', 'fs_dash_presets'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -2445,7 +2445,7 @@
     const FS_GENERAL_DATA_KEYS = [
       'fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
       'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style',
-      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked',
+      'fs_font_preset', 'fs_streak', 'fs_showcase', 'fs_profile_banner', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked',
       'fs_dash_presets',
       'fs_productivity_settings', 'fs_settings_opts', 'fs_default_route', 'fs_focus_nudges',
       'fs_ambient'
@@ -2876,7 +2876,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked') || dirtyKeys.has('fs_dash_presets')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_profile_banner') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked') || dirtyKeys.has('fs_dash_presets')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_|^fs_prod_ratings_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -3012,6 +3012,14 @@
             window._fsDirtyThisSession = true;
           }
           window.dispatchEvent(new CustomEvent('fs-showcase-update'));
+        } catch (_) { }
+        /* Bannière de profil embarquée dans widget_style.banner — même
+           traitement que la vitrine, bouclier dirty-keys compris. */
+        try {
+          if (_fsKeyShielded('fs_profile_banner')) { /* modif locale en file */ }
+          else if (widgetStyle.banner) _fsRawSet('fs_profile_banner', typeof widgetStyle.banner === 'string' ? widgetStyle.banner : JSON.stringify(widgetStyle.banner));
+          else if (!ownLocal) _fsRawRemove('fs_profile_banner');
+          window.dispatchEvent(new CustomEvent('fs-banner-update'));
         } catch (_) { }
         /* Contenus des widgets Texte embarqués dans widget_style.textWidgets */
         try {
@@ -3292,6 +3300,9 @@
       put('fs_note_map_style', 'noteMapStyle', false);
       put('fs_font_preset', 'fontPresetId', false);
       put('fs_showcase', 'showcase', true);
+      /* Bannière de profil : même véhicule que la vitrine (widget_style jsonb),
+         donc aucune colonne nouvelle à créer côté Supabase. */
+      put('fs_profile_banner', 'banner', false);
       put('fs_text_widgets', 'textWidgets', true);
       put('fs_task_view', 'taskView', false);
       put('fs_friends_blocked', 'friendsBlocked', true);
@@ -14966,7 +14977,159 @@ void main(){
        signature visuelle (desktop) et le flux d'énergie relie désormais les
        rangées au cristal. Mobile : colonne pure, cristal et canvas coupés
        (léger pour les petites machines). */
-    function PersonnalisationScreen({ onNavigate, bgThemeId, onApplyTheme }) {
+    /* ══ BANNIÈRE DE PROFIL ════════════════════════════════════════════════
+       Motif Discord : une image large derrière l'avatar, qui n'apparaît que
+       chez les autres. L'écran montre donc EXACTEMENT la carte telle qu'un ami
+       la verra — sans cet aperçu, on personnalise à l'aveugle quelque chose
+       qu'on ne verra jamais soi-même. */
+    function ProfilScreen({ onNavigate, user }) {
+      const [banner, setBanner] = _uPX(() => (window._fsBannerRead ? window._fsBannerRead() : null));
+      const [busy, setBusy] = _uPX(false);
+      const [err, setErr] = _uPX('');
+      const [drag, setDrag] = _uPX(false);
+      const fileRef = _uRefPX(null);
+      const prog = window._fsBannerProgress ? window._fsBannerProgress(user?.id) : { ok: true, crystals: 0, needCrystals: 10, friends: 0, needFriends: 1 };
+      const unlocked = prog.ok;
+      const photo = (() => { try { return localStorage.getItem('fs_img_profile') || (JSON.parse(localStorage.getItem('fs_user') || '{}').photo) || null; } catch (e) { return null; } })();
+      const name = user?.name || (user?.email || '').split('@')[0] || 'Toi';
+      const initial = (name[0] || '?').toUpperCase();
+
+      const take = async (file) => {
+        if (!unlocked || !file) return;
+        setErr(''); setBusy(true);
+        try {
+          const url = await window._fsBannerFromFile(file);
+          window._fsBannerSave(url);
+          setBanner(url);
+        } catch (e) {
+          setErr(e && e.message === 'poids'
+            ? 'Image trop lourde même après compression — essaie une photo moins dense.'
+            : 'Ce fichier n’a pas pu être lu. Formats acceptés : JPG, PNG, WebP.');
+        }
+        setBusy(false);
+      };
+      const clear = () => { window._fsBannerSave(null); setBanner(null); setErr(''); };
+
+      return (
+        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <style>{`
+            .fsPfScroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:clamp(18px,3vh,34px) clamp(16px,3vw,40px) calc(var(--fs-navspace) + 20px)}
+            .fsPfInner{max-width:760px;margin:0 auto}
+            .fsPfTitle{font-family:var(--font-display);font-weight:700;font-size:clamp(22px,3vh,32px);letter-spacing:-.035em;line-height:1.05;color:rgba(255,255,255,.96);margin-bottom:8px}
+            .fsPfSub{font-size:13px;color:rgba(255,255,255,.5);line-height:1.55;max-width:52ch;margin-bottom:26px}
+            .fsPfLbl{font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:0 0 10px}
+            /* Carte de profil : ce que l'AMI verra, au pixel près. */
+            .fsPfCard{position:relative;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.09);
+              background:rgba(255,255,255,.03);box-shadow:0 20px 50px rgba(0,0,0,.32)}
+            .fsPfBanner{position:relative;height:150px;background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.35),rgba(var(--theme-c2-rgb),.22));
+              background-size:cover;background-position:center}
+            .fsPfBanner::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(6,8,16,.72))}
+            .fsPfBody{padding:0 20px 20px;display:flex;align-items:flex-end;gap:14px;margin-top:-32px;position:relative;z-index:1}
+            .fsPfAvatar{width:76px;height:76px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;overflow:hidden;
+              border:4px solid rgba(10,12,20,.92);background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+              font-family:var(--font-display);font-weight:800;font-size:28px;color:#07070d}
+            .fsPfAvatar img{width:100%;height:100%;object-fit:cover}
+            .fsPfName{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.03em;color:#fff;padding-bottom:6px}
+            /* Zone de dépôt */
+            .fsPfDrop{margin-top:18px;border-radius:16px;border:1.5px dashed rgba(255,255,255,.16);padding:22px 18px;text-align:center;
+              background:rgba(255,255,255,.02);transition:border-color .18s,background .18s}
+            .fsPfDrop.on{border-color:rgba(var(--theme-c1-rgb),.6);background:rgba(var(--theme-c1-rgb),.07)}
+            .fsPfDrop.off{opacity:.5;pointer-events:none}
+            .fsPfBtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:13px;
+              border:1px solid rgba(255,255,255,.2);cursor:pointer;font:900 13px var(--font-body);color:#06140a;
+              background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.95),rgba(var(--theme-c2-rgb),.95))}
+            .fsPfBtn[disabled]{opacity:.55;cursor:default}
+            .fsPfGhost{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 15px;border-radius:12px;cursor:pointer;
+              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:rgba(248,246,252,.86);font:800 12px var(--font-body)}
+            .fsPfHint{font-size:11.5px;color:rgba(255,255,255,.42);margin-top:10px;line-height:1.5}
+            .fsPfErr{margin-top:12px;font-size:12px;font-weight:700;color:#fda4af;background:rgba(251,113,133,.1);
+              border:1px solid rgba(251,113,133,.24);border-radius:11px;padding:9px 12px;line-height:1.45}
+            /* Palier verrouillé : on MONTRE l'objectif et la distance. */
+            .fsPfLock{margin-top:18px;border-radius:16px;border:1px solid rgba(var(--theme-c1-rgb),.22);
+              background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.02));padding:18px}
+            .fsPfLockTitle{font:900 13px var(--font-body);color:#fff;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+            .fsPfLockSub{font-size:12px;color:rgba(255,255,255,.6);line-height:1.55;margin-bottom:14px}
+            .fsPfGoal{display:flex;align-items:center;gap:10px;margin-top:9px}
+            .fsPfGoalBar{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+            .fsPfGoalBar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--theme-c1),var(--theme-c2))}
+            .fsPfGoalTxt{font:800 11px var(--font-body);color:rgba(255,255,255,.72);font-variant-numeric:tabular-nums;white-space:nowrap}
+            @media (max-width:640px){
+              .fsPfBanner{height:112px}
+              .fsPfAvatar{width:62px;height:62px;font-size:22px;border-width:3px}
+              .fsPfBody{margin-top:-26px;padding:0 16px 16px}
+            }
+          `}</style>
+          <div className="fsPfScroll">
+            <div className="fsPfInner">
+              <button type="button" className="fs-back-btn" onClick={() => onNavigate('perso')} style={{ marginBottom: 16 }}>
+                <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Personnalisation
+              </button>
+              <div className="fsPfTitle">Bannière de profil</div>
+              <div className="fsPfSub">L’image qui accueille tes amis quand ils ouvrent ton espace. Toi, tu ne la vois qu’ici — c’est pour eux.</div>
+
+              <div className="fsPfLbl">Ce que voient tes amis</div>
+              <div className="fsPfCard">
+                <div className="fsPfBanner" style={banner ? { backgroundImage: `url(${banner})` } : undefined} />
+                <div className="fsPfBody">
+                  <div className="fsPfAvatar">{photo ? <img src={photo} alt="" /> : initial}</div>
+                  <div className="fsPfName">{name}</div>
+                </div>
+              </div>
+
+              {!unlocked ? (
+                <div className="fsPfLock">
+                  <div className="fsPfLockTitle">
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                    Bientôt disponible
+                  </div>
+                  <div className="fsPfLockSub">
+                    Une bannière n’a de sens que si quelqu’un la voit. Elle s’ouvre quand ta grotte a du contenu à montrer <b style={{ color: '#fff' }}>et</b> que tu as au moins un ami pour la regarder.
+                  </div>
+                  <div className="fsPfGoal">
+                    <span className="fsPfGoalTxt">Cristaux</span>
+                    <span className="fsPfGoalBar"><i style={{ width: Math.min(100, prog.crystals / prog.needCrystals * 100) + '%' }} /></span>
+                    <span className="fsPfGoalTxt">{Math.min(prog.crystals, prog.needCrystals)} / {prog.needCrystals}</span>
+                  </div>
+                  <div className="fsPfGoal">
+                    <span className="fsPfGoalTxt">Amis&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                    <span className="fsPfGoalBar"><i style={{ width: Math.min(100, prog.friends / prog.needFriends * 100) + '%' }} /></span>
+                    <span className="fsPfGoalTxt">{Math.min(prog.friends, prog.needFriends)} / {prog.needFriends}</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; take(f); }} />
+                  <div className={'fsPfDrop' + (drag ? ' on' : '') + (busy ? ' off' : '')}
+                    onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                    onDragLeave={() => setDrag(false)}
+                    onDrop={e => { e.preventDefault(); setDrag(false); take(e.dataTransfer?.files?.[0]); }}>
+                    <button type="button" className="fsPfBtn" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+                      {busy ? 'Préparation…' : banner ? 'Remplacer l’image' : 'Choisir une image'}
+                    </button>
+                    <div className="fsPfHint">Glisse un fichier ici, ou clique. Recadrée automatiquement en 1280 × 448 — prévois une image large.</div>
+                    {banner && (
+                      <button type="button" className="fsPfGhost" style={{ marginTop: 12 }} onClick={clear}>
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" /></svg>
+                        Retirer la bannière
+                      </button>
+                    )}
+                  </div>
+                  {err && <div className="fsPfErr" role="alert">{err}</div>}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.ProfilScreen = ProfilScreen;
+
+    function PersonnalisationScreen({ onNavigate, bgThemeId, onApplyTheme, user }) {
       const [hov, setHov] = _uPX(null);
       /* Refs mesurées par FluxEnergyCanvas (alignement DOM réel) ;
          hovRef double le state pour être lu dans la boucle canvas sans re-render. */
@@ -15024,12 +15187,20 @@ void main(){
         try { return TASK_VIEW_NAMES[localStorage.getItem('fs_task_view')] || 'Liste'; } catch (e) { return 'Liste'; }
       })();
 
+      const bannerState = (() => {
+        const p = window._fsBannerProgress ? window._fsBannerProgress(user?.id) : { ok: true };
+        if (!p.ok) return 'Verrouillée';
+        return (window._fsBannerRead && window._fsBannerRead()) ? 'Personnalisée' : 'À définir';
+      })();
       const CARDS = [
         { id:'fond',    target:'fond',        title:'Thèmes & fond',  desc:'Couleurs, dégradés et ambiance de fond',        state: currentThemeName || 'Mineral OS', c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
         { id:'fonts',   target:'fonts',       title:'Polices',        desc:'La voix typographique de ton espace',           state: fontName,    c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
         { id:'widgets', target:'variants',    title:'Widgets',        desc:'Styles, variantes et apparence globale',        state: widgetState, c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
         { id:'notes',   target:'notes-style', title:'Carte de notes', desc:'Le style visuel de ta carte mentale',           state: noteState,   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
         { id:'tasks',   target:'tasks',       title:'Tâches',         desc:'Liste, Kanban ou Focus — ton organisation',     state: taskState,   c1:'#fb7185', icon:<path d="M9 6h11M9 12h11M9 18h11M4 5.5l1.2 1.2L7.5 4.4M4 11.5l1.2 1.2 2.3-2.3M4 17.5l1.2 1.2 2.3-2.3"/> },
+        /* La carte reste VISIBLE avant son palier, avec son état « Verrouillée » :
+           un objectif qu'on ne voit pas ne motive personne. */
+        { id:'profil',  target:'profil',      title:'Profil',         desc:'La bannière que voient tes amis',               state: bannerState, c1:'#c4b5fd', icon:<path d="M4 7h16v10H4zM4 13l4.5-4 3.5 3 3-2.5L20 14"/> },
       ];
 
       return (
@@ -18941,7 +19112,8 @@ void main(){
                 {screen === 'cristaux' && window.FocusScreen && React.createElement(window.FocusScreen, { user, sessions: sessionHistory, onStart: requestStartSession, initialTab: 'cristaux', onOpenCollection: () => go('collection'), onBack: () => go('dashboard'), hotkeyEnabled: !activeSession && !showSession })}
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
-                {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} />}
+                {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} user={user} />}
+                {screen === 'profil' && window.ProfilScreen && React.createElement(window.ProfilScreen, { onNavigate: go, user })}
                 {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} onLogout={handleLogout} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
@@ -19667,6 +19839,17 @@ void main(){
         background:radial-gradient(circle, var(--gem-glow), transparent 68%); opacity:.28; filter:blur(8px);
         animation:fsPvAura 3.4s ease-in-out infinite; }
       @keyframes fsPvAura { 0%,100%{opacity:.2;transform:scale(.92)} 50%{opacity:.42;transform:scale(1.08)} }
+      /* Le secret prend le pas sur le légendaire : couronne spectrale plus
+         large, et l'étiquette de rareté vire au blanc prismatique. */
+      .fs-pv-cell.secret .fs-pv-gem::before { content:''; position:absolute; inset:-9px; border-radius:50%;
+        background:conic-gradient(from 0deg,rgba(255,95,109,.5),rgba(255,179,2,.4),rgba(94,234,212,.48),rgba(79,172,254,.4),rgba(167,139,250,.5),rgba(255,95,109,.5));
+        -webkit-mask:radial-gradient(circle,transparent 34%,#000 54%,transparent 78%);
+        mask:radial-gradient(circle,transparent 34%,#000 54%,transparent 78%);
+        filter:blur(3.5px); mix-blend-mode:screen; animation:fsPvSecretSpin 7s linear infinite; }
+      @keyframes fsPvSecretSpin { to { transform:rotate(360deg); } }
+      .fs-pv-cell.secret .fs-pv-rar { color:#fff !important;
+        text-shadow:0 0 10px rgba(167,139,250,.9), 0 0 22px rgba(94,234,212,.6); }
+      html.fs-reduce-motion .fs-pv-cell.secret .fs-pv-gem::before { animation:none !important; }
       .fs-pv-meta { min-width:0; flex:1; }
       .fs-pv-name { font-size:13px; font-weight:800; letter-spacing:-0.01em; color:rgba(248,246,252,0.92);
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -19674,6 +19857,14 @@ void main(){
       .fs-pv-rar { font-size:10px; font-weight:900; letter-spacing:0.15em; text-transform:uppercase; }
       .fs-pv-dur { font-size:10px; font-weight:800; color:rgba(248,246,252,0.42); font-variant-numeric:tabular-nums; }
       .fs-pv-foot { padding:11px 18px 14px !important; flex-shrink:0; border-top:1px solid rgba(255,255,255,0.05); }
+      /* Bannière : couvre le haut de la carte, derrière l'en-tête. Le voile
+         sombre est indispensable — sans lui, une image claire rendrait le nom
+         et l'email illisibles. */
+      .fs-preview-banner { position:absolute; top:0; left:0; right:0; height:190px; z-index:0;
+        background-size:cover; background-position:center; pointer-events:none; }
+      .fs-preview-banner::after { content:''; position:absolute; inset:0;
+        background:linear-gradient(180deg, rgba(6,8,16,0.30) 0%, rgba(6,8,16,0.72) 62%, var(--mineral-bg,#0b0e14) 100%); }
+      @media (max-width:640px) { .fs-preview-banner { height:150px; } }
       html.fs-reduce-motion .fs-preview-vitrine, html.fs-reduce-motion .fs-pv-cell,
       html.fs-reduce-motion .fs-pv-cell.legendary .fs-pv-gem::before { animation:none !important; }
       @media (max-width:1080px) {
@@ -19775,6 +19966,13 @@ void main(){
           const sc = _fsShowcaseSanitize(data?.widget_style?.showcase);
           return sc && sc.enabled && sc.items.length ? sc : null;
         } catch (e) { return null; }
+      }, [data?.widget_style]);
+      /* Bannière de l'ami — même véhicule que la vitrine. On valide le préfixe
+         data:image avant de l'injecter en `background-image` : cette chaîne
+         vient d'un autre compte, elle n'est pas de confiance. */
+      const friendBanner = React.useMemo(() => {
+        const b = data?.widget_style?.banner;
+        return (typeof b === 'string' && /^data:image\/(png|jpe?g|webp);base64,/.test(b)) ? b : null;
       }, [data?.widget_style]);
 
       /* Reprise automatique : hors ligne à l'ouverture → état d'erreur
@@ -19982,8 +20180,16 @@ void main(){
             {/* Top shimmer */}
             <div style={{ position:'absolute', top:0, left:'20%', right:'20%', height:1, background:`linear-gradient(90deg,transparent,${fc}55,transparent)`, pointerEvents:'none' }}/>
 
+            {/* ══ BANNIÈRE DE L'AMI ══
+               Elle n'existe QUE dans ce regard-là : son propriétaire ne la voit
+               jamais sur son propre dashboard. C'est ce qui en fait un bien de
+               statut plutôt qu'un réglage de plus. Le dégradé sombre en bas
+               garantit que l'en-tête reste lisible quelle que soit l'image. */}
+            {friendBanner && (
+              <div className="fs-preview-banner" aria-hidden="true" style={{ backgroundImage: `url(${friendBanner})` }} />
+            )}
             {/* Header */}
-            <div className="fs-preview-head" style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative' }}>
+            <div className="fs-preview-head" style={{ padding:'24px 32px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0, position:'relative', zIndex:2 }}>
               <div style={{ display:'flex', alignItems:'center', gap:16, minWidth:0 }}>
                 <div style={{ position:'relative', flexShrink:0 }}>
                   <div className="fs-preview-avatar" style={{ width:50, height:50, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}99)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:20, color:'#07070d', boxShadow:`0 8px 24px ${fc}44,0 0 0 2px ${fc}22`, overflow:'hidden' }}>
@@ -20097,8 +20303,12 @@ void main(){
                   {vitrine.items.map((it, i) => {
                     const gid = (it.gold || it.gradient === 'gold') ? 'gold' : it.gradient;
                     const meta = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gid) || null;
-                    const rarity = meta?.legendary ? 'legendary' : gid === 'gold' ? 'gold' : meta?.rare ? 'rare' : null;
-                    const rarityLabel = rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : null;
+                    /* Le palier SECRET manquait à l'appel : la rareté la plus
+                       haute du jeu s'affichait chez l'ami comme un cristal
+                       ordinaire, sans classe ni étiquette. */
+                    const rarity = (meta?.secret || it.rarity === 'secret') ? 'secret'
+                      : meta?.legendary ? 'legendary' : gid === 'gold' ? 'gold' : meta?.rare ? 'rare' : null;
+                    const rarityLabel = rarity === 'secret' ? 'Secret' : rarity === 'legendary' ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : null;
                     const glow = meta?.glow || 'rgba(var(--theme-c1-rgb),0.55)';
                     return (
                       <div key={it.id || i} className={'fs-pv-cell' + (rarity ? ' ' + rarity : '')}
@@ -20767,6 +20977,65 @@ void main(){
     window._fsShowcaseSanitize = _fsShowcaseSanitize;
     window._fsShowcaseLocal = _fsShowcaseRead;
 
+    /* ══ BANNIÈRE DE PROFIL ═════════════════════════════════════════════════
+       Une seule data-URL JPEG, stockée en clair (pas de JSON) : elle voyage
+       dans `widget_style.banner`, exactement comme la vitrine, donc sans
+       nouvelle colonne Supabase à créer.
+       Le poids est le vrai sujet — cette chaîne part dans CHAQUE push de
+       widget_style. On plafonne donc à 1280 px de large et on refuse au-delà
+       de 900 Ko une fois encodée, plutôt que de laisser un utilisateur
+       fabriquer sans le savoir une charge utile qui ralentira toutes ses
+       synchronisations. */
+    window.FS_BANNER_MAX_BYTES = 900 * 1024;
+    window._fsBannerRead = () => {
+      try {
+        const v = localStorage.getItem('fs_profile_banner');
+        return (typeof v === 'string' && v.startsWith('data:image/')) ? v : null;
+      } catch (e) { return null; }
+    };
+    window._fsBannerSave = (dataUrl) => {
+      try {
+        if (dataUrl) localStorage.setItem('fs_profile_banner', dataUrl);
+        else localStorage.removeItem('fs_profile_banner');
+        window._fsDirtyKeys?.add('fs_profile_banner');
+        window._fsDirtyThisSession = true;
+      } catch (e) { return false; }
+      try { window.dispatchEvent(new CustomEvent('fs-banner-update')); } catch (e) { }
+      try { window._fsFlushPush?.(true); } catch (e) { }
+      return true;
+    };
+    /* Recadrage 1280×448 (ratio ~2,86:1, celui de Discord) : on COUVRE le
+       cadre et on centre, pour qu'aucune image ne soit déformée. */
+    window._fsBannerFromFile = (file) => new Promise((resolve, reject) => {
+      if (!file || !file.type || !file.type.startsWith('image/')) { reject(new Error('format')); return; }
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('lecture'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('image'));
+        img.onload = () => {
+          const W = 1280, H = 448;
+          const cv = document.createElement('canvas');
+          cv.width = W; cv.height = H;
+          const ctx = cv.getContext('2d');
+          if (!ctx) { reject(new Error('canvas')); return; }
+          const s = Math.max(W / img.width, H / img.height);
+          const dw = img.width * s, dh = img.height * s;
+          ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+          let q = 0.82, out = cv.toDataURL('image/jpeg', q);
+          /* On redescend la qualité tant que c'est trop lourd, plutôt que de
+             refuser sèchement une photo un peu dense. */
+          while (out.length > window.FS_BANNER_MAX_BYTES && q > 0.45) {
+            q -= 0.1; out = cv.toDataURL('image/jpeg', q);
+          }
+          if (out.length > window.FS_BANNER_MAX_BYTES) { reject(new Error('poids')); return; }
+          resolve(out);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
     if (!document.getElementById('fs-showcase-css')) {
       const s = document.createElement('style');
       s.id = 'fs-showcase-css';
@@ -20834,6 +21103,30 @@ void main(){
         html.fs-reduce-motion .fs-showcase-slot.secret::before { animation:none; }
         /* La gemme passe DEVANT le liseré et les halos de palier. */
         .fs-showcase-slot > * { position:relative; z-index:1; }
+        /* ── Aura du SECRET ──
+           Elle DÉBORDE volontairement de la case (200 %) : c'est ce débordement
+           qui fait qu'un secret se repère dans une rangée avant même qu'on lise
+           les couleurs. Centre transparent et fusion additive : elle éclaire
+           autour de la pierre, jamais par-dessus. */
+        .fs-sc-secret-halo { position:absolute; left:50%; top:50%; width:200%; height:200%;
+          transform:translate(-50%,-50%); pointer-events:none; z-index:0 !important; }
+        .fs-sc-secret-halo i { position:absolute; inset:0; border-radius:50%; display:block;
+          mix-blend-mode:screen; }
+        .fs-sc-secret-corona {
+          background:conic-gradient(from 0deg,rgba(255,95,109,.55),rgba(255,179,2,.42),rgba(94,234,212,.5),rgba(79,172,254,.42),rgba(167,139,250,.55),rgba(255,95,109,.55));
+          -webkit-mask:radial-gradient(circle,transparent 26%,#000 46%,#000 58%,transparent 76%);
+          mask:radial-gradient(circle,transparent 26%,#000 46%,#000 58%,transparent 76%);
+          filter:blur(4px); animation:fsScSecretSpin 7s linear infinite; }
+        /* Éclat blanc contrarotatif : le battement des deux vitesses accroche
+           l'œil sans ajouter de matière. */
+        .fs-sc-secret-glint {
+          background:conic-gradient(from 200deg,transparent,rgba(255,255,255,.9) 6%,transparent 17%,transparent 55%,rgba(255,255,255,.6) 62%,transparent 73%);
+          -webkit-mask:radial-gradient(circle,transparent 32%,#000 48%,transparent 68%);
+          mask:radial-gradient(circle,transparent 32%,#000 48%,transparent 68%);
+          filter:blur(1.5px); animation:fsScSecretSpinR 4.2s linear infinite; }
+        @keyframes fsScSecretSpinR { to { transform:rotate(-360deg); } }
+        html.fs-reduce-motion .fs-sc-secret-corona, html.fs-reduce-motion .fs-sc-secret-glint { animation:none; }
+        html.fs-perf-lite .fs-sc-secret-corona, html.fs-perf-lite .fs-sc-secret-glint { filter:none; }
         .fs-showcase-strip-title { font-size:12px; color:rgba(248,246,252,0.55); font-style:italic;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 
@@ -20977,9 +21270,26 @@ void main(){
          il est dessiné pour un affichage héros de 80 à 120 px, et son archétype
          « singularité » porte un cœur NOIR opaque. Dans une case de 44 px, il
          recouvrait la gemme — exactement le contraire du but d'une vitrine, qui
-         est de MONTRER la pierre. Le palier est donc porté par la case
-         elle-même (liseré, lueur, socle), et la pierre reste lisible. */
-      return React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 });
+         est de MONTRER la pierre. */
+      const gem = React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 });
+      /* ── AURA DU SECRET ──
+         Le légendaire avait bien son halo (porté par `::before`), mais chez le
+         secret ce même pseudo-élément servait déjà au liseré prismatique : la
+         rareté la plus haute du jeu se retrouvait SANS aura derrière elle,
+         moins parée que le palier en dessous. Elle a donc sa propre couche.
+         Deux disques concentriques contrarotatifs, transparents en leur centre
+         (`mask` radial + `screen`) : la lumière rayonne autour de la pierre
+         sans jamais passer devant. */
+      if (_scTier(item) !== 'secret') return gem;
+      return (
+        <>
+          <span className="fs-sc-secret-halo" aria-hidden="true">
+            <i className="fs-sc-secret-corona" />
+            <i className="fs-sc-secret-glint" />
+          </span>
+          {gem}
+        </>
+      );
     };
 
     /* Rendu interne de la vitrine (partagé aperçu propriétaire / vue ami). */
@@ -26883,8 +27193,25 @@ void main(){
        1er rare ........ Boutique + Éclats
        1er doublon ..... Atelier d'assemblage (naturel : le bouton n'existe
                          que s'il y a un doublon)
+       10 cristaux
+       + 1 ami ......... Bannière de profil
      « fail-open » : au moindre doute, tout est ouvert — on ne cache jamais
-     par erreur une fonctionnalité à quelqu'un qui y avait droit. */
+     par erreur une fonctionnalité à quelqu'un qui y avait droit.
+
+     ── POURQUOI LA BANNIÈRE ARRIVE SI TARD ────────────────────────────
+     Deux conditions simultanées, chacune pour une raison distincte.
+     1) AU MOINS UN AMI. Une bannière est un bien de statut : sa valeur vient
+        entièrement du fait que quelqu'un la regarde. L'offrir à qui n'a pas
+        encore d'audience, ce n'est pas une récompense — c'est une corvée de
+        personnalisation de plus, au moment précis où l'utilisateur cherche
+        encore à comprendre le produit.
+     2) DIX CRISTAUX. C'est là que se situe le creux du parcours : les paliers
+        précédents (Amis à 3, Quêtes à 5, Boutique au premier rare) sont
+        derrière, plus rien de neuf n'arrive, et l'habitude n'est pas encore
+        automatique. C'est la zone où l'on perd ceux qui ont épuisé la
+        nouveauté sans avoir installé le réflexe. La bannière comble ce vide.
+     Le palier est ANNONCÉ, jamais caché : un objectif visible et proche tire
+     l'effort, un objectif invisible ne produit rien. */
   window._fsFeatureUnlocked = function (userId, feature) {
     try {
       const ckey = userId ? 'fs_crystals_' + userId : 'fs_crystals';
@@ -26892,6 +27219,18 @@ void main(){
       const n = owned.length;
       let g = {};
       try { g = JSON.parse(localStorage.getItem(userId ? 'fs_gamif_' + userId : 'fs_gamif') || '{}') || {}; } catch (e) { }
+      /* La bannière est évaluée AVANT le raccourci « vétéran ». Ce raccourci
+         existe pour ne jamais RETIRER une fonctionnalité à quelqu'un qui
+         l'avait déjà — or la bannière est nouvelle, personne ne la possédait :
+         il n'y a rien à préserver, et le laisser passer viderait le palier de
+         son sens pour la moitié des comptes. */
+      if (feature === 'banner') {
+        if (n < 10) return false;
+        try {
+          const fr = JSON.parse(localStorage.getItem(userId ? 'fs_friends_' + userId : 'fs_friends') || '[]');
+          return Array.isArray(fr) && fr.length >= 1;
+        } catch (e) { return false; }
+      }
       /* Un compte déjà engagé garde tout, quoi qu'il arrive. */
       const veteran = (g.xp || 0) > 150 || Number(g.shards || 0) > 0 || (Array.isArray(g.unlocks) && g.unlocks.length > 1);
       if (veteran) return true;
@@ -26909,6 +27248,14 @@ void main(){
         default:         return true;
       }
     } catch (e) { return true; }
+  };
+  /* Progression vers la bannière, pour l'AFFICHER au lieu de la cacher.
+     Rend { ok, crystals, needCrystals, friends, needFriends }. */
+  window._fsBannerProgress = function (userId) {
+    let n = 0, f = 0;
+    try { n = (JSON.parse(localStorage.getItem(userId ? 'fs_crystals_' + userId : 'fs_crystals') || '[]') || []).length; } catch (e) { }
+    try { f = (JSON.parse(localStorage.getItem(userId ? 'fs_friends_' + userId : 'fs_friends') || '[]') || []).length; } catch (e) { }
+    return { ok: n >= 10 && f >= 1, crystals: n, needCrystals: 10, friends: f, needFriends: 1 };
   };
   window._gToday  = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   window._gMon    = () => { const d=new Date(),dw=d.getDay(),m=new Date(d); m.setDate(d.getDate()-(dw===0?6:dw-1)); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; };
