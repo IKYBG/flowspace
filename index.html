@@ -5207,7 +5207,32 @@
       .fs-amb-lbl{font-size:11px;font-weight:800;letter-spacing:.01em;text-align:center;color:var(--mineral-text);opacity:.82;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .fs-amb-tile.on .fs-amb-lbl{opacity:1;color:var(--theme-c1)}
-      .fs-amb-vol{width:88%;margin-top:1px;height:14px;cursor:pointer;accent-color:var(--theme-c1)}
+      /* ══ LES RÉGLAGES DE VOLUME SE MANIPULENT AU POUCE ═════════════════════
+         Ces curseurs faisaient 14 et 16 px de haut — moins d'un tiers de la
+         cible tactile minimale — et le curseur de volume général CHEVAUCHAIT
+         les tuiles de son de 7 px : viser le haut d'une tuile déclenchait le
+         volume. On dissocie le rail VISUEL (fin, c'est le bon dessin) de la
+         zone de FRAPPE (44 px au doigt), et la pastille grossit à la main. */
+      .fs-amb-vol,.fs-amb-master{-webkit-appearance:none;appearance:none;background:transparent;
+        cursor:pointer;height:22px;margin:0;padding:0}
+      .fs-amb-vol{width:88%}
+      .fs-amb-master{flex:1;min-width:0}
+      .fs-amb-vol::-webkit-slider-runnable-track,.fs-amb-master::-webkit-slider-runnable-track{
+        height:4px;border-radius:99px;background:rgba(255,255,255,.15)}
+      .fs-amb-vol::-moz-range-track,.fs-amb-master::-moz-range-track{
+        height:4px;border-radius:99px;background:rgba(255,255,255,.15)}
+      .fs-amb-vol::-webkit-slider-thumb,.fs-amb-master::-webkit-slider-thumb{
+        -webkit-appearance:none;width:15px;height:15px;border-radius:50%;margin-top:-5.5px;
+        background:#f4f6fb;border:2px solid var(--theme-c1);box-shadow:0 2px 8px rgba(0,0,0,.45)}
+      .fs-amb-vol::-moz-range-thumb,.fs-amb-master::-moz-range-thumb{
+        width:15px;height:15px;border-radius:50%;border:2px solid var(--theme-c1);
+        background:#f4f6fb;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+      .fs-amb-vol:focus-visible,.fs-amb-master:focus-visible{outline:2px solid var(--theme-c1);outline-offset:3px;border-radius:99px}
+      @media (pointer:coarse){
+        .fs-amb-vol,.fs-amb-master{height:44px}
+        .fs-amb-vol::-webkit-slider-thumb,.fs-amb-master::-webkit-slider-thumb{width:19px;height:19px;margin-top:-7.5px}
+        .fs-amb-vol::-moz-range-thumb,.fs-amb-master::-moz-range-thumb{width:19px;height:19px}
+      }
       .fs-amb-eq{display:flex;gap:1.5px;align-items:flex-end;height:9px;margin-top:1px}
       .fs-amb-eq i{width:2px;background:var(--theme-c1);border-radius:1px;animation:fsAmbEq .9s ease-in-out infinite}
       @keyframes fsAmbEq{0%,100%{height:2px}50%{height:9px}}
@@ -5305,11 +5330,13 @@
               <input type="range" min={0} max={1} step={0.02} value={st.master}
                 onChange={e => A.setMaster(parseFloat(e.target.value))}
                 onClick={stop} onPointerDown={stop} onMouseDown={stop} onTouchStart={stop}
-                aria-label="Volume général"
-                style={{ flex: 1, height: 16, cursor: 'pointer', accentColor: 'var(--theme-c1)' }} />
+                aria-label="Volume général" className="fs-amb-master" />
               {activeCount > 0 && (
-                <button onClick={() => A.clearAll()} onPointerDown={stop} onMouseDown={stop} aria-label="Tout couper"
-                  style={{ flexShrink: 0, background: 'none', border: 'none', color: T.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '2px 4px', fontFamily: T.font }}>
+                /* « Effacer » coupe TOUS les sons d'un coup et ne s'annule pas :
+                   il tenait dans 2 px de rembourrage vertical, soit une cible
+                   d'environ 18 px collée au curseur de volume. */
+                <button onClick={() => A.clearAll()} onPointerDown={stop} onMouseDown={stop} aria-label="Couper tous les sons"
+                  style={{ flexShrink: 0, background: 'none', border: 'none', color: T.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 44, padding: '0 10px', fontFamily: T.font }}>
                   Effacer
                 </button>
               )}
@@ -22346,6 +22373,17 @@ void main(){
     ══════════════════════════════════════════════════════════════ */
     function FocusStage({ session, onMinimize, onEnd }) {
       const [elapsed, setElapsed] = React.useState(0);
+      /* Arrêter perd le cristal et c'est IRRÉVERSIBLE : le geste demande une
+         confirmation, et la conséquence est écrite noir sur blanc. Un bouton
+         destructeur de la même taille et à 9 px de l'action courante, sur un
+         écran qu'on manipule au pouce, c'est une perte de session par
+         inadvertance qui n'attend que d'arriver. */
+      const [confirmStop, setConfirmStop] = React.useState(false);
+      React.useEffect(() => {
+        if (!confirmStop) return;
+        const t = setTimeout(() => setConfirmStop(false), 4000);
+        return () => clearTimeout(t);
+      }, [confirmStop]);
       const totalMs = Math.max(1, (Number(session?.duration) || 25) * 60000);
       React.useEffect(() => {
         if (!session) return;
@@ -22372,6 +22410,8 @@ void main(){
       const b = grad ? grad.stops[grad.stops.length - 1] : '#c084fc';
       /* La rareté ne se révèle qu'à la fin : le mystère fait tenir la session. */
       const reveal = progress > 0.999;
+      /* Anneau de progression : rayon et circonférence, pour le dash-offset. */
+      const R = 108, C = 2 * Math.PI * R;
 
       return (
         <div className="fs-stage" role="region" aria-label="Session de focus en cours">
@@ -22389,62 +22429,124 @@ void main(){
               -webkit-mask-image:radial-gradient(circle at 50% 48%,#000 44%,transparent 74%);
               mask-image:radial-gradient(circle at 50% 48%,#000 44%,transparent 74%)}
             .fs-stage-gem{position:relative;z-index:1}
-            .fs-stage-clock{margin-top:6px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
-              font-size:clamp(38px,9vw,60px);font-weight:700;letter-spacing:-.03em;line-height:1;color:#f4f7ff;
+            /* ══ L'ANNEAU EST LA SCÈNE ═══════════════════════════════════════
+               Avant : un chiffre orphelin, un filet de progression de 4 px et
+               deux boutons gris posés sur du vide. Les deux signaux les plus
+               importants — « où j'en suis » et « combien il reste » — étaient
+               séparés, et le plus important des deux était le plus discret.
+               Ils fusionnent ici en un seul objet : un anneau de progression
+               qui entoure la pierre. C'est la forme que tout le monde sait
+               déjà lire (minuteur de montre, application de méditation), elle
+               donne au regard un centre unique, et elle transforme l'attente
+               en objet fini plutôt qu'en barre qui rampe. */
+            .fs-stage-ring{position:relative;display:grid;place-items:center;
+              width:min(268px,72vw);aspect-ratio:1}
+            .fs-stage-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+            .fs-stage-ring .trk{fill:none;stroke:rgba(255,255,255,.07);stroke-width:5}
+            .fs-stage-ring .arc{fill:none;stroke:url(#fsStageGrad);stroke-width:5;stroke-linecap:round;
+              transition:stroke-dashoffset 1s linear;filter:drop-shadow(0 0 7px var(--sa))}
+            /* Socle de lumière : la gemme ne flotte plus dans le noir, elle
+               repose sur quelque chose. C'est ce qui la fait exister. */
+            .fs-stage-pedestal{position:absolute;bottom:11%;left:50%;transform:translateX(-50%);
+              width:56%;height:9%;border-radius:50%;pointer-events:none;
+              background:radial-gradient(ellipse,var(--sa),transparent 70%);opacity:.30;filter:blur(9px)}
+            .fs-stage-clock{font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+              font-size:clamp(34px,8.4vw,50px);font-weight:700;letter-spacing:-.035em;line-height:1;color:#f4f7ff;
               text-shadow:0 0 34px rgba(0,0,0,.6)}
-            .fs-stage-sub{margin-top:9px;font:800 11px var(--font-body);letter-spacing:.13em;text-transform:uppercase;
-              color:rgba(226,238,255,.5)}
-            .fs-stage-bar{margin-top:16px;width:min(260px,72vw);height:4px;border-radius:99px;
-              background:rgba(255,255,255,.09);overflow:hidden}
-            .fs-stage-bar i{display:block;height:100%;border-radius:99px;transform-origin:left center;
-              background:linear-gradient(90deg,var(--sa),var(--sb));transition:transform 1s linear}
-            .fs-stage-name{margin-top:14px;font-family:var(--font-display);font-size:15px;font-weight:800;
+            .fs-stage-sub{margin-top:7px;font:800 10.5px var(--font-body);letter-spacing:.13em;text-transform:uppercase;
+              color:rgba(226,238,255,.46)}
+            /* Écoulé / total : la progression en clair. « 15:56 restant » seul
+               ne dit pas si l'on est au quart ou aux trois quarts. */
+            .fs-stage-elapsed{margin-top:13px;display:inline-flex;align-items:center;gap:7px;
+              padding:6px 13px;border-radius:99px;border:1px solid rgba(255,255,255,.09);
+              background:rgba(255,255,255,.04);font:800 11px var(--font-body);
+              color:rgba(226,238,255,.66);font-variant-numeric:tabular-nums}
+            .fs-stage-elapsed b{color:#fff;font-weight:900}
+            .fs-stage-name{margin-top:13px;font-family:var(--font-display);font-size:16px;font-weight:800;
               letter-spacing:-.02em;background:linear-gradient(100deg,var(--sa),var(--sb));
               -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-            .fs-stage-acts{margin-top:22px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center}
-            .fs-stage-btn{height:40px;padding:0 18px;border-radius:16px;cursor:pointer;
-              font:800 12px var(--font-body);transition:transform .17s var(--mineral-ease),background .17s var(--mineral-ease)}
-            .fs-stage-btn:active{transform:scale(.97)}
-            .fs-stage-ghost{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.055);color:rgba(244,246,251,.86)}
-            .fs-stage-ghost:hover{background:rgba(255,255,255,.1)}
-            .fs-stage-stop{border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.035);color:rgba(226,238,255,.62)}
-            .fs-stage-stop:hover{background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3);color:#fb7185}
-            .fs-stage-note{margin-top:12px;font-size:11px;color:rgba(226,238,255,.42);text-align:center;max-width:30ch;line-height:1.5}
+            /* Actions dans le TIERS BAS : au pouce, le haut d'un téléphone est
+               la zone la plus coûteuse à atteindre. L'action courante est
+               pleine largeur ; la destructrice se tient à l'écart, discrète,
+               et demande une confirmation. */
+            .fs-stage-acts{margin-top:24px;display:flex;flex-direction:column;align-items:center;gap:10px;width:min(300px,84vw)}
+            .fs-stage-btn{min-height:46px;padding:0 20px;border-radius:15px;cursor:pointer;
+              display:inline-flex;align-items:center;justify-content:center;gap:8px;
+              font:800 13px var(--font-body);transition:transform .17s var(--mineral-ease),background .17s var(--mineral-ease)}
+            .fs-stage-btn:active{transform:scale(.98)}
+            .fs-stage-ghost{width:100%;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);color:rgba(244,246,251,.92)}
+            .fs-stage-ghost:hover{background:rgba(255,255,255,.12)}
+            .fs-stage-stop{min-height:40px;padding:0 14px;border:1px solid transparent;background:transparent;
+              color:rgba(226,238,255,.44);font-weight:700;font-size:12px}
+            .fs-stage-stop:hover{color:#fb7185}
+            .fs-stage-stop.armed{border-color:rgba(251,113,133,.4);background:rgba(251,113,133,.11);color:#fda4af;font-weight:900}
+            .fs-stage-note{margin-top:14px;font-size:11px;color:rgba(226,238,255,.42);text-align:center;max-width:32ch;line-height:1.5}
             html.fs-reduce-motion .fs-stage,html.fs-reduce-motion .fs-stage-gemwrap{animation:none!important}
             @media(max-width:640px){
               .fs-stage{padding:16px}
-              .fs-stage-bar{width:min(230px,78vw)}
+              .fs-stage-ring{width:min(240px,66vw)}
+            }
+            /* Écrans courts (téléphone en paysage, petit iPhone) : l'anneau cède
+               en premier — le chrono et les actions ne doivent jamais sortir. */
+            @media(max-height:680px){
+              .fs-stage-ring{width:min(190px,48vh)}
+              .fs-stage-note{display:none}
             }
           `}</style>
           <div className="fs-stage-inner" style={{ '--sa': a, '--sb': b }}>
-            <div className="fs-stage-gemwrap">
-              {window.CrystalAura && reveal && rarity !== 'standard' && (
-                <div className="fs-stage-aura">
-                  {React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 118, intensity: 1 })}
+            <div className="fs-stage-ring">
+              <svg viewBox="0 0 240 240" aria-hidden="true">
+                <defs>
+                  <linearGradient id="fsStageGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor={a} /><stop offset="100%" stopColor={b} />
+                  </linearGradient>
+                </defs>
+                <circle className="trk" cx="120" cy="120" r={R} />
+                <circle className="arc" cx="120" cy="120" r={R}
+                  strokeDasharray={C} strokeDashoffset={C * (1 - progress)} />
+              </svg>
+              <span className="fs-stage-pedestal" aria-hidden="true" />
+              <div className="fs-stage-gemwrap">
+                {window.CrystalAura && reveal && rarity !== 'standard' && (
+                  <div className="fs-stage-aura">
+                    {React.createElement(window.CrystalAura, { gradientId: session.crystalGradient, rarity, size: 108, intensity: 1 })}
+                  </div>
+                )}
+                <div className="fs-stage-gem">
+                  {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
+                    shape: session.crystalShape || 'diamond',
+                    gradientId: isGold ? 'gold' : (session.crystalGradient || 'aurora'),
+                    /* Plancher de présence : une forme visible dès la première
+                       seconde, qui se sature à mesure que la session avance. */
+                    progress: 0.16 + progress * 0.84,
+                    colorProgress: Math.min(1, progress * 1.35),
+                    size: 118,
+                    seed: session.startTime || 1,
+                  })}
                 </div>
-              )}
-              <div className="fs-stage-gem">
-                {window.ShapedCrystalGem && React.createElement(window.ShapedCrystalGem, {
-                  shape: session.crystalShape || 'diamond',
-                  gradientId: isGold ? 'gold' : (session.crystalGradient || 'aurora'),
-                  /* Plancher de présence : une forme visible dès la première
-                     seconde, qui se sature à mesure que la session avance. */
-                  progress: 0.16 + progress * 0.84,
-                  colorProgress: Math.min(1, progress * 1.35),
-                  size: 150,
-                  seed: session.startTime || 1,
-                })}
               </div>
             </div>
-            <div className="fs-stage-clock">{done ? '00:00' : `${mm}:${ss}`}</div>
+            <div className="fs-stage-clock" role="timer" aria-live="off">{done ? '00:00' : `${mm}:${ss}`}</div>
             <div className="fs-stage-sub">{done ? 'Cristal prêt' : 'de focus restant'}</div>
-            <div className="fs-stage-bar"><i style={{ transform: `scaleX(${progress.toFixed(3)})` }} /></div>
+            {!done && (
+              <div className="fs-stage-elapsed">
+                <b>{Math.floor(elapsed / 60000)}</b> min sur {Math.round(totalMs / 60000)}
+                <span aria-hidden="true" style={{ opacity: .4 }}>·</span>
+                {Math.round(progress * 100)} %
+              </div>
+            )}
             {reveal && <div className="fs-stage-name">{grad?.name || 'Cristal forgé'}</div>}
             <div className="fs-stage-acts">
-              <button type="button" className="fs-stage-btn fs-stage-ghost" onClick={onMinimize}>Voir mon dashboard</button>
-              <button type="button" className="fs-stage-btn fs-stage-stop" onClick={() => onEnd && onEnd(null)}>Arrêter</button>
+              <button type="button" className="fs-stage-btn fs-stage-ghost" onClick={onMinimize}>
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 10V4h6M20 14v6h-6M4 4l7 7M20 20l-7-7" /></svg>
+                Voir mon dashboard
+              </button>
+              <button type="button" className={'fs-stage-btn fs-stage-stop' + (confirmStop ? ' armed' : '')}
+                onClick={() => { if (confirmStop) { onEnd && onEnd(null); } else { setConfirmStop(true); } }}>
+                {confirmStop ? 'Confirmer — le cristal sera perdu' : 'Arrêter la session'}
+              </button>
             </div>
-            {!done && <div className="fs-stage-note">Le cristal n’est gardé qu’à la fin — mais tes minutes comptent déjà.</div>}
+            {!done && !confirmStop && <div className="fs-stage-note">Le cristal n’est gardé qu’à la fin — mais tes minutes comptent déjà.</div>}
           </div>
         </div>
       );
