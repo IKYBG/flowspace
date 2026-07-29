@@ -18966,8 +18966,15 @@ void main(){
              jamais les deux à la fois. */}
           {isApp && activeSession && screen === 'dashboard' && focusStageOpen && window.FocusStage
             && React.createElement(window.FocusStage, { session: activeSession, onMinimize: () => setFocusStageOpen(false), onEnd: handleEndSession })}
+          {/* `onExpand` : le repli était une IMPASSE. `setFocusStageOpen(true)`
+             n'existait qu'au démarrage d'une session — une fois la scène
+             réduite en pastille, plus rien ne permettait de la rappeler, et on
+             finissait la session avec un disque de 80 px pour seul retour. Le
+             geste rouvre la scène ET ramène au dashboard, puisque c'est le seul
+             écran où elle vit. */}
           {isApp && activeSession && !(screen === 'dashboard' && focusStageOpen) && window.FocusCrystalOverlay
-            && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession })}
+            && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession,
+                 onExpand: () => { go('dashboard'); setFocusStageOpen(true); } })}
           {isApp && sessionResult && window.SessionCompleteModal && React.createElement(window.SessionCompleteModal, { result: sessionResult, onClose: () => setSessionResult(null), onOpenCave: () => { setSessionResult(null); go('cristaux'); } })}
           {isApp && showBoutique && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, onClose: () => setShowBoutique(false) })}
           {isApp && streakBreak && !activeSession && !sessionResult && window.StreakBreakModal && React.createElement(window.StreakBreakModal, {
@@ -20791,6 +20798,42 @@ void main(){
           background:linear-gradient(180deg, rgba(255,211,106,0.11), rgba(255,255,255,0.02));
           box-shadow:0 0 18px rgba(255,202,75,0.16), inset 0 1px 0 rgba(255,255,255,0.10); }
         .fs-showcase-slot.gold::after { background:radial-gradient(ellipse, rgba(255,202,75,0.5), transparent 72%); }
+        /* ══ LES PALIERS SE VOIENT DANS LA VITRINE ══
+           Elle ne connaissait qu'un cas particulier : « gold ». Un SECRET —
+           1 chance sur 1000 — y était rigoureusement identique à un commun, à
+           ses couleurs près. La vitrine est pourtant l'endroit où l'on montre
+           ce qu'on a de plus rare : c'est le seul écran vu par les amis. */
+        .fs-showcase-slot.rare { border-color:rgba(125,211,252,0.30);
+          background:linear-gradient(180deg, rgba(125,211,252,0.09), rgba(255,255,255,0.02));
+          box-shadow:0 0 14px rgba(125,211,252,0.14), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .fs-showcase-slot.rare::after { background:radial-gradient(ellipse, rgba(125,211,252,0.44), transparent 72%); }
+        .fs-showcase-slot.legendary { border-color:rgba(167,139,250,0.42);
+          background:linear-gradient(180deg, rgba(167,139,250,0.13), rgba(255,255,255,0.02));
+          box-shadow:0 0 20px rgba(167,139,250,0.22), inset 0 1px 0 rgba(255,255,255,0.10); }
+        .fs-showcase-slot.legendary::after { background:radial-gradient(ellipse, rgba(167,139,250,0.5), transparent 72%); }
+        /* Halo violet lent : le légendaire respire, le secret tourne. */
+        .fs-showcase-slot.legendary::before { content:''; position:absolute; inset:-6px; border-radius:18px; z-index:0;
+          background:radial-gradient(circle, rgba(167,139,250,0.30), transparent 68%);
+          animation:fsScLegBreath 3.6s ease-in-out infinite; }
+        @keyframes fsScLegBreath { 0%,100% { opacity:.5; } 50% { opacity:.95; } }
+        html.fs-reduce-motion .fs-showcase-slot.legendary::before { animation:none; }
+        .fs-showcase-slot.secret { border-color:transparent;
+          background:linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+          box-shadow:0 0 22px rgba(255,255,255,0.18), 0 0 44px rgba(167,139,250,0.20); }
+        /* Liseré spectral : la bordure elle-même devient un prisme qui tourne.
+           Aucun autre palier ne fait ça — le secret se repère au premier coup
+           d'œil dans une rangée. */
+        .fs-showcase-slot.secret::before { content:''; position:absolute; inset:-1.5px; border-radius:13.5px; z-index:0;
+          background:conic-gradient(from 0deg,#ff5f6d,#ffb302,#5eead4,#4facfe,#a78bfa,#ff5f6d);
+          -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+          -webkit-mask-composite:xor;mask-composite:exclude;padding:1.5px;
+          animation:fsScSecretSpin 4.5s linear infinite; }
+        .fs-showcase-slot.secret::after { background:radial-gradient(ellipse, rgba(255,255,255,0.66), transparent 70%); height:5px; filter:blur(2.5px); }
+        @keyframes fsScSecretSpin { to { transform:rotate(360deg); } }
+        html.fs-reduce-motion .fs-showcase-slot.secret::before { animation:none; }
+        /* La gemme passe DEVANT le liseré et les halos de palier. */
+        .fs-showcase-slot > * { position:relative; z-index:1; }
         .fs-showcase-strip-title { font-size:12px; color:rgba(248,246,252,0.55); font-style:italic;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 
@@ -20916,12 +20959,27 @@ void main(){
       document.head.appendChild(s);
     }
 
+    /* Palier d'une pierre de vitrine, déduit du dégradé autant que de la rareté
+       enregistrée — les vieilles sauvegardes ont pu perdre `rarity`. */
+    const _scTier = (item) => {
+      const g = (window.CRYSTAL_GRADIENTS || []).find(x => x.id === item.gradient);
+      if (item.rarity === 'secret' || (g && g.secret)) return 'secret';
+      if (item.rarity === 'legendary' || (g && g.legendary)) return 'legendary';
+      if (item.gold || item.gradient === 'gold') return 'gold';
+      if (item.rarity === 'rare' || (g && g.rare)) return 'rare';
+      return 'standard';
+    };
     const ShowcaseGem = ({ item, size = 32 }) => {
       const isGold = item.gold || item.gradient === 'gold';
       const sz = size + Math.min((item.duration || 25) / 90, 1) * 8 + (isGold ? 4 : 0);
-      return window.ShapedCrystalGem
-        ? React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 })
-        : null;
+      if (!window.ShapedCrystalGem) return null;
+      /* On a d'abord branché ici le système complet de `CrystalAura`. Erreur :
+         il est dessiné pour un affichage héros de 80 à 120 px, et son archétype
+         « singularité » porte un cœur NOIR opaque. Dans une case de 44 px, il
+         recouvrait la gemme — exactement le contraire du but d'une vitrine, qui
+         est de MONTRER la pierre. Le palier est donc porté par la case
+         elle-même (liseré, lueur, socle), et la pierre reste lisible. */
+      return React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 });
     };
 
     /* Rendu interne de la vitrine (partagé aperçu propriétaire / vue ami). */
@@ -20930,7 +20988,7 @@ void main(){
         <div className="fs-showcase-strip-label"><span className="fs-showcase-facet" />Vitrine</div>
         <div className="fs-showcase-strip-gems">
           {sc.items.map((it, i) => (
-            <div key={it.id || i} className={'fs-showcase-slot' + ((it.gold || it.gradient === 'gold') ? ' gold' : '')}>
+            <div key={it.id || i} className={'fs-showcase-slot ' + _scTier(it)}>
               <ShowcaseGem item={it} />
             </div>
           ))}
@@ -21687,7 +21745,7 @@ void main(){
       } catch (e) { return hex; }
     }
 
-    function FocusCrystalOverlay({ session, user, onEnd }) {
+    function FocusCrystalOverlay({ session, user, onEnd, onExpand }) {
       const [elapsed, setElapsed] = React.useState(0);
       const [phase, setPhase]     = React.useState('growing');
       const shattered = false;
@@ -21867,6 +21925,22 @@ void main(){
               {/* Arrêter — bouton neutre, toujours atteignable via le panneau
                  (survol ou tap). Plus de « Forger » anticipé : le cristal ne se
                  récupère qu'à la FIN de la session — on l'annonce dès 50 %. */}
+              {/* Rouvrir la scène : action PREMIÈRE du panneau, avant l'arrêt.
+                 C'est le retour vers le cristal en formation, pas une sortie. */}
+              {phase === 'growing' && onExpand && (
+                <button onClick={(e) => { e.stopPropagation(); onExpand(); }} style={{
+                  position:'relative', display:'flex', alignItems:'center', gap:7, marginTop:1,
+                  background:'linear-gradient(135deg, rgba(var(--theme-c1-rgb),0.22), rgba(var(--theme-c2-rgb),0.12))',
+                  border:'1px solid rgba(var(--theme-c1-rgb),0.38)',
+                  borderRadius:10, padding:'7px 16px', color:'rgba(244,246,251,0.95)',
+                  fontSize:11, fontWeight:800, cursor:'pointer', fontFamily:T.font,
+                  transition:'transform 0.15s, box-shadow 0.15s' }}
+                  onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-1px)';e.currentTarget.style.boxShadow='0 8px 22px rgba(var(--theme-c1-rgb),0.24)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='none';}}>
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M4 14v6h6M20 10V4h-6M20 4l-7 7M4 20l7-7"/></svg>
+                  Revenir au cristal
+                </button>
+              )}
               {phase === 'growing' && (<>
                 <button onClick={(e) => { e.stopPropagation(); handleEnd(); }} style={{
                   position:'relative', display:'flex', alignItems:'center', gap:7, marginTop:1,
@@ -22920,7 +22994,7 @@ void main(){
           onFocus={onFocus}
         >
           {showRarity && (
-            isSecret ? <><span className="fs-cv-secret-aura" /><span className="fs-cv-secret-ring" /></>
+            isSecret ? <><span className="fs-cv-secret-shaft" /><span className="fs-cv-secret-caustic" /><span className="fs-cv-secret-aura" /><span className="fs-cv-secret-ring" /></>
               : isGold ? <span className="fs-cv-gold-aura" /> : null
           )}
           <span className="fs-cv-glowpad" />
@@ -23658,20 +23732,74 @@ void main(){
               /* ── SECRET dans la grotte : aucun autre cristal ne fait ça ──
                  Deux couronnes prismatiques contrarotatives + un socle de
                  lumière. Repérable de l'autre bout de la grotte. */
-              .fs-cv-secret-aura{position:absolute;left:50%;top:42%;width:calc(var(--sz)*2.5);height:calc(var(--sz)*2.5);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
-                background:conic-gradient(from 0deg,rgba(255,95,109,.36),rgba(255,179,2,.3),rgba(94,234,212,.34),rgba(79,172,254,.3),rgba(167,139,250,.36),rgba(255,95,109,.36));
-                -webkit-mask:radial-gradient(circle,transparent 30%,#000 50%,transparent 78%);mask:radial-gradient(circle,transparent 30%,#000 50%,transparent 78%);
-                filter:blur(6px);animation:fsCvSecretSpin 8s linear infinite}
-              .fs-cv-secret-aura::after{content:'';position:absolute;inset:14%;border-radius:50%;
-                background:radial-gradient(circle,rgba(255,255,255,.42),transparent 66%);filter:blur(8px);
-                animation:fsCvGoldPulse 2.2s ease-in-out infinite}
-              .fs-cv-secret-ring{position:absolute;left:50%;top:42%;width:calc(var(--sz)*1.55);height:calc(var(--sz)*1.55);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
-                border:1.5px solid rgba(255,255,255,.5);box-shadow:0 0 18px rgba(255,255,255,.34),inset 0 0 14px rgba(255,255,255,.18);
-                animation:fsCvSecretSpinR 5.5s linear infinite}
+              /* ══ UN SECRET EST UNE ANOMALIE DANS LE LIEU ══════════════════
+                 L'ancienne version — un anneau conique flouté à 6 px et une
+                 tache blanche — se contentait de faire « une pierre qui brille
+                 un peu plus ». Pour une rareté à 1 sur 1000, censée être
+                 « repérable de l'autre bout de la grotte », c'était tiède : à
+                 vingt mètres de profondeur, un halo diffus ne se distingue pas
+                 d'un reflet.
+                 Le principe retenu est celui des jeux qui savent signaler un
+                 objet unique : ce n'est pas l'OBJET qu'on éclaire, c'est
+                 l'ESPACE autour de lui qui se comporte différemment. Quatre
+                 couches, chacune avec un rôle distinct :
+                   · le FÛT DE LUMIÈRE qui monte — la seule chose visible de
+                     très loin, et qui dit « il y a quelque chose là-bas » ;
+                   · la CAUSTIQUE au sol — la lumière traverse la pierre et se
+                     projette, c'est ce qui l'ancre physiquement dans la grotte ;
+                   · la COURONNE SPECTRALE — la dispersion prismatique, signature
+                     optique d'un cristal parfait, en rotation lente ;
+                   · l'ANNEAU DE PHOTONS — net, contrarotatif, il donne l'échelle
+                     et empêche l'ensemble de devenir une bouillie floue.
+                 Le flou est réservé aux couches basses : la couche nette au
+                 premier plan est ce qui fait lire « précieux » plutôt que
+                 « brumeux ». */
+              /* Fût de lumière : ÉTROIT et net. Une première version conique et
+                 floutée remplissait l'écran d'une brume laiteuse qui avalait la
+                 pierre et ses voisines — l'inverse du but. Ici c'est un trait
+                 vertical fin, presque un rai, qui se lit de loin sans rien
+                 masquer. */
+              .fs-cv-secret-shaft{position:absolute;left:50%;bottom:16%;width:calc(var(--sz)*0.30);height:calc(var(--sz)*2.6);
+                transform:translateX(-50%);pointer-events:none;z-index:0;
+                background:linear-gradient(to top,rgba(255,255,255,.34),rgba(167,139,250,.14) 42%,transparent 82%);
+                clip-path:polygon(30% 100%,70% 100%,58% 0,42% 0);
+                filter:blur(1.5px);animation:fsCvSecretShaft 5.6s ease-in-out infinite}
+              @keyframes fsCvSecretShaft{0%,100%{opacity:.34}50%{opacity:.7}}
+              /* Caustique : la lumière traversée se projette au sol. C'est elle
+                 qui ancre la pierre dans la grotte au lieu de la faire flotter. */
+              .fs-cv-secret-caustic{position:absolute;left:50%;bottom:-1%;width:calc(var(--sz)*1.5);height:calc(var(--sz)*0.30);
+                transform:translateX(-50%);pointer-events:none;z-index:0;border-radius:50%;
+                background:radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.46),rgba(94,234,212,.2) 44%,transparent 72%);
+                filter:blur(3px);animation:fsCvSecretCaustic 3.8s ease-in-out infinite}
+              @keyframes fsCvSecretCaustic{0%,100%{opacity:.5;transform:translateX(-50%) scale(.88)}50%{opacity:.88;transform:translateX(-50%) scale(1.08)}}
+              /* Couronne spectrale : un ANNEAU fin, pas un disque. La dispersion
+                 prismatique est la signature optique d'un cristal parfait — elle
+                 doit se lire comme un liseré, jamais comme un halo. */
+              .fs-cv-secret-aura{position:absolute;left:50%;top:42%;width:calc(var(--sz)*1.78);height:calc(var(--sz)*1.78);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:0;
+                background:conic-gradient(from 0deg,rgba(255,95,109,.62),rgba(255,179,2,.5),rgba(94,234,212,.6),rgba(79,172,254,.5),rgba(167,139,250,.62),rgba(255,95,109,.62));
+                -webkit-mask:radial-gradient(circle,transparent 62%,#000 72%,#000 78%,transparent 88%);mask:radial-gradient(circle,transparent 62%,#000 72%,#000 78%,transparent 88%);
+                filter:blur(1.2px);animation:fsCvSecretSpin 11s linear infinite}
+              /* Deux éclats blancs contrarotatifs : le battement entre les deux
+                 vitesses accroche l'œil sans ajouter de matière. */
+              .fs-cv-secret-aura::after{content:'';position:absolute;inset:0;border-radius:50%;
+                background:conic-gradient(from 180deg,transparent,rgba(255,255,255,.85) 5%,transparent 15%,transparent 50%,rgba(255,255,255,.6) 56%,transparent 66%);
+                -webkit-mask:radial-gradient(circle,transparent 64%,#000 73%,transparent 86%);mask:radial-gradient(circle,transparent 64%,#000 73%,transparent 86%);
+                animation:fsCvSecretSpinR 6.5s linear infinite}
+              /* Anneau NET : la précision « pierre taillée », au premier plan. */
+              .fs-cv-secret-ring{position:absolute;left:50%;top:42%;width:calc(var(--sz)*1.20);height:calc(var(--sz)*1.20);transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;z-index:0;
+                border:1.5px solid rgba(255,255,255,.7);
+                box-shadow:0 0 10px rgba(255,255,255,.44),0 0 26px rgba(167,139,250,.34);
+                animation:fsCvSecretPulse 4.4s cubic-bezier(.4,0,.2,1) infinite}
               @keyframes fsCvSecretSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
-              @keyframes fsCvSecretSpinR{0%{transform:translate(-50%,-50%) rotate(0deg) scale(1)}50%{transform:translate(-50%,-50%) rotate(-180deg) scale(1.08)}100%{transform:translate(-50%,-50%) rotate(-360deg) scale(1)}}
-              html.fs-reduce-motion .fs-cv-secret-aura,html.fs-reduce-motion .fs-cv-secret-aura::after,html.fs-reduce-motion .fs-cv-secret-ring{animation:none}
-              html.fs-perf-lite .fs-cv-secret-aura{filter:none}
+              @keyframes fsCvSecretSpinR{to{transform:rotate(-360deg)}}
+              @keyframes fsCvSecretPulse{0%,100%{transform:translate(-50%,-50%) scale(.96);opacity:.5}
+                50%{transform:translate(-50%,-50%) scale(1.14);opacity:.95}}
+              html.fs-reduce-motion .fs-cv-secret-aura,html.fs-reduce-motion .fs-cv-secret-aura::after,
+              html.fs-reduce-motion .fs-cv-secret-ring,html.fs-reduce-motion .fs-cv-secret-shaft,
+              html.fs-reduce-motion .fs-cv-secret-caustic{animation:none}
+              /* En mode allégé, on garde le fût et la caustique — ce sont eux
+                 qui portent la lecture — et on retire les flous des couronnes. */
+              html.fs-perf-lite .fs-cv-secret-aura,html.fs-perf-lite .fs-cv-secret-aura::after{filter:none}
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
@@ -25936,6 +26064,63 @@ void main(){
       quartz:  { cut:'natural',   sides:6, tall:2.80, girth:.48, sats:2, ior:1.55, absorb:1.65, glow:.15, tilt:-.14, lean:0,   term:.95,  foot:.50, zig:.36 },
     };
 
+    /* ══ SCULPTURE UNIQUE PAR PIERRE ═══════════════════════════════════════
+       `SHAPE_P` ne décrivait que SIX silhouettes — une par famille. Le nombre
+       de faces, l'élancement, la corpulence et le nombre de satellites étaient
+       FIGÉS ; seules quelques proportions bougeaient de ±5 à ±8 %, c'est-à-dire
+       rien de perceptible. Deux quartz forgés à six mois d'intervalle sortaient
+       de la même matrice, à la couleur près : l'utilisateur accumulait des
+       doublons.
+       Ici la graine choisit une véritable ARCHITECTURE — combien de pans, quelle
+       élancement, quelle terminaison, combien de satellites — dans les bornes
+       que la cristallographie autorise pour la famille. On reste fidèle au
+       principe du fichier : la pierre est unique par ses PROPORTIONS et sa
+       STRUCTURE, jamais par un bruit appliqué aux sommets. Une arête reste
+       rectiligne, une face reste plane.
+       Deux terminaisons coexistent désormais : pointue (biterminée classique)
+       et TRONQUÉE — un cristal dont la croissance s'est arrêtée sur une table
+       plane. C'est fréquent dans la nature et ça change complètement la
+       silhouette de loin. */
+    const variantOf = (shape, seed) => {
+      const base = SHAPE_P[shape] || SHAPE_P.diamond;
+      let _v = ((seed >>> 0) || 11) ^ 0x5BF03635;
+      const r = () => {
+        _v += 0x9E3779B9;
+        let x = Math.imul(_v ^ (_v >>> 16), 2246822507);
+        x = Math.imul(x ^ (x >>> 13), 3266489909);
+        return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+      };
+      const pick = arr => arr[Math.floor(r() * arr.length) % arr.length];
+      const span = (v, amp) => v * (1 + (r() - 0.5) * 2 * amp);
+      const P = { ...base };
+      if (base.cut === 'brilliant') {
+        /* Un brillant se décline par son nombre de pans et ses proportions de
+           taille : 7 pans donnent une pierre nerveuse, 9 une pierre ronde. */
+        P.sides = pick([7, 8, 8, 9, 10]);
+        P.tall = span(base.tall, 0.20);
+        P.girth = span(base.girth, 0.16);
+        P.table = 0.46 + r() * 0.16;   /* 46 % à 62 % — étroite ou large */
+        P.crown = 0.16 + r() * 0.10;
+        P.pav = 0.44 + r() * 0.16;
+        P.culet = r() < 0.35 ? 0.05 + r() * 0.07 : 0; /* culasse ouverte ou pointue */
+      } else {
+        P.sides = pick([5, 6, 6, 6, 7, 8]);
+        P.tall = span(base.tall, 0.26);
+        P.girth = span(base.girth, 0.24);
+        P.term = Math.max(0, span(base.term, 0.42));
+        P.foot = Math.max(0, span(base.foot, 0.42));
+        P.zig = Math.max(0, span(base.zig, 0.55));
+        /* Inclinaison : la plupart poussent droit, certaines franchement de
+           travers — c'est ce qui donne du caractère à une druse. */
+        P.lean = r() < 0.42 ? span(base.lean || 0.10, 0.9) + (r() - 0.5) * 0.22 : base.lean;
+        /* Satellites : de zéro à un de plus que la famille. Une géode sans
+           satellite devient un bloc massif, avec quatre une vraie druse. */
+        P.sats = base.sats === 0 ? (r() < 0.22 ? 1 : 0) : Math.max(0, base.sats + Math.floor(r() * 3) - 1);
+        /* Terminaison tronquée : le changement de silhouette le plus lisible. */
+        P.blunt = r() < 0.30 ? 0.20 + r() * 0.20 : 0;
+      }
+      return P;
+    };
     /* ══════════════════════════════════════════════════════════════
        MAILLAGE DE CRISTAL
        Principe directeur : un vrai cristal N'EST PAS bruité. Ses faces
@@ -25961,7 +26146,7 @@ void main(){
          `morph` → à 0 la forme canonique parfaite, à 1 la pierre unique. */
       const dev = amp => (rand() - 0.5) * amp * morph;
       const jit = (base, amp) => base * (1 + (rand() - 0.5) * amp * morph);
-      const P = SHAPE_P[shape] || SHAPE_P.diamond;
+      const P = variantOf(shape, seed);
       const data = [];
       let ctr = [0, 0, 0]; /* centre de la pièce en cours, pour orienter les faces */
       /* Barycentriques pour le tracé des arêtes. Une composante portée à 10 ne
@@ -26025,11 +26210,25 @@ void main(){
         ctr = [cx + leanX * (midY - cy), midY, cz + leanZ * (midY - cy)];
         /* Matière traversée : maximale au cœur du prisme, quasi nulle en pointe. */
         const thickAt = y => Math.max(0.06, 1 - Math.abs(y - midY) / (Hh * 0.62));
+        /* Terminaison TRONQUÉE : la croissance s'est arrêtée sur une table
+           plane au lieu de converger en pointe. La couronne de sommets du
+           sommet n'est plus un point mais un petit polygone — le pourtour
+           reste rectiligne, la face reste plane. */
+        const cap = P.blunt > 0 ? at(apex[1], P.blunt) : null;
+        const capCtr = cap ? [cx + leanX * (apex[1] - cy), apex[1], cz + leanZ * (apex[1] - cy)] : null;
         for (let i = 0; i < sides; i++) {
           const j = (i + 1) % sides, tint = 1 + dev(0.06);
           quad(gBot[i], gBot[j], gTop[j], gTop[i], [tint, thickAt(midY) * 0.98, 0.0]);
           quad(gTop[i], gTop[j], shTop[j], shTop[i], [tint * 1.02, thickAt((topY + shTop[i][1]) * 0.5) * 0.80, 0.55]);
-          tri(shTop[i], shTop[j], apex, [tint * 1.04, thickAt(apex[1]) * 0.55, 0.90]);
+          if (cap) {
+            quad(shTop[i], shTop[j], cap[j], cap[i], [tint * 1.04, thickAt(apex[1]) * 0.62, 0.90]);
+            /* La table : une seule facette, donc les rayons vers son centre ne
+               doivent pas être soulignés — même traitement que la table d'un
+               brillant. */
+            tri(capCtr, cap[i], cap[j], [tint * 1.06, thickAt(apex[1]) * 0.40, 1.0], B_FAN);
+          } else {
+            tri(shTop[i], shTop[j], apex, [tint * 1.04, thickAt(apex[1]) * 0.55, 0.90]);
+          }
           quad(gBot[j], gBot[i], shBot[i], shBot[j], [tint * 0.98, thickAt((botY + shBot[i][1]) * 0.5) * 0.78, 0.55]);
           tri(shBot[j], shBot[i], foot, [tint * 0.96, thickAt(foot[1]) * 0.50, 0.90]);
         }
@@ -26043,8 +26242,11 @@ void main(){
       const addBrilliant = (cx, cy, cz, Hh, girth) => {
         const sides = P.sides;
         const R = jit(girth, 0.10);
-        const crownH = jit(Hh * 0.20, 0.16);
-        const pavH = jit(Hh * 0.52, 0.14);
+        /* Couronne, pavillon et largeur de table viennent de la variante :
+           une table étroite avec une couronne haute donne une pierre vive et
+           anguleuse, une table large et un pavillon court une pierre douce. */
+        const crownH = jit(Hh * (P.crown ?? 0.20), 0.16);
+        const pavH = jit(Hh * (P.pav ?? 0.52), 0.14);
         const girdH = Hh * 0.035;
         const yOff = cy + (pavH + girdH - crownH) * 0.5;
         const tableY = yOff + crownH, culetY = yOff - girdH - pavH;
@@ -26053,7 +26255,7 @@ void main(){
         const pt = (i, half, k, y) => [cx + Math.cos(spin + (i + half) * step) * R * k, y, cz + Math.sin(spin + (i + half) * step) * R * k];
         const table = [], upper = [], gU = [], gL = [], lower = [];
         for (let i = 0; i < sides; i++) {
-          table.push(pt(i, 0, 0.54, tableY));
+          table.push(pt(i, 0, (P.table ?? 0.54), tableY));
           upper.push(pt(i, 0.5, 0.82, yOff + crownH * 0.44));
           gU.push(pt(i, 0, 1, yOff));
           gL.push(pt(i, 0, 1, yOff - girdH));
@@ -26061,6 +26263,12 @@ void main(){
         }
         const culet = [cx + dev(R * 0.05), culetY, cz + dev(R * 0.05)];
         const tCtr = [cx, tableY, cz];
+        /* Culasse OUVERTE : certaines tailles se terminent par une petite
+           facette plane au lieu d'une pointe. Elle capte un éclat central
+           caractéristique — et elle est visible de face. */
+        const culR = P.culet || 0;
+        const culRing = culR > 0 ? Array.from({ length: sides }, (_, i) =>
+          [cx + Math.cos(spin + i * step) * R * culR, culetY, cz + Math.sin(spin + i * step) * R * culR]) : null;
         for (let i = 0; i < sides; i++) {
           const j = (i + 1) % sides, tint = 1 + dev(0.05);
           /* Table : la grande facette plane, celle qui renvoie l'éclat franc. */
@@ -26076,7 +26284,12 @@ void main(){
           /* Pavillon : c'est lui qui renvoie la lumière vers l'œil. */
           tri(gL[i], gL[j], lower[i], [tint * 0.99, 0.92, 0.30]);
           tri(gL[j], lower[j], lower[i], [tint, 0.86, 0.30]);
-          tri(lower[i], lower[j], culet, [tint * 1.02, 0.46, 0.60]);
+          if (culRing) {
+            quad(lower[i], lower[j], culRing[j], culRing[i], [tint * 1.02, 0.46, 0.60]);
+            tri([cx, culetY, cz], culRing[i], culRing[j], [tint * 1.04, 0.30, 1.0], B_FAN);
+          } else {
+            tri(lower[i], lower[j], culet, [tint * 1.02, 0.46, 0.60]);
+          }
         }
       };
 
@@ -26182,7 +26395,7 @@ void main(){
        ouvre son propre contexte WebGL (haute résolution, orientation libre à la
        souris) mais doit sculpter EXACTEMENT le même mesh que la gemme affichée
        partout ailleurs — sinon le cristal examiné ne serait pas le sien. */
-    render.internals = { buildMesh, mul, rotX, rotY, scaleM, perspective, lookAt, hexV, SHAPE_P,
+    render.internals = { buildMesh, mul, rotX, rotY, scaleM, perspective, lookAt, hexV, SHAPE_P, variantOf,
                          makeGemProgram, bindGemMesh, setGemLights, drawGem, GEM_STRIDE };
     return render;
   })();
@@ -26223,7 +26436,9 @@ void main(){
       const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === gradientId);
       const stops = grad ? grad.stops : ['#a5b8ff', '#c084fc'];
       const c1v = R.hexV(stops[0]), c2v = R.hexV(stops[stops.length - 1]);
-      const P = R.SHAPE_P[shape] || R.SHAPE_P.diamond;
+      /* Même VARIANTE que la vignette : la visionneuse doit montrer la pierre
+         sculptée pour cette graine, pas la forme canonique de la famille. */
+      const P = R.variantOf ? R.variantOf(shape, (seed >>> 0) || 7) : (R.SHAPE_P[shape] || R.SHAPE_P.diamond);
       const mesh = R.buildMesh(shape, (seed >>> 0) || 7, 1);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
