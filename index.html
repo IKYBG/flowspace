@@ -1709,7 +1709,11 @@
         border-bottom: none !important;
         padding-bottom: env(safe-area-inset-bottom, 0px);
       }
-      /* Account panel: bottom sheet on mobile */
+      /* Account panel: bottom sheet on mobile. Le centrage desktop passe par un
+         `transform: translate(-50%,-50%)` — il faut l'ANNULER ici, sinon la
+         feuille part d'un demi-écran vers le haut à gauche. L'animation
+         d'entrée est remplacée par une montée verticale, cohérente avec les
+         autres feuilles mobiles. */
       .fs-account-panel {
         top: auto !important;
         bottom: 68px !important;
@@ -1717,7 +1721,14 @@
         right: 12px !important;
         width: auto !important;
         max-width: 100% !important;
+        max-height: calc(100dvh - 150px) !important;
+        transform: none !important;
         border-radius: 18px !important;
+        animation: fsAccountSheetIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+      }
+      @keyframes fsAccountSheetIn {
+        from { opacity: 0; transform: translateY(14px) !important; }
+        to   { opacity: 1; transform: translateY(0) !important; }
       }
       /* Popover: bottom sheet */
       .fs-popover {
@@ -3046,12 +3057,21 @@
            nous retirer de la liste de l'autre, donc c'est cette liste seule qui
            empêche la relation d'être ressuscitée par la requête inverse. Un
            remplacement ferait revenir un ami retiré depuis un autre appareil. */
+        /* La fusion se fait DANS l'entrée du compte courant, jamais à plat :
+           les retraits d'un autre compte présent sur l'appareil vivent sous
+           leur propre clé et ne doivent pas se déverser dans celle-ci. */
         try {
-          const distants = Array.isArray(widgetStyle.friendsBlocked) ? widgetStyle.friendsBlocked : [];
-          if (distants.length) {
-            const locaux = (() => { try { return JSON.parse(localStorage.getItem('fs_friends_blocked') || '[]') || []; } catch (_) { return []; } })();
-            const fusion = window._fsMergeBlockedFriends ? window._fsMergeBlockedFriends(locaux, distants) : distants;
-            _fsRawSet('fs_friends_blocked', JSON.stringify(fusion));
+          const distantsBruts = widgetStyle.friendsBlocked;
+          const distants = Array.isArray(distantsBruts)
+            ? distantsBruts
+            : (distantsBruts && typeof distantsBruts === 'object' ? (distantsBruts[userId] || []) : []);
+          if (distants.length && userId) {
+            const store = window._fsBlockedStore ? window._fsBlockedStore() : {};
+            const fusion = window._fsMergeBlockedFriends
+              ? window._fsMergeBlockedFriends(store[userId] || [], distants)
+              : distants;
+            store[userId] = fusion;
+            _fsRawSet('fs_friends_blocked', JSON.stringify(store));
             window.dispatchEvent(new CustomEvent('fs-friends-blocked-update'));
           }
         } catch (_) { }
@@ -3348,14 +3368,47 @@
     }
     window._fsMergeBlockedFriends = _fsMergeBlockedFriends;
 
+    /* ══ LES PIERRES TOMBALES FUITAIENT D'UN COMPTE À L'AUTRE ═════════════════
+       `fs_friends_blocked` était une LISTE PLATE sous une clé globale, alors
+       que la fusion venue du cloud est une UNION (jamais un remplacement —
+       c'est volontaire, pour qu'un retrait fait sur un autre appareil ne soit
+       pas oublié). Sur un appareil partagé, les deux se combinaient au pire :
+       le compte A retirait quelqu'un, B se connectait, et l'union des deux
+       listes faisait DISPARAÎTRE de la liste de B un ami que B n'avait jamais
+       retiré — sans le moindre message, et sans moyen de le récupérer.
+       La clé reste globale (toute la plomberie de synchronisation la connaît
+       sous ce nom), mais son contenu est désormais un DICTIONNAIRE indexé par
+       identifiant de compte. L'union cloud continue de fonctionner, entrée par
+       entrée, et chaque compte ne lit jamais que la sienne. */
+    function _fsBlockedOwner() {
+      try { return window._fsSbUser?.id || JSON.parse(localStorage.getItem('fs_user') || 'null')?.id || null; }
+      catch (_) { return null; }
+    }
+    /* Accepte les deux formes : le tableau historique (appareil mono-compte,
+       adopté par le compte courant) et le dictionnaire par compte. */
+    function _fsBlockedStore() {
+      let brut = null;
+      try { brut = JSON.parse(localStorage.getItem('fs_friends_blocked') || 'null'); } catch (_) { }
+      if (Array.isArray(brut)) {
+        const uid = _fsBlockedOwner();
+        return uid ? { [uid]: brut } : {};
+      }
+      return (brut && typeof brut === 'object') ? brut : {};
+    }
     function _fsReadBlockedFriends() {
-      try { return _fsMergeBlockedFriends(JSON.parse(localStorage.getItem('fs_friends_blocked') || '[]'), []); }
-      catch (_) { return []; }
+      const uid = _fsBlockedOwner();
+      if (!uid) return [];
+      return _fsMergeBlockedFriends(_fsBlockedStore()[uid] || [], []);
     }
     window._fsBlockedFriendIds = () => new Set(_fsReadBlockedFriends().map(e => e.id));
+    window._fsBlockedStore = _fsBlockedStore;
 
     function _fsWriteBlockedFriends(liste) {
-      try { localStorage.setItem('fs_friends_blocked', JSON.stringify(liste)); } catch (_) { }
+      const uid = _fsBlockedOwner();
+      if (!uid) return;
+      const store = _fsBlockedStore();
+      store[uid] = liste;
+      try { localStorage.setItem('fs_friends_blocked', JSON.stringify(store)); } catch (_) { }
       try { window._fsDirtyKeys?.add('fs_friends_blocked'); window._fsDirtyThisSession = true; } catch (_) { }
       try { window._fsFlushPush?.(); } catch (_) { }
       window.dispatchEvent(new CustomEvent('fs-friends-blocked-update'));
@@ -3909,9 +3962,23 @@
     function _fsStartFriendReqRealtime(userId) {
       _fsStopFriendReqRealtime();
       if (!userId) return;
+      /* Trois signaux, pas deux. Le troisième — « on m'a retiré » — manquait :
+         un retrait subi n'arrivait jamais jusqu'ici, l'ami restait affiché
+         jusqu'à ce qu'on vide le cache. INSERT et UPDATE portent tous deux un
+         retrait (ligne neuve, ou demande existante requalifiée), d'où le filtre
+         sur le statut plutôt que sur le type d'événement. */
+      const surLigne = p => {
+        const r = p && p.new;
+        if (!r) return;
+        if (r.status === 'removed') {
+          window.dispatchEvent(new CustomEvent('fs-friend-removal', { detail: r }));
+          return;
+        }
+        if (r.status === 'pending') window.dispatchEvent(new CustomEvent('fs-friend-request', { detail: r }));
+      };
       const ch = _fsSb.channel('friendreq-sync')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: 'to_id=eq.' + userId },
-          p => window.dispatchEvent(new CustomEvent('fs-friend-request', { detail: p.new })))
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests', filter: 'to_id=eq.' + userId }, surLigne)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: 'to_id=eq.' + userId }, surLigne)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests', filter: 'from_id=eq.' + userId },
           p => window.dispatchEvent(new CustomEvent('fs-friend-request-answer', { detail: p.new })))
         .subscribe();
@@ -4001,14 +4068,126 @@
         await _fsRunSchemaAware({ friends: list, updated_at: _fsStampOwnPush(new Date().toISOString()) },
           p => _fsSb.from('user_data').update(p).eq('user_id', userId));
       } catch (e) { }
+      /* La relation repart de zéro : on efface les lignes « removed » qui la
+         concernent, dans les deux sens. Sans ce nettoyage, le registre garde
+         une rupture périmée que le prochain démarrage pourrait rejouer. */
+      try {
+        await _fsSb.from('friend_requests').delete()
+          .eq('status', 'removed').eq('from_id', userId).eq('to_id', entry.id);
+        await _fsSb.from('friend_requests').delete()
+          .eq('status', 'removed').eq('from_id', entry.id).eq('to_id', userId);
+      } catch (_) { }
       window.dispatchEvent(new CustomEvent('fs-friends-changed'));
     }
+    /* ══ UNE SUPPRESSION D'AMI ÉTAIT UNILATÉRALE ══════════════════════════════
+       Quand A retirait B, A posait une pierre tombale locale et tentait, « au
+       mieux », d'écrire dans la ligne user_data de B pour s'y retirer. Deux
+       choses clochaient.
+       1) La RLS interdit normalement d'écrire dans la ligne d'autrui : cette
+          écriture échoue en silence. B gardait donc A dans sa liste.
+       2) Même quand elle passait, B ne l'apprenait jamais : son cache local
+          contenait toujours A, et le prochain enregistrement de B RÉÉCRIVAIT A
+          dans sa propre ligne cloud. La relation ressuscitait toute seule.
+       Résultat exact décrit à l'usage : chacun continue de voir l'autre.
+
+       On ne peut pas écrire chez l'autre — mais on peut lui LAISSER UN MESSAGE.
+       La table `friend_requests` est déjà lisible des deux côtés (chacun voit
+       les lignes où il est from_id ou to_id) : elle devient le REGISTRE DE LA
+       RELATION, et pas seulement de sa demande initiale. A y inscrit une ligne
+       « removed » adressée à B ; B la lit à l'ouverture, en temps réel ou au
+       retour de focus, et applique le retrait de son côté.
+       Si la table n'existe pas, on retombe sur l'ancien comportement au mieux —
+       aucune régression. */
+    async function _fsPublishFriendRemoval(me, peerId) {
+      if (!me?.id || !peerId) return { skipped: true };
+      const row = {
+        from_id: me.id, to_id: peerId,
+        from_name: me.name || (me.email || '').split('@')[0] || 'Un utilisateur',
+        from_email: (me.email || '').toLowerCase(),
+        status: 'removed',
+        responded_at: new Date().toISOString(),
+      };
+      try {
+        let { error } = await _fsSb.from('friend_requests').insert(row);
+        if (error && error.code === '23505') {
+          /* Une ligne existe déjà pour ce couple (la demande d'origine) : on la
+             met à jour plutôt que d'en créer une seconde. */
+          ({ error } = await _fsSb.from('friend_requests')
+            .update({ status: 'removed', responded_at: row.responded_at })
+            .eq('from_id', me.id).eq('to_id', peerId));
+        }
+        if (error) {
+          if (_fsIsMissingTableErr(error)) return { legacy: true };
+          console.warn('[fs] friend removal publish failed', error);
+          return { error };
+        }
+        return { sent: true };
+      } catch (e) { return { error: e }; }
+    }
+
+    /* Retrait LOCAL d'un ami : cache, liste cloud du compte courant, pierre
+       tombale. Utilisé par celui qui retire ET par celui qui est retiré. */
+    async function _fsRemoveFriendEntry(userId, peerId) {
+      if (!userId || !peerId) return;
+      try { window._fsBlockFriend?.(peerId); } catch (_) { }
+      const key = 'fs_friends_' + userId;
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(key) || '[]') || []; } catch (_) { }
+      const next = (Array.isArray(list) ? list : []).filter(f => f && f.id !== peerId);
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch (_) { }
+      /* Le cache d'AFFICHAGE doit tomber en même temps : c'est lui qui est lu
+         en premier à l'ouverture du panneau, il ressusciterait l'ami le temps
+         d'un battement. */
+      try { localStorage.setItem(key + '_display', JSON.stringify(next)); } catch (_) { }
+      try {
+        await _fsRunSchemaAware({ friends: next, updated_at: _fsStampOwnPush(new Date().toISOString()) },
+          p => _fsSb.from('user_data').update(p).eq('user_id', userId));
+      } catch (_) { }
+      window.dispatchEvent(new CustomEvent('fs-friends-changed'));
+    }
+
+    /* Retraits SUBIS : les lignes « removed » qui me sont adressées. On ne les
+       applique que si le retrait est POSTÉRIEUR à l'ajout local de cet ami —
+       sinon une vieille brouille effacerait une amitié refaite depuis. */
+    async function _fsApplyIncomingRemovals(userId) {
+      if (!userId) return 0;
+      let rows = [];
+      try {
+        const { data, error } = await _fsSb.from('friend_requests')
+          .select('from_id, from_name, responded_at')
+          .eq('to_id', userId).eq('status', 'removed');
+        if (error) { if (!_fsIsMissingTableErr(error)) console.warn('[fs] removals fetch failed', error); return 0; }
+        rows = data || [];
+      } catch (_) { return 0; }
+      if (!rows.length) return 0;
+      let mine = [];
+      try { mine = JSON.parse(localStorage.getItem('fs_friends_' + userId) || '[]') || []; } catch (_) { }
+      let applied = 0;
+      for (const r of rows) {
+        const entry = (Array.isArray(mine) ? mine : []).find(f => f && f.id === r.from_id);
+        if (!entry) continue;
+        const removedAt = Date.parse(r.responded_at || '') || 0;
+        if (removedAt && Number(entry.addedAt || 0) > removedAt) continue;
+        await _fsRemoveFriendEntry(userId, r.from_id);
+        applied++;
+        try {
+          window.dispatchEvent(new CustomEvent('fs-friend-removed-by', {
+            detail: { id: r.from_id, name: r.from_name || 'Un ami' },
+          }));
+        } catch (_) { }
+      }
+      return applied;
+    }
+
     window._fsStartFriendReqRealtime = _fsStartFriendReqRealtime;
     window._fsStopFriendReqRealtime = _fsStopFriendReqRealtime;
     window._fsFetchIncomingRequests = _fsFetchIncomingRequests;
     window._fsSendFriendRequest = _fsSendFriendRequest;
     window._fsAnswerFriendRequest = _fsAnswerFriendRequest;
     window._fsAddFriendEntry = _fsAddFriendEntry;
+    window._fsPublishFriendRemoval = _fsPublishFriendRemoval;
+    window._fsRemoveFriendEntry = _fsRemoveFriendEntry;
+    window._fsApplyIncomingRemovals = _fsApplyIncomingRemovals;
 
     /* ── Helper: look up a FlowSpace user by email ───────────────────────
        Repose sur la table publique `profiles_public` (annuaire email→user).
@@ -5605,6 +5784,182 @@
       return <span className="fs-hint-dot" style={style} aria-hidden="true" />;
     }
     window.FsHintDot = FsHintDot;
+
+    /* ══ VISITE GUIDÉE — SUITE DE L'INTRO ═════════════════════════════════════
+       L'intro (« ton espace », « tes règles », « solo ou ensemble ») raconte la
+       promesse, puis lâche l'utilisateur sur un dashboard qu'il ne sait pas
+       encore modifier. Le crayon qui ouvre la personnalisation est une icône
+       grise de 14 px dans un coin : à l'observation, les nouveaux ne le voient
+       tout simplement pas. Résultat, ils ne découvrent jamais que le dashboard
+       est le produit — et un dashboard qu'on n'a pas façonné n'est celui de
+       personne, donc on n'y revient pas.
+       La visite reprend donc là où l'intro s'arrête, et sur le principe inverse
+       de l'intro : on ne RACONTE plus, on fait FAIRE. Cinq gestes réels, dans
+       la vraie interface, chacun débloqué par le précédent :
+         1. crayon ....... ouvrir la personnalisation
+         2. retirer ...... supprimer un widget (comprendre que c'est modifiable)
+         3. ajouter ...... ouvrir le tiroir de widgets
+         4. média ........ trouver la catégorie
+         5. image ........ poser un widget à soi
+       Le geste 2 vient avant le 3 délibérément : retirer est irréversible en
+       apparence, donc c'est ce qu'on n'ose pas essayer seul. Une fois qu'on a
+       vu que ça se défait (le toast propose « Annuler »), tout le reste
+       paraît sans risque.
+       Rien n'est bloquant : aucun voile modal, aucun clic forcé, et « Passer »
+       est visible à chaque étape. Une visite dont on ne peut pas sortir est
+       une prise en otage, pas un accompagnement. */
+    const FS_TOUR_STEPS = ['pencil', 'remove', 'add', 'media', 'image'];
+    window.FS_TOUR_STEPS = FS_TOUR_STEPS;
+    /* Clé ABSENTE = pas de visite. Les comptes existants n'ont jamais eu cette
+       clé : ils ne se verront donc jamais proposer une visite de découverte
+       pour une interface qu'ils connaissent déjà. Seul `_fsTourStart`, appelé
+       à la fin de l'intro, l'amorce. */
+    window._fsTourStep = () => {
+      try {
+        const v = localStorage.getItem('fs_tour_step');
+        return FS_TOUR_STEPS.includes(v) ? v : null;
+      } catch (e) { return null; }
+    };
+    window._fsTourActive = (id) => window._fsTourStep() === id;
+    const _fsTourSet = (v) => {
+      try {
+        if (v) localStorage.setItem('fs_tour_step', v);
+        else localStorage.removeItem('fs_tour_step');
+      } catch (e) { }
+      try { window.dispatchEvent(new CustomEvent('fs-tour-update')); } catch (e) { }
+    };
+    window._fsTourStart = () => {
+      /* Jamais de reprise pour qui a déjà terminé ou abandonné : une visite
+         qui revient est un bug, pas une seconde chance. */
+      try { if (localStorage.getItem('fs_tour_done') === '1') return; } catch (e) { }
+      _fsTourSet(FS_TOUR_STEPS[0]);
+    };
+    window._fsTourFinish = () => {
+      try { localStorage.setItem('fs_tour_done', '1'); } catch (e) { }
+      _fsTourSet(null);
+    };
+    /* Avance UNIQUEMENT si l'étape passée est bien l'étape courante : les
+       déclencheurs sont posés sur des actions ordinaires (supprimer un widget,
+       ouvrir le tiroir) que l'utilisateur peut faire à tout moment, y compris
+       dans le désordre ou des mois plus tard. Sans cette garde, un geste banal
+       ferait sauter une étape sans que rien n'ait été montré. */
+    window._fsTourAdvance = (from) => {
+      const cur = window._fsTourStep();
+      if (!cur || cur !== from) return;
+      const i = FS_TOUR_STEPS.indexOf(cur);
+      if (i < 0 || i === FS_TOUR_STEPS.length - 1) { window._fsTourFinish(); return; }
+      _fsTourSet(FS_TOUR_STEPS[i + 1]);
+    };
+
+    if (!document.getElementById('fs-tour-css')) {
+      const _ts = document.createElement('style');
+      _ts.id = 'fs-tour-css';
+      _ts.textContent = `
+        /* La balise : un disque plein doublé d'une onde qui s'échappe. Le
+           mouvement vers l'extérieur est ce qui capte la vision périphérique —
+           c'est là que se trouve une icône de coin qu'on n'a pas encore
+           remarquée. Volontairement PAS de « ! » : ce glyphe annonce une erreur
+           à corriger, alors qu'il s'agit d'une invitation à découvrir. Le
+           mauvais registre émotionnel ferait croire à un problème (et le projet
+           proscrit les glyphes de police dans l'UI). */
+        .fs-tour-beacon{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+          box-shadow:0 0 0 2px rgba(8,10,18,.9),0 0 12px rgba(var(--theme-c1-rgb),.85);
+          pointer-events:none;z-index:80}
+        .fs-tour-beacon::after{content:'';position:absolute;inset:0;border-radius:50%;
+          border:2px solid var(--theme-c1);animation:fsTourPing 1.8s cubic-bezier(.2,.7,.4,1) infinite}
+        @keyframes fsTourPing{0%{transform:scale(1);opacity:.9}70%,100%{transform:scale(2.9);opacity:0}}
+        html.fs-reduce-motion .fs-tour-beacon::after{animation:none;opacity:.5}
+        @media(prefers-reduced-motion:reduce){.fs-tour-beacon::after{animation:none;opacity:.5}}
+
+        /* La barre de guidage : ancrée en bas au centre, au-dessus de tout, et
+           elle ne masque jamais la zone d'action (les cibles sont en haut ou au
+           centre). Elle reste identique d'une étape à l'autre — seule la
+           consigne change — pour qu'on cesse de la lire comme une nouveauté et
+           qu'on l'utilise comme un repère. */
+        .fs-tour-bar{position:fixed;left:50%;transform:translateX(-50%);
+          bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:12000;
+          display:flex;align-items:center;gap:14px;padding:12px 14px 12px 18px;border-radius:18px;
+          max-width:min(560px,calc(100vw - 28px));
+          background:linear-gradient(180deg,rgba(17,16,32,.97),rgba(9,9,20,.97));
+          border:1px solid rgba(var(--theme-c1-rgb),.26);
+          box-shadow:0 26px 70px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.04),0 0 44px rgba(var(--theme-c1-rgb),.12);
+          backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);
+          animation:fsTourBarIn .34s cubic-bezier(.22,1,.36,1) both}
+        @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}
+          to{opacity:1;transform:translateX(-50%) translateY(0)}}
+        .fs-tour-prog{display:flex;gap:4px;flex-shrink:0}
+        .fs-tour-prog i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.16);display:block}
+        .fs-tour-prog i.on{background:var(--theme-c1);box-shadow:0 0 8px rgba(var(--theme-c1-rgb),.7)}
+        .fs-tour-prog i.past{background:rgba(var(--theme-c1-rgb),.45)}
+        .fs-tour-copy{min-width:0;flex:1;display:block}
+        .fs-tour-t{display:block;font:800 12.5px var(--font-body);color:rgba(248,246,252,.97);letter-spacing:-.005em}
+        .fs-tour-d{display:block;font:600 11px var(--font-body);color:rgba(248,246,252,.5);margin-top:3px;line-height:1.45}
+        .fs-tour-skip{flex-shrink:0;min-height:32px;padding:0 12px;border-radius:10px;cursor:pointer;
+          border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.05);
+          color:rgba(248,246,252,.6);font:800 11px var(--font-body)}
+        .fs-tour-skip:hover{background:rgba(255,255,255,.1);color:rgba(248,246,252,.9)}
+        @media(max-width:640px){
+          /* Au-dessus de la nav mobile, jamais dessous. */
+          .fs-tour-bar{bottom:calc(var(--fs-navspace,78px) + 12px);left:12px;right:12px;
+            transform:none;max-width:none;padding:12px 12px 12px 15px;gap:11px}
+          @keyframes fsTourBarIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+          .fs-tour-d{display:none}
+        }
+      `;
+      document.head.appendChild(_ts);
+    }
+
+    /* Balise à poser DANS un conteneur en position:relative, sur la cible. */
+    function FsTourBeacon({ step, style }) {
+      const [cur, setCur] = _uSST(() => window._fsTourStep());
+      _uEST(() => {
+        const h = () => setCur(window._fsTourStep());
+        window.addEventListener('fs-tour-update', h);
+        return () => window.removeEventListener('fs-tour-update', h);
+      }, []);
+      if (cur !== step) return null;
+      return <span className="fs-tour-beacon" style={style} aria-hidden="true" />;
+    }
+    window.FsTourBeacon = FsTourBeacon;
+
+    const FS_TOUR_COPY = {
+      pencil: { t: 'Ouvre la personnalisation', d: 'Le crayon, en haut à droite. C’est là que ton dashboard devient le tien.' },
+      remove: { t: 'Retire un widget', d: 'La croix en haut à droite d’un widget, puis confirme. Rien n’est perdu : tu pourras l’annuler.' },
+      add:    { t: 'Ouvre le tiroir de widgets', d: 'Le bouton « Ajouter un widget ». Onze widgets t’attendent.' },
+      media:  { t: 'Va dans « Média »', d: 'Les catégories sont en haut du tiroir.' },
+      image:  { t: 'Ajoute le widget Image', d: 'Ta photo, ton gif, ton rappel — dernière étape.' },
+    };
+
+    /* Barre de guidage globale : montée une seule fois, tout en haut de l'app,
+       elle suit l'étape courante quel que soit l'écran affiché. */
+    function FsTourBar() {
+      const [cur, setCur] = _uSST(() => window._fsTourStep());
+      _uEST(() => {
+        const h = () => setCur(window._fsTourStep());
+        window.addEventListener('fs-tour-update', h);
+        return () => window.removeEventListener('fs-tour-update', h);
+      }, []);
+      if (!cur) return null;
+      const copy = FS_TOUR_COPY[cur];
+      if (!copy) return null;
+      const i = FS_TOUR_STEPS.indexOf(cur);
+      return (
+        <div className="fs-tour-bar" role="status" aria-live="polite">
+          <span className="fs-tour-prog" aria-label={`Étape ${i + 1} sur ${FS_TOUR_STEPS.length}`}>
+            {FS_TOUR_STEPS.map((s, k) => (
+              <i key={s} className={k === i ? 'on' : k < i ? 'past' : ''} />
+            ))}
+          </span>
+          <span className="fs-tour-copy">
+            <span className="fs-tour-t">{copy.t}</span>
+            <span className="fs-tour-d">{copy.d}</span>
+          </span>
+          <button type="button" className="fs-tour-skip" onClick={() => window._fsTourFinish()}>Passer</button>
+        </div>
+      );
+    }
+    window.FsTourBar = FsTourBar;
 
     /* Fenêtre des N derniers jours (clés YYYY-MM-DD, du plus ancien à auj.). */
     function _lastNDates(n) {
@@ -7482,9 +7837,12 @@
                       <span className="fs-dhx-plus"><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
                       <span className="fs-dash-addwidget-label">Widget</span>
                     </button>
+                    {/* La balise de la visite se pose SUR le crayon : c'est
+                        précisément l'icône que les nouveaux ne voient pas. */}
                     <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
-                      title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard" style={{ width: 46, padding: 0, fontFamily: T.font }}>
+                      title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard" style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative', overflow: 'visible' }}>
                       <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                      {window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'pencil' })}
                     </button>
                   </div>
                   {/* Bouton SCINDÉ : le corps démarre en un tap avec le dernier
@@ -7521,8 +7879,9 @@
                 <div className="fs-dhx-group">
                   <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
                     title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard"
-                    style={{ width: 46, padding: 0, fontFamily: T.font }}>
+                    style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative', overflow: 'visible' }}>
                     <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    {window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'pencil' })}
                   </button>
                 </div>
               )}
@@ -7625,17 +7984,30 @@
           const nice = (CATALOG.find(c => c.label === removed.label)?.name) || removed.label;
           addToast({ message: `${nice} retiré`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
         }
+        /* Même étape de visite que la suppression sur desktop : le geste compte,
+           pas la surface sur laquelle il a été fait. */
+        try { window._fsTourAdvance?.('remove'); } catch (e) {}
       };
       /* Opened from the dashboard "+ Widget" button → jump straight into the picker. */
       _uEff9(() => {
         if (window.__fsOpenPicker) { setShowPicker(true); try { window.__fsOpenPicker = false; } catch (e) {} }
       }, []);
+      /* Visite guidée — étape « crayon » franchie : on est ARRIVÉ ici, quel que
+         soit le chemin emprunté. On valide sur le résultat, jamais sur le clic
+         d'un bouton précis : c'est ce qui rend la visite impossible à coincer. */
+      _uEff9(() => { try { window._fsTourAdvance?.('pencil'); } catch (e) {} }, []);
       /* Le partage de préréglages par lien (création + collage) a été retiré :
          parcours confus, quasi inutilisé — les templates personnels synchronisés
          couvrent le besoin réel. */
       const [confirmDeleteId, setConfirmDeleteId] = _uS9(null);
       const [pickerWidget, setPickerWidget] = _uS9(null);
       const [widgetFilter, setWidgetFilter] = _uS9('essentials');
+      /* Suite de la visite guidée — les deux étapes qui vivent dans le tiroir.
+         Déclarées ICI, après `showPicker` et `widgetFilter` : un tableau de
+         dépendances est évalué au rendu, s'y référer plus haut lèverait une
+         erreur de zone morte temporelle. */
+      _uEff9(() => { if (showPicker) { try { window._fsTourAdvance?.('add'); } catch (e) {} } }, [showPicker]);
+      _uEff9(() => { if (widgetFilter === 'media') { try { window._fsTourAdvance?.('media'); } catch (e) {} } }, [widgetFilter]);
       const [drag, setDrag] = _uS9(null);
       const gridRef = _uR9(null);
       const movedRef = _uR9(false);
@@ -7666,7 +8038,9 @@
       const WIDGET_FILTERS = [
         { id:'essentials', label:'Essentiels', match:['Clock','Tasks','Pomodoro','Notes','Text'] },
         { id:'focus', label:'Focus', match:['Pomodoro','Streak','Countdown'] },
-        { id:'media', label:'Media', match:['Sons','Image','Links'] },
+        /* « Média » et non « Media » : l'UI est en français, accents compris
+           (convention du projet — aucune chaîne visible sans ses accents). */
+        { id:'media', label:'Média', match:['Sons','Image','Links'] },
         { id:'all', label:'Tous', match:TRAY },
       ];
       const filteredCatalog = CATALOG.filter(c => (WIDGET_FILTERS.find(f => f.id === widgetFilter) || WIDGET_FILTERS[0]).match.includes(c.label));
@@ -7805,6 +8179,19 @@
         setShowPicker(false);
         setPickerWidget(null);
         addToast({ message: `${name} ajouté au dashboard`, type: 'success', icon: '+' });
+        /* Dernière étape de la visite : elle ne se valide QUE sur le widget
+           Image. Un autre ajout est un détour légitime — on n'y met pas fin au
+           tutoriel, on laisse la consigne en place. */
+        if (name === 'Image') {
+          try { window._fsTourAdvance?.('image'); } catch (e) {}
+          setTimeout(() => {
+            try {
+              if (localStorage.getItem('fs_tour_done') === '1') {
+                addToast({ message: 'Ton dashboard est à toi. Tout le reste se change pareil.', type: 'success', icon: '✓', duration: 5600 });
+              }
+            } catch (e) {}
+          }, 700);
+        }
       };
 
       const getGridMetrics = () => {
@@ -8018,7 +8405,10 @@
             </div>
             <div style={{ display: 'flex', gap: 8, position: 'relative', ...(isMobile ? { justifyContent: 'flex-end' } : {}) }}>
               <button onClick={() => setShowPicker(p => !p)}
-                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s' }}>+ Ajouter</button>
+                style={{ background: showPicker ? `${c1(0.133)}` : 'rgba(255,255,255,0.05)', border: `1px solid ${showPicker ? c1(0.333) : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '9px 16px', color: showPicker ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s', position: 'relative' }}>
+                + Ajouter
+                {window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'add' })}
+              </button>
               <button onClick={() => { setShowPresets(true); setShowPicker(false); }}
                 style={{ background: showPresets ? `linear-gradient(135deg,${c1(0.18)},rgba(var(--theme-c2-rgb),0.10))` : 'linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.032))', border: `1px solid ${showPresets ? c1(0.38) : 'rgba(255,255,255,0.085)'}`, borderRadius: 12, padding: '9px 15px', color: showPresets ? T.c1 : T.text, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.22s cubic-bezier(.16,1,.3,1)', boxShadow: showPresets ? `0 12px 30px ${c1(0.12)}, inset 0 1px 0 rgba(255,255,255,0.10)` : 'inset 0 1px 0 rgba(255,255,255,0.06)' }}>Préréglage</button>
               {showPicker && (
@@ -8127,7 +8517,11 @@
                       <div className="fs-wl-filters">
                         {WIDGET_FILTERS.map(f => (
                           <button key={f.id} type="button" onClick={() => setWidgetFilter(f.id)}
-                            className={'fs-wl-f' + (widgetFilter === f.id ? ' on' : '')}>{f.label}</button>
+                            style={{ position: 'relative', overflow: 'visible' }}
+                            className={'fs-wl-f' + (widgetFilter === f.id ? ' on' : '')}>
+                            {f.label}
+                            {f.id === 'media' && window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'media' })}
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -8139,7 +8533,8 @@
                         const rendu = window.WIDGET_COMPONENTS?.[name.toLowerCase()];
                         return (
                           <CascadeItem key={name} index={i} step={38} style={{ display: 'grid' }}>
-                            <div className="fs-wl-card">
+                            <div className="fs-wl-card" style={{ position: 'relative' }}>
+                              {name === 'Image' && window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'image', style: { top: -6, right: -6 } })}
                               <button type="button" className="fs-wl-main"
                                 onClick={() => addWidget(name, vDefaut)}
                                 title={`Ajouter ${cat.name || name}`}>
@@ -8281,6 +8676,7 @@
                               setWidgets(ws => ws.filter(x => x.id !== w.id));
                               setSelected(null);
                               setConfirmDeleteId(null);
+                              try { window._fsTourAdvance?.('remove'); } catch (e) {}
                               addToast({ message: `${deleted?.label || 'Widget'} supprimé`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, deleted]) } });
                             } else {
                               setConfirmDeleteId(w.id);
@@ -8630,8 +9026,13 @@
 
     /* ── User lookup is now done via Supabase (_fsLookupUserByEmail) ────────── */
 
-    function SessionModal({ onClose, onLaunch }) {
-      const [mode, setMode] = _uSA('solo');
+    /* `seed` — ouverture PRÉ-REMPLIE du lanceur : { mode, friendIds }. Sert au
+       raccourci « Session » du panneau Amis, qui doit tomber directement sur le
+       mode Ensemble avec la bonne personne déjà cochée. Sans lui, cliquer
+       « Session » sur un ami rouvrait un lanceur vierge où il fallait re-choisir
+       le mode PUIS re-trouver la personne — le raccourci ne raccourcissait rien. */
+    function SessionModal({ onClose, onLaunch, seed }) {
+      const [mode, setMode] = _uSA(seed?.mode === 'together' ? 'together' : 'solo');
       const [email, setEmail] = _uSA('');
       /* Reprend les réglages de la DERNIÈRE session : on relance presque
          toujours le même format, autant ne pas le ressaisir à chaque fois. */
@@ -8686,7 +9087,7 @@
           window.removeEventListener('fs-friends-update', reload);
         };
       }, []);
-      const [selIds, setSelIds] = _uSA([]);
+      const [selIds, setSelIds] = _uSA(() => (Array.isArray(seed?.friendIds) ? seed.friendIds.filter(Boolean) : []));
       const [lobby, setLobby] = _uSA(null); /* { inviteId, items:[{friend,status}] } */
       /* Invitation par email retirée : l'invitation se fait uniquement via la
          liste d'amis. byEmail reste à false en permanence. */
@@ -10400,12 +10801,39 @@
     .fs-pop-action-arrow { color: rgba(248,246,252,0.28); transition: color 180ms ease, transform 180ms var(--fs-ease); }
     .fs-pop-action:hover .fs-pop-action-icon { background: rgba(var(--theme-c1-rgb),0.16); color: rgba(var(--theme-c1-rgb),1); }
     .fs-pop-action:hover .fs-pop-action-arrow { color: rgba(var(--theme-c2-rgb),0.86); transform: translateX(1px); }
+    /* ══ LE PANNEAU DE PROFIL EST UNE MODALE, PAS UN MENU ════════════════════
+       ATTENTION : cette feuille vit dans un littéral de gabarit JS — aucun
+       accent grave dans les commentaires, il refermerait la chaîne.
+       Il était en position fixed avec un top/left calculés depuis l'engrenage
+       de la barre latérale — un ancrage devenu faux le jour où on l'a ouvert
+       depuis le pied de barre, à l'autre bout de l'écran : le panneau
+       surgissait en haut à gauche, décollé du geste, jamais symétrique, et
+       retombait sur ses coordonnées par défaut (28/136) quand l'ancre
+       n'existait pas. Un panneau de compte n'est pas un menu contextuel : c'est
+       une destination. Il se centre donc, sur un voile qui éteint le reste.
+       Le centrage vit ICI, en CSS pur (translate sur les deux axes), et non
+       plus dans un calcul JS : aucune mesure ne peut plus le désaligner. */
+    .fs-account-scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(4, 5, 12, 0.62);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      animation: fsAccountScrimIn 0.26s var(--mineral-ease) both;
+    }
+    @keyframes fsAccountScrimIn { from { opacity: 0; } to { opacity: 1; } }
     .fs-account-panel {
       position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       width: 372px;
       max-width: calc(100vw - 40px);
+      max-height: min(88dvh, 780px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       border-radius: 28px;
-      overflow: hidden;
       z-index: 10000;
       background:
         radial-gradient(circle at 24% 0%, rgba(var(--theme-c1-rgb),0.24), transparent 34%),
@@ -10419,9 +10847,12 @@
       -webkit-backdrop-filter: blur(24px) saturate(190%);
       animation: fsAccountIn 0.32s cubic-bezier(0.34,1.56,0.64,1) both;
     }
+    /* L'entrée compose avec le centrage : les deux vivent sur la propriété
+       transform, donc les keyframes doivent RÉPÉTER le translate(-50%,-50%),
+       sinon la modale saute dans le coin haut-gauche le temps de l'animation. */
     @keyframes fsAccountIn {
-      from { opacity: 0; transform: translateY(-8px) scale(0.95); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.955); }
+      to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     }
     .fs-account-panel::before {
       content: "";
@@ -10518,6 +10949,101 @@
     /* La croix est petite par nécessité (elle se pose sur l'image) : sa zone de
        frappe est étendue au-delà de son dessin. */
     .fs-account-banner-x::before { content: ""; position: absolute; inset: -8px; border-radius: 15px; }
+    /* ══ LE PALIER SE MONTRE, IL NE SE CACHE PAS ═════════════════════════════
+       Avant le palier, le rectangle de bannière n'était pas rendu DU TOUT :
+       l'utilisateur ne pouvait pas soupçonner que la fonctionnalité existait,
+       donc rien ne pouvait le tirer vers elle. Un objectif invisible ne produit
+       aucun effort — il ne produit qu'une surprise tardive.
+       La case occupe donc la même place, au même ratio, mais en creux : trame
+       diagonale, cadenas, et les deux compteurs qui manquent. On lit d'un coup
+       d'œil « ça existe », « ce n'est pas pour tout de suite », « voilà ce
+       qu'il reste à faire ». */
+    .fs-account-banner-locked {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1280 / 448;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 0 22px;
+      box-sizing: border-box;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      background:
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.028) 0 9px, transparent 9px 18px),
+        linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.012));
+    }
+    .fs-account-banner-locked::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(6,8,16,0.04), rgba(6,8,16,0.44));
+      pointer-events: none;
+    }
+    .fs-account-banner-locked > * { position: relative; z-index: 1; }
+    .fs-abl-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--font-body);
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: rgba(248,246,252,0.9);
+    }
+    .fs-abl-title svg { color: rgba(var(--theme-c1-rgb), 0.9); flex-shrink: 0; }
+    .fs-abl-sub {
+      font-size: 10.5px;
+      font-weight: 600;
+      line-height: 1.45;
+      text-align: center;
+      color: rgba(248,246,252,0.46);
+      max-width: 34ch;
+    }
+    /* Les deux jauges : compactes, côte à côte, chiffres alignés en tabulaire
+       pour qu'un passage de 9 à 10 ne fasse pas danser la ligne. */
+    .fs-abl-goals { display: flex; gap: 8px; width: 100%; max-width: 268px; }
+    .fs-abl-goal {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .fs-abl-goal-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: rgba(248,246,252,0.5);
+    }
+    .fs-abl-goal-top b {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0;
+      color: rgba(248,246,252,0.82);
+      font-variant-numeric: tabular-nums;
+    }
+    .fs-abl-goal.done .fs-abl-goal-top,
+    .fs-abl-goal.done .fs-abl-goal-top b { color: var(--theme-c1); }
+    .fs-abl-bar {
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255,255,255,0.10);
+      overflow: hidden;
+    }
+    .fs-abl-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--theme-c1), var(--theme-c2));
+      transition: width 0.5s var(--mineral-ease);
+    }
     .fs-account-banner-err {
       margin: 0 24px;
       margin-top: 12px;
@@ -10866,7 +11392,6 @@
         setFocusMenuOpen(false);
       };
       const [popPos, setPopPos] = React.useState({ bottom: 0, left: 0, width: 0 });
-      const [accountPos, setAccountPos] = React.useState({ top: 28, left: 136 });
       const cardRef = React.useRef(null);
       const popoverRef = React.useRef(null);
       const gearRef = React.useRef(null);
@@ -10882,6 +11407,12 @@
          `friends` est déclaré plus bas dans ce composant — s'y référer ici
          lèverait une erreur de portée, et l'ouverture du panneau suffit
          puisque c'est le seul moment où le rectangle peut apparaître. */
+      const bannerProgress = React.useMemo(
+        () => (window._fsBannerProgress
+          ? window._fsBannerProgress(user?.id)
+          : { ok: true, crystals: 0, needCrystals: 10, friends: 0, needFriends: 1 }),
+        [user?.id, accountOpen]
+      );
       const bannerUnlocked = React.useMemo(
         () => (window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'banner') : false),
         [user?.id, accountOpen]
@@ -10946,16 +11477,36 @@
             addToast({ message: (d.to_name || 'Ton ami') + ' a refusé ta demande', type: 'info', icon: 'i' });
           }
         };
-        const onRefresh = () => load();
+        /* Les retraits subis s'appliquent même panneau FERMÉ : sinon le compteur
+           d'amis de la barre latérale continue d'annoncer quelqu'un qui n'est
+           plus là, et il faudrait ouvrir le panneau pour que la liste se
+           corrige. Le rattrapage tourne donc ici, au niveau de la barre. */
+        const syncRemovals = () => { try { window._fsApplyIncomingRemovals?.(user.id); } catch (_) {} };
+        syncRemovals();
+        const onRemoval = () => syncRemovals();
+        /* Une seule notification par personne : la relation est rompue, ce
+           n'est pas une information à répéter à chaque retour d'onglet. */
+        const onRemovedBy = e => {
+          const d = e.detail; if (!d?.id) return;
+          const vus = (window.__fsRemovalToasts = window.__fsRemovalToasts || new Set());
+          if (vus.has(d.id)) return;
+          vus.add(d.id);
+          addToast({ message: (d.name || 'Un ami') + ' t’a retiré de ses amis', type: 'info', icon: 'i', duration: 5200 });
+        };
+        const onRefresh = () => { load(); syncRemovals(); };
         window.addEventListener('fs-friend-request', onIncoming);
         window.addEventListener('fs-friend-request-answer', onAnswer);
         window.addEventListener('fs-friend-requests-refresh', onRefresh);
+        window.addEventListener('fs-friend-removal', onRemoval);
+        window.addEventListener('fs-friend-removed-by', onRemovedBy);
         window.addEventListener('focus', onRefresh);
         return () => {
           dead = true;
           window.removeEventListener('fs-friend-request', onIncoming);
           window.removeEventListener('fs-friend-request-answer', onAnswer);
           window.removeEventListener('fs-friend-requests-refresh', onRefresh);
+          window.removeEventListener('fs-friend-removal', onRemoval);
+          window.removeEventListener('fs-friend-removed-by', onRemovedBy);
           window.removeEventListener('focus', onRefresh);
         };
       }, [user?.id]);
@@ -11002,13 +11553,17 @@
            Un poll lent (10s) reste en filet de sécurité, onglet visible only. */
         const onStore = e => { if (e.detail?.key === key) sync(); };
         window.addEventListener('fs-store', onStore);
+        /* Ajout et retrait passent par `localStorage.setItem` direct (pas par le
+           magasin qui émet `fs-store`) : sans cet écouteur, le compteur pouvait
+           rester jusqu'à 10 s sur une valeur périmée après une suppression. */
+        window.addEventListener('fs-friends-changed', sync);
         let id = null;
         const start = () => { if (!id) id = setInterval(sync, 10000); };
         const stop = () => { if (id) { clearInterval(id); id = null; } };
         const onVis = () => { if (document.visibilityState === 'visible') { sync(); start(); } else stop(); };
         document.addEventListener('visibilitychange', onVis);
         if (document.visibilityState === 'visible') start();
-        return () => { window.removeEventListener('storage', sync); window.removeEventListener('fs-store', onStore); document.removeEventListener('visibilitychange', onVis); stop(); };
+        return () => { window.removeEventListener('storage', sync); window.removeEventListener('fs-store', onStore); window.removeEventListener('fs-friends-changed', sync); document.removeEventListener('visibilitychange', onVis); stop(); };
       }, [user?.id]);
 
       React.useEffect(() => {
@@ -11075,27 +11630,15 @@
         };
       }, [popOpen]);
 
+      /* Le panneau est désormais une MODALE CENTRÉE (voir `.fs-account-panel`) :
+         plus aucune coordonnée à calculer, donc plus rien à replacer au resize.
+         Ne reste que la fermeture — au voile, et à Échap, qui manquait
+         totalement alors que c'est le réflexe attendu de toute modale. */
       React.useEffect(() => {
         if (!accountOpen) return;
-        const place = () => {
-          if (!gearRef.current) return;
-          const r = gearRef.current.getBoundingClientRect();
-          const panelW = 372;
-          const left = Math.min(r.right + 14, window.innerWidth - panelW - 20);
-          setAccountPos({ top: Math.max(20, r.top - 8), left: Math.max(20, left) });
-        };
-        place();
-        const close = e => {
-          const inGear = gearRef.current && gearRef.current.contains(e.target);
-          const inPanel = accountRef.current && accountRef.current.contains(e.target);
-          if (!inGear && !inPanel) setAccountOpen(false);
-        };
-        window.addEventListener('resize', place);
-        document.addEventListener('mousedown', close);
-        return () => {
-          window.removeEventListener('resize', place);
-          document.removeEventListener('mousedown', close);
-        };
+        const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setAccountOpen(false); } };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
       }, [accountOpen]);
 
       React.useEffect(() => {
@@ -11510,7 +12053,10 @@
             </div>
           </aside>
           {accountOpen && (
-            <div ref={accountRef} className="fs-account-panel" style={{ top: accountPos.top, left: accountPos.left }} onClick={e => e.stopPropagation()}>
+            <div className="fs-account-scrim" onMouseDown={e => { if (e.target === e.currentTarget) setAccountOpen(false); }} />
+          )}
+          {accountOpen && (
+            <div ref={accountRef} className="fs-account-panel" role="dialog" aria-modal="true" aria-label="Mon profil" onClick={e => e.stopPropagation()}>
               <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoFile} />
               {/* ══ BANNIÈRE, LÀ OÙ ELLE SE COMPREND ═══════════════════════════
                  Elle vit AU-DESSUS de la photo, dans le panneau du profil : le
@@ -11518,9 +12064,32 @@
                  l'ensemble donne — grande image, avatar par-dessus, nom à côté.
                  C'est le motif que tout le monde connaît déjà, et il rend
                  l'aperçu inutile : le panneau EST l'aperçu.
-                 Le rectangle n'apparaît qu'une fois le palier atteint (10
-                 cristaux et au moins un ami) — avant, il n'y aurait personne
-                 pour la regarder. */}
+                 Le palier (10 cristaux + 1 ami) ne CACHE plus le rectangle : il
+                 le remplace par sa version en creux, qui annonce la
+                 fonctionnalité et affiche la distance qui reste. */}
+              {!bannerUnlocked && (
+                <div className="fs-account-banner-locked">
+                  <span className="fs-abl-title">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                    </svg>
+                    Bannière de profil
+                  </span>
+                  <span className="fs-abl-sub">
+                    L’image que verront tes amis en haut de ton profil. Elle s’ouvre quand tu as de quoi montrer — et quelqu’un à qui le montrer.
+                  </span>
+                  <div className="fs-abl-goals">
+                    <div className={'fs-abl-goal' + (bannerProgress.crystals >= bannerProgress.needCrystals ? ' done' : '')}>
+                      <span className="fs-abl-goal-top">Cristaux<b>{Math.min(bannerProgress.crystals, bannerProgress.needCrystals)}/{bannerProgress.needCrystals}</b></span>
+                      <span className="fs-abl-bar"><i style={{ width: Math.min(100, (bannerProgress.crystals / bannerProgress.needCrystals) * 100) + '%' }} /></span>
+                    </div>
+                    <div className={'fs-abl-goal' + (bannerProgress.friends >= bannerProgress.needFriends ? ' done' : '')}>
+                      <span className="fs-abl-goal-top">Amis<b>{Math.min(bannerProgress.friends, bannerProgress.needFriends)}/{bannerProgress.needFriends}</b></span>
+                      <span className="fs-abl-bar"><i style={{ width: Math.min(100, (bannerProgress.friends / bannerProgress.needFriends) * 100) + '%' }} /></span>
+                    </div>
+                  </div>
+                </div>
+              )}
               {bannerUnlocked && (
                 <>
                   <input ref={bannerFileRef} type="file" accept="image/jpeg,image/png,image/webp"
@@ -11545,7 +12114,12 @@
                   {bannerErr && <div className="fs-account-banner-err" role="alert">{bannerErr}</div>}
                 </>
               )}
-              <div className={'fs-account-hero' + (bannerUnlocked ? ' with-banner' : '')}>
+              {/* Le rectangle est là dans les DEUX états (image ou palier en
+                  creux) : l'avatar le chevauche donc toujours, et le panneau
+                  garde exactement la même silhouette avant et après le
+                  déverrouillage — c'est ce qui fait qu'on reconnaît la case
+                  qu'on attendait quand elle s'ouvre enfin. */}
+              <div className="fs-account-hero with-banner">
                 <button type="button" className="fs-account-photo-button" onClick={() => fileRef.current && fileRef.current.click()} title="Changer la photo de profil">
                   {profilePhoto ? <img src={profilePhoto} alt={displayName} /> : userInitial}
                   <span className="fs-account-photo-edit">
@@ -17753,6 +18327,8 @@ void main(){
         try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; }
       });
       const [showSession, setShowSession] = _uSC(false);
+      /* Pré-remplissage du lanceur (mode + amis déjà cochés). */
+      const [sessionSeed, setSessionSeed] = _uSC(null);
       /* Boutique cosmétique : ouverte via l'événement global fs-open-boutique
          (déclenché depuis Évolution / le compte), montée en modale portail. */
       const [showBoutique, setShowBoutique] = _uSC(false);
@@ -18447,8 +19023,31 @@ void main(){
         if (_sessionBusy()) return;
         const p = window._fsReadPrefs ? window._fsReadPrefs() : {};
         if (p.autoStartFocus) { quickStartSession(); return; }
+        setSessionSeed(null);
         setShowSession(true);
       };
+
+      /* ── « Session » depuis le panneau Amis ────────────────────────────────
+         Le mode Ensemble n'était atteignable que par le lanceur : ouvrir Amis,
+         voir qui est en ligne, refermer, rouvrir le lanceur, choisir Ensemble,
+         retrouver la personne. Six gestes pour une intention qui en vaut un —
+         et surtout, l'envie de travailler avec quelqu'un naît EN REGARDANT la
+         liste d'amis, pas dans un formulaire. L'action part donc de là où
+         l'intention se forme.
+         Le panneau Amis vit dans la barre latérale, plusieurs composants plus
+         bas : le passage se fait par événement, comme le reste des signaux
+         inter-panneaux de l'app (aucune dépendance nouvelle entre blocs). */
+      _uEC(() => {
+        const h = e => {
+          const f = e.detail?.friend;
+          if (!f?.id) return;
+          if (_sessionBusy()) return;
+          setSessionSeed({ mode: 'together', friendIds: [f.id] });
+          setShowSession(true);
+        };
+        window.addEventListener('fs-start-together', h);
+        return () => window.removeEventListener('fs-start-together', h);
+      }, []);
 
       const handleLaunch = async (session) => {
         /* Défense en profondeur : même si le lanceur s'ouvrait, on refuse de
@@ -18795,7 +19394,17 @@ void main(){
         return () => clearTimeout(t);
       }, [user?.id]);
 
+      /* Une session ne peut être close QU'UNE FOIS. Plusieurs chemins mènent
+         ici (chronomètre global, arrêt manuel depuis la scène, arrêt depuis la
+         bulle réduite) et deux d'entre eux peuvent se déclencher à quelques
+         centaines de millisecondes d'écart : sans ce verrou, on créditerait
+         deux cristaux pour une seule session. La clé est le `startTime`, seul
+         identifiant stable d'une session. */
+      const endedSessionRef = React.useRef(null);
       const handleEndSession = async (crystalData = null) => {
+        const stamp = activeSessionRef.current?.startTime || activeSession?.startTime || null;
+        if (stamp && endedSessionRef.current === stamp) return;
+        if (stamp) endedSessionRef.current = stamp;
         const hasCrystalData = crystalData
           && typeof crystalData === 'object'
           && Object.prototype.hasOwnProperty.call(crystalData, 'completedAt');
@@ -18882,6 +19491,83 @@ void main(){
         try { localStorage.removeItem('fs_active_session'); } catch(e) {}
         setActiveSession(null);
       };
+
+      /* ══ LA FIN DE SESSION APPARTIENT À L'APPLICATION, PAS À UNE VUE ═══════
+         Le cristal ne se forgeait que si le composant qui portait le
+         chronomètre était monté. Or il y en a deux, montés en exclusion :
+         `FocusStage` (scène plein écran, sur le dashboard) et
+         `FocusCrystalOverlay` (bulle réduite, partout ailleurs). Seule la
+         SECONDE appelait `onEnd` à l'échéance — la scène, elle, se contentait
+         d'afficher « Cristal prêt » et attendait indéfiniment. Résultat : qui
+         restait sur la scène de focus ne recevait jamais sa récompense, et
+         devait masquer la scène puis revenir pour que la bulle, en se montant,
+         déclenche enfin la fin de session.
+         C'est une règle métier — « au bout de N minutes, la session produit un
+         cristal » — qui n'a rien à faire dans une vue. Elle vit donc ici, à
+         côté de l'état `activeSession` qu'elle conclut, et se déclenche quelle
+         que soit la vue affichée, la scène ouverte ou non, l'onglet actif ou
+         non. Les deux composants ne gardent que leur animation.
+
+         Le délai est calculé en TEMPS ABSOLU (échéance − maintenant) et non par
+         accumulation de ticks : un `setTimeout` figé par un onglet en veille ou
+         un téléphone verrouillé se réveille en retard, mais le rattrapage au
+         retour de visibilité clôt alors la session immédiatement. */
+      _uEC(() => {
+        const s = activeSession;
+        if (!s?.startTime || !s?.duration) return;
+        if (endedSessionRef.current === s.startTime) return;
+        const dueAt = s.startTime + Math.max(1, Number(s.duration) || 25) * 60000;
+        /* Petit répit après l'échéance : le temps que la scène ou la bulle
+           joue sa complétion. La pop-up arrive donc APRÈS le cristal qui
+           s'achève, jamais par-dessus. */
+        const GRACE = 1700;
+        let timer = null;
+        const settle = () => {
+          if (endedSessionRef.current === s.startTime) return;
+          /* `_buildCrystal` est défini dans un bloc `text/babel` ultérieur : on
+             passe par `window`. S'il n'est pas encore là, on RÉESSAIE — clore
+             la session sans cristal la ferait perdre au lieu de la payer. */
+          const build = window._buildCrystal;
+          if (typeof build !== 'function') { timer = setTimeout(settle, 250); return; }
+          try { handleEndSession(build(1, s)); } catch (e) { console.warn('[fs] session settle failed', e); }
+        };
+        const arm = () => {
+          if (timer) clearTimeout(timer);
+          const wait = dueAt + GRACE - Date.now();
+          if (wait <= 0) { settle(); return; }
+          timer = setTimeout(settle, wait);
+        };
+        arm();
+        /* Onglet remis au premier plan : le minuteur a pu être gelé pendant la
+           veille — on réévalue l'échéance sur l'horloge, pas sur le timer. */
+        const onWake = () => { if (!document.hidden) arm(); };
+        document.addEventListener('visibilitychange', onWake);
+        window.addEventListener('focus', onWake);
+        return () => {
+          if (timer) clearTimeout(timer);
+          document.removeEventListener('visibilitychange', onWake);
+          window.removeEventListener('focus', onWake);
+        };
+      }, [activeSession?.startTime, activeSession?.duration]);
+
+      /* Session terminée pendant que LumenOS n'est pas à l'écran (autre onglet,
+         app en arrière-plan) : le titre de l'onglet devient le porteur de la
+         nouvelle. C'est le seul canal qui traverse sans rien demander à
+         personne — pas de permission de notification à mendier au pire moment.
+         Il se rétablit dès que l'utilisateur revient. */
+      _uEC(() => {
+        if (!sessionResult) return;
+        const original = document.title;
+        let on = true;
+        const flip = () => {
+          if (document.hidden) { document.title = on ? '✦ Ton cristal est prêt' : original; on = !on; }
+          else document.title = original;
+        };
+        flip();
+        const iv = setInterval(flip, 1400);
+        return () => { clearInterval(iv); document.title = original; };
+      }, [sessionResult]);
+
       const [bgThemeId, setBgThemeId] = _uSC(() => {
         try {
           const saved = localStorage.getItem('fs_bgtheme');
@@ -19308,6 +19994,11 @@ void main(){
            pour que le tout premier geste soit de travailler (et forger un
            cristal), pas de configurer. Le dashboard monte d'abord. */
         if (startSession) setTimeout(() => { try { requestStartSession(); } catch (_) { } }, 460);
+        /* L'intro raconte, la visite fait faire. Elle s'amorce ici — c'est le
+           seul point d'entrée : personne d'autre que celui qui vient de finir
+           l'intro ne la verra. Différée si une session démarre : on n'ouvre pas
+           un tutoriel par-dessus le geste qu'on vient d'obtenir. */
+        setTimeout(() => { try { window._fsTourStart?.(); } catch (_) { } }, startSession ? 2400 : 900);
       };
 
       const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
@@ -19362,7 +20053,10 @@ void main(){
               </div>
             </div>
           )}
-          {showSession && <SessionModal onClose={() => setShowSession(false)} onLaunch={handleLaunch} />}
+          {/* La `key` force un remontage quand la graine change : les états
+              initiaux (mode, amis cochés) ne sont lus qu'au montage. */}
+          {showSession && <SessionModal key={sessionSeed ? 'seed-' + sessionSeed.friendIds.join('-') : 'blank'}
+            seed={sessionSeed} onClose={() => { setShowSession(false); setSessionSeed(null); }} onLaunch={handleLaunch} />}
           {isApp && showReveal && <CrystalReveal onComplete={() => { setShowReveal(false); setDashboardReady(true); }} />}
           {isApp && focusNudge && <FocusNudgePopup nudge={focusNudge} onClose={() => setFocusNudge(null)} />}
           {isApp && screen === 'dashboard' && !activeSession && user?.id && window.ProdRatingPrompt && React.createElement(window.ProdRatingPrompt, { user, key: user.id })}
@@ -19383,6 +20077,12 @@ void main(){
             && React.createElement(window.FocusCrystalOverlay, { session: activeSession, user, onEnd: handleEndSession,
                  onExpand: () => { go('dashboard'); setFocusStageOpen(true); } })}
           {isApp && sessionResult && window.SessionCompleteModal && React.createElement(window.SessionCompleteModal, { result: sessionResult, onClose: () => setSessionResult(null), onOpenCave: () => { setSessionResult(null); go('cristaux'); } })}
+          {/* Barre de la visite guidée : montée une fois, au-dessus de tous les
+              écrans — la visite traverse le dashboard ET l'écran d'édition, sa
+              consigne ne peut donc appartenir à aucun des deux. Effacée pendant
+              une session et pendant la célébration : ces deux moments sont la
+              récompense, on ne les commente pas. */}
+          {isApp && !activeSession && !sessionResult && window.FsTourBar && React.createElement(window.FsTourBar)}
           {isApp && showBoutique && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, onClose: () => setShowBoutique(false) })}
           {isApp && streakBreak && !activeSession && !sessionResult && window.StreakBreakModal && React.createElement(window.StreakBreakModal, {
             user, breakInfo: streakBreak, jokers: streakBreak.jokers,
@@ -19970,6 +20670,18 @@ void main(){
       }
       .fs-friend-actions { display:none; gap:6px; align-items:center; flex-shrink:0; }
       .fs-friend-card:hover .fs-friend-actions { display:flex; }
+      /* « Session » est l'action à valeur de la carte : elle est la seule
+         remplie, les autres restent en creux. Une seule hiérarchie possible,
+         donc aucune hésitation sur quoi cliquer. */
+      .fs-friend-session { display:flex; align-items:center; gap:5px; flex-shrink:0;
+        border-radius:10px; padding:5px 11px; cursor:pointer; white-space:nowrap;
+        border:1px solid transparent; font:800 10px var(--font-body); letter-spacing:0.04em;
+        color:#07070d; background:linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
+        box-shadow:0 4px 14px rgba(var(--theme-c1-rgb),0.28);
+        transition:transform .17s var(--mineral-ease), box-shadow .17s var(--mineral-ease); }
+      .fs-friend-session:hover { transform:translateY(-1px);
+        box-shadow:0 7px 20px rgba(var(--theme-c1-rgb),0.40); }
+      .fs-friend-session:focus-visible { outline:2px solid #fff; outline-offset:2px; }
       .fs-friend-card:focus-visible {
         outline:2px solid rgba(var(--theme-c1-rgb),0.65);
         outline-offset:3px;
@@ -20055,7 +20767,7 @@ void main(){
       .fs-pv-case::-webkit-scrollbar-thumb { background:rgba(255,255,255,.13); border-radius:99px; }
       /* Cellules calquées sur les cartes d'ami : surface sobre au repos,
          accent du thème au survol. */
-      .fs-pv-cell { --gem-glow:rgba(var(--theme-c1-rgb),0.5);
+      .fs-pv-cell { --gem-glow:rgba(var(--theme-c1-rgb),0.5); position:relative;
         display:flex; align-items:center; gap:13px; padding:11px 13px; border-radius:18px;
         border:1px solid rgba(255,255,255,0.055);
         background:rgba(255,255,255,0.03);
@@ -20074,16 +20786,26 @@ void main(){
         background:radial-gradient(circle, var(--gem-glow), transparent 68%); opacity:.28; filter:blur(8px);
         animation:fsPvAura 3.4s ease-in-out infinite; }
       @keyframes fsPvAura { 0%,100%{opacity:.2;transform:scale(.92)} 50%{opacity:.42;transform:scale(1.08)} }
-      /* Le secret prend le pas sur le légendaire : couronne spectrale plus
-         large, et l'étiquette de rareté vire au blanc prismatique. */
-      .fs-pv-cell.secret .fs-pv-gem::before { content:''; position:absolute; inset:-9px; border-radius:50%;
-        background:conic-gradient(from 0deg,rgba(255,95,109,.5),rgba(255,179,2,.4),rgba(94,234,212,.48),rgba(79,172,254,.4),rgba(167,139,250,.5),rgba(255,95,109,.5));
-        -webkit-mask:radial-gradient(circle,transparent 34%,#000 54%,transparent 78%);
-        mask:radial-gradient(circle,transparent 34%,#000 54%,transparent 78%);
-        filter:blur(3.5px); mix-blend-mode:screen; animation:fsPvSecretSpin 7s linear infinite; }
-      @keyframes fsPvSecretSpin { to { transform:rotate(360deg); } }
+      /* Le secret dans la vitrine d'un ami — même grammaire que la rangée
+         compacte : on retire au lieu d'ajouter. La ligne s'assombrit, la pierre
+         se détache par contraste, et une arête de dispersion (blanc / froid /
+         chaud) marque la rareté. Plus de couronne arc-en-ciel : elle débordait
+         sur les lignes voisines et lisait « jeu vidéo bas de gamme » au lieu de
+         « pièce d'exception ». */
+      .fs-pv-cell.secret { border-color:rgba(255,255,255,0.16);
+        background:linear-gradient(100deg, rgba(255,255,255,0.055), rgba(4,6,12,0.5) 82%); }
+      .fs-pv-cell.secret::before { content:''; position:absolute; inset:0; border-radius:18px; pointer-events:none;
+        background:linear-gradient(100deg, rgba(255,255,255,0.5), rgba(150,185,255,0.34) 34%, rgba(255,255,255,0.16) 60%, rgba(255,205,160,0.34));
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+        mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+        -webkit-mask-composite:xor;mask-composite:exclude;padding:1px; }
+      /* Halo du secret : blanc, serré, et il RESPIRE au lieu de tourner —
+         une pierre qui vit, pas un gyrophare. */
+      .fs-pv-cell.secret .fs-pv-gem::before { content:''; position:absolute; inset:-7px; border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,0.5), transparent 66%);
+        filter:blur(7px); animation:fsPvAura 5.2s ease-in-out infinite; }
       .fs-pv-cell.secret .fs-pv-rar { color:#fff !important;
-        text-shadow:0 0 10px rgba(167,139,250,.9), 0 0 22px rgba(94,234,212,.6); }
+        text-shadow:0 0 12px rgba(255,255,255,.55); }
       html.fs-reduce-motion .fs-pv-cell.secret .fs-pv-gem::before { animation:none !important; }
       .fs-pv-meta { min-width:0; flex:1; }
       .fs-pv-name { font-size:13px; font-weight:800; letter-spacing:-0.01em; color:rgba(248,246,252,0.92);
@@ -20570,7 +21292,7 @@ void main(){
     }
 
     /* ── FriendCard ─────────────────────────────────────────────────────── */
-    function FriendCard({ friend, onPreview, onRemove, index }) {
+    function FriendCard({ friend, onPreview, onRemove, onSession, index }) {
       const [hov, setHov] = React.useState(false);
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
@@ -20604,6 +21326,24 @@ void main(){
               Voir
               <svg width={9} height={9} viewBox="0 0 10 10" fill="none" style={{marginLeft:3}}><path d="M2 5h6M5.5 2l3 3-3 3" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
+            {/* ══ INVITER, DEPUIS L'ENDROIT OÙ L'ENVIE NAÎT ══════════════════
+               C'est en regardant qui est là qu'on a envie de travailler avec
+               quelqu'un — pas en remplissant un formulaire. L'action vit donc
+               sur la personne. Elle passe DEVANT « Voir » : proposer une
+               session a plus de valeur que regarder un dashboard, et c'est la
+               seule des deux qui crée quelque chose.
+               Elle reste active hors ligne : l'invitation est persistée en base
+               et attend le retour de l'ami — la refuser ici serait fermer la
+               porte pour une raison qui n'en est pas une. */}
+            {onSession && (
+              <button type="button" className="fs-friend-action fs-friend-session"
+                aria-label={`Lancer une session avec ${friend.name || friend.email}`}
+                title={online ? 'Lancer une session ensemble' : 'Inviter — il la recevra à son retour'}
+                onClick={e => { e.stopPropagation(); onSession(); }}>
+                <svg width={9} height={9} viewBox="0 0 12 12" aria-hidden="true"><polygon points="3.2,2.1 9.6,6 3.2,9.9" fill="currentColor" /></svg>
+                Session
+              </button>
+            )}
             <button type="button" className="fs-friend-action" aria-label={`Retirer ${friend.name || friend.email}`} style={{ width:28, height:28, borderRadius:10, background:'rgba(251,113,133,0.09)', border:'1px solid rgba(251,113,133,0.2)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.17s', flexShrink:0, padding:0 }}
               onClick={e=>{e.stopPropagation();onRemove();}}
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,113,133,0.2)';}}
@@ -20661,7 +21401,11 @@ void main(){
         return () => { dead = true; window.removeEventListener('fs-friend-request', onReq); };
       }, [open, user?.id]);
 
-      /* Recharge la liste locale quand un ajout externe survient (acceptation) */
+      /* Recharge la liste locale quand un ajout externe survient (acceptation).
+         La fusion doit REPARTIR du cache, pas de l'état affiché : `uniqueFriends`
+         filtre les pierres tombales, donc un ami tout juste retiré disparaît,
+         mais un ami retiré AILLEURS (autre appareil, ou par l'autre personne)
+         n'était pas retranché de `prev` — il survivait à l'écran. */
       React.useEffect(() => {
         const h = () => {
           try {
@@ -20669,9 +21413,47 @@ void main(){
             if (Array.isArray(next)) setFriends(prev => uniqueFriends([...prev, ...next]));
           } catch (e) { }
         };
+        const purge = () => {
+          const retires = window._fsBlockedFriendIds ? window._fsBlockedFriendIds() : new Set();
+          setFriends(prev => prev.filter(f => !retires.has(f.id)));
+          setReverseFriends(prev => prev.filter(f => !retires.has(f.id)));
+        };
         window.addEventListener('fs-friends-changed', h);
-        return () => window.removeEventListener('fs-friends-changed', h);
+        window.addEventListener('fs-friends-blocked-update', purge);
+        return () => {
+          window.removeEventListener('fs-friends-changed', h);
+          window.removeEventListener('fs-friends-blocked-update', purge);
+        };
       }, [storageKey]);
+
+      /* ── Retraits SUBIS ────────────────────────────────────────────────────
+         Quelqu'un m'a retiré : la ligne « removed » du registre est appliquée
+         ici. À l'ouverture (rattrapage de tout ce qui s'est passé hors ligne),
+         en temps réel, et au retour de focus — les trois, parce qu'aucun ne
+         suffit seul : le realtime peut être désactivé sur la table, et une PWA
+         reprise après plusieurs heures n'a rien reçu du tout. */
+      React.useEffect(() => {
+        if (!open || !user?.id) return;
+        let dead = false;
+        const sync = async () => {
+          try { await window._fsApplyIncomingRemovals?.(user.id); } catch (_) { }
+          if (dead) return;
+          const retires = window._fsBlockedFriendIds ? window._fsBlockedFriendIds() : new Set();
+          setFriends(prev => prev.filter(f => !retires.has(f.id)));
+          setReverseFriends(prev => prev.filter(f => !retires.has(f.id)));
+        };
+        sync();
+        const onFocus = () => { if (!document.hidden) sync(); };
+        window.addEventListener('fs-friend-removal', sync);
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onFocus);
+        return () => {
+          dead = true;
+          window.removeEventListener('fs-friend-removal', sync);
+          window.removeEventListener('focus', onFocus);
+          document.removeEventListener('visibilitychange', onFocus);
+        };
+      }, [open, user?.id]);
 
       const answerRequest = async (req, accepted) => {
         setRequests(rs => rs.filter(r => r.id !== req.id));
@@ -20955,6 +21737,20 @@ void main(){
         addToast({ message: `${found.name} ajoute a tes amis`, type: 'success', icon: '?' });
         setTimeout(()=>setStatus('idle'), 2200);
       };
+      /* Le panneau se referme AVANT d'ouvrir le lanceur : deux surfaces
+         empilées, c'est un cul-de-sac visuel où l'on ne sait plus ce que ferme
+         « Échap ». L'app reçoit ensuite la graine et ouvre le lanceur déjà
+         réglé sur Ensemble, la bonne personne cochée. */
+      const startSessionWith = (f) => {
+        if (!f?.id) return;
+        onClose();
+        try {
+          window.dispatchEvent(new CustomEvent('fs-start-together', {
+            detail: { friend: { id: f.id, name: f.name || (f.email || '').split('@')[0], email: f.email } },
+          }));
+        } catch (_) { }
+      };
+
       const removeFriend = async (id) => {
         const removed = [...friends, ...reverseFriends].find(f => f.id === id);
         /* Pierre tombale d'abord : sans elle la requête inverse le ferait
@@ -20963,21 +21759,44 @@ void main(){
         setFriends(prev => prev.filter(f => f.id !== id));
         setReverseFriends(prev => prev.filter(f => f.id !== id));
         if (removed) addToast({ message: `${removed.name || removed.email} retiré de tes amis`, type: 'info', icon: '−' });
-        /* Best-effort: remove self from their list (silent if RLS blocks) */
         const myId = user?.id || window._fsSbUser?.id;
-        if (myId && window._fsSb) {
-          const { data: theirRow } = await window._fsSb
-            .from('user_data').select('friends').eq('user_id', id).maybeSingle();
-          const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
-          const updated = theirFriends.filter(f => f?.id !== myId);
-          if (updated.length !== theirFriends.length) {
-            await window._fsSb.from('user_data')
-              .update({
-                friends: uniqueFriends(updated, id),
-                updated_at: new Date().toISOString()
-              })
-              .eq('user_id', id);
-          }
+        if (!myId) return;
+        /* Retrait local complet (cache d'affichage compris) puis publication au
+           registre : c'est cette ligne « removed » que l'autre côté lira pour
+           se retirer aussi. L'écriture directe dans sa ligne user_data reste en
+           complément — elle passe parfois, et quand elle passe c'est immédiat —
+           mais on ne compte plus dessus : la RLS la refuse le plus souvent. */
+        try { await window._fsRemoveFriendEntry?.(myId, id); } catch (_) {}
+        try {
+          await window._fsPublishFriendRemoval?.(
+            { id: myId, name: user?.name || window._fsSbUser?.user_metadata?.name || (user?.email || '').split('@')[0], email: user?.email || window._fsSbUser?.email || '' },
+            id
+          );
+        } catch (_) {}
+        /* Toute demande encore en attente entre nous deux disparaît avec la
+           relation : sans ça, un « ! » fantôme survit à la suppression. */
+        try {
+          await window._fsSb?.from('friend_requests').delete()
+            .eq('status', 'pending').eq('from_id', myId).eq('to_id', id);
+          await window._fsSb?.from('friend_requests').delete()
+            .eq('status', 'pending').eq('from_id', id).eq('to_id', myId);
+        } catch (_) {}
+        setRequests(rs => rs.filter(r => r.from_id !== id));
+        if (window._fsSb) {
+          try {
+            const { data: theirRow } = await window._fsSb
+              .from('user_data').select('friends').eq('user_id', id).maybeSingle();
+            const theirFriends = Array.isArray(theirRow?.friends) ? theirRow.friends : [];
+            const updated = theirFriends.filter(f => f?.id !== myId);
+            if (updated.length !== theirFriends.length) {
+              await window._fsSb.from('user_data')
+                .update({
+                  friends: uniqueFriends(updated, id),
+                  updated_at: new Date().toISOString()
+                })
+                .eq('user_id', id);
+            }
+          } catch (_) {}
         }
       };
 
@@ -21139,6 +21958,7 @@ void main(){
                   {onlineFriendsList.map((f, i) => (
                     <FriendCard key={f.id} friend={f} index={i}
                       onPreview={()=>setPreview(f)}
+                      onSession={()=>startSessionWith(f)}
                       onRemove={()=>removeFriend(f.id)}/>
                   ))}
                   {offlineFriendsList.length > 0 && (
@@ -21151,6 +21971,7 @@ void main(){
                   {offlineFriendsList.map((f, i) => (
                     <FriendCard key={f.id} friend={f} index={onlineFriendsList.length + i}
                       onPreview={()=>setPreview(f)}
+                      onSession={()=>startSessionWith(f)}
                       onRemove={()=>removeFriend(f.id)}/>
                   ))}
                 </div>
@@ -21321,47 +22142,68 @@ void main(){
           animation:fsScLegBreath 3.6s ease-in-out infinite; }
         @keyframes fsScLegBreath { 0%,100% { opacity:.5; } 50% { opacity:.95; } }
         html.fs-reduce-motion .fs-showcase-slot.legendary::before { animation:none; }
-        .fs-showcase-slot.secret { border-color:transparent;
-          background:linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
-          box-shadow:0 0 22px rgba(255,255,255,0.18), 0 0 44px rgba(167,139,250,0.20); }
-        /* Liseré spectral : la bordure elle-même devient un prisme qui tourne.
-           Aucun autre palier ne fait ça — le secret se repère au premier coup
-           d'œil dans une rangée. */
-        .fs-showcase-slot.secret::before { content:''; position:absolute; inset:-1.5px; border-radius:13.5px; z-index:0;
-          background:conic-gradient(from 0deg,#ff5f6d,#ffb302,#5eead4,#4facfe,#a78bfa,#ff5f6d);
+        /* ══ LE SECRET : REDESIGN ═══════════════════════════════════════════════
+           L'ancien traitement cumulait trois erreurs de conception.
+           1) IL DÉBORDAIT. Deux disques de 200 % de la case, en fusion additive,
+              débordaient sur les voisins : le cristal le plus rare de la vitrine
+              EFFAÇAIT ceux d'à côté. Une vitrine sert à montrer une collection —
+              une pièce qui masque les autres travaille contre l'objet même.
+           2) IL ÉTAIT ARC-EN-CIEL. Six teintes saturées en dégradé conique, ce
+              n'est pas de la rareté, c'est le vocabulaire visuel du bouton
+              « RGB » : ça se lit comme du jeu vidéo bas de gamme, et surtout ça
+              ne veut rien dire. Aucune des trois pierres secrètes n'est
+              multicolore (Singularité est blanc sur noir, Genèse blanc sur or,
+              Iris rouge sur bleu).
+           3) IL NE SIGNIFIAIT RIEN. Le mouvement était une rotation continue,
+              la même à toute heure : du bruit permanent, jamais un événement.
+
+           Le nouveau parti pris est celui des jeux qui savent tenir une échelle
+           de rareté : ON RETIRE AU LIEU D'AJOUTER. Ce qui distingue le secret,
+           ce n'est pas plus de couleur — c'est de la LUMIÈRE et du VIDE.
+           · La case s'assombrit au lieu de s'illuminer. La gemme se détache
+             donc par contraste, et le regard va à la pierre, pas au cadre.
+           · Un unique liseré de DISPERSION d'un pixel : blanc, froid, chaud —
+             ce que fait un prisme réel avec de la lumière blanche. C'est la
+             seule couleur, elle est justifiée, et elle reste sur l'arête.
+           · Un éclat spéculaire traverse la pierre toutes les 7 s, puis plus
+             rien. Un événement rare pour un objet rare, au lieu d'un moulinet.
+           Tout est CONTENU dans la case : plus un pixel chez le voisin. */
+        .fs-showcase-slot.secret { border-color:rgba(255,255,255,0.14); overflow:hidden;
+          background:radial-gradient(120% 96% at 50% 16%, rgba(255,255,255,0.11), rgba(5,7,14,0.62) 72%);
+          box-shadow:inset 0 0 20px rgba(0,0,0,0.55), 0 2px 14px rgba(0,0,0,0.4); }
+        /* Arête prismatique : la dispersion d'une lumière blanche, pas un
+           arc-en-ciel. Rotation très lente — on la remarque, on ne la subit pas. */
+        .fs-showcase-slot.secret::before { content:''; position:absolute; inset:-1px; border-radius:13px; z-index:0;
+          background:conic-gradient(from 0deg,
+            rgba(255,255,255,0.92), rgba(150,185,255,0.55) 18%, rgba(255,255,255,0.30) 34%,
+            rgba(255,255,255,0.92) 52%, rgba(255,205,160,0.55) 70%, rgba(255,255,255,0.30) 86%,
+            rgba(255,255,255,0.92));
           -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
           mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-          -webkit-mask-composite:xor;mask-composite:exclude;padding:1.5px;
-          animation:fsScSecretSpin 4.5s linear infinite; }
-        .fs-showcase-slot.secret::after { background:radial-gradient(ellipse, rgba(255,255,255,0.66), transparent 70%); height:5px; filter:blur(2.5px); }
+          -webkit-mask-composite:xor;mask-composite:exclude;padding:1px;
+          animation:fsScSecretSpin 11s linear infinite; }
+        /* Le socle du secret reste blanc et SOBRE : c'est un reflet sur la
+           tablette, pas un projecteur. */
+        .fs-showcase-slot.secret::after { background:radial-gradient(ellipse, rgba(255,255,255,0.5), transparent 72%); height:4px; filter:blur(2px); }
         @keyframes fsScSecretSpin { to { transform:rotate(360deg); } }
         html.fs-reduce-motion .fs-showcase-slot.secret::before { animation:none; }
         /* La gemme passe DEVANT le liseré et les halos de palier. */
         .fs-showcase-slot > * { position:relative; z-index:1; }
-        /* ── Aura du SECRET ──
-           Elle DÉBORDE volontairement de la case (200 %) : c'est ce débordement
-           qui fait qu'un secret se repère dans une rangée avant même qu'on lise
-           les couleurs. Centre transparent et fusion additive : elle éclaire
-           autour de la pierre, jamais par-dessus. */
-        .fs-sc-secret-halo { position:absolute; left:50%; top:50%; width:200%; height:200%;
-          transform:translate(-50%,-50%); pointer-events:none; z-index:0 !important; }
-        .fs-sc-secret-halo i { position:absolute; inset:0; border-radius:50%; display:block;
-          mix-blend-mode:screen; }
-        .fs-sc-secret-corona {
-          background:conic-gradient(from 0deg,rgba(255,95,109,.55),rgba(255,179,2,.42),rgba(94,234,212,.5),rgba(79,172,254,.42),rgba(167,139,250,.55),rgba(255,95,109,.55));
-          -webkit-mask:radial-gradient(circle,transparent 26%,#000 46%,#000 58%,transparent 76%);
-          mask:radial-gradient(circle,transparent 26%,#000 46%,#000 58%,transparent 76%);
-          filter:blur(4px); animation:fsScSecretSpin 7s linear infinite; }
-        /* Éclat blanc contrarotatif : le battement des deux vitesses accroche
-           l'œil sans ajouter de matière. */
-        .fs-sc-secret-glint {
-          background:conic-gradient(from 200deg,transparent,rgba(255,255,255,.9) 6%,transparent 17%,transparent 55%,rgba(255,255,255,.6) 62%,transparent 73%);
-          -webkit-mask:radial-gradient(circle,transparent 32%,#000 48%,transparent 68%);
-          mask:radial-gradient(circle,transparent 32%,#000 48%,transparent 68%);
-          filter:blur(1.5px); animation:fsScSecretSpinR 4.2s linear infinite; }
-        @keyframes fsScSecretSpinR { to { transform:rotate(-360deg); } }
-        html.fs-reduce-motion .fs-sc-secret-corona, html.fs-reduce-motion .fs-sc-secret-glint { animation:none; }
-        html.fs-perf-lite .fs-sc-secret-corona, html.fs-perf-lite .fs-sc-secret-glint { filter:none; }
+        /* Éclat spéculaire : une bande oblique qui balaie la case, puis une
+           longue pause. Contenu par l'overflow:hidden de la case. */
+        .fs-sc-secret-halo { position:absolute; inset:0; overflow:hidden; border-radius:12px;
+          pointer-events:none; z-index:0 !important; }
+        .fs-sc-secret-glint { position:absolute; top:-30%; bottom:-30%; left:-60%; width:42%; display:block;
+          background:linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+          transform:rotate(18deg); filter:blur(3px);
+          animation:fsScSecretSweep 7s cubic-bezier(.5,0,.5,1) infinite; }
+        @keyframes fsScSecretSweep {
+          0%,62% { left:-60%; opacity:0; }
+          68% { opacity:1; }
+          88%,100% { left:118%; opacity:0; }
+        }
+        html.fs-reduce-motion .fs-sc-secret-glint { animation:none; opacity:0; }
+        html.fs-perf-lite .fs-sc-secret-glint { display:none; }
         .fs-showcase-strip-title { font-size:12px; color:rgba(248,246,252,0.55); font-style:italic;
           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 
@@ -21508,18 +22350,14 @@ void main(){
          est de MONTRER la pierre. */
       const gem = React.createElement(window.ShapedCrystalGem, { shape: item.shape, gradientId: isGold ? 'gold' : item.gradient, progress: 0.88, size: sz, seed: item.seed || 1 });
       /* ── AURA DU SECRET ──
-         Le légendaire avait bien son halo (porté par `::before`), mais chez le
-         secret ce même pseudo-élément servait déjà au liseré prismatique : la
-         rareté la plus haute du jeu se retrouvait SANS aura derrière elle,
-         moins parée que le palier en dessous. Elle a donc sa propre couche.
-         Deux disques concentriques contrarotatifs, transparents en leur centre
-         (`mask` radial + `screen`) : la lumière rayonne autour de la pierre
-         sans jamais passer devant. */
+         Une seule couche, et elle reste DANS la case (voir le bloc « LE SECRET :
+         REDESIGN » de la feuille de style) : un éclat spéculaire qui balaie la
+         pierre toutes les 7 secondes. L'ancienne version empilait deux disques
+         de 200 % qui recouvraient les cristaux voisins. */
       if (_scTier(item) !== 'secret') return gem;
       return (
         <>
           <span className="fs-sc-secret-halo" aria-hidden="true">
-            <i className="fs-sc-secret-corona" />
             <i className="fs-sc-secret-glint" />
           </span>
           {gem}
@@ -22311,16 +23149,11 @@ void main(){
         return () => clearInterval(id);
       }, [session, phase, totalMs]);
 
-      /* Complétion naturelle : on laisse jouer l'animation « complete » du
-         disque (~1,6 s) puis on remonte le cristal — la célébration (nom,
-         durée, aura) est prise en charge par la pop-up de fin de session, plus
-         par un toast. */
-      React.useEffect(() => {
-        if (phase !== 'complete') return;
-        const crystal = _buildCrystal(1, session);
-        const t = setTimeout(() => onEnd && onEnd(crystal), 1600);
-        return () => clearTimeout(t);
-      }, [phase]);
+      /* La complétion n'est plus remontée d'ici : c'est l'application qui clôt
+         la session à l'échéance, que cette bulle soit montée ou non (voir le
+         chronomètre global près de `handleEndSession`). Ce composant ne garde
+         que l'animation « complete » du disque, jouée pendant le répit avant
+         la pop-up. */
 
       const [hovered, setHovered] = React.useState(false);
       /* Le panneau (chrono + « Arrêter ») s'ouvrait UNIQUEMENT au survol : sur
@@ -22688,6 +23521,17 @@ void main(){
               color:rgba(226,238,255,.44);font-weight:700;font-size:12px}
             .fs-stage-stop:hover{color:#fb7185}
             .fs-stage-stop.armed{border-color:rgba(251,113,133,.4);background:rgba(251,113,133,.11);color:#fda4af;font-weight:900}
+            /* État d'arrivée : une ligne calme qui confirme que le cristal est
+               acquis et que la pop-up arrive. Rien à cliquer — le geste suivant
+               appartient à la célébration, pas à l'utilisateur. */
+            .fs-stage-settling{display:inline-flex;align-items:center;gap:9px;padding:10px 18px;border-radius:99px;
+              border:1px solid rgba(var(--theme-c1-rgb),.30);background:rgba(var(--theme-c1-rgb),.10);
+              font:800 11.5px var(--font-body);letter-spacing:.01em;color:rgba(240,246,255,.9)}
+            .fs-stage-settling-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;
+              background:var(--theme-c1);box-shadow:0 0 10px var(--theme-c1);
+              animation:fsStageSettle 1.25s ease-in-out infinite}
+            @keyframes fsStageSettle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+            html.fs-reduce-motion .fs-stage-settling-dot{animation:none}
             .fs-stage-note{margin-top:14px;font-size:11px;color:rgba(226,238,255,.42);text-align:center;max-width:32ch;line-height:1.5}
             html.fs-reduce-motion .fs-stage,html.fs-reduce-motion .fs-stage-gemwrap{animation:none!important}
             @media(max-width:640px){
@@ -22744,16 +23588,34 @@ void main(){
               </div>
             )}
             {reveal && <div className="fs-stage-name">{grad?.name || 'Cristal forgé'}</div>}
-            <div className="fs-stage-acts">
-              <button type="button" className="fs-stage-btn fs-stage-ghost" onClick={onMinimize}>
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 10V4h6M20 14v6h-6M4 4l7 7M20 20l-7-7" /></svg>
-                Voir mon dashboard
-              </button>
-              <button type="button" className={'fs-stage-btn fs-stage-stop' + (confirmStop ? ' armed' : '')}
-                onClick={() => { if (confirmStop) { onEnd && onEnd(null); } else { setConfirmStop(true); } }}>
-                {confirmStop ? 'Confirmer — le cristal sera perdu' : 'Arrêter la session'}
-              </button>
-            </div>
+            {/* ══ LA FIN N'EST PAS LE MILIEU ═════════════════════════════════
+               Une fois le cristal forgé, « Arrêter la session — le cristal sera
+               perdu » n'a plus aucun sens : il n'y a plus rien à arrêter, et
+               plus rien à perdre. Laisser ce bouton rouge sous une pierre
+               achevée, c'est faire craindre à l'utilisateur de détruire ce
+               qu'il vient de gagner, exactement au moment qui devait être une
+               récompense. La barre d'actions change donc d'état avec la
+               session : pendant, le retrait est possible et son coût est écrit
+               noir sur blanc ; après, il n'y a plus qu'à recevoir. */}
+            {done ? (
+              <div className="fs-stage-acts">
+                <div className="fs-stage-settling" role="status">
+                  <span className="fs-stage-settling-dot" aria-hidden="true" />
+                  Cristal forgé — récupération en cours
+                </div>
+              </div>
+            ) : (
+              <div className="fs-stage-acts">
+                <button type="button" className="fs-stage-btn fs-stage-ghost" onClick={onMinimize}>
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 10V4h6M20 14v6h-6M4 4l7 7M20 20l-7-7" /></svg>
+                  Voir mon dashboard
+                </button>
+                <button type="button" className={'fs-stage-btn fs-stage-stop' + (confirmStop ? ' armed' : '')}
+                  onClick={() => { if (confirmStop) { onEnd && onEnd(null); } else { setConfirmStop(true); } }}>
+                  {confirmStop ? 'Confirmer — le cristal sera perdu' : 'Arrêter la session'}
+                </button>
+              </div>
+            )}
             {!done && !confirmStop && <div className="fs-stage-note">Le cristal n’est gardé qu’à la fin — mais tes minutes comptent déjà.</div>}
           </div>
         </div>
@@ -22785,6 +23647,10 @@ void main(){
       };
     }
     window.FocusCrystalOverlay = FocusCrystalOverlay;
+    /* Exporté : le chronomètre de fin de session vit dans le composant App, un
+       AUTRE bloc `text/babel` — la portée lexicale ne traverse pas les blocs,
+       le passage se fait donc par `window` (voir .claude/rules/architecture.md). */
+    window._buildCrystal = _buildCrystal;
 
     /* ── Pop-up de fin de session ────────────────────────────────────────────
        Célébration : cristal forgé (avec son aura de rareté), rareté, nom lisible
