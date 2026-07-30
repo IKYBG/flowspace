@@ -5959,34 +5959,83 @@
        une prise en otage, pas un accompagnement. */
     const FS_TOUR_STEPS = ['pencil', 'remove', 'add', 'media', 'image'];
     window.FS_TOUR_STEPS = FS_TOUR_STEPS;
-    /* Clé ABSENTE = pas de visite. Les comptes existants n'ont jamais eu cette
-       clé : ils ne se verront donc jamais proposer une visite de découverte
-       pour une interface qu'ils connaissent déjà. Seul `_fsTourStart`, appelé
-       à la fin de l'intro, l'amorce. */
-    window._fsTourStep = () => {
+    /* ══ LA VISITE NE PARTAIT PLUS ═══════════════════════════════════════════
+       Deux défauts, tous deux de structure.
+       1) L'ÉTAT ÉTAIT GLOBAL. `fs_tour_step` et `fs_tour_done` n'étaient pas
+          indexés par compte. Un premier compte terminait (ou passait) la
+          visite, posait `fs_tour_done = 1` sur l'APPAREIL, et tout compte
+          suivant sur le même navigateur — y compris un compte neuf créé pour
+          la tester — se voyait refuser la visite pour toujours. Même famille
+          de bug que les pierres tombales d'amis : une donnée par compte rangée
+          sous une clé partagée.
+       2) L'AMORÇAGE ÉTAIT UN COUP UNIQUE, DIFFÉRÉ. `_fsTourStart` vivait dans
+          un `setTimeout` de fin d'intro. Un rechargement, une navigation, un
+          onglet fermé pendant ces quelques secondes, et l'unique occasion de
+          démarrer était perdue — définitivement, puisque rien ne reprenait le
+          fil ensuite.
+       L'état est donc rangé par compte, sous UNE clé qui porte l'étape ou
+       'done', et l'amorçage est immédiat puis REPRENABLE. */
+    const _fsTourKey = (uid) => 'fs_tour_' + (uid || window._fsSbUser?.id || (() => {
+      try { return JSON.parse(localStorage.getItem('fs_user') || 'null')?.id || 'guest'; }
+      catch (e) { return 'guest'; }
+    })());
+    /* Migration : l'ancienne clé globale est adoptée par le PREMIER compte qui
+       la lit, puis effacée. Le vrai utilisateur garde son « déjà vu », et les
+       comptes suivants ne l'héritent plus. */
+    const _fsTourMigrate = (uid) => {
+      const k = _fsTourKey(uid);
       try {
-        const v = localStorage.getItem('fs_tour_step');
-        return FS_TOUR_STEPS.includes(v) ? v : null;
-      } catch (e) { return null; }
+        if (localStorage.getItem(k) != null) return;
+        const oldDone = localStorage.getItem('fs_tour_done');
+        const oldStep = localStorage.getItem('fs_tour_step');
+        if (oldDone === '1') localStorage.setItem(k, 'done');
+        else if (FS_TOUR_STEPS.includes(oldStep)) localStorage.setItem(k, oldStep);
+        if (oldDone != null || oldStep != null) {
+          localStorage.removeItem('fs_tour_done');
+          localStorage.removeItem('fs_tour_step');
+        }
+      } catch (e) { }
+    };
+    const _fsTourRead = (uid) => {
+      _fsTourMigrate(uid);
+      try { return localStorage.getItem(_fsTourKey(uid)); } catch (e) { return null; }
+    };
+    window._fsTourStep = () => {
+      const v = _fsTourRead();
+      return FS_TOUR_STEPS.includes(v) ? v : null;
     };
     window._fsTourActive = (id) => window._fsTourStep() === id;
-    const _fsTourSet = (v) => {
+    const _fsTourSet = (v, uid) => {
       try {
-        if (v) localStorage.setItem('fs_tour_step', v);
-        else localStorage.removeItem('fs_tour_step');
+        if (v) localStorage.setItem(_fsTourKey(uid), v);
+        else localStorage.removeItem(_fsTourKey(uid));
       } catch (e) { }
       try { window.dispatchEvent(new CustomEvent('fs-tour-update')); } catch (e) { }
     };
-    window._fsTourStart = () => {
-      /* Jamais de reprise pour qui a déjà terminé ou abandonné : une visite
-         qui revient est un bug, pas une seconde chance. */
-      try { if (localStorage.getItem('fs_tour_done') === '1') return; } catch (e) { }
-      _fsTourSet(FS_TOUR_STEPS[0]);
+    /* Amorçage. `force` sert au bouton « Revoir la visite » des réglages :
+       lui seul peut repasser par-dessus un 'done'. */
+    window._fsTourStart = (uid, force) => {
+      if (!force && _fsTourRead(uid) != null) return false;
+      _fsTourSet(FS_TOUR_STEPS[0], uid);
+      return true;
     };
-    window._fsTourFinish = () => {
-      try { localStorage.setItem('fs_tour_done', '1'); } catch (e) { }
-      _fsTourSet(null);
+    /* REPRISE. Appelée à chaque arrivée sur le dashboard : si le compte a fini
+       l'intro mais n'a AUCUNE trace de visite, c'est que l'amorçage s'est
+       perdu (rechargement pendant le délai, onglet fermé…). On la (re)lance.
+       La garde « moins de 3 cristaux » évite d'imposer une visite de
+       découverte à quelqu'un qui utilise déjà le produit depuis longtemps. */
+    window._fsTourResume = (uid) => {
+      try {
+        if (localStorage.getItem('fs_onboarded') !== '1') return false;
+        if (_fsTourRead(uid) != null) return false;
+        const k = uid ? 'fs_crystals_' + uid : 'fs_crystals';
+        const n = (JSON.parse(localStorage.getItem(k) || '[]') || []).length;
+        if (n >= 3) { _fsTourSet('done', uid); return false; }
+      } catch (e) { return false; }
+      _fsTourSet(FS_TOUR_STEPS[0], uid);
+      return true;
     };
+    window._fsTourFinish = (uid) => { _fsTourSet('done', uid); };
     /* Avance UNIQUEMENT si l'étape passée est bien l'étape courante : les
        déclencheurs sont posés sur des actions ordinaires (supprimer un widget,
        ouvrir le tiroir) que l'utilisateur peut faire à tout moment, y compris
@@ -8392,14 +8441,16 @@
            Image. Un autre ajout est un détour légitime — on n'y met pas fin au
            tutoriel, on laisse la consigne en place. */
         if (name === 'Image') {
+          /* On lit l'étape AVANT de la franchir : après, elle vaut 'done' quel
+             qu'ait été son état, et le message de fin se déclencherait aussi
+             pour quelqu'un qui n'a jamais fait la visite. */
+          const finissaitLaVisite = window._fsTourStep?.() === 'image';
           try { window._fsTourAdvance?.('image'); } catch (e) {}
-          setTimeout(() => {
-            try {
-              if (localStorage.getItem('fs_tour_done') === '1') {
-                addToast({ message: 'Ton dashboard est à toi. Tout le reste se change pareil.', type: 'success', icon: '✓', duration: 5600 });
-              }
-            } catch (e) {}
-          }, 700);
+          if (finissaitLaVisite) {
+            setTimeout(() => {
+              addToast({ message: 'Ton dashboard est à toi. Tout le reste se change de la même façon.', type: 'success', duration: 5600 });
+            }, 700);
+          }
         }
       };
 
@@ -18083,6 +18134,29 @@ void main(){
                   </Card>
                 )}
 
+                {/* ══ REJOUER LA VISITE ═══════════════════════════════════════
+                   La visite guidée n'avait AUCUNE porte de sortie inverse : une
+                   fois passée — y compris d'un clic malheureux sur « Passer » —
+                   plus rien au monde ne pouvait la rappeler. C'est aussi ce qui
+                   la rendait intestable : on ne pouvait vérifier son
+                   fonctionnement qu'en fabriquant un compte neuf.
+                   Elle vit dans les réglages du dashboard, puisque c'est le
+                   dashboard qu'elle enseigne. */}
+                {section === 'dashboard' && (
+                  <Card title="Visite guidée" desc="Les cinq gestes qui transforment le dashboard en ton espace.">
+                    <div className="fs-set-row" style={{ borderBottom: 'none' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fs-set-row-t">Refaire la visite</div>
+                        <div className="fs-set-row-d">Crayon, retirer un widget, ajouter, Média, image.</div>
+                      </div>
+                      <button className="fs-set-btn" onClick={() => {
+                        try { window._fsTourStart?.(user?.id, true); } catch (_) { }
+                        onNavigate('dashboard');
+                      }}>Relancer</button>
+                    </div>
+                  </Card>
+                )}
+
                 {/* SESSIONS */}
                 {section === 'sessions' && (
                   <Card>
@@ -18534,6 +18608,15 @@ void main(){
       /* Toute NOUVELLE session rouvre la scène de focus : le cristal doit se
          montrer, c'est là que la valeur du produit se comprend. */
       _uEC(() => { if (activeSession?.startTime) setFocusStageOpen(true); }, [activeSession?.startTime]);
+      /* Reprise de la visite guidée : l'amorçage de fin d'intro pouvait se
+         perdre (rechargement, onglet fermé, session lancée dans la foulée).
+         On repasse ici à chaque arrivée sur le dashboard — `_fsTourResume` ne
+         fait rien si le compte a déjà une trace de visite, ou s'il a déjà
+         forgé trois cristaux. */
+      _uEC(() => {
+        if (screen !== 'dashboard' || !user?.id) return;
+        try { window._fsTourResume?.(user.id); } catch (_) { }
+      }, [screen, user?.id]);
       /* Cristal récupéré à la fin d'une session → pop-up de célébration. */
       const [sessionResult, setSessionResult] = _uSC(null);
       /* Rupture de série constatée à l'ouverture (une seule fois par jour). */
@@ -20085,11 +20168,12 @@ void main(){
            pour que le tout premier geste soit de travailler (et forger un
            cristal), pas de configurer. Le dashboard monte d'abord. */
         if (startSession) setTimeout(() => { try { requestStartSession(); } catch (_) { } }, 460);
-        /* L'intro raconte, la visite fait faire. Elle s'amorce ici — c'est le
-           seul point d'entrée : personne d'autre que celui qui vient de finir
-           l'intro ne la verra. Différée si une session démarre : on n'ouvre pas
-           un tutoriel par-dessus le geste qu'on vient d'obtenir. */
-        setTimeout(() => { try { window._fsTourStart?.(); } catch (_) { } }, startSession ? 2400 : 900);
+        /* L'intro raconte, la visite fait faire. On l'amorce IMMÉDIATEMENT et
+           non dans un `setTimeout` : différer l'écriture, c'était accepter de
+           perdre la visite si l'utilisateur rechargeait ou fermait l'onglet
+           pendant le délai. L'affichage, lui, se règle tout seul — la barre
+           s'efface pendant une session et pendant la célébration. */
+        try { window._fsTourStart?.(user?.id || window._fsSbUser?.id); } catch (_) { }
       };
 
       const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
@@ -20172,7 +20256,7 @@ void main(){
               consigne ne peut donc appartenir à aucun des deux. Effacée pendant
               une session et pendant la célébration : ces deux moments sont la
               récompense, on ne les commente pas. */}
-          {isApp && !activeSession && !sessionResult && window.FsTourBar && React.createElement(window.FsTourBar)}
+          {isApp && !activeSession && !sessionResult && !showSession && window.FsTourBar && React.createElement(window.FsTourBar)}
           {isApp && showBoutique && window.BoutiqueModal && React.createElement(window.BoutiqueModal, { user, onClose: () => setShowBoutique(false) })}
           {isApp && streakBreak && !activeSession && !sessionResult && window.StreakBreakModal && React.createElement(window.StreakBreakModal, {
             user, breakInfo: streakBreak, jokers: streakBreak.jokers,
