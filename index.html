@@ -9817,6 +9817,14 @@
       min-width: 0;
     }
     .fs-brand-title { font-size: 14px; font-weight: 700; letter-spacing: 0.01em; color: rgba(248,246,252,0.95); }
+    /* ══ LE TEXTE PASSAIT SOUS L'ENGRENAGE ══════════════════════════════════
+       La colonne de texte est en white-space:nowrap mais était en
+       overflow:visible : la sous-ligne mesurait 163 px d'encre dans une
+       boîte de 146, et ces 17 px de débordement atteignaient l'engrenage des
+       paramètres — le texte lui passait dessous. Le clip à l'ellipse est le
+       garde-fou définitif (il tient quelle que soit la police ou la langue) ;
+       le libellé raccourci fait qu'on ne le voit jamais s'appliquer. */
+    .fs-brand-copy, .fs-brand-title, .fs-brand-sub { overflow: hidden; text-overflow: ellipsis; }
     .fs-brand-sub { font-size: 12px; color: rgba(248,246,252,0.55); margin-top: 2px; }
     .fs-gear-dot {
       width: 34px;
@@ -10324,56 +10332,63 @@
       }
     }
     /* Premium popover — position:fixed so overflow:hidden on sidebar never clips it */
+    /* ══ MENU DU COMPTE — D'OÙ VENAIT LE « RECTANGLE » ══════════════════════
+       Le popover était transparent et sans espacement, et chaque entrée portait
+       sa propre bordure de 1 px avec un rayon de 16 px. Deux pilules bordées
+       collées l'une à l'autre : leurs bordures se doublaient au contact et
+       l'ensemble se lisait comme un cadre rectangulaire mal fini autour des
+       deux boutons.
+       On passe au motif attendu d'un menu : UNE seule surface — carte, bordure,
+       ombre, flou d'arrière-plan — et des LIGNES à l'intérieur, sans bordure
+       propre, séparées par un filet. Plus aucun contour ne se superpose. */
     .fs-popover {
       position: fixed;
-      background: transparent;
-      border: none;
-      border-radius: 0; overflow: visible;
-      backdrop-filter: none;
-      box-shadow: none;
-      z-index: 9999; animation: fsPopIn 0.28s cubic-bezier(.2,1,.22,1) both;
-      padding: 0;
+      z-index: 9999;
+      padding: 6px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(17,16,32,0.97), rgba(9,8,20,0.97));
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: 0 26px 64px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.03),
+                  inset 0 1px 0 rgba(255,255,255,0.07);
+      backdrop-filter: blur(22px) saturate(170%);
+      -webkit-backdrop-filter: blur(22px) saturate(170%);
+      animation: fsPopIn 0.28s cubic-bezier(.2,1,.22,1) both;
     }
     @keyframes fsPopIn {
       0% { opacity: 0; transform: translateY(12px) scale(0.94); filter: blur(8px); }
       72% { opacity: 1; transform: translateY(-1px) scale(1.012); filter: blur(0); }
       100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
     }
-    /* Popover actions */
-    .fs-pop-actions { padding: 0; }
+    /* Lignes du menu : aucune bordure propre, un filet de séparation entre
+       elles. C'est la carte qui porte le contour, une seule fois. */
+    .fs-pop-actions { padding: 0; display: flex; flex-direction: column; }
     .fs-pop-action {
-      min-height: 44px;
+      min-height: 46px;
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      width: 100%; padding: 0 12px; border-radius: 16px;
-      border: 1px solid rgba(var(--theme-c1-rgb),0.22); cursor: pointer;
-      background:
-        radial-gradient(ellipse 72% 130% at 0% 0%, rgba(var(--theme-c1-rgb),0.15), transparent 60%),
-        linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.038));
-      color: rgba(248,246,252,0.84); font-family: var(--font-body);
-      font-size:13px; font-weight: 780; text-align: left;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.085), 0 10px 24px rgba(0,0,0,0.16);
-      transform-origin: center;
-      transition: transform 260ms cubic-bezier(.16,1,.3,1), border-radius 260ms cubic-bezier(.16,1,.3,1), border-color 180ms ease, background 220ms ease, color 180ms ease, box-shadow 220ms ease;
+      width: 100%; padding: 0 10px; border-radius: 14px;
+      border: 0; background: transparent; cursor: pointer;
+      color: rgba(248,246,252,0.86); font-family: var(--font-body);
+      font-size: 13px; font-weight: 780; text-align: left;
+      transition: background 160ms ease, color 160ms ease;
     }
-    .fs-pop-action:hover {
-      transform: translateY(-1px) scale(1.012);
-      border-radius: 18px;
-      color: rgba(248,246,252,0.94);
-      border-color: rgba(var(--theme-c1-rgb),0.38);
-      background:
-        radial-gradient(ellipse 70% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.16), transparent 58%),
-        radial-gradient(ellipse 80% 120% at 100% 100%, rgba(var(--theme-c2-rgb),0.10), transparent 62%),
-        linear-gradient(180deg, rgba(255,255,255,0.066), rgba(255,255,255,0.033));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 34px rgba(0,0,0,0.30), 0 0 34px rgba(var(--theme-c1-rgb),0.14);
+    .fs-pop-action + .fs-pop-action { position: relative; }
+    .fs-pop-action + .fs-pop-action::before {
+      content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 1px;
+      background: rgba(255,255,255,0.07);
     }
+    .fs-pop-action:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .fs-pop-action:hover .fs-pop-action-arrow { opacity: 0.9; transform: translateX(2px); }
     .fs-pop-action:focus-visible {
-      outline: none;
-      border-color: rgba(var(--theme-c1-rgb),0.62);
-      box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.18), inset 0 1px 0 rgba(255,255,255,0.075);
+      outline: 2px solid rgba(var(--theme-c1-rgb),0.7); outline-offset: -2px;
+      background: rgba(255,255,255,0.06);
     }
-    .fs-pop-action:active {
-      transform: translateY(0) scale(0.982);
-      border-radius: 12px;
+    .fs-pop-action:active { background: rgba(255,255,255,0.10); }
+    /* Se déconnecter est une SORTIE : elle se distingue au survol au lieu
+       d'être visuellement interchangeable avec « Mon profil ». */
+    .fs-pop-action.is-exit:hover { background: rgba(251,113,133,0.12); color: #fda4af; }
+    .fs-pop-action.is-exit:hover .fs-pop-action-icon {
+      background: rgba(251,113,133,0.16); color: #fda4af;
     }
     .fs-pop-action-icon {
       width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
@@ -11229,7 +11244,7 @@
                 </div>
                 <div className="fs-brand-copy">
                   <div className="fs-brand-title">LumenOS</div>
-                  <div className="fs-brand-sub">OS personnel de productivité</div>
+                  <div className="fs-brand-sub" title="OS personnel de productivité">OS de productivité</div>
                 </div>
                 <button ref={gearRef} type="button" className={'fs-gear-dot' + (screen === 'settings' ? ' fs-account-open' : '')}
                   onClick={() => { closeAllPanels(); setPopOpen(false); onNavigate(screen === 'settings' ? 'dashboard' : 'settings'); }}
@@ -11460,7 +11475,7 @@
                         <path d="M9 18l6-6-6-6" />
                       </svg>
                     </button>
-                    <button type="button" className="fs-pop-action" onClick={() => { setPopOpen(false); onLogout(); }} aria-label="Se deconnecter de LumenOS">
+                    <button type="button" className="fs-pop-action is-exit" onClick={() => { setPopOpen(false); onLogout(); }} aria-label="Se déconnecter de LumenOS">
                       <span className="fs-pop-action-copy">
                         <span className="fs-pop-action-icon" aria-hidden="true">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -24405,7 +24420,18 @@ void main(){
               /* En mode allégé, on garde le fût et la caustique — ce sont eux
                  qui portent la lecture — et on retire les flous des couronnes. */
               html.fs-perf-lite .fs-cv-secret-aura,html.fs-perf-lite .fs-cv-secret-aura::after{filter:none}
-              @keyframes fsCvGoldPulse{0%,100%{opacity:.7;transform:translate(-50%,28%) scale(.94)}50%{opacity:1;transform:translate(-50%,28%) scale(1.08)}}
+              /* ══ CETTE ANIMATION DÉCENTRAIT LES AURAS ═══════════════════════
+                 Elle écrivait « transform: translate(-50%,28%) scale(...) ».
+                 Or transform est une propriété UNIQUE : en la réécrivant,
+                 l'animation ÉCRASAIT le transform de centrage de chaque
+                 élément. L'aura dorée, centrée par translate(-50%,-50%), se
+                 retrouvait décalée de 78 % de sa propre hauteur vers le bas —
+                 soit une fois et demie la taille du cristal. Le cœur de fusion
+                 subissait le même sort.
+                 On n'anime plus que l'opacité et la propriété INDÉPENDANTE
+                 scale, qui se compose avec le transform au lieu de le
+                 remplacer. Chaque élément garde donc son centrage. */
+              @keyframes fsCvGoldPulse{0%,100%{opacity:.7;scale:.94}50%{opacity:1;scale:1.08}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
               .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
@@ -27184,11 +27210,34 @@ void main(){
     const s = document.createElement('style');
     s.id = 'fs-rare-aura-css';
     s.textContent = `
-      @keyframes fsLegAuraSpin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
-      .fs-leg-aura { position:absolute; inset:-16%; border-radius:50%; pointer-events:none; z-index:0;
-        filter:blur(7px); opacity:.85; animation:fsLegAuraSpin 7s linear infinite; }
-      .fs-leg-aura::after { content:''; position:absolute; inset:18%; border-radius:50%;
-        background:radial-gradient(circle, rgba(255,255,255,0.25), transparent 65%); }
+      /* ══ AURA LÉGENDAIRE — POURQUOI ELLE FAISAIT UN RECTANGLE ══════════════
+         Elle était posée en inset:-16% sur un conteneur de gemme qui n'est PAS
+         carré (largeur = taille, hauteur = taille x 1,45). Résultat : une
+         ELLIPSE de 139 x 202 px, et non un halo. Un dégradé conique sur une
+         ellipse qui tourne fait glisser ses couleurs d'un côté puis de l'autre
+         — d'où la tache décalée, lue comme un rectangle flou à côté du cristal
+         plutôt que comme une aura autour de lui.
+         Trois corrections : la couche devient un CARRÉ (aspect-ratio), elle est
+         centrée sur le centre OPTIQUE de la gemme (44 % de la hauteur, le
+         cristal étant dessiné dans la partie haute), et elle est masquée en
+         ANNEAU pour rayonner autour de la pierre au lieu de la recouvrir.
+         La rotation passe par la propriété indépendante rotate : avec
+         transform:rotate(), l'animation aurait écrasé le translate de centrage
+         — exactement le défaut qui décentrait l'aura dorée. */
+      @keyframes fsLegAuraSpin { from { rotate:0deg; } to { rotate:360deg; } }
+      /* Centrage par la propriété INDÉPENDANTE translate, pas par transform :
+         l'ordre de composition est translate puis rotate puis scale, PUIS
+         transform. Un translate écrit dans transform se retrouve donc pivoté
+         par la rotation — c'est ce qui projetait l'anneau en bas à droite,
+         hors du cristal. Avec les deux propriétés indépendantes, la rotation
+         s'applique autour du centre déjà positionné. */
+      .fs-leg-aura { position:absolute; left:50%; top:44%; width:128%; aspect-ratio:1;
+        translate:-50% -50%; border-radius:50%; pointer-events:none; z-index:0;
+        -webkit-mask:radial-gradient(circle, transparent 30%, #000 48%, #000 66%, transparent 84%);
+        mask:radial-gradient(circle, transparent 30%, #000 48%, #000 66%, transparent 84%);
+        filter:blur(6px); opacity:.9; animation:fsLegAuraSpin 9s linear infinite; }
+      .fs-leg-aura::after { content:''; position:absolute; inset:26%; border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,0.22), transparent 66%); }
       html.fs-perf-lite .fs-leg-aura, html.fs-reduce-motion .fs-leg-aura { animation:none; filter:blur(5px); }
       @media (prefers-reduced-motion: reduce) { .fs-leg-aura { animation:none; } }
     `;
