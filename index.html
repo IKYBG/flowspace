@@ -1523,18 +1523,167 @@
       }
     }
 
-    /* ── Toast system ───────────────────────────────────────────── */
+    /* ══ NOTIFICATIONS ═══════════════════════════════════════════════════════
+       Trois défauts se cumulaient.
+       1) ELLES SE PLAÇAIENT AU MILIEU DU BAS. C'est exactement là que vivent
+          déjà la barre de visite guidée et, sur téléphone, la navigation : la
+          notification recouvrait l'action qu'elle commentait. Elles partent
+          donc en bas à DROITE sur desktop (zone libre), et EN HAUT sur
+          téléphone — le bas d'un écran mobile appartient au pouce et à la nav,
+          pas à des messages qui passent.
+       2) L'ANIMATION REBONDISSAIT. Un cubic-bezier à dépassement (0.34, 1.56…)
+          sur une notification, c'est le registre du jouet : ça attire l'œil
+          plus fort que le contenu de l'app, pour dire « note enregistrée ».
+          Glissement franc, sans dépassement, et sortie plus rapide que
+          l'entrée — on remarque ce qui arrive, jamais ce qui s'en va.
+       3) LE TEXTE FLOTTAIT. Message sur une seule ligne tronquée, poids 600 sur
+          fond translucide : peu lisible en diagonale, ce qui est pourtant le
+          seul mode de lecture d'une notification. Titre en 13/700, jusqu'à
+          trois lignes, fond nettement plus opaque. */
     @keyframes toastIn {
-      from { transform: translateY(18px) scale(0.96); opacity: 0; }
-      to   { transform: translateY(0) scale(1); opacity: 1; }
+      from { transform: translateX(26px); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
     }
     @keyframes toastOut {
-      from { transform: translateY(0) scale(1); opacity: 1; }
-      to   { transform: translateY(12px) scale(0.96); opacity: 0; }
+      from { transform: translateX(0); opacity: 1; max-height: 200px; }
+      to   { transform: translateX(26px); opacity: 0; max-height: 0; }
+    }
+    @keyframes toastInTop {
+      from { transform: translateY(-18px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes toastOutTop {
+      from { transform: translateY(0); opacity: 1; max-height: 200px; }
+      to   { transform: translateY(-14px); opacity: 0; max-height: 0; }
     }
     @keyframes toastProgress {
-      from { width: 100%; }
-      to   { width: 0%; }
+      from { transform: scaleX(1); }
+      to   { transform: scaleX(0); }
+    }
+    .fs-toast-wrap {
+      position: fixed;
+      z-index: 99999;
+      right: 24px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      pointer-events: none;
+      width: min(400px, calc(100vw - 32px));
+    }
+    .fs-toast {
+      pointer-events: auto;
+      width: 100%;
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 13px;
+      padding: 14px 14px 14px 15px;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(19, 18, 34, 0.985), rgba(11, 10, 22, 0.985));
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      box-shadow:
+        0 20px 52px rgba(0, 0, 0, 0.62),
+        0 0 0 1px rgba(255, 255, 255, 0.035),
+        0 0 34px var(--toast-tint, transparent);
+      backdrop-filter: blur(22px) saturate(170%);
+      -webkit-backdrop-filter: blur(22px) saturate(170%);
+      animation: toastIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    /* Filet de teinte à gauche : il porte le type (succès, erreur…) sans
+       colorer le fond, qui doit rester lisible quel que soit le thème. */
+    .fs-toast::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--toast-c, var(--theme-c1));
+    }
+    .fs-toast.is-out { animation: toastOut 0.24s cubic-bezier(0.4, 0, 1, 1) forwards; }
+    .fs-toast-ico {
+      width: 30px; height: 30px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      color: var(--toast-c, var(--theme-c1));
+      background: color-mix(in srgb, var(--toast-c, var(--theme-c1)) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--toast-c, var(--theme-c1)) 26%, transparent);
+    }
+    .fs-toast-msg {
+      min-width: 0;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.45;
+      letter-spacing: -0.005em;
+      color: rgba(248, 246, 252, 0.95);
+      /* Jusqu'à trois lignes : une notification tronquée à mi-phrase ne dit
+         rien, autant ne pas l'afficher. */
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      padding-top: 4px;
+    }
+    .fs-toast-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 2px; }
+    .fs-toast-act {
+      min-height: 28px;
+      padding: 0 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      white-space: nowrap;
+      font: 800 11.5px var(--font-body);
+      letter-spacing: 0.01em;
+      color: var(--toast-c, var(--theme-c1));
+      background: color-mix(in srgb, var(--toast-c, var(--theme-c1)) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--toast-c, var(--theme-c1)) 32%, transparent);
+      transition: background 0.16s var(--mineral-ease);
+    }
+    .fs-toast-act:hover { background: color-mix(in srgb, var(--toast-c, var(--theme-c1)) 28%, transparent); }
+    .fs-toast-x {
+      width: 26px; height: 26px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: rgba(248, 246, 252, 0.34);
+      transition: color 0.16s ease, background 0.16s ease;
+    }
+    .fs-toast-x:hover { color: rgba(248, 246, 252, 0.9); background: rgba(255, 255, 255, 0.07); }
+    .fs-toast-bar {
+      position: absolute;
+      left: 0; bottom: 0;
+      height: 2px;
+      width: 100%;
+      transform-origin: left center;
+      background: linear-gradient(90deg, var(--toast-c, var(--theme-c1)), transparent);
+      opacity: 0.55;
+      animation: toastProgress linear forwards;
+    }
+    html.fs-reduce-motion .fs-toast,
+    html.fs-reduce-motion .fs-toast.is-out { animation-duration: 0.01s; }
+    html.fs-reduce-motion .fs-toast-bar { display: none; }
+    @media (max-width: 640px) {
+      /* En haut sur téléphone : le bas est occupé par la nav flottante et par
+         la barre de visite guidée, et c'est la zone du pouce. */
+      .fs-toast-wrap {
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        bottom: auto;
+        left: 12px; right: 12px;
+        width: auto;
+        align-items: stretch;
+        flex-direction: column-reverse;
+      }
+      .fs-toast { animation: toastInTop 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+      .fs-toast.is-out { animation: toastOutTop 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; }
+      .fs-toast-msg { font-size: 13.5px; -webkit-line-clamp: 4; }
     }
 
     @keyframes livePulse {
@@ -5862,55 +6011,106 @@
            à corriger, alors qu'il s'agit d'une invitation à découvrir. Le
            mauvais registre émotionnel ferait croire à un problème (et le projet
            proscrit les glyphes de police dans l'UI). */
-        .fs-tour-beacon{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
+        /* ══ LA BALISE ÉTAIT INVISIBLE ═══════════════════════════════════════
+           ATTENTION : cette feuille vit dans un littéral de gabarit JS — aucun
+           accent grave dans les commentaires, il refermerait la chaîne.
+           Elle était posée en top:-5px / right:-5px, donc À L'EXTÉRIEUR de sa
+           cible — or le crayon vit dans .fs-dhx-group, une pilule en
+           overflow:hidden. Le conteneur ROGNAIT exactement les cinq pixels
+           où se trouvait la balise : elle était bien rendue, mais découpée.
+           Tout ce qui déborde est donc abandonné. Le marquage se fait
+           uniquement À L'INTÉRIEUR de la cible, ce qui a l'avantage de marcher
+           quel que soit le conteneur, aujourd'hui comme demain :
+           · un voile pulsé aux couleurs du thème REMPLIT le bouton — c'est lui
+             qui se voit de loin, bien plus qu'un point de 11 px ;
+           · le point reste, calé dans l'angle intérieur, pour désigner
+             précisément la cible une fois le regard attiré. */
+        .fs-tour-lit{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
+          background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.30),rgba(var(--theme-c2-rgb),.16));
+          box-shadow:inset 0 0 0 1.5px rgba(var(--theme-c1-rgb),.85);
+          animation:fsTourLit 1.9s cubic-bezier(.4,0,.3,1) infinite}
+        @keyframes fsTourLit{0%,100%{opacity:.42}50%{opacity:1}}
+        .fs-tour-beacon{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;
           background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
-          box-shadow:0 0 0 2px rgba(8,10,18,.9),0 0 12px rgba(var(--theme-c1-rgb),.85);
-          pointer-events:none;z-index:80}
-        .fs-tour-beacon::after{content:'';position:absolute;inset:0;border-radius:50%;
-          border:2px solid var(--theme-c1);animation:fsTourPing 1.8s cubic-bezier(.2,.7,.4,1) infinite}
-        @keyframes fsTourPing{0%{transform:scale(1);opacity:.9}70%,100%{transform:scale(2.9);opacity:0}}
-        html.fs-reduce-motion .fs-tour-beacon::after{animation:none;opacity:.5}
-        @media(prefers-reduced-motion:reduce){.fs-tour-beacon::after{animation:none;opacity:.5}}
+          box-shadow:0 0 9px rgba(var(--theme-c1-rgb),.95);
+          pointer-events:none;z-index:2;
+          animation:fsTourPing 1.9s cubic-bezier(.4,0,.3,1) infinite}
+        @keyframes fsTourPing{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.6);opacity:.45}}
+        html.fs-reduce-motion .fs-tour-beacon,html.fs-reduce-motion .fs-tour-lit{animation:none}
+        @media(prefers-reduced-motion:reduce){.fs-tour-beacon,.fs-tour-lit{animation:none}}
 
-        /* La barre de guidage : ancrée en bas au centre, au-dessus de tout, et
-           elle ne masque jamais la zone d'action (les cibles sont en haut ou au
-           centre). Elle reste identique d'une étape à l'autre — seule la
-           consigne change — pour qu'on cesse de la lire comme une nouveauté et
-           qu'on l'utilise comme un repère. */
+        /* ══ LA BARRE DE GUIDAGE ÉTAIT TROP DISCRÈTE ═════════════════════════
+           Titre en 12,5 px, consigne en 11 px, hauteur ~60 px : à l'échelle
+           d'un écran de 1440 px, c'était une bande grise en bas que le regard
+           traitait comme un pied de page. Or c'est LA voix qui accompagne le
+           premier quart d'heure de quelqu'un dans le produit — si elle ne se
+           lit pas, la visite n'existe pas. Et sur téléphone, la consigne (la
+           seule phrase qui dit QUOI faire) était purement masquée : il ne
+           restait qu'un titre de trois mots.
+           Elle prend donc la taille de son rôle : compteur d'étape explicite,
+           titre en 16 px, consigne en 13 px sur DEUX lignes autorisées, et une
+           barre de progression continue plutôt que des points de 6 px. Sur
+           téléphone elle passe en carte pleine largeur, avec la consigne
+           CONSERVÉE — c'est là qu'on en a le plus besoin. */
         .fs-tour-bar{position:fixed;left:50%;transform:translateX(-50%);
-          bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:12000;
-          display:flex;align-items:center;gap:14px;padding:12px 14px 12px 18px;border-radius:18px;
-          max-width:min(560px,calc(100vw - 28px));
-          background:linear-gradient(180deg,rgba(17,16,32,.97),rgba(9,9,20,.97));
-          border:1px solid rgba(var(--theme-c1-rgb),.26);
-          box-shadow:0 26px 70px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.04),0 0 44px rgba(var(--theme-c1-rgb),.12);
-          backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);
-          animation:fsTourBarIn .34s cubic-bezier(.22,1,.36,1) both}
-        @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}
+          bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:12000;
+          display:flex;align-items:center;gap:18px;padding:18px 18px 18px 22px;border-radius:22px;
+          width:min(640px,calc(100vw - 32px));box-sizing:border-box;
+          background:linear-gradient(180deg,rgba(19,18,35,.985),rgba(10,10,21,.985));
+          border:1px solid rgba(var(--theme-c1-rgb),.30);
+          box-shadow:0 30px 80px rgba(0,0,0,.66),0 0 0 1px rgba(255,255,255,.045),0 0 56px rgba(var(--theme-c1-rgb),.16);
+          backdrop-filter:blur(22px) saturate(175%);-webkit-backdrop-filter:blur(22px) saturate(175%);
+          animation:fsTourBarIn .38s cubic-bezier(.22,1,.36,1) both}
+        @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(14px)}
           to{opacity:1;transform:translateX(-50%) translateY(0)}}
-        .fs-tour-prog{display:flex;gap:4px;flex-shrink:0}
-        .fs-tour-prog i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.16);display:block}
-        .fs-tour-prog i.on{background:var(--theme-c1);box-shadow:0 0 8px rgba(var(--theme-c1-rgb),.7)}
-        .fs-tour-prog i.past{background:rgba(var(--theme-c1-rgb),.45)}
+        /* Compteur : « 2/5 » dit la position ET la longueur totale. Cinq points
+           de 6 px demandaient de les compter à l'œil pour obtenir la même
+           information — et sur cinq points, personne ne compte. */
+        .fs-tour-num{flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+          width:46px;height:46px;border-radius:15px;
+          background:linear-gradient(140deg,rgba(var(--theme-c1-rgb),.22),rgba(var(--theme-c2-rgb),.10));
+          border:1px solid rgba(var(--theme-c1-rgb),.34)}
+        .fs-tour-num b{font:800 17px var(--font-display);line-height:1;color:#fff;letter-spacing:-.02em}
+        .fs-tour-num span{font:700 9px var(--font-body);line-height:1;margin-top:3px;
+          color:rgba(248,246,252,.46);letter-spacing:.05em}
         .fs-tour-copy{min-width:0;flex:1;display:block}
-        .fs-tour-t{display:block;font:800 12.5px var(--font-body);color:rgba(248,246,252,.97);letter-spacing:-.005em}
-        .fs-tour-d{display:block;font:600 11px var(--font-body);color:rgba(248,246,252,.5);margin-top:3px;line-height:1.45}
-        .fs-tour-skip{flex-shrink:0;min-height:32px;padding:0 12px;border-radius:10px;cursor:pointer;
-          border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.05);
-          color:rgba(248,246,252,.6);font:800 11px var(--font-body)}
-        .fs-tour-skip:hover{background:rgba(255,255,255,.1);color:rgba(248,246,252,.9)}
+        .fs-tour-t{display:block;font:800 16px var(--font-display);color:#fff;letter-spacing:-.02em;line-height:1.2}
+        .fs-tour-d{display:block;font:600 13px var(--font-body);color:rgba(248,246,252,.62);
+          margin-top:5px;line-height:1.5}
+        .fs-tour-skip{flex-shrink:0;min-height:40px;padding:0 16px;border-radius:12px;cursor:pointer;
+          border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);
+          color:rgba(248,246,252,.66);font:800 12px var(--font-body);
+          transition:background .16s var(--mineral-ease),color .16s var(--mineral-ease)}
+        .fs-tour-skip:hover{background:rgba(255,255,255,.11);color:rgba(248,246,252,.95)}
+        /* Progression continue, collée au bord bas de la carte. */
+        .fs-tour-rail{position:absolute;left:0;right:0;bottom:0;height:3px;border-radius:0 0 22px 22px;
+          overflow:hidden;background:rgba(255,255,255,.07)}
+        .fs-tour-rail i{display:block;height:100%;border-radius:0 3px 3px 0;
+          background:linear-gradient(90deg,var(--theme-c1),var(--theme-c2));
+          transition:width .45s cubic-bezier(.22,1,.36,1)}
         @media(max-width:640px){
-          /* Au-dessus de la nav mobile, jamais dessous. */
+          /* Au-dessus de la nav mobile, jamais dessous. Cibles à 44 px, et la
+             consigne RESTE : c'est elle qui porte l'instruction. */
           .fs-tour-bar{bottom:calc(var(--fs-navspace,78px) + 12px);left:12px;right:12px;
-            transform:none;max-width:none;padding:12px 12px 12px 15px;gap:11px}
-          @keyframes fsTourBarIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-          .fs-tour-d{display:none}
+            transform:none;width:auto;padding:16px;gap:14px;border-radius:20px;
+            flex-wrap:wrap;align-items:flex-start}
+          @keyframes fsTourBarIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+          .fs-tour-num{width:40px;height:40px;border-radius:13px}
+          .fs-tour-num b{font-size:15px}
+          .fs-tour-t{font-size:15px}
+          .fs-tour-d{font-size:12.5px;margin-top:4px}
+          /* Le bouton passe sous le texte, pleine largeur : à 360 px, trois
+             colonnes réduisaient la consigne à deux mots par ligne. */
+          .fs-tour-skip{order:3;width:100%;min-height:44px}
+          .fs-tour-rail{border-radius:0 0 20px 20px}
         }
       `;
       document.head.appendChild(_ts);
     }
 
-    /* Balise à poser DANS un conteneur en position:relative, sur la cible. */
+    /* Balise à poser DANS un conteneur en position:relative, sur la cible.
+       Rend DEUX couches, toutes deux à l'intérieur des limites de la cible :
+       le voile qui la fait exister de loin, le point qui la désigne de près. */
     function FsTourBeacon({ step, style }) {
       const [cur, setCur] = _uSST(() => window._fsTourStep());
       _uEST(() => {
@@ -5919,7 +6119,12 @@
         return () => window.removeEventListener('fs-tour-update', h);
       }, []);
       if (cur !== step) return null;
-      return <span className="fs-tour-beacon" style={style} aria-hidden="true" />;
+      return (
+        <>
+          <span className="fs-tour-lit" aria-hidden="true" />
+          <span className="fs-tour-beacon" style={style} aria-hidden="true" />
+        </>
+      );
     }
     window.FsTourBeacon = FsTourBeacon;
 
@@ -5944,18 +6149,21 @@
       const copy = FS_TOUR_COPY[cur];
       if (!copy) return null;
       const i = FS_TOUR_STEPS.indexOf(cur);
+      const total = FS_TOUR_STEPS.length;
       return (
-        <div className="fs-tour-bar" role="status" aria-live="polite">
-          <span className="fs-tour-prog" aria-label={`Étape ${i + 1} sur ${FS_TOUR_STEPS.length}`}>
-            {FS_TOUR_STEPS.map((s, k) => (
-              <i key={s} className={k === i ? 'on' : k < i ? 'past' : ''} />
-            ))}
+        <div className="fs-tour-bar" role="status" aria-live="polite"
+          aria-label={`Visite guidée, étape ${i + 1} sur ${total} : ${copy.t}`}>
+          <span className="fs-tour-num" aria-hidden="true">
+            <b>{i + 1}</b><span>/ {total}</span>
           </span>
           <span className="fs-tour-copy">
             <span className="fs-tour-t">{copy.t}</span>
             <span className="fs-tour-d">{copy.d}</span>
           </span>
           <button type="button" className="fs-tour-skip" onClick={() => window._fsTourFinish()}>Passer</button>
+          <span className="fs-tour-rail" aria-hidden="true">
+            <i style={{ width: ((i + 1) / total * 100) + '%' }} />
+          </span>
         </div>
       );
     }
@@ -7840,7 +8048,7 @@
                     {/* La balise de la visite se pose SUR le crayon : c'est
                         précisément l'icône que les nouveaux ne voient pas. */}
                     <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
-                      title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard" style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative', overflow: 'visible' }}>
+                      title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard" style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative' }}>
                       <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                       {window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'pencil' })}
                     </button>
@@ -7879,7 +8087,7 @@
                 <div className="fs-dhx-group">
                   <button className="fs-dhx-ghost fs-dhx-icon" onClick={() => onNavigate('edit')}
                     title="Personnaliser le dashboard" aria-label="Personnaliser le dashboard"
-                    style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative', overflow: 'visible' }}>
+                    style={{ width: 46, padding: 0, fontFamily: T.font, position: 'relative' }}>
                     <svg className="fs-dhx-pen" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                     {window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'pencil' })}
                   </button>
@@ -8108,7 +8316,8 @@
           const next = savedPresets.map(x => x.id === renamingId ? { ...x, name: clean } : x);
           window._fsDashPresetsWrite?.(next);
           setSavedPresets(next);
-          addToast({ message: `Renommé en « ${clean} »`, type: 'success', icon: '✓', duration: 2400 });
+          /* Le nouveau nom s'affiche à la place de l'ancien : le confirmer par
+             écrit revient à lire le résultat à voix haute. */
         }
         setRenamingId(null); setRenameDraft('');
       };
@@ -8517,7 +8726,7 @@
                       <div className="fs-wl-filters">
                         {WIDGET_FILTERS.map(f => (
                           <button key={f.id} type="button" onClick={() => setWidgetFilter(f.id)}
-                            style={{ position: 'relative', overflow: 'visible' }}
+                            style={{ position: 'relative' }}
                             className={'fs-wl-f' + (widgetFilter === f.id ? ' on' : '')}>
                             {f.label}
                             {f.id === 'media' && window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'media' })}
@@ -8534,7 +8743,7 @@
                         return (
                           <CascadeItem key={name} index={i} step={38} style={{ display: 'grid' }}>
                             <div className="fs-wl-card" style={{ position: 'relative' }}>
-                              {name === 'Image' && window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'image', style: { top: -6, right: -6 } })}
+                              {name === 'Image' && window.FsTourBeacon && React.createElement(window.FsTourBeacon, { step: 'image' })}
                               <button type="button" className="fs-wl-main"
                                 onClick={() => addWidget(name, vDefaut)}
                                 title={`Ajouter ${cat.name || name}`}>
@@ -8577,7 +8786,11 @@
                   </div>
                 </div>
               )}
-              <button onClick={() => { onSave(widgets); addToast({ message: 'Dashboard personnalisé enregistré', type: 'success', icon: '✓' }); onNavigate('dashboard'); }} style={{ background: T.c1, border: 'none', borderRadius: 10, padding: '8px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Terminé</button>
+              {/* Pas de notification ici. « Terminé » ramène au dashboard : le
+                  dashboard EST la confirmation, et il l'est même quand rien n'a
+                  changé — cas où l'ancien message annonçait fièrement un
+                  enregistrement qui n'avait rien enregistré. */}
+              <button onClick={() => { onSave(widgets); onNavigate('dashboard'); }} style={{ background: T.c1, border: 'none', borderRadius: 10, padding: '8px 20px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Terminé</button>
             </div>
           </div>
           {!isMobile && <div style={{ flex: 1, padding: '16px 32px', position: 'relative', overflow: 'hidden' }}>
@@ -10872,7 +11085,7 @@
     .fs-account-banner {
       display: block;
       width: 100%;
-      aspect-ratio: 1280 / 448;
+      aspect-ratio: 25 / 7;
       border: 0;
       padding: 0;
       margin: 0;
@@ -10961,7 +11174,7 @@
     .fs-account-banner-locked {
       position: relative;
       width: 100%;
-      aspect-ratio: 1280 / 448;
+      aspect-ratio: 25 / 7;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -11422,21 +11635,36 @@
         window.addEventListener('fs-banner-update', h);
         return () => window.removeEventListener('fs-banner-update', h);
       }, []);
+      /* Choisir un fichier n'enregistre plus directement : on OUVRE l'éditeur de
+         cadrage. Le recadrage automatique au centre coupait les têtes d'une
+         photo de groupe et gardait le vide d'un paysage — et comme personne ne
+         voit sa propre bannière, l'erreur ne se découvrait jamais. */
+      const [cropImage, setCropImage] = React.useState(null);
       const handleBannerFile = async e => {
         const file = e.target.files && e.target.files[0];
         e.target.value = '';
         if (!file) return;
-        setBannerErr(''); setBannerBusy(true);
+        setBannerErr('');
         try {
-          const url = await window._fsBannerFromFile(file);
-          window._fsBannerSave(url);
-          setProfileBanner(url);
+          setCropImage(await window._fsBannerLoadFile(file));
         } catch (err) {
+          setBannerErr('Ce fichier n’a pas pu être lu. Formats acceptés : JPG, PNG, WebP.');
+        }
+      };
+      const applyCrop = (url, err) => {
+        if (err || !url) {
           setBannerErr(err && err.message === 'poids'
             ? 'Image trop lourde même après compression — essaie une photo moins dense.'
-            : 'Ce fichier n’a pas pu être lu. Formats acceptés : JPG, PNG, WebP.');
+            : 'Le cadrage n’a pas pu être appliqué. Réessaie avec une autre image.');
+          setBannerBusy(false);
+          setCropImage(null);
+          return;
         }
+        setBannerBusy(true);
+        window._fsBannerSave(url);
+        setProfileBanner(url);
         setBannerBusy(false);
+        setCropImage(null);
       };
       const clearBanner = () => { window._fsBannerSave(null); setProfileBanner(null); setBannerErr(''); };
       const friendsOpenedAtRef = React.useRef(0);
@@ -12054,6 +12282,16 @@
           </aside>
           {accountOpen && (
             <div className="fs-account-scrim" onMouseDown={e => { if (e.target === e.currentTarget) setAccountOpen(false); }} />
+          )}
+          {/* L'éditeur de cadrage se pose PAR-DESSUS le panneau de profil : on
+              ne quitte pas l'écran où l'on travaille, et le panneau reste
+              derrière comme repère. */}
+          {cropImage && window.BannerCropper && (
+            React.createElement(window.BannerCropper, {
+              image: cropImage, busy: bannerBusy,
+              onCancel: () => setCropImage(null),
+              onDone: applyCrop,
+            })
           )}
           {accountOpen && (
             <div ref={accountRef} className="fs-account-panel" role="dialog" aria-modal="true" aria-label="Mon profil" onClick={e => e.stopPropagation()}>
@@ -12716,7 +12954,9 @@ void main(){
         setTimeout(() => {
           setTasks(ts => ts.map(t => t.id === id ? { ...t, done: !t.done } : t));
           setAnimId(null);
-          if (task && !task.done) addToast({ message: 'Énergie de focus capturée', type: 'success', icon: '◆' });
+          /* Cocher une tâche se VOIT (coche, barré, animation) : la commenter
+             par « Énergie de focus capturée » n'ajoutait rien — et sur une
+             liste, c'était une notification par clic. */
         }, 220);
       };
       const remove = (id) => {
@@ -12734,7 +12974,7 @@ void main(){
           if (!t) return ts;
           return [...ts.filter(x => x.id !== id), { ...t, snoozed: Date.now() }];
         });
-        addToast({ message: 'Reportée en fin de file', type: 'info', icon: '↓' });
+        /* La tâche se déplace sous les yeux : rien à annoncer. */
       };
       const addTask = () => {
         if (!inputVal.trim()) {
@@ -13470,7 +13710,8 @@ void main(){
               onPick={v => {
                 setView(v);
                 setViewPickerOpen(false);
-                addToast({ message: `Affichage « ${(TASK_VIEWS.find(x => x.id === v) || TASK_VIEWS[0]).name} » activé`, type: 'success', icon: '▦' });
+                /* Toute la vue bascule à l'écran — l'annoncer en plus est une
+                   redondance pure. */
               }}
               onClose={() => setViewPickerOpen(false)} />
           )}
@@ -13570,7 +13811,8 @@ void main(){
         setPreview(false);
         setView('edit');
         setMobilePane('editor');
-        addToast({ message:'Nouvelle note créée', type:'success', icon:'+' });
+        /* La note apparaît, sélectionnée, curseur dedans : la confirmation est
+           déjà à l'écran et sous le curseur. */
       };
       const duplicateNote = () => {
         if (!selected) return;
@@ -15786,158 +16028,6 @@ void main(){
        signature visuelle (desktop) et le flux d'énergie relie désormais les
        rangées au cristal. Mobile : colonne pure, cristal et canvas coupés
        (léger pour les petites machines). */
-    /* ══ BANNIÈRE DE PROFIL ════════════════════════════════════════════════
-       Motif Discord : une image large derrière l'avatar, qui n'apparaît que
-       chez les autres. L'écran montre donc EXACTEMENT la carte telle qu'un ami
-       la verra — sans cet aperçu, on personnalise à l'aveugle quelque chose
-       qu'on ne verra jamais soi-même. */
-    function ProfilScreen({ onNavigate, user }) {
-      const [banner, setBanner] = _uPX(() => (window._fsBannerRead ? window._fsBannerRead() : null));
-      const [busy, setBusy] = _uPX(false);
-      const [err, setErr] = _uPX('');
-      const [drag, setDrag] = _uPX(false);
-      const fileRef = _uRefPX(null);
-      const prog = window._fsBannerProgress ? window._fsBannerProgress(user?.id) : { ok: true, crystals: 0, needCrystals: 10, friends: 0, needFriends: 1 };
-      const unlocked = prog.ok;
-      const photo = (() => { try { return localStorage.getItem('fs_img_profile') || (JSON.parse(localStorage.getItem('fs_user') || '{}').photo) || null; } catch (e) { return null; } })();
-      const name = user?.name || (user?.email || '').split('@')[0] || 'Toi';
-      const initial = (name[0] || '?').toUpperCase();
-
-      const take = async (file) => {
-        if (!unlocked || !file) return;
-        setErr(''); setBusy(true);
-        try {
-          const url = await window._fsBannerFromFile(file);
-          window._fsBannerSave(url);
-          setBanner(url);
-        } catch (e) {
-          setErr(e && e.message === 'poids'
-            ? 'Image trop lourde même après compression — essaie une photo moins dense.'
-            : 'Ce fichier n’a pas pu être lu. Formats acceptés : JPG, PNG, WebP.');
-        }
-        setBusy(false);
-      };
-      const clear = () => { window._fsBannerSave(null); setBanner(null); setErr(''); };
-
-      return (
-        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <style>{`
-            .fsPfScroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:clamp(18px,3vh,34px) clamp(16px,3vw,40px) calc(var(--fs-navspace) + 20px)}
-            .fsPfInner{max-width:760px;margin:0 auto}
-            .fsPfTitle{font-family:var(--font-display);font-weight:700;font-size:clamp(22px,3vh,32px);letter-spacing:-.035em;line-height:1.05;color:rgba(255,255,255,.96);margin-bottom:8px}
-            .fsPfSub{font-size:13px;color:rgba(255,255,255,.5);line-height:1.55;max-width:52ch;margin-bottom:26px}
-            .fsPfLbl{font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:0 0 10px}
-            /* Carte de profil : ce que l'AMI verra, au pixel près. */
-            .fsPfCard{position:relative;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.09);
-              background:rgba(255,255,255,.03);box-shadow:0 20px 50px rgba(0,0,0,.32)}
-            .fsPfBanner{position:relative;height:150px;background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.35),rgba(var(--theme-c2-rgb),.22));
-              background-size:cover;background-position:center}
-            .fsPfBanner::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(6,8,16,.72))}
-            .fsPfBody{padding:0 20px 20px;display:flex;align-items:flex-end;gap:14px;margin-top:-32px;position:relative;z-index:1}
-            .fsPfAvatar{width:76px;height:76px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;overflow:hidden;
-              border:4px solid rgba(10,12,20,.92);background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
-              font-family:var(--font-display);font-weight:800;font-size:28px;color:#07070d}
-            .fsPfAvatar img{width:100%;height:100%;object-fit:cover}
-            .fsPfName{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.03em;color:#fff;padding-bottom:6px}
-            /* Zone de dépôt */
-            .fsPfDrop{margin-top:18px;border-radius:16px;border:1.5px dashed rgba(255,255,255,.16);padding:22px 18px;text-align:center;
-              background:rgba(255,255,255,.02);transition:border-color .18s,background .18s}
-            .fsPfDrop.on{border-color:rgba(var(--theme-c1-rgb),.6);background:rgba(var(--theme-c1-rgb),.07)}
-            .fsPfDrop.off{opacity:.5;pointer-events:none}
-            .fsPfBtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:13px;
-              border:1px solid rgba(255,255,255,.2);cursor:pointer;font:900 13px var(--font-body);color:#06140a;
-              background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.95),rgba(var(--theme-c2-rgb),.95))}
-            .fsPfBtn[disabled]{opacity:.55;cursor:default}
-            .fsPfGhost{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 15px;border-radius:12px;cursor:pointer;
-              border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:rgba(248,246,252,.86);font:800 12px var(--font-body)}
-            .fsPfHint{font-size:11.5px;color:rgba(255,255,255,.42);margin-top:10px;line-height:1.5}
-            .fsPfErr{margin-top:12px;font-size:12px;font-weight:700;color:#fda4af;background:rgba(251,113,133,.1);
-              border:1px solid rgba(251,113,133,.24);border-radius:11px;padding:9px 12px;line-height:1.45}
-            /* Palier verrouillé : on MONTRE l'objectif et la distance. */
-            .fsPfLock{margin-top:18px;border-radius:16px;border:1px solid rgba(var(--theme-c1-rgb),.22);
-              background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.10),rgba(255,255,255,.02));padding:18px}
-            .fsPfLockTitle{font:900 13px var(--font-body);color:#fff;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-            .fsPfLockSub{font-size:12px;color:rgba(255,255,255,.6);line-height:1.55;margin-bottom:14px}
-            .fsPfGoal{display:flex;align-items:center;gap:10px;margin-top:9px}
-            .fsPfGoalBar{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
-            .fsPfGoalBar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--theme-c1),var(--theme-c2))}
-            .fsPfGoalTxt{font:800 11px var(--font-body);color:rgba(255,255,255,.72);font-variant-numeric:tabular-nums;white-space:nowrap}
-            @media (max-width:640px){
-              .fsPfBanner{height:112px}
-              .fsPfAvatar{width:62px;height:62px;font-size:22px;border-width:3px}
-              .fsPfBody{margin-top:-26px;padding:0 16px 16px}
-            }
-          `}</style>
-          <div className="fsPfScroll">
-            <div className="fsPfInner">
-              <button type="button" className="fs-back-btn" onClick={() => onNavigate('perso')} style={{ marginBottom: 16 }}>
-                <svg width={12} height={12} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Personnalisation
-              </button>
-              <div className="fsPfTitle">Bannière de profil</div>
-              <div className="fsPfSub">L’image qui accueille tes amis quand ils ouvrent ton espace. Toi, tu ne la vois qu’ici — c’est pour eux.</div>
-
-              <div className="fsPfLbl">Ce que voient tes amis</div>
-              <div className="fsPfCard">
-                <div className="fsPfBanner" style={banner ? { backgroundImage: `url(${banner})` } : undefined} />
-                <div className="fsPfBody">
-                  <div className="fsPfAvatar">{photo ? <img src={photo} alt="" /> : initial}</div>
-                  <div className="fsPfName">{name}</div>
-                </div>
-              </div>
-
-              {!unlocked ? (
-                <div className="fsPfLock">
-                  <div className="fsPfLockTitle">
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-                    Bientôt disponible
-                  </div>
-                  <div className="fsPfLockSub">
-                    Une bannière n’a de sens que si quelqu’un la voit. Elle s’ouvre quand ta grotte a du contenu à montrer <b style={{ color: '#fff' }}>et</b> que tu as au moins un ami pour la regarder.
-                  </div>
-                  <div className="fsPfGoal">
-                    <span className="fsPfGoalTxt">Cristaux</span>
-                    <span className="fsPfGoalBar"><i style={{ width: Math.min(100, prog.crystals / prog.needCrystals * 100) + '%' }} /></span>
-                    <span className="fsPfGoalTxt">{Math.min(prog.crystals, prog.needCrystals)} / {prog.needCrystals}</span>
-                  </div>
-                  <div className="fsPfGoal">
-                    <span className="fsPfGoalTxt">Amis&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                    <span className="fsPfGoalBar"><i style={{ width: Math.min(100, prog.friends / prog.needFriends * 100) + '%' }} /></span>
-                    <span className="fsPfGoalTxt">{Math.min(prog.friends, prog.needFriends)} / {prog.needFriends}</span>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
-                    onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; take(f); }} />
-                  <div className={'fsPfDrop' + (drag ? ' on' : '') + (busy ? ' off' : '')}
-                    onDragOver={e => { e.preventDefault(); setDrag(true); }}
-                    onDragLeave={() => setDrag(false)}
-                    onDrop={e => { e.preventDefault(); setDrag(false); take(e.dataTransfer?.files?.[0]); }}>
-                    <button type="button" className="fsPfBtn" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
-                      {busy ? 'Préparation…' : banner ? 'Remplacer l’image' : 'Choisir une image'}
-                    </button>
-                    <div className="fsPfHint">Glisse un fichier ici, ou clique. Recadrée automatiquement en 1280 × 448 — prévois une image large.</div>
-                    {banner && (
-                      <button type="button" className="fsPfGhost" style={{ marginTop: 12 }} onClick={clear}>
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13" /></svg>
-                        Retirer la bannière
-                      </button>
-                    )}
-                  </div>
-                  {err && <div className="fsPfErr" role="alert">{err}</div>}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-    window.ProfilScreen = ProfilScreen;
-
     function PersonnalisationScreen({ onNavigate, bgThemeId, onApplyTheme, user }) {
       const [hov, setHov] = _uPX(null);
       /* Refs mesurées par FluxEnergyCanvas (alignement DOM réel) ;
@@ -15996,20 +16086,21 @@ void main(){
         try { return TASK_VIEW_NAMES[localStorage.getItem('fs_task_view')] || 'Liste'; } catch (e) { return 'Liste'; }
       })();
 
-      const bannerState = (() => {
-        const p = window._fsBannerProgress ? window._fsBannerProgress(user?.id) : { ok: true };
-        if (!p.ok) return 'Verrouillée';
-        return (window._fsBannerRead && window._fsBannerRead()) ? 'Personnalisée' : 'À définir';
-      })();
+      /* ══ LA BANNIÈRE N'A PLUS QU'UN SEUL ENDROIT ═════════════════════════════
+         Elle vivait ICI (Personnalisation → Profil) ET dans le panneau de
+         profil (Paramètres → Mon profil) : deux écrans, deux aperçus, deux
+         zones de dépôt, pour un seul réglage. Un utilisateur qui en modifiait
+         un se demandait légitimement ce que faisait l'autre.
+         Elle appartient au PROFIL, pas à la personnalisation de l'espace : ce
+         n'est pas un thème ni un style de widget, c'est une pièce d'identité,
+         au même titre que la photo et le nom — et c'est là qu'elle est
+         désormais, juste au-dessus d'eux. Cette carte disparaît donc. */
       const CARDS = [
         { id:'fond',    target:'fond',        title:'Thèmes & fond',  desc:'Couleurs, dégradés et ambiance de fond',        state: currentThemeName || 'Mineral OS', c1:'#a5b8ff', icon:<path d="M4 14c4-7 12-7 16 0"/> },
         { id:'fonts',   target:'fonts',       title:'Polices',        desc:'La voix typographique de ton espace',           state: fontName,    c1:'#f0c38e', icon:<path d="M5 18 10 5h4l5 13M7 14h10"/> },
         { id:'widgets', target:'variants',    title:'Widgets',        desc:'Styles, variantes et apparence globale',        state: widgetState, c1:'#4ade80', icon:<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/> },
         { id:'notes',   target:'notes-style', title:'Carte de notes', desc:'Le style visuel de ta carte mentale',           state: noteState,   c1:'#67e8f9', icon:<path d="M7 7h.01M17 7h.01M12 17h.01M7 7l5 10M17 7l-5 10M7 7h10"/> },
         { id:'tasks',   target:'tasks',       title:'Tâches',         desc:'Liste, Kanban ou Focus — ton organisation',     state: taskState,   c1:'#fb7185', icon:<path d="M9 6h11M9 12h11M9 18h11M4 5.5l1.2 1.2L7.5 4.4M4 11.5l1.2 1.2 2.3-2.3M4 17.5l1.2 1.2 2.3-2.3"/> },
-        /* La carte reste VISIBLE avant son palier, avec son état « Verrouillée » :
-           un objectif qu'on ne voit pas ne motive personne. */
-        { id:'profil',  target:'profil',      title:'Profil',         desc:'La bannière que voient tes amis',               state: bannerState, c1:'#c4b5fd', icon:<path d="M4 7h16v10H4zM4 13l4.5-4 3.5 3 3-2.5L20 14"/> },
       ];
 
       return (
@@ -16562,7 +16653,9 @@ void main(){
       const selectFont = preset => {
         if (!preset) return;
         onApply && onApply(preset);
-        addToast({ message: `Police ${preset.name} appliquée`, type: 'success', icon: 'Aa' });
+        /* La typographie de TOUTE l'interface vient de changer sous les yeux,
+           notification comprise : c'est la démonstration la plus complète
+           possible du résultat. */
       };
 
       return (
@@ -16809,12 +16902,29 @@ void main(){
         setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 340);
       }, []);
 
-      const addToast = React.useCallback(({ message, type = 'info', duration = 4200, action, icon }) => {
+      /* `icon` est encore accepté pour ne casser aucun appel, mais il est
+         IGNORÉ : c'était une chaîne de caractères (« ✓ », « ✕ », « → », « Aa »)
+         rendue telle quelle. Des glyphes de police dans l'UI, que le projet
+         proscrit, et dont le dessin changeait d'une plateforme à l'autre —
+         certains tombaient même en émoji couleur sur Windows. L'icône se déduit
+         maintenant du `type`, seule source cohérente. */
+      const addToast = React.useCallback(({ message, type = 'info', duration = 4200, action }) => {
+        const texte = String(message == null ? '' : message).trim();
+        /* Une notification vide n'apprend rien et vole la place de la
+           suivante : on la refuse à la source. */
+        if (!texte) return null;
         const id = Date.now() + Math.random();
-        /* UNE notification à la fois : les précédentes sortent immédiatement
-           (animation de sortie) au lieu de s'empiler et de gêner la lecture. */
-        setToasts(ts => [...ts.map(t => ({ ...t, exiting: true })), { id, message, type, duration, action, icon, exiting: false }]);
-        setTimeout(() => setToasts(ts => ts.filter(t => t.id === id || !t.exiting)), 340);
+        setToasts(ts => {
+          /* Répétition immédiate du même message (double clic, effet qui
+             re-déclenche) : on garde la première et on relance juste son
+             minuteur, au lieu d'empiler deux fois la même phrase. */
+          const dernier = ts.filter(t => !t.exiting).slice(-1)[0];
+          if (dernier && dernier.message === texte) return ts;
+          /* UNE notification à la fois : les précédentes sortent immédiatement
+             au lieu de s'empiler et de gêner la lecture. */
+          return [...ts.map(t => ({ ...t, exiting: true })), { id, message: texte, type, duration, action, exiting: false }];
+        });
+        setTimeout(() => setToasts(ts => ts.filter(t => t.id === id || !t.exiting)), 260);
         if (duration > 0) {
           timersRef.current[id] = setTimeout(() => removeToast(id), duration);
         }
@@ -16828,72 +16938,51 @@ void main(){
       }, []);
 
       const COLORS = { info: T.c1, success: T.green, warning: T.warm, error: T.rose };
+      /* Un dessin par type, à la même grille et au même trait que le reste du
+         set maison (grille 24, trait ~2). */
+      const ICONS = {
+        success: <path d="M4.5 12.5l5 5 10-11" />,
+        error:   <path d="M6 6l12 12M18 6L6 18" />,
+        warning: <><path d="M12 4.5l8.5 15h-17z" /><path d="M12 10v4M12 17h.01" /></>,
+        info:    <><circle cx="12" cy="12" r="8.5" /><path d="M12 8h.01M12 11.5v5" /></>,
+      };
 
       return React.createElement(ToastContext.Provider, { value: { addToast } },
         children,
-        React.createElement('div', {
-          style: { position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 99999, display: 'flex', flexDirection: 'column-reverse', gap: 10, alignItems: 'center', pointerEvents: 'none' }
-        },
-          toasts.map(t => {
+        <div className="fs-toast-wrap" role="region" aria-label="Notifications">
+          {toasts.map(t => {
             const col = COLORS[t.type] || COLORS.info;
-            return React.createElement('div', {
-              key: t.id,
-              style: {
-                pointerEvents: 'auto',
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '13px 20px', minWidth: 300, maxWidth: 480,
-                background: 'rgba(9,8,17,0.92)',
-                backdropFilter: 'blur(24px) saturate(160%)',
-                WebkitBackdropFilter: 'blur(24px) saturate(160%)',
-                border: `1px solid rgba(255,255,255,0.09)`,
-                borderRadius: 16,
-                boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04), 0 0 40px ${col}12`,
-                fontFamily: T.font,
-                animation: t.exiting ? 'toastOut 0.32s cubic-bezier(0.4,0,1,1) forwards' : 'toastIn 0.38s cubic-bezier(0.34,1.56,0.64,1) both',
-                position: 'relative', overflow: 'hidden',
-              }
-            },
-              /* Icon */
-              React.createElement('div', {
-                style: { width: 28, height: 28, borderRadius: 10, background: `${col}18`, border: `1px solid ${col}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
-              },
-                t.icon
-                  ? React.createElement('span', { style: { fontSize: 14, lineHeight: 1 } }, t.icon)
-                  : t.type === 'success'
-                    ? React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 13 13', fill: 'none' },
-                        React.createElement('path', { d: 'M2 6.5L5.5 10l5.5-6', stroke: col, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }))
-                    : t.type === 'error'
-                      ? React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 13 13', fill: 'none' },
-                          React.createElement('path', { d: 'M3 3l7 7M10 3l-7 7', stroke: col, strokeWidth: 1.8, strokeLinecap: 'round' }))
-                      : React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 13 13', fill: 'none' },
-                          React.createElement('circle', { cx: 6.5, cy: 6.5, r: 5, stroke: col, strokeWidth: 1.4 }),
-                          React.createElement('path', { d: 'M6.5 4.5v3M6.5 9h.01', stroke: col, strokeWidth: 1.4, strokeLinecap: 'round' }))
-              ),
-              /* Message */
-              React.createElement('span', {
-                style: { flex: 1, fontSize: 13, fontWeight: 600, color: 'rgba(248,246,252,0.88)', letterSpacing: '-0.01em' }
-              }, t.message),
-              /* Action button (e.g. Undo) */
-              t.action && React.createElement('button', {
-                onClick: () => handleAction(t.id, t.action.fn),
-                style: { background: `${col}18`, border: `1px solid ${col}33`, borderRadius: 8, padding: '5px 14px', color: col, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.17s', flexShrink: 0, letterSpacing: '0.02em' },
-                onMouseEnter: e => { e.currentTarget.style.background = `${col}30`; },
-                onMouseLeave: e => { e.currentTarget.style.background = `${col}18`; }
-              }, t.action.label),
-              /* Close */
-              React.createElement('button', {
-                onClick: () => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); },
-                style: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1, flexShrink: 0, transition: 'color 0.15s' },
-                onMouseEnter: e => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; },
-                onMouseLeave: e => { e.currentTarget.style.color = 'rgba(255,255,255,0.25)'; }
-              }, '×'),
-              /* Progress bar */
-              t.duration > 0 && !t.exiting && React.createElement('div', {
-                style: { position: 'absolute', bottom: 0, left: 0, height: 2, background: `linear-gradient(90deg, ${col}66, ${col})`, borderRadius: '0 0 16px 16px', animation: `toastProgress ${t.duration}ms linear forwards` }
-              })
+            return (
+              <div key={t.id}
+                className={'fs-toast' + (t.exiting ? ' is-out' : '')}
+                role={t.type === 'error' || t.type === 'warning' ? 'alert' : 'status'}
+                aria-live={t.type === 'error' || t.type === 'warning' ? 'assertive' : 'polite'}
+                style={{ '--toast-c': col, '--toast-tint': col + '1f' }}>
+                <span className="fs-toast-ico" aria-hidden="true">
+                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
+                    {ICONS[t.type] || ICONS.info}
+                  </svg>
+                </span>
+                <span className="fs-toast-msg">{t.message}</span>
+                <span className="fs-toast-side">
+                  {t.action && (
+                    <button type="button" className="fs-toast-act"
+                      onClick={() => handleAction(t.id, t.action.fn)}>{t.action.label}</button>
+                  )}
+                  <button type="button" className="fs-toast-x" aria-label="Fermer la notification"
+                    onClick={() => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); }}>
+                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth={2.6} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                  </button>
+                </span>
+                {t.duration > 0 && !t.exiting && (
+                  <i className="fs-toast-bar" aria-hidden="true" style={{ animationDuration: t.duration + 'ms' }} />
+                )}
+              </div>
             );
-          })
-        )
+          })}
+        </div>
       );
     }
     window.ToastProvider = ToastProvider;
@@ -17448,8 +17537,10 @@ void main(){
         try { localStorage.setItem('fs_user', JSON.stringify(nextUser)); } catch (_) {}
         onUserUpdate && onUserUpdate(nextUser);
         try { window._fsFlushPush?.(true); } catch (_) {}
+        /* `flashSave()` allume déjà une confirmation À L'ENDROIT du bouton, là
+           où l'œil se trouve. La notification disait la même chose 600 px plus
+           loin, en couvrant l'écran. */
         flashSave();
-        addToast({ message: 'Modifications enregistrées', type: 'success', icon: '✓' });
       };
       const resetAll = () => {
         setPrefs({ ...DEFAULTS });
@@ -20039,7 +20130,6 @@ void main(){
                 {screen === 'notes' && window.NotesScreen && React.createElement(window.NotesScreen, { onNavigate: go })}
                 {screen === 'edit' && <EditModeScreen onNavigate={go} widgets={widgets} onSave={setWidgets} />}
                 {screen === 'perso' && <PersonnalisationScreen onNavigate={go} bgThemeId={bgThemeId} onApplyTheme={applyBgTheme} user={user} />}
-                {screen === 'profil' && window.ProfilScreen && React.createElement(window.ProfilScreen, { onNavigate: go, user })}
                 {screen === 'settings' && <SettingsScreen onNavigate={go} user={user} onUserUpdate={handleUserUpdate} bgThemeId={bgThemeId} onApply={applyBgTheme} onLogout={handleLogout} widgetStyle={widgetStyle} onWidgetStyleChange={setWidgetStyle} />}
                 {screen === 'fond' && <FondScreen onNavigate={go} bgThemeId={bgThemeId} onApply={applyBgTheme} />}
                 {screen === 'fonts' && window.FontScreen && React.createElement(window.FontScreen, { onNavigate: go, fontId: fontPresetId, onApply: applyFontPreset })}
@@ -20668,20 +20758,69 @@ void main(){
         transform:translateY(-2px);
         box-shadow:0 12px 32px rgba(0,0,0,0.4);
       }
-      .fs-friend-actions { display:none; gap:6px; align-items:center; flex-shrink:0; }
-      .fs-friend-card:hover .fs-friend-actions { display:flex; }
-      /* « Session » est l'action à valeur de la carte : elle est la seule
-         remplie, les autres restent en creux. Une seule hiérarchie possible,
-         donc aucune hésitation sur quoi cliquer. */
-      .fs-friend-session { display:flex; align-items:center; gap:5px; flex-shrink:0;
-        border-radius:10px; padding:5px 11px; cursor:pointer; white-space:nowrap;
-        border:1px solid transparent; font:800 10px var(--font-body); letter-spacing:0.04em;
+      /* ══ LA LIGNE D'AMI ÉTAIT SURCHARGÉE ═════════════════════════════════════
+         Au survol, une ligne de 360 px devait tenir : avatar, nom, pastille
+         « Hors ligne », email, puis TROIS boutons qui apparaissaient d'un coup
+         (Voir, Session, croix). Le texte se faisait écraser, et la pastille
+         d'état — un objet arrondi, coloré, de la taille d'un bouton — se
+         retrouvait collée à de vrais boutons : on ne savait plus ce qui se
+         cliquait. Trois corrections.
+         1) L'ÉTAT QUITTE LA LIGNE DE TEXTE. La présence est une propriété de la
+            PERSONNE : elle va sur l'avatar, en pastille d'angle, comme partout
+            ailleurs (messageries, réseaux). Le nom et l'email récupèrent toute
+            la largeur, et plus rien ne ressemble à un bouton sans en être un.
+         2) « VOIR » DISPARAÎT. Cliquer la ligne ouvrait DÉJÀ le profil : le
+            bouton était un doublon qui prenait la place du reste.
+         3) LA PLACE EST RÉSERVÉE. Les actions passent en opacité, pas en
+            display : la ligne ne se réorganise plus sous le curseur. */
+      .fs-friend-actions {
+        display:flex; gap:7px; align-items:center; flex-shrink:0;
+        opacity:0; transform:translateX(6px);
+        transition:opacity .18s var(--mineral-ease), transform .18s var(--mineral-ease);
+      }
+      .fs-friend-card:hover .fs-friend-actions,
+      .fs-friend-card:focus-within .fs-friend-actions { opacity:1; transform:none; }
+      /* Pastille de présence sur l'avatar. Le liseré sombre la détache quelle
+         que soit la photo dessous. */
+      .fs-friend-av { position:relative; flex-shrink:0; }
+      .fs-friend-dot {
+        position:absolute; right:-1px; bottom:-1px; width:13px; height:13px; border-radius:50%;
+        border:2.5px solid var(--mineral-bg,#0b0e14); box-sizing:border-box;
+        background:rgba(150,150,170,0.85);
+      }
+      .fs-friend-dot.on { background:#4ade80; box-shadow:0 0 10px rgba(74,222,128,0.85); }
+      /* « Session » est la seule action remplie : une hiérarchie unique, donc
+         aucune hésitation sur quoi cliquer. */
+      .fs-friend-session { display:flex; align-items:center; gap:6px; flex-shrink:0;
+        border-radius:11px; padding:0 13px; height:32px; cursor:pointer; white-space:nowrap;
+        border:1px solid transparent; font:800 11px var(--font-body); letter-spacing:0.02em;
         color:#07070d; background:linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
         box-shadow:0 4px 14px rgba(var(--theme-c1-rgb),0.28);
         transition:transform .17s var(--mineral-ease), box-shadow .17s var(--mineral-ease); }
       .fs-friend-session:hover { transform:translateY(-1px);
         box-shadow:0 7px 20px rgba(var(--theme-c1-rgb),0.40); }
       .fs-friend-session:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+      /* ── Hors ligne : l'action reste VISIBLE mais inerte ──
+         La masquer ferait disparaître la fonctionnalité sans jamais expliquer
+         qu'elle existe ni ce qui la rend disponible. On la montre donc éteinte,
+         avec la raison en clair — l'utilisateur apprend la règle (« il faut
+         qu'il soit là ») au lieu de constater un vide. */
+      .fs-friend-session.is-off {
+        cursor:not-allowed; color:rgba(248,246,252,0.42);
+        background:rgba(255,255,255,0.045); border-color:rgba(255,255,255,0.09);
+        box-shadow:none; }
+      .fs-friend-session.is-off:hover { transform:none; box-shadow:none;
+        background:rgba(255,255,255,0.06); }
+      .fs-friend-x {
+        width:32px; height:32px; border-radius:11px; flex-shrink:0; padding:0;
+        display:flex; align-items:center; justify-content:center; cursor:pointer;
+        background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.08);
+        color:rgba(248,246,252,0.42);
+        transition:background .17s var(--mineral-ease), color .17s var(--mineral-ease), border-color .17s var(--mineral-ease); }
+      /* Le rouge n'apparaît qu'au survol du bouton lui-même : une action
+         destructive ne doit pas crier tant qu'elle n'est pas visée. */
+      .fs-friend-x:hover { background:rgba(251,113,133,0.16); border-color:rgba(251,113,133,0.34); color:#fb7185; }
+      .fs-friend-x:focus-visible { outline:2px solid #fb7185; outline-offset:2px; }
       .fs-friend-card:focus-visible {
         outline:2px solid rgba(var(--theme-c1-rgb),0.65);
         outline-offset:3px;
@@ -20817,19 +20956,31 @@ void main(){
       /* Bannière : couvre le haut de la carte, derrière l'en-tête. Le voile
          sombre est indispensable — sans lui, une image claire rendrait le nom
          et l'email illisibles. */
-      .fs-preview-banner { position:absolute; top:0; left:0; right:0; height:190px; z-index:0;
+      /* Le cadre porte le ratio canonique (25:7) au lieu d'une hauteur fixe :
+         c'est ce qui garantit que le remplissage en « cover » n'a plus rien à
+         retrancher, et donc que l'image validée à l'upload est exactement
+         celle-ci. Une hauteur en pixels sur une largeur fluide, c'était un
+         ratio qui changeait à chaque écran — impossible à cadrer correctement.
+         (Pas d'accent grave ici : ce bloc est un littéral de gabarit JS.) */
+      .fs-preview-banner { position:absolute; top:0; left:0; right:0; aspect-ratio:25 / 7; z-index:0;
         background-size:cover; background-position:center; pointer-events:none; }
       .fs-preview-banner::after { content:''; position:absolute; inset:0;
         background:linear-gradient(180deg, rgba(6,8,16,0.30) 0%, rgba(6,8,16,0.72) 62%, var(--mineral-bg,#0b0e14) 100%); }
-      @media (max-width:640px) { .fs-preview-banner { height:150px; } }
       html.fs-reduce-motion .fs-preview-vitrine, html.fs-reduce-motion .fs-pv-cell,
       html.fs-reduce-motion .fs-pv-cell.legendary .fs-pv-gem::before { animation:none !important; }
       @media (max-width:1080px) {
         .fs-preview-vitrine { width:270px; }
       }
+      /* Sans survol (tactile), les actions sont toujours là : il n'existe aucun
+         geste pour « survoler » une ligne au doigt. */
       @media (hover: none), (max-width: 768px) {
-        .fs-friend-actions { display:flex; }
-        .fs-friend-card { align-items:flex-start; }
+        .fs-friend-actions { opacity:1; transform:none; }
+      }
+      /* Sous 400 px, le libellé du bouton tombe : l'icône seule reste
+         compréhensible dans son contexte, et le nom garde sa place. */
+      @media (max-width: 400px) {
+        .fs-friend-session { padding:0; width:32px; justify-content:center; }
+        .fs-friend-session span { display:none; }
       }
       @keyframes friendsSheetUp {
         from { opacity:0; transform:translateY(48px); }
@@ -21293,62 +21444,53 @@ void main(){
 
     /* ── FriendCard ─────────────────────────────────────────────────────── */
     function FriendCard({ friend, onPreview, onRemove, onSession, index }) {
-      const [hov, setHov] = React.useState(false);
       const fc = friendColor(friend.name || friend.email);
       const initials = (friend.name || friend.email || '?')[0].toUpperCase();
       const lastSeenMs = friend.updatedAt ? new Date(friend.updatedAt).getTime() : 0;
       const online = !!friend.online || (!!lastSeenMs && Date.now() - lastSeenMs < 2 * 60 * 1000);
-      const statusLabel = online ? 'En ligne' : 'Hors ligne';
+      const nom = friend.name || friend.email.split('@')[0];
       return (
-        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${friend.name || friend.email}`} style={{ animationDelay: `${Math.min(index, 6) * 0.032}s` }}
-          onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        <div className="fs-friend-card" role="button" tabIndex={0} aria-label={`Voir le dashboard de ${nom}`} style={{ animationDelay: `${Math.min(index, 6) * 0.032}s` }}
           onKeyDown={e=>{ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPreview(); } }}
           onClick={onPreview}>
-          {/* Avatar */}
-          <div style={{ width:42, height:42, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}88)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:17, color:'#07070d', flexShrink:0, boxShadow:`0 4px 16px ${fc}44`, overflow:'hidden' }}>
-            {friend.photo ? <img src={friend.photo} alt={initials} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
+          {/* Avatar + présence : l'état de la personne est porté par la
+              personne, pas par une pastille posée à côté de son nom. */}
+          <div className="fs-friend-av">
+            <div style={{ width:42, height:42, borderRadius:'50%', background:`linear-gradient(135deg,${fc},${fc}88)`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:T.display, fontWeight:800, fontSize:17, color:'#07070d', boxShadow:`0 4px 16px ${fc}44`, overflow:'hidden' }}>
+              {friend.photo ? <img src={friend.photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : initials}
+            </div>
+            <span className={'fs-friend-dot' + (online ? ' on' : '')}
+              role="img" aria-label={online ? 'En ligne' : 'Hors ligne'} title={online ? 'En ligne' : 'Hors ligne'} />
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.name || friend.email.split('@')[0]}</div>
-              <span style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:5, height:18, borderRadius:99, padding:'0 7px', background:online?'rgba(74,222,128,0.12)':'rgba(255,255,255,0.045)', border:`1px solid ${online?'rgba(74,222,128,0.24)':'rgba(255,255,255,0.07)'}`, color:online?T.green:T.muted, fontSize: 10, fontWeight:800 }}>
-                <i style={{ width:5, height:5, borderRadius:'50%', background:online?T.green:'rgba(255,255,255,0.34)', boxShadow:online?'0 0 10px rgba(74,222,128,0.7)':'none' }} />
-                {statusLabel}
-              </span>
-            </div>
-            <div style={{ fontSize:11, color:T.muted, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.email}</div>
+            <div style={{ fontSize:13.5, fontWeight:700, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', letterSpacing:'-0.01em' }}>{nom}</div>
+            <div style={{ fontSize:11.5, color:T.muted, marginTop:3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{friend.email}</div>
           </div>
           <div className="fs-friend-actions">
-            <button type="button" className="fs-friend-action" style={{ display:'flex', alignItems:'center', gap:4, background:c1(0.1), border:`1px solid ${c1(0.26)}`, borderRadius:10, padding:'5px 10px', fontSize:10, fontWeight:700, color:T.c1, letterSpacing:'0.04em', cursor:'pointer', transition:'all 0.17s' }}
-              onClick={e=>{e.stopPropagation();onPreview();}}
-              onMouseEnter={e=>{e.currentTarget.style.background=c1(0.2);}}
-              onMouseLeave={e=>{e.currentTarget.style.background=c1(0.1);}}>
-              Voir
-              <svg width={9} height={9} viewBox="0 0 10 10" fill="none" style={{marginLeft:3}}><path d="M2 5h6M5.5 2l3 3-3 3" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
             {/* ══ INVITER, DEPUIS L'ENDROIT OÙ L'ENVIE NAÎT ══════════════════
                C'est en regardant qui est là qu'on a envie de travailler avec
                quelqu'un — pas en remplissant un formulaire. L'action vit donc
-               sur la personne. Elle passe DEVANT « Voir » : proposer une
-               session a plus de valeur que regarder un dashboard, et c'est la
-               seule des deux qui crée quelque chose.
-               Elle reste active hors ligne : l'invitation est persistée en base
-               et attend le retour de l'ami — la refuser ici serait fermer la
-               porte pour une raison qui n'en est pas une. */}
+               sur la personne.
+               Elle exige que l'ami soit EN LIGNE. Une session « ensemble » est
+               un rendez-vous synchrone : l'inviter absent, c'est produire une
+               attente que rien ne viendra combler, et l'hôte reste seul devant
+               un salon vide sans savoir pourquoi. Le bouton reste visible mais
+               éteint, avec la raison — on apprend la règle plutôt que de
+               chercher un bouton disparu. */}
             {onSession && (
-              <button type="button" className="fs-friend-action fs-friend-session"
-                aria-label={`Lancer une session avec ${friend.name || friend.email}`}
-                title={online ? 'Lancer une session ensemble' : 'Inviter — il la recevra à son retour'}
-                onClick={e => { e.stopPropagation(); onSession(); }}>
+              <button type="button"
+                className={'fs-friend-session' + (online ? '' : ' is-off')}
+                aria-disabled={!online}
+                aria-label={online ? `Lancer une session avec ${nom}` : `${nom} est hors ligne — session indisponible`}
+                title={online ? 'Lancer une session ensemble' : `${nom} doit être en ligne pour démarrer une session à deux`}
+                onClick={e => { e.stopPropagation(); if (online) onSession(); }}>
                 <svg width={9} height={9} viewBox="0 0 12 12" aria-hidden="true"><polygon points="3.2,2.1 9.6,6 3.2,9.9" fill="currentColor" /></svg>
-                Session
+                <span>Session</span>
               </button>
             )}
-            <button type="button" className="fs-friend-action" aria-label={`Retirer ${friend.name || friend.email}`} style={{ width:28, height:28, borderRadius:10, background:'rgba(251,113,133,0.09)', border:'1px solid rgba(251,113,133,0.2)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.17s', flexShrink:0, padding:0 }}
-              onClick={e=>{e.stopPropagation();onRemove();}}
-              onMouseEnter={e=>{e.currentTarget.style.background='rgba(251,113,133,0.2)';}}
-              onMouseLeave={e=>{e.currentTarget.style.background='rgba(251,113,133,0.09)';}}>
-              <svg width={9} height={9} viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2L2 8" stroke="#fb7185" strokeWidth={1.6} strokeLinecap="round"/></svg>
+            <button type="button" className="fs-friend-x" aria-label={`Retirer ${nom} de mes amis`} title="Retirer des amis"
+              onClick={e=>{e.stopPropagation();onRemove();}}>
+              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
             </button>
           </div>
         </div>
@@ -21743,6 +21885,17 @@ void main(){
          réglé sur Ensemble, la bonne personne cochée. */
       const startSessionWith = (f) => {
         if (!f?.id) return;
+        /* Deuxième verrou, côté logique : la présence peut tomber entre le
+           rendu du bouton et le clic. Sans lui, un ami qui vient de partir
+           recevrait une invitation dans le vide et l'hôte attendrait pour
+           rien. */
+        if (!f.online) {
+          addToast({
+            message: `${f.name || f.email} vient de passer hors ligne — une session à deux demande que vous soyez là tous les deux`,
+            type: 'info', duration: 4600,
+          });
+          return;
+        }
         onClose();
         try {
           window.dispatchEvent(new CustomEvent('fs-start-together', {
@@ -22060,37 +22213,210 @@ void main(){
       try { window._fsFlushPush?.(true); } catch (e) { }
       return true;
     };
-    /* Recadrage 1280×448 (ratio ~2,86:1, celui de Discord) : on COUVRE le
-       cadre et on centre, pour qu'aucune image ne soit déformée. */
-    window._fsBannerFromFile = (file) => new Promise((resolve, reject) => {
+    /* ══ UN SEUL FORMAT DE BANNIÈRE, PARTOUT ═════════════════════════════════
+       L'image était enregistrée en 1280×448 (2,86:1) mais AFFICHÉE, chez l'ami,
+       dans une bande de 190 px de haut sur toute la largeur de la carte — soit
+       près de 5,8:1. La boîte d'affichage étant en `cover`, elle RE-DÉCOUPAIT
+       l'image une seconde fois, en hauteur : ce que l'utilisateur avait validé
+       n'était pas ce que ses amis voyaient, et il n'avait aucun moyen de le
+       savoir puisqu'il ne voit jamais sa propre bannière.
+       Un seul ratio fait désormais autorité — 25:7 — utilisé par le canevas de
+       recadrage, par le cadre du panneau de profil ET par la bande chez l'ami.
+       Comme le cadre d'affichage porte exactement ce ratio, le `cover` n'a plus
+       rien à retrancher : ce qui est validé est ce qui est vu. */
+    window.FS_BANNER_W = 1200;
+    window.FS_BANNER_H = 336;
+    window.FS_BANNER_RATIO = '25 / 7';
+    /* Rendu d'une image dans le cadre canonique, avec un cadrage CHOISI :
+       `view` = { scale, x, y } où x/y sont des décalages en fraction du cadre
+       (0 = centré). Sans `view`, on retombe sur « couvrir et centrer ». */
+    window._fsBannerRender = (img, view) => {
+      const W = window.FS_BANNER_W, H = window.FS_BANNER_H;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      if (!ctx) throw new Error('canvas');
+      ctx.fillStyle = '#0b0e14';
+      ctx.fillRect(0, 0, W, H);
+      const base = Math.max(W / img.width, H / img.height);
+      const s = base * (view && view.scale > 0 ? view.scale : 1);
+      const dw = img.width * s, dh = img.height * s;
+      const dx = (W - dw) / 2 + (view ? view.x * W : 0);
+      const dy = (H - dh) / 2 + (view ? view.y * H : 0);
+      ctx.drawImage(img, dx, dy, dw, dh);
+      let q = 0.86, out = cv.toDataURL('image/jpeg', q);
+      /* On redescend la qualité tant que c'est trop lourd, plutôt que de
+         refuser sèchement une photo un peu dense. */
+      while (out.length > window.FS_BANNER_MAX_BYTES && q > 0.45) {
+        q -= 0.1; out = cv.toDataURL('image/jpeg', q);
+      }
+      if (out.length > window.FS_BANNER_MAX_BYTES) throw new Error('poids');
+      return out;
+    };
+    /* Charge un fichier en <img> décodée — l'éditeur de cadrage en a besoin
+       pour afficher l'original avant de produire le rendu final. */
+    window._fsBannerLoadFile = (file) => new Promise((resolve, reject) => {
       if (!file || !file.type || !file.type.startsWith('image/')) { reject(new Error('format')); return; }
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('lecture'));
       reader.onload = () => {
         const img = new Image();
         img.onerror = () => reject(new Error('image'));
-        img.onload = () => {
-          const W = 1280, H = 448;
-          const cv = document.createElement('canvas');
-          cv.width = W; cv.height = H;
-          const ctx = cv.getContext('2d');
-          if (!ctx) { reject(new Error('canvas')); return; }
-          const s = Math.max(W / img.width, H / img.height);
-          const dw = img.width * s, dh = img.height * s;
-          ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
-          let q = 0.82, out = cv.toDataURL('image/jpeg', q);
-          /* On redescend la qualité tant que c'est trop lourd, plutôt que de
-             refuser sèchement une photo un peu dense. */
-          while (out.length > window.FS_BANNER_MAX_BYTES && q > 0.45) {
-            q -= 0.1; out = cv.toDataURL('image/jpeg', q);
-          }
-          if (out.length > window.FS_BANNER_MAX_BYTES) { reject(new Error('poids')); return; }
-          resolve(out);
-        };
+        img.onload = () => resolve(img);
         img.src = reader.result;
       };
       reader.readAsDataURL(file);
     });
+    /* Conservé pour les appels historiques : couvrir et centrer, sans cadrage. */
+    window._fsBannerFromFile = (file) =>
+      window._fsBannerLoadFile(file).then(img => window._fsBannerRender(img, null));
+
+    /* ══ ÉDITEUR DE CADRAGE ═══════════════════════════════════════════════════
+       Recadrer AUTOMATIQUEMENT au centre était le pire des choix par défaut :
+       sur une photo de groupe on coupe les têtes, sur un paysage on garde le
+       milieu vide. Et comme personne ne voit jamais sa propre bannière, l'erreur
+       ne se découvrait jamais.
+       Le cadre montré ici EST le cadre de l'ami — même ratio, même voile
+       dégradé, même chevauchement de l'avatar. Ce qui est validé est ce qui est
+       vu, littéralement. Glisser déplace, la molette et le curseur zooment. */
+    function BannerCropper({ image, onCancel, onDone, busy }) {
+      const [scale, setScale] = React.useState(1);
+      const [pos, setPos] = React.useState({ x: 0, y: 0 });
+      const dragRef = React.useRef(null);
+      const frameRef = React.useRef(null);
+
+      /* Bornes de déplacement : on interdit de sortir l'image du cadre, sinon
+         on peut valider une bannière avec une bande vide sur le côté. */
+      const clamp = React.useCallback((p, s) => {
+        const W = window.FS_BANNER_W, H = window.FS_BANNER_H;
+        const base = Math.max(W / image.width, H / image.height) * s;
+        const dw = image.width * base, dh = image.height * base;
+        const mx = Math.max(0, (dw - W) / 2) / W;
+        const my = Math.max(0, (dh - H) / 2) / H;
+        return { x: Math.max(-mx, Math.min(mx, p.x)), y: Math.max(-my, Math.min(my, p.y)) };
+      }, [image]);
+
+      React.useEffect(() => { setPos(p => clamp(p, scale)); }, [scale, clamp]);
+
+      const onPointerDown = e => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        dragRef.current = { px: e.clientX, py: e.clientY, ox: pos.x, oy: pos.y, w: frameRef.current?.clientWidth || 1, h: frameRef.current?.clientHeight || 1 };
+      };
+      const onPointerMove = e => {
+        const d = dragRef.current;
+        if (!d) return;
+        setPos(clamp({ x: d.ox + (e.clientX - d.px) / d.w, y: d.oy + (e.clientY - d.py) / d.h }, scale));
+      };
+      const onPointerUp = () => { dragRef.current = null; };
+
+      const confirm = () => {
+        try { onDone(window._fsBannerRender(image, { scale, x: pos.x, y: pos.y })); }
+        catch (err) { onDone(null, err); }
+      };
+
+      /* Le rendu écran reproduit exactement la formule du canevas : cadre au
+         ratio canonique, image en `cover` puis mise à l'échelle et décalée des
+         mêmes fractions. */
+      const imgStyle = {
+        position: 'absolute', left: '50%', top: '50%',
+        width: (Math.max(1, image.width / image.height) >= (window.FS_BANNER_W / window.FS_BANNER_H) ? 'auto' : '100%'),
+        height: (Math.max(1, image.width / image.height) >= (window.FS_BANNER_W / window.FS_BANNER_H) ? '100%' : 'auto'),
+        minWidth: '100%', minHeight: '100%',
+        transform: `translate(calc(-50% + ${pos.x * 100}%), calc(-50% + ${pos.y * 100}%)) scale(${scale})`,
+        transformOrigin: 'center',
+        userSelect: 'none', pointerEvents: 'none',
+      };
+
+      return (
+        <div className="fs-crop-scrim" role="dialog" aria-modal="true" aria-label="Cadrer la bannière"
+          onMouseDown={e => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+          <div className="fs-crop-panel">
+            <div className="fs-crop-head">
+              <div className="fs-crop-title">Cadre ta bannière</div>
+              <div className="fs-crop-sub">Glisse l’image pour choisir ce qui reste visible. C’est exactement ce que verront tes amis.</div>
+            </div>
+            <div className="fs-crop-frame" ref={frameRef}
+              onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+              onWheel={e => { setScale(s => Math.max(1, Math.min(3, s - e.deltaY * 0.0016))); }}>
+              <img src={image.src} alt="" style={imgStyle} draggable={false} />
+              {/* Voile et avatar fantôme : les deux éléments qui recouvriront la
+                  bannière chez l'ami. Les montrer ICI évite de valider un
+                  cadrage dont le sujet finira caché sous l'avatar. */}
+              <span className="fs-crop-veil" aria-hidden="true" />
+              <span className="fs-crop-ghost" aria-hidden="true" />
+            </div>
+            <div className="fs-crop-zoom">
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.2-4.2M8 11h6" /></svg>
+              <input type="range" min={1} max={3} step={0.01} value={scale} aria-label="Zoom"
+                onChange={e => setScale(Number(e.target.value))} />
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.2-4.2M8 11h6M11 8v6" /></svg>
+            </div>
+            <div className="fs-crop-acts">
+              <button type="button" className="fs-crop-ghostbtn" onClick={onCancel} disabled={busy}>Annuler</button>
+              <button type="button" className="fs-crop-cta" onClick={confirm} disabled={busy}>
+                {busy ? 'Préparation…' : 'Utiliser cette bannière'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    window.BannerCropper = BannerCropper;
+
+    if (!document.getElementById('fs-crop-css')) {
+      const cs = document.createElement('style');
+      cs.id = 'fs-crop-css';
+      cs.textContent = `
+        .fs-crop-scrim{position:fixed;inset:0;z-index:10600;display:grid;place-items:center;padding:20px;
+          background:rgba(4,5,12,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+          animation:fsCropIn .24s ease both}
+        @keyframes fsCropIn{from{opacity:0}to{opacity:1}}
+        .fs-crop-panel{width:min(620px,100%);border-radius:24px;overflow:hidden;box-sizing:border-box;
+          background:linear-gradient(180deg,rgba(19,18,35,.99),rgba(10,10,21,.99));
+          border:1px solid rgba(255,255,255,.10);
+          box-shadow:0 34px 90px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04);
+          animation:fsCropPanel .3s cubic-bezier(.22,1,.36,1) both}
+        @keyframes fsCropPanel{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+        .fs-crop-head{padding:20px 22px 14px}
+        .fs-crop-title{font:800 17px var(--font-display);letter-spacing:-.025em;color:#fff}
+        .fs-crop-sub{font:600 12.5px var(--font-body);color:rgba(248,246,252,.55);line-height:1.5;margin-top:5px;max-width:46ch}
+        /* Le cadre porte le ratio canonique : c'est la bande exacte de l'ami. */
+        .fs-crop-frame{position:relative;margin:0 22px;border-radius:14px;overflow:hidden;cursor:grab;
+          aspect-ratio:25 / 7;background:#0b0e14;border:1px solid rgba(255,255,255,.10);touch-action:none}
+        .fs-crop-frame:active{cursor:grabbing}
+        .fs-crop-veil{position:absolute;inset:0;pointer-events:none;
+          background:linear-gradient(180deg,rgba(6,8,16,.10) 0%,rgba(6,8,16,.55) 62%,rgba(6,8,16,.88) 100%)}
+        /* Emplacement de l'avatar chez l'ami : un disque en pointillés, pour
+           qu'on n'y cadre pas un visage qui finirait dessous. */
+        .fs-crop-ghost{position:absolute;left:26px;bottom:-16px;width:52px;height:52px;border-radius:50%;
+          border:2px dashed rgba(255,255,255,.34);background:rgba(6,8,16,.5);pointer-events:none}
+        .fs-crop-zoom{display:flex;align-items:center;gap:12px;padding:16px 22px 4px;color:rgba(248,246,252,.45)}
+        .fs-crop-zoom input{flex:1;min-width:0;accent-color:var(--theme-c1);height:22px;cursor:pointer}
+        .fs-crop-acts{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px 20px}
+        .fs-crop-ghostbtn,.fs-crop-cta{min-height:44px;padding:0 20px;border-radius:13px;cursor:pointer;
+          font:800 13px var(--font-body);transition:transform .16s var(--mineral-ease),opacity .16s ease}
+        .fs-crop-ghostbtn{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(248,246,252,.72)}
+        .fs-crop-ghostbtn:hover{background:rgba(255,255,255,.1)}
+        .fs-crop-cta{border:1px solid transparent;color:#06140a;
+          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
+          box-shadow:0 8px 24px rgba(var(--theme-c1-rgb),.3)}
+        .fs-crop-cta:hover{transform:translateY(-1px)}
+        .fs-crop-cta[disabled],.fs-crop-ghostbtn[disabled]{opacity:.5;cursor:default;transform:none}
+        @media(max-width:640px){
+          .fs-crop-scrim{padding:12px}
+          .fs-crop-panel{border-radius:20px}
+          .fs-crop-head{padding:18px 16px 12px}
+          .fs-crop-frame{margin:0 16px}
+          .fs-crop-zoom{padding:14px 16px 4px}
+          .fs-crop-acts{padding:12px 16px 16px;flex-direction:column-reverse}
+          .fs-crop-ghostbtn,.fs-crop-cta{width:100%}
+          .fs-crop-ghost{left:16px;width:44px;height:44px;bottom:-14px}
+        }
+      `;
+      document.head.appendChild(cs);
+    }
 
     if (!document.getElementById('fs-showcase-css')) {
       const s = document.createElement('style');
@@ -29591,7 +29917,10 @@ void main(){
       if (r.ok) addToast({ message: 'Skin acheté et équipé', type: 'success', icon: '✓' });
       else if (r.reason === 'insufficient') addToast({ message: 'Pas assez d’Éclats — forge plus de cristaux', type: 'info', icon: '!', duration: 3600 });
     };
-    const equip = id => { if (window._gSetActiveSkin(user?.id, id)) addToast({ message: 'Skin équipé', type: 'success', icon: '✓' }); };
+    /* Équiper un skin le montre équipé (carte cochée, aperçu à jour) : rien à
+       notifier. L'ACHAT, lui, garde sa notification — il coûte des Éclats, et
+       une dépense doit toujours être confirmée explicitement. */
+    const equip = id => { window._gSetActiveSkin(user?.id, id); };
     const notifyMe = () => { try { localStorage.setItem('fs_premium_interest', '1'); } catch (_) {} setNotified(true); addToast({ message: 'On te préviendra au lancement de Premium.', type: 'success', icon: '✓', duration: 4200 }); };
 
     /* Chaque skin de boutique correspond à un VRAI cristal de la grotte : on
@@ -29762,7 +30091,7 @@ void main(){
                 const on = curShape === sid;
                 return (
                   <button key={sid} type="button" className={'fs-shape-cell' + (on ? ' on' : '')}
-                    onClick={() => { if (window._gSetDefaultShape(user?.id, sid)) { setCurShape(sid); addToast({ message: `Forme ${(window.CRYSTAL_SHAPE_DEFS[sid].name || '').toLowerCase()} choisie`, type: 'success', icon: '✓', duration: 2400 }); } }}
+                    onClick={() => { if (window._gSetDefaultShape(user?.id, sid)) { setCurShape(sid); } }}
                     aria-pressed={on} title={window.CRYSTAL_SHAPE_DEFS[sid].desc || ''}>
                     {window.ShapedCrystalGem ? React.createElement(window.ShapedCrystalGem, { shape: sid, gradientId: SKIN_GRAD[active] || active, progress: 0.9, size: 30, seed: sid.charCodeAt(0) * 137 }) : null}
                     <span>{window.CRYSTAL_SHAPE_DEFS[sid].name}</span>
