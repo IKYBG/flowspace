@@ -1568,25 +1568,42 @@
           fond translucide : peu lisible en diagonale, ce qui est pourtant le
           seul mode de lecture d'une notification. Titre en 13/700, jusqu'à
           trois lignes, fond nettement plus opaque. */
+    /* PASSE 4 — l'objet était propre mais il restait ANONYME : la carte d'alerte
+       qu'un framework fournit par défaut. Quatre choses l'en séparaient.
+       a) LE GLYPHE N'AVAIT PAS DE PLACE. La passe précédente lui avait retiré sa
+          pastille teintée, à raison : une pastille SATURÉE ajoute de la couleur,
+          et la couleur était déjà le problème. Mais elle a laissé le glyphe
+          flotter contre le texte, sans alignement stable d'un message à
+          l'autre. Il retrouve un logement — NEUTRE, pas teinté : un creux gris
+          à liseré interne. Ça ne rend pas la couleur, ça rend la STRUCTURE.
+       b) LES GLYPHES ÉTAIENT CEUX DE TOUT LE MONDE. Rond-coché, rond-croix,
+          triangle-point : le vocabulaire exact de Bootstrap, et — plus grave —
+          les seules icônes PLEINES de toute l'application, qui dessine
+          partout ailleurs en trait 1.9 sur grille 24. Ils repassent en trait,
+          dans la langue de la maison.
+       c) IL N'Y AVAIT QU'UN SEUL NIVEAU DE TEXTE. Une phrase, jusqu'à trois
+          lignes, tout au même poids. Or une notification dit deux choses :
+          CE QUI VIENT DE SE PASSER, et CE QUE ÇA IMPLIQUE. Le second niveau
+          (`detail`) est précisément ce qui manquait aux nouveaux : « Widget
+          retiré » ne rassure personne, « tu peux revenir en arrière » si.
+       d) ELLE ARRIVAIT EN GLISSANT À PLAT. Une translation seule, c'est une
+          diapositive. Une échelle qui se referme en même temps, c'est un objet
+          qui s'approche — la carte a une épaisseur, autant s'en servir. */
     @keyframes toastIn {
-      from { transform: translateX(26px); opacity: 0; }
-      to   { transform: translateX(0); opacity: 1; }
+      from { transform: translate3d(22px, 0, 0) scale(0.965); opacity: 0; }
+      to   { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
     }
     @keyframes toastOut {
-      from { transform: translateX(0); opacity: 1; max-height: 200px; }
-      to   { transform: translateX(26px); opacity: 0; max-height: 0; }
+      from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; max-height: 220px; }
+      to   { transform: translate3d(16px, 0, 0) scale(0.97); opacity: 0; max-height: 0; }
     }
     @keyframes toastInTop {
-      from { transform: translateY(-18px); opacity: 0; }
-      to   { transform: translateY(0); opacity: 1; }
+      from { transform: translate3d(0, -20px, 0) scale(0.965); opacity: 0; }
+      to   { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
     }
     @keyframes toastOutTop {
-      from { transform: translateY(0); opacity: 1; max-height: 200px; }
-      to   { transform: translateY(-14px); opacity: 0; max-height: 0; }
-    }
-    @keyframes toastProgress {
-      from { transform: scaleX(1); }
-      to   { transform: scaleX(0); }
+      from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; max-height: 220px; }
+      to   { transform: translate3d(0, -14px, 0) scale(0.97); opacity: 0; max-height: 0; }
     }
     .fs-toast-wrap {
       position: fixed;
@@ -1633,49 +1650,78 @@
        c) Une largeur fixe de 400 px, quel que soit le message. « Skin acheté »
           occupait la même boîte qu'une phrase de trois lignes. La carte se
           dimensionne maintenant sur son contenu, avec un plafond. */
+    /* Le SLOT porte l'entrée, la sortie et l'effondrement de la hauteur ; la
+       CARTE porte le geste de glissement. Deux éléments, parce qu'une animation
+       CSS l'emporte sur un style en ligne : tant que l'animation d'entrée
+       occupait la carte, aucun `transform` de glisser n'aurait pris. */
+    .fs-toast-slot {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      pointer-events: none;
+      /* forwards, jamais both : en both, l'image de départ (opacity 0)
+         resterait appliquée si l'animation ne se jouait pas — une
+         notification définitivement invisible. Voir la note détaillée sur
+         .fs-tour-bar. */
+      animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .fs-toast-slot.is-out { animation: toastOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; }
     .fs-toast {
       pointer-events: auto;
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: 19px minmax(0, 1fr) auto;
+      grid-template-columns: 27px minmax(0, 1fr) auto;
       align-items: start;
-      column-gap: 13px;
-      padding: 15px 17px;
-      border-radius: 17px;
+      column-gap: 12px;
+      padding: 14px 16px 15px;
+      border-radius: 18px;
       position: relative;
       cursor: pointer;
       max-width: 100%;
+      /* Le glisser part à l'horizontale : le défilement vertical de la page
+         doit rester possible même avec le doigt posé sur la notification. */
+      touch-action: pan-y;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 44%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 46%),
         linear-gradient(180deg, rgba(24, 23, 41, 0.99), rgba(13, 12, 26, 0.99));
       border: 1px solid rgba(255, 255, 255, 0.09);
       box-shadow:
-        0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+        0 1px 0 0 rgba(255, 255, 255, 0.07) inset,
         0 6px 16px rgba(0, 0, 0, 0.38),
         0 26px 60px rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(28px) saturate(185%);
       -webkit-backdrop-filter: blur(28px) saturate(185%);
-      animation: toastIn 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
       transition: border-color 0.18s ease;
     }
     .fs-toast:hover { border-color: rgba(255, 255, 255, 0.14); }
-    .fs-toast.is-out { animation: toastOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards; }
-    /* Glyphe PLEIN, sans conteneur, optiquement aligné sur la première ligne. */
+    /* Retour élastique quand le glisser n'atteint pas le seuil. Absent pendant
+       le geste : le doigt doit coller au pixel, sans latence. */
+    .fs-toast.is-settle { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, border-color 0.18s ease; }
+    /* Le glyphe retrouve un LOGEMENT, mais neutre : un creux gris à liseré
+       interne. Il donne au glyphe une position stable d'un message à l'autre
+       sans réintroduire la pastille colorée qui faisait « alerte de
+       framework ». La couleur reste sur le trait, et nulle part ailleurs. */
     .fs-toast-ico {
-      width: 19px; height: 19px;
+      width: 27px; height: 27px;
+      border-radius: 50%;
       display: grid;
       place-items: center;
       flex-shrink: 0;
-      margin-top: 0.5px;
+      margin-top: 1px;
       color: var(--toast-c, var(--theme-c1));
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.075),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
+    .fs-toast-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
     .fs-toast-msg {
       min-width: 0;
       font-family: var(--font-body);
       font-size: 13.5px;
-      font-weight: 580;
-      line-height: 1.48;
-      letter-spacing: -0.009em;
+      font-weight: 600;
+      line-height: 1.42;
+      letter-spacing: -0.011em;
       color: rgba(252, 251, 255, 0.98);
       /* Jusqu'à trois lignes : une notification tronquée à mi-phrase ne dit
          rien, autant ne pas l'afficher. */
@@ -1684,7 +1730,23 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .fs-toast-side { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin: -4px -6px 0 6px; }
+    /* Second niveau : la conséquence. C'est la ligne qui manquait aux nouveaux
+       — « retiré » énonce, « tu peux annuler » rassure. Nettement plus discrète
+       que le titre, sinon les deux se disputent la lecture en diagonale. */
+    .fs-toast-sub {
+      min-width: 0;
+      font-family: var(--font-body);
+      font-size: 12.5px;
+      font-weight: 500;
+      line-height: 1.44;
+      letter-spacing: -0.004em;
+      color: rgba(250, 249, 255, 0.62);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .fs-toast-side { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin: -2px -6px 0 6px; }
     /* L'action est un bouton NEUTRE : elle se distingue par sa forme et son
        poids, pas par une couleur qui rivaliserait avec le glyphe. */
     .fs-toast-act {
@@ -1722,8 +1784,8 @@
     /* Sans survol (tactile), la croix est toujours là : il n'existe aucun geste
        pour survoler au doigt. */
     @media (hover: none) { .fs-toast-x { opacity: 1; } }
-    html.fs-reduce-motion .fs-toast,
-    html.fs-reduce-motion .fs-toast.is-out { animation-duration: 0.01s; }
+    html.fs-reduce-motion .fs-toast-slot,
+    html.fs-reduce-motion .fs-toast-slot.is-out { animation-duration: 0.01s; }
     @media (max-width: 640px) {
       /* En haut sur téléphone : le bas est occupé par la nav flottante et par
          la barre de visite guidée, et c'est la zone du pouce. */
@@ -1732,12 +1794,15 @@
         bottom: auto;
         left: 12px; right: 12px;
         width: auto;
+        max-width: none;
         align-items: stretch;
         flex-direction: column-reverse;
       }
-      .fs-toast { animation: toastInTop 0.34s cubic-bezier(0.16, 1, 0.3, 1) both; padding: 15px; }
-      .fs-toast.is-out { animation: toastOutTop 0.2s cubic-bezier(0.4, 0, 1, 1) forwards; }
+      .fs-toast-slot { justify-content: stretch; animation: toastInTop 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      .fs-toast-slot.is-out { animation: toastOutTop 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; }
+      .fs-toast { width: 100%; padding: 15px 16px 16px; }
       .fs-toast-msg { font-size: 14px; -webkit-line-clamp: 4; }
+      .fs-toast-sub { font-size: 13px; }
     }
 
     @keyframes livePulse {
@@ -6060,6 +6125,12 @@
     };
     window._fsTourActive = (id) => window._fsTourStep() === id;
     const _fsTourSet = (v, uid) => {
+      /* Le drapeau « visite méritée » n'a de sens qu'à l'arrivée sur 'done' :
+         toute étape réelle le remet à zéro. Il est ainsi remis à plat par le
+         flux normal, et personne n'a besoin de le CONSOMMER en le lisant — ce
+         qui serait un piège, puisque le premier lecteur priverait tous les
+         autres de l'information. */
+      if (v !== 'done') window.__fsTourWon = false;
       try {
         if (v) localStorage.setItem(_fsTourKey(uid), v);
         else localStorage.removeItem(_fsTourKey(uid));
@@ -6089,7 +6160,15 @@
       _fsTourSet(FS_TOUR_STEPS[0], uid);
       return true;
     };
-    window._fsTourFinish = (uid) => { _fsTourSet('done', uid); };
+    /* `accompli` distingue « j'ai fait les cinq gestes » de « j'ai passé ».
+       Les deux rangent 'done', mais un seul mérite la carte de fin — féliciter
+       quelqu'un qui vient de cliquer « Passer » serait au mieux ridicule.
+       Le drapeau est posé AVANT la diffusion de l'événement par _fsTourSet,
+       donc il est déjà lisible quand la barre réagit. */
+    window._fsTourFinish = (uid, accompli) => {
+      window.__fsTourWon = !!accompli;
+      _fsTourSet('done', uid);
+    };
     /* Avance UNIQUEMENT si l'étape passée est bien l'étape courante : les
        déclencheurs sont posés sur des actions ordinaires (supprimer un widget,
        ouvrir le tiroir) que l'utilisateur peut faire à tout moment, y compris
@@ -6099,7 +6178,7 @@
       const cur = window._fsTourStep();
       if (!cur || cur !== from) return;
       const i = FS_TOUR_STEPS.indexOf(cur);
-      if (i < 0 || i === FS_TOUR_STEPS.length - 1) { window._fsTourFinish(); return; }
+      if (i < 0 || i === FS_TOUR_STEPS.length - 1) { window._fsTourFinish(null, true); return; }
       _fsTourSet(FS_TOUR_STEPS[i + 1]);
     };
 
@@ -6128,19 +6207,52 @@
              qui se voit de loin, bien plus qu'un point de 11 px ;
            · le point reste, calé dans l'angle intérieur, pour désigner
              précisément la cible une fois le regard attiré. */
+        /* ══ LE CLIGNOTEMENT ═════════════════════════════════════════════════
+           Le voile passait de 42 % a 100 % d'opacite, en boucle. Un
+           clignotement, c'est le registre du bandeau publicitaire : ca capte
+           l'oeil sans jamais lui dire OU regarder precisement, et au bout de
+           quelques secondes on l'ignore ou on le fuit.
+           Trois couches le remplacent, toutes strictement A L'INTERIEUR de la
+           cible (le parent est en overflow:hidden, cf. plus haut) :
+           1. un voile TEINTE ET STABLE, qui ne bouge pas — il dit simplement
+              CECI est actif ;
+           2. un anneau qui part du centre et vient epouser le bord du bouton,
+              puis s'efface. Le mouvement CONVERGE vers la cible au lieu de
+              s'en echapper : l'oeil suit et atterrit sur la bonne chose ;
+           3. un balayage de lumiere, lent, qui donne a la surface l'air
+              d'etre vivante plutot que teintee. */
         .fs-tour-lit{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
-          background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.30),rgba(var(--theme-c2-rgb),.16));
-          box-shadow:inset 0 0 0 1.5px rgba(var(--theme-c1-rgb),.85);
-          animation:fsTourLit 1.9s cubic-bezier(.4,0,.3,1) infinite}
-        @keyframes fsTourLit{0%,100%{opacity:.42}50%{opacity:1}}
-        .fs-tour-beacon{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;
-          background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));
-          box-shadow:0 0 9px rgba(var(--theme-c1-rgb),.95);
+          overflow:hidden;
+          background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.22),rgba(var(--theme-c2-rgb),.10));
+          box-shadow:inset 0 0 0 1px rgba(var(--theme-c1-rgb),.55)}
+        .fs-tour-lit::after{content:'';position:absolute;inset:0;border-radius:inherit;
+          box-shadow:inset 0 0 0 1.6px rgba(var(--theme-c1-rgb),.95);
+          animation:fsTourFocus 2.4s cubic-bezier(.22,1,.3,1) infinite}
+        @keyframes fsTourFocus{
+          0%{opacity:0;transform:scale(.5)}
+          38%{opacity:1}
+          66%{opacity:.92;transform:scale(1)}
+          100%{opacity:0;transform:scale(1)}}
+        .fs-tour-lit::before{content:'';position:absolute;inset:0;border-radius:inherit;
+          background:linear-gradient(105deg,transparent 34%,rgba(255,255,255,.26) 50%,transparent 66%);
+          background-size:280% 100%;background-repeat:no-repeat;
+          animation:fsTourSweep 2.4s cubic-bezier(.42,0,.22,1) infinite}
+        @keyframes fsTourSweep{0%{background-position:200% 0}62%,100%{background-position:-110% 0}}
+        /* Le point garde son role : designer l'angle exact une fois le regard
+           attire. Cerne d'un liseré sombre pour tenir sur un fond clair. */
+        .fs-tour-beacon{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;
+          background:var(--theme-c1);
+          box-shadow:0 0 0 2px rgba(8,8,18,.45),0 0 10px rgba(var(--theme-c1-rgb),.9);
           pointer-events:none;z-index:2;
-          animation:fsTourPing 1.9s cubic-bezier(.4,0,.3,1) infinite}
-        @keyframes fsTourPing{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.6);opacity:.45}}
-        html.fs-reduce-motion .fs-tour-beacon,html.fs-reduce-motion .fs-tour-lit{animation:none}
-        @media(prefers-reduced-motion:reduce){.fs-tour-beacon,.fs-tour-lit{animation:none}}
+          animation:fsTourDot 2.4s ease-in-out infinite}
+        @keyframes fsTourDot{0%,100%{transform:scale(.8);opacity:.72}50%{transform:scale(1);opacity:1}}
+        html.fs-reduce-motion .fs-tour-beacon,
+        html.fs-reduce-motion .fs-tour-lit::after,
+        html.fs-reduce-motion .fs-tour-lit::before{animation:none}
+        html.fs-reduce-motion .fs-tour-lit::before{opacity:0}
+        @media(prefers-reduced-motion:reduce){
+          .fs-tour-beacon,.fs-tour-lit::after,.fs-tour-lit::before{animation:none}
+          .fs-tour-lit::before{opacity:0}}
 
         /* ══ LA BARRE DE GUIDAGE ÉTAIT TROP DISCRÈTE ═════════════════════════
            Titre en 12,5 px, consigne en 11 px, hauteur ~60 px : à l'échelle
@@ -6172,28 +6284,67 @@
            La mise en page change aussi : tout était sur UNE rangée, texte pris
            en étau entre une pastille et un bouton. Le texte occupe désormais
            toute la largeur, l'entête porte la position et la sortie. */
+        /* ══ PASSE 3 — DEUX MANQUES DE FOND, PAS DE STYLE ════════════════════
+           La carte etait lisible. Elle restait pourtant difficile a suivre, et
+           sans aucune recompense — pour deux raisons qui ne relevent ni de la
+           taille ni de la couleur.
+           1) ELLE DECRIVAIT LA CIBLE AVEC DES MOTS. « Le crayon, en haut a
+              droite » suppose deux choses qu'un nouveau n'a pas : savoir a
+              quoi ressemble NOTRE crayon, et savoir ou tombe « en haut a
+              droite » dans SA fenetre. Deux ajouts suppriment la devinette :
+              · une SCENE qui montre le glyphe exact a chercher, a l'echelle
+                ou on le verra. Reconnaitre au lieu de se souvenir — c'est le
+                principe le plus rentable de tout l'accompagnement produit ;
+              · une FLECHE reellement orientee vers la cible, calculee sur sa
+                position a l'ecran. La carte ne dit plus ou regarder, elle
+                POINTE.
+           2) FRANCHIR UNE ETAPE NE PRODUISAIT RIEN. Le texte etait remplace,
+              c'est tout — aucun accuse de reception, donc aucun elan. Le
+              segment se remplit maintenant d'un trait, et la consigne suivante
+              monte en fondu au lieu d'apparaitre. Et la visite se TERMINE sur
+              une carte de fin, avec le cristal : c'est le seul moment ou le
+              produit peut dire « tu sais faire », il aurait ete absurde de le
+              laisser passer dans une notification anonyme. */
         .fs-tour-bar{position:fixed;left:50%;transform:translateX(-50%);
           bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:12000;
-          display:block;padding:16px 18px 18px;border-radius:20px;
+          display:block;padding:15px 17px 17px;border-radius:22px;
           width:min(560px,calc(100vw - 32px));box-sizing:border-box;
           background:
-            linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0) 38%),
+            linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 40%),
             linear-gradient(180deg,rgba(23,22,40,.99),rgba(12,11,24,.99));
           border:1px solid rgba(255,255,255,.09);
-          box-shadow:0 1px 0 0 rgba(255,255,255,.06) inset,
-            0 10px 24px rgba(0,0,0,.44),0 34px 76px rgba(0,0,0,.6);
+          box-shadow:0 1px 0 0 rgba(255,255,255,.07) inset,
+            0 10px 26px rgba(0,0,0,.44),0 36px 82px rgba(0,0,0,.6);
           backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);
-          animation:fsTourBarIn .4s cubic-bezier(.16,1,.3,1) both}
-        @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(16px)}
-          to{opacity:1;transform:translateX(-50%) translateY(0)}}
-        .fs-tour-head{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+          /* ══ POURQUOI forwards ET SURTOUT PAS both ═══════════════════════
+             Une animation d'ENTREE en fill-mode both applique son image de
+             depart — ici opacity 0 — des que l'element existe, et n'en sort
+             que si l'animation se joue reellement. Or elle peut ne pas se
+             jouer : onglet en arriere-plan qui suspend le compositeur, moteur
+             qui ignore la regle, feuille qui neutralise les animations. Le
+             resultat est alors une carte DEFINITIVEMENT INVISIBLE, qui porte
+             pourtant la seule consigne de l'ecran.
+             En forwards, l'etat de base est l'etat VISIBLE : si l'animation
+             ne part pas, le contenu est simplement la, sans fondu. On perd
+             une transition, jamais le contenu. */
+          animation:fsTourBarIn .44s cubic-bezier(.16,1,.3,1) forwards}
+        @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(16px) scale(.98)}
+          to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+        .fs-tour-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
         /* Fil segmenté : une barre par étape. On voit d'un coup d'œil combien
            sont franchies et combien restent, sans compter ni lire. */
         .fs-tour-seg{display:flex;gap:4px;flex-shrink:0}
-        .fs-tour-seg i{display:block;width:18px;height:3px;border-radius:2px;
+        .fs-tour-seg i{display:block;position:relative;overflow:hidden;
+          width:18px;height:3px;border-radius:2px;
           background:rgba(255,255,255,.13);transition:background .35s var(--mineral-ease)}
         .fs-tour-seg i.done{background:rgba(var(--theme-c1-rgb),.5)}
-        .fs-tour-seg i.on{background:var(--theme-c1);box-shadow:0 0 10px rgba(var(--theme-c1-rgb),.6)}
+        .fs-tour-seg i.on{box-shadow:0 0 10px rgba(var(--theme-c1-rgb),.55)}
+        /* Le segment courant se REMPLIT au lieu de s'allumer d'un coup : c'est
+           l'accuse de reception du geste qui vient d'etre fait. */
+        .fs-tour-seg i.on::after{content:'';position:absolute;inset:0;
+          background:var(--theme-c1);transform-origin:left center;
+          animation:fsTourFill .55s cubic-bezier(.16,1,.3,1) both}
+        @keyframes fsTourFill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
         .fs-tour-pos{font:600 11px var(--font-body);letter-spacing:.11em;text-transform:uppercase;
           color:rgba(250,249,255,0.58);white-space:nowrap;flex:1;min-width:0;
           overflow:hidden;text-overflow:ellipsis}
@@ -6203,23 +6354,65 @@
           transition:background .16s var(--mineral-ease),color .16s var(--mineral-ease)}
         .fs-tour-skip:hover{background:rgba(255,255,255,.08);color:rgba(250,249,255,.95)}
         .fs-tour-skip:focus-visible{outline:2px solid var(--theme-c1);outline-offset:2px}
+
+        /* Scene + texte + visee. La cle React porte l'etape : changer d'etape
+           remonte le bloc, donc rejoue le fondu montant. */
+        .fs-tour-body{display:grid;grid-template-columns:auto minmax(0,1fr) auto;
+          align-items:center;gap:14px;
+          animation:fsTourSwap .44s cubic-bezier(.16,1,.3,1) forwards}
+        @keyframes fsTourSwap{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .fs-tour-stage{position:relative;width:46px;height:46px;border-radius:15px;flex-shrink:0;
+          display:grid;place-items:center;color:var(--theme-c1);
+          background:radial-gradient(120% 120% at 30% 18%,rgba(var(--theme-c1-rgb),.20),rgba(var(--theme-c1-rgb),.045) 72%);
+          box-shadow:inset 0 0 0 1px rgba(var(--theme-c1-rgb),.26),inset 0 1px 0 rgba(255,255,255,.10)}
+        .fs-tour-stage::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+          box-shadow:0 0 20px rgba(var(--theme-c1-rgb),.30);
+          animation:fsTourStage 3.2s ease-in-out infinite}
+        @keyframes fsTourStage{0%,100%{opacity:.4}50%{opacity:1}}
+        .fs-tour-copy{min-width:0}
         .fs-tour-t{display:block;font:700 17px var(--font-display);color:#fff;
           letter-spacing:-.028em;line-height:1.22}
         .fs-tour-d{display:block;font:600 13.5px var(--font-body);color:rgba(250,249,255,.82);
-          margin-top:6px;line-height:1.55;max-width:52ch}
+          margin-top:5px;line-height:1.5;max-width:52ch}
+        /* La visee : un disque neutre, une fleche orientee par style en ligne
+           vers la cible, et une derive de 2 px LE LONG de son propre axe —
+           d'ou la rotation portee par le parent et la derive par l'enfant. */
+        .fs-tour-aim{width:32px;height:32px;border-radius:50%;flex-shrink:0;
+          display:grid;place-items:center;color:rgba(250,249,255,.78);
+          background:rgba(255,255,255,.05);
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.085)}
+        .fs-tour-aim-r{display:grid;place-items:center}
+        .fs-tour-aim-r svg{animation:fsTourAim 1.9s ease-in-out infinite}
+        @keyframes fsTourAim{0%,100%{transform:translateY(1.5px)}50%{transform:translateY(-1.5px)}}
+        .fs-tour-fin{flex-shrink:0;min-height:34px;padding:0 15px;border-radius:11px;cursor:pointer;
+          border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.09);
+          color:rgba(252,251,255,.96);font:700 12.5px var(--font-body);letter-spacing:-.005em;
+          transition:background .16s var(--mineral-ease),border-color .16s var(--mineral-ease)}
+        .fs-tour-fin:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.2)}
+        .fs-tour-fin:focus-visible{outline:2px solid var(--theme-c1);outline-offset:2px}
+        html.fs-reduce-motion .fs-tour-stage::after,
+        html.fs-reduce-motion .fs-tour-aim-r svg,
+        html.fs-reduce-motion .fs-tour-seg i.on::after{animation:none}
+        @media(prefers-reduced-motion:reduce){
+          .fs-tour-stage::after,.fs-tour-aim-r svg,.fs-tour-seg i.on::after{animation:none}}
         @media(max-width:640px){
           /* Au-dessus de la nav mobile, jamais dessous. La consigne RESTE :
              c'est elle qui porte l'instruction, et c'est sur petit écran
              qu'elle est le plus nécessaire. */
           .fs-tour-bar{bottom:calc(var(--fs-navspace,78px) + 12px);left:12px;right:12px;
-            transform:none;width:auto;padding:14px 15px 16px;border-radius:18px}
-          @keyframes fsTourBarIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-          .fs-tour-head{margin-bottom:11px;gap:10px}
+            transform:none;width:auto;padding:14px 15px 16px;border-radius:20px}
+          @keyframes fsTourBarIn{from{opacity:0;transform:translateY(16px) scale(.98)}
+            to{opacity:1;transform:translateY(0) scale(1)}}
+          .fs-tour-head{margin-bottom:12px;gap:10px}
           .fs-tour-seg i{width:14px}
           .fs-tour-pos{font-size:11px;letter-spacing:.08em}
           .fs-tour-skip{min-height:34px;padding:0 10px}
+          .fs-tour-body{gap:12px}
+          .fs-tour-stage{width:40px;height:40px;border-radius:13px}
           .fs-tour-t{font-size:16px}
-          .fs-tour-d{font-size:13px;margin-top:5px}
+          .fs-tour-d{font-size:13px;margin-top:4px}
+          .fs-tour-aim{width:28px;height:28px}
+          .fs-tour-fin{min-height:36px;padding:0 13px}
         }
       `;
       document.head.appendChild(_ts);
@@ -6230,57 +6423,205 @@
        le voile qui la fait exister de loin, le point qui la désigne de près. */
     function FsTourBeacon({ step, style }) {
       const [cur, setCur] = _uSST(() => window._fsTourStep());
+      const ref = React.useRef(null);
       _uEST(() => {
         const h = () => setCur(window._fsTourStep());
         window.addEventListener('fs-tour-update', h);
         return () => window.removeEventListener('fs-tour-update', h);
       }, []);
+      /* La balise est le SEUL endroit du code qui sache où se trouve la cible :
+         elle est montée dessus. Elle publie donc son centre, dont la barre se
+         sert pour orienter sa flèche. Mesure répétée plutôt qu'unique — le
+         tiroir s'ouvre, la fenêtre change de taille, la grille se recompose :
+         une position lue une fois au montage serait fausse dix secondes plus
+         tard. Un getBoundingClientRect toutes les 700 ms, uniquement pendant
+         l'étape concernée, ne coûte rien. */
+      _uEST(() => {
+        if (cur !== step) return;
+        const mesurer = () => {
+          /* On remonte jusqu'au premier ancêtre qui a réellement une boîte.
+             Le parent direct EST la cible dans les quatre usages actuels, mais
+             s'y fier seul rendrait la flèche muette au premier enveloppement
+             (un fragment, un span de mise en page) — une panne silencieuse,
+             la pire espèce. Trois niveaux suffisent largement. */
+          let el = ref.current && ref.current.parentElement;
+          let b = null;
+          for (let n = 0; el && n < 3; n++, el = el.parentElement) {
+            const r = el.getBoundingClientRect();
+            if (r.width || r.height) { b = r; break; }
+          }
+          if (!b) return;
+          window.__fsTourRect = { step, x: b.left + b.width / 2, y: b.top + b.height / 2 };
+          try { window.dispatchEvent(new CustomEvent('fs-tour-aim')); } catch (e) { }
+        };
+        mesurer();
+        const iv = setInterval(mesurer, 700);
+        return () => {
+          clearInterval(iv);
+          if (window.__fsTourRect && window.__fsTourRect.step === step) window.__fsTourRect = null;
+        };
+      }, [cur, step]);
       if (cur !== step) return null;
       return (
         <>
-          <span className="fs-tour-lit" aria-hidden="true" />
+          <span ref={ref} className="fs-tour-lit" aria-hidden="true" />
           <span className="fs-tour-beacon" style={style} aria-hidden="true" />
         </>
       );
     }
     window.FsTourBeacon = FsTourBeacon;
 
+    /* Le glyphe EXACT que l'utilisateur doit aller chercher — pas une
+       illustration de la notion, l'icône elle-même. Le crayon reprend
+       caractère pour caractère le tracé du bouton du dashboard : c'est tout
+       l'intérêt, on reconnaît au lieu de chercher. */
+    const FS_TOUR_GLYPH = {
+      pencil: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+      remove: <path d="M7 7l10 10M17 7L7 17" />,
+      add:    <path d="M12 5v14M5 12h14" />,
+      media:  <><path d="M9.2 17.4V6.8l9-2v10.3" /><circle cx="6.9" cy="17.6" r="2.3" /><circle cx="15.9" cy="15.2" r="2.3" /></>,
+      image:  <><rect x="4" y="5" width="16" height="14" rx="2.5" /><circle cx="9" cy="10" r="1.6" /><path d="M4.5 16.5l4.3-3.8 3.4 2.9 3-2.5 4.3 3.6" /></>,
+    };
+
+    /* Chaque consigne dit OÙ (la position), QUOI (le geste) et, quand ce n'est
+       pas évident, CE QUE ÇA COÛTE. La deuxième étape demande de supprimer
+       quelque chose : c'est celle où la phrase doit désamorcer la peur, sinon
+       personne ne la fait. */
     const FS_TOUR_COPY = {
-      pencil: { t: 'Ouvre la personnalisation', d: 'Le crayon, en haut à droite. C’est là que ton dashboard devient le tien.' },
-      remove: { t: 'Retire un widget', d: 'La croix en haut à droite d’un widget, puis confirme. Rien n’est perdu : tu pourras l’annuler.' },
-      add:    { t: 'Ouvre le tiroir de widgets', d: 'Le bouton « Ajouter un widget ». Onze widgets t’attendent.' },
-      media:  { t: 'Va dans « Média »', d: 'Les catégories sont en haut du tiroir.' },
-      image:  { t: 'Ajoute le widget Image', d: 'Ta photo, ton gif, ton rappel — dernière étape.' },
+      pencil: { t: 'Ouvre la personnalisation', d: 'Le crayon, en haut à droite de l’écran. Tout ce que tu vois se règle à partir de là.' },
+      remove: { t: 'Retire un widget', d: 'La croix en haut à droite d’un widget, puis confirme. Rien n’est définitif — la notification te proposera d’annuler.' },
+      add:    { t: 'Ouvre le tiroir de widgets', d: 'Le bouton « Ajouter ». Onze widgets t’attendent : horloge, tâches, sons de focus…' },
+      media:  { t: 'Choisis la catégorie « Média »', d: 'Les catégories filtrent le tiroir. Elles sont juste au-dessus de la liste.' },
+      image:  { t: 'Ajoute le widget Image', d: 'Ta photo, ton gif, ton rappel. Dernière étape — après, l’espace est à toi.' },
     };
 
     /* Barre de guidage globale : montée une seule fois, tout en haut de l'app,
        elle suit l'étape courante quel que soit l'écran affiché. */
     function FsTourBar() {
       const [cur, setCur] = _uSST(() => window._fsTourStep());
+      const [fini, setFini] = _uSST(false);
+      const [angle, setAngle] = _uSST(null);
+      const barRef = React.useRef(null);
+      const precRef = React.useRef(null);
+
       _uEST(() => {
-        const h = () => setCur(window._fsTourStep());
+        precRef.current = window._fsTourStep();
+        const h = () => {
+          const n = window._fsTourStep();
+          const p = precRef.current;
+          precRef.current = n;
+          if (!n && p && window.__fsTourWon) setFini(true);
+          setCur(n);
+        };
         window.addEventListener('fs-tour-update', h);
         return () => window.removeEventListener('fs-tour-update', h);
       }, []);
-      if (!cur) return null;
-      const copy = FS_TOUR_COPY[cur];
-      if (!copy) return null;
-      const i = FS_TOUR_STEPS.indexOf(cur);
+
+      /* La carte de fin s'efface d'elle-même : c'est une félicitation, pas une
+         fenêtre à congédier. Le bouton n'est là que pour qui veut la ranger
+         tout de suite. */
+      _uEST(() => {
+        if (!fini) return;
+        const t = setTimeout(() => setFini(false), 9000);
+        return () => clearTimeout(t);
+      }, [fini]);
+
+      /* Orientation de la flèche : angle du centre de la carte vers le centre
+         de la cible publiée par la balise. Arrondi au degré, donc deux mesures
+         successives identiques ne déclenchent aucun rendu.
+         La flèche disparaît si la cible est quasiment sous la carte : pointer
+         du doigt quelque chose qu'on touche déjà n'aide personne. */
+      _uEST(() => {
+        if (!cur) { setAngle(null); return; }
+        const viser = () => {
+          const r = window.__fsTourRect;
+          const el = barRef.current;
+          if (!r || r.step !== cur || !el) { setAngle(null); return; }
+          const b = el.getBoundingClientRect();
+          const dx = r.x - (b.left + b.width / 2);
+          const dy = r.y - (b.top + b.height / 2);
+          if (Math.abs(dx) < 30 && Math.abs(dy) < 30) { setAngle(null); return; }
+          setAngle(Math.round(Math.atan2(dy, dx) * 180 / Math.PI) + 90);
+        };
+        viser();
+        const iv = setInterval(viser, 700);
+        window.addEventListener('fs-tour-aim', viser);
+        window.addEventListener('resize', viser);
+        return () => {
+          clearInterval(iv);
+          window.removeEventListener('fs-tour-aim', viser);
+          window.removeEventListener('resize', viser);
+        };
+      }, [cur]);
+
+      if (!cur && !fini) return null;
+      const copy = cur ? FS_TOUR_COPY[cur] : null;
+      if (cur && !copy) return null;
       const total = FS_TOUR_STEPS.length;
+      const i = cur ? FS_TOUR_STEPS.indexOf(cur) : total - 1;
+      const titre = fini ? 'Visite terminée' : copy.t;
+      const detail = fini
+        ? 'Ton dashboard est à toi. Tout le reste — thèmes, fond, sons de focus — se change exactement de la même façon.'
+        : copy.d;
+
       return (
-        <div className="fs-tour-bar" role="status" aria-live="polite"
-          aria-label={`Visite guidée, étape ${i + 1} sur ${total} : ${copy.t}`}>
+        <div ref={barRef} className="fs-tour-bar" role="status" aria-live="polite"
+          aria-label={fini ? 'Visite guidée terminée' : `Visite guidée, étape ${i + 1} sur ${total} : ${titre}`}>
           <div className="fs-tour-head">
             <span className="fs-tour-seg" aria-hidden="true">
               {FS_TOUR_STEPS.map((s, k) => (
-                <i key={s} className={k === i ? 'on' : k < i ? 'done' : ''} />
+                <i key={s} className={fini || k < i ? 'done' : k === i ? 'on' : ''} />
               ))}
             </span>
-            <span className="fs-tour-pos" aria-hidden="true">Étape {i + 1} sur {total}</span>
-            <button type="button" className="fs-tour-skip" onClick={() => window._fsTourFinish()}>Passer</button>
+            <span className="fs-tour-pos" aria-hidden="true">
+              {fini ? 'Visite terminée' : `Étape ${i + 1} sur ${total}`}
+            </span>
+            {!fini && (
+              <button type="button" className="fs-tour-skip"
+                onClick={() => window._fsTourFinish()}>Passer</button>
+            )}
           </div>
-          <span className="fs-tour-t">{copy.t}</span>
-          <span className="fs-tour-d">{copy.d}</span>
+          {/* La clé porte l'étape : franchir une étape remonte le bloc, ce qui
+              rejoue le fondu montant — le geste est accusé réception. */}
+          <div className="fs-tour-body" key={fini ? 'fin' : cur}>
+            <span className="fs-tour-stage" aria-hidden="true">
+              {fini ? (
+                <svg width={21} height={25} viewBox="0 0 20 24" fill="none">
+                  <defs>
+                    <linearGradient id="fsTourCristal" x1="2" y1="1" x2="18" y2="23" gradientUnits="userSpaceOnUse">
+                      <stop offset="0" style={{ stopColor: '#ffffff' }} />
+                      <stop offset="0.36" style={{ stopColor: 'var(--theme-c1)' }} />
+                      <stop offset="1" style={{ stopColor: 'var(--theme-c2)' }} />
+                    </linearGradient>
+                  </defs>
+                  <path d="M10 1L19 8.2L15.6 23H4.4L1 8.2L10 1Z" fill="url(#fsTourCristal)" />
+                  <path d="M1 8.2h18" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" />
+                  <path d="M10 1v22" stroke="rgba(255,255,255,0.42)" strokeWidth="0.8" />
+                </svg>
+              ) : (
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  {FS_TOUR_GLYPH[cur]}
+                </svg>
+              )}
+            </span>
+            <span className="fs-tour-copy">
+              <span className="fs-tour-t">{titre}</span>
+              <span className="fs-tour-d">{detail}</span>
+            </span>
+            {fini ? (
+              <button type="button" className="fs-tour-fin" onClick={() => setFini(false)}>Terminer</button>
+            ) : angle != null ? (
+              <span className="fs-tour-aim" aria-hidden="true">
+                <span className="fs-tour-aim-r" style={{ transform: `rotate(${angle}deg)` }}>
+                  <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 19.5V6M6 12l6-6 6 6" />
+                  </svg>
+                </span>
+              </span>
+            ) : null}
+          </div>
         </div>
       );
     }
@@ -8307,7 +8648,7 @@
         setWidgets(ws => ws.filter(x => x.id !== id));
         if (removed) {
           const nice = (CATALOG.find(c => c.label === removed.label)?.name) || removed.label;
-          addToast({ message: `${nice} retiré`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
+          addToast({ message: `${nice} retiré`, detail: 'Rien n’est perdu — tu peux le remettre d’un geste.', type: 'success', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, removed]) } });
         }
         /* Même étape de visite que la suppression sur desktop : le geste compte,
            pas la surface sur laquelle il a été fait. */
@@ -8504,21 +8845,20 @@
         setWidgets(ws => [...ws, { id, label: name, col: spot.col, row: spot.row, variant }]);
         setShowPicker(false);
         setPickerWidget(null);
-        addToast({ message: `${name} ajouté au dashboard`, type: 'success', icon: '+' });
+        addToast({
+          message: `${name} ajouté au dashboard`,
+          detail: 'Glisse-le où tu veux, redimensionne-le par les coins.',
+          type: 'success',
+        });
         /* Dernière étape de la visite : elle ne se valide QUE sur le widget
            Image. Un autre ajout est un détour légitime — on n'y met pas fin au
-           tutoriel, on laisse la consigne en place. */
+           tutoriel, on laisse la consigne en place.
+           La fin de visite ne passe plus par une notification : elle a sa
+           propre carte, dans la barre de guidage. Féliciter quelqu'un dans le
+           même objet que « Note enregistrée », c'était perdre le seul moment
+           où le produit avait quelque chose à célébrer. */
         if (name === 'Image') {
-          /* On lit l'étape AVANT de la franchir : après, elle vaut 'done' quel
-             qu'ait été son état, et le message de fin se déclencherait aussi
-             pour quelqu'un qui n'a jamais fait la visite. */
-          const finissaitLaVisite = window._fsTourStep?.() === 'image';
           try { window._fsTourAdvance?.('image'); } catch (e) {}
-          if (finissaitLaVisite) {
-            setTimeout(() => {
-              addToast({ message: 'Ton dashboard est à toi. Tout le reste se change de la même façon.', type: 'success', duration: 5600 });
-            }, 700);
-          }
         }
       };
 
@@ -9009,7 +9349,7 @@
                               setSelected(null);
                               setConfirmDeleteId(null);
                               try { window._fsTourAdvance?.('remove'); } catch (e) {}
-                              addToast({ message: `${deleted?.label || 'Widget'} supprimé`, type: 'success', icon: '✕', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, deleted]) } });
+                              addToast({ message: `${deleted?.label || 'Widget'} supprimé`, detail: 'Rien n’est perdu — tu peux le remettre d’un geste.', type: 'success', action: { label: 'Annuler', fn: () => setWidgets(ws => [...ws, deleted]) } });
                             } else {
                               setConfirmDeleteId(w.id);
                               setTimeout(() => setConfirmDeleteId(prev => prev === w.id ? null : prev), 3000);
@@ -17063,9 +17403,15 @@ void main(){
          la faire disparaître au bout de quatre secondes, c'est la perdre au
          moment précis où l'on cherchait à comprendre ce qui s'est passé. Elle
          se ferme d'un clic, comme tout le reste. */
-      const addToast = React.useCallback(({ message, type = 'info', duration, action }) => {
+      /* `detail` est le second niveau : la CONSÉQUENCE de ce qui vient
+         d'arriver. Facultatif, et à réserver aux moments où la conséquence
+         n'est pas évidente — c'est-à-dire, presque toujours, aux premiers pas
+         de quelqu'un dans le produit. Une notification qui porte les deux
+         niveaux partout finit par n'en porter aucun. */
+      const addToast = React.useCallback(({ message, detail, type = 'info', duration, action }) => {
         if (duration == null) duration = type === 'error' ? 0 : 4200;
         const texte = String(message == null ? '' : message).trim();
+        const sousTexte = String(detail == null ? '' : detail).trim();
         /* Une notification vide n'apprend rien et vole la place de la
            suivante : on la refuse à la source. */
         if (!texte) return null;
@@ -17078,7 +17424,7 @@ void main(){
           if (dernier && dernier.message === texte) return ts;
           /* UNE notification à la fois : les précédentes sortent immédiatement
              au lieu de s'empiler et de gêner la lecture. */
-          return [...ts.map(t => ({ ...t, exiting: true })), { id, message: texte, type, duration, action, exiting: false }];
+          return [...ts.map(t => ({ ...t, exiting: true })), { id, message: texte, detail: sousTexte, type, duration, action, exiting: false }];
         });
         setTimeout(() => setToasts(ts => ts.filter(t => t.id === id || !t.exiting)), 260);
         if (duration > 0) {
@@ -17094,56 +17440,124 @@ void main(){
       }, []);
 
       const COLORS = { info: T.c1, success: T.green, warning: T.warm, error: T.rose };
-      /* Glyphes PLEINS (grille 24). À 19 px, un contour de 2 px bave et donne
-         un rendu d'icône générique ; une forme pleine se lit d'un coup et se
-         passe du conteneur teinté qui servait à la soutenir. */
-      const ICONS = {
-        success: <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5.03 7.1-6.1 6.6a1.1 1.1 0 0 1-1.6.02L6.9 12.9a1.1 1.1 0 1 1 1.56-1.55l1.6 1.6 5.34-5.78a1.1 1.1 0 0 1 1.62 1.49z" />,
-        error:   <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.54 12.02a1.08 1.08 0 0 1-1.52 1.52L12 13.52l-2.02 2.02a1.08 1.08 0 0 1-1.52-1.52L10.48 12 8.46 9.98A1.08 1.08 0 0 1 9.98 8.46L12 10.48l2.02-2.02a1.08 1.08 0 0 1 1.52 1.52L13.52 12z" />,
-        warning: <path d="M10.63 3.4a1.6 1.6 0 0 1 2.74 0l8.1 14.02a1.6 1.6 0 0 1-1.37 2.4H3.9a1.6 1.6 0 0 1-1.37-2.4zM12 8.4a1.05 1.05 0 0 0-1.05 1.13l.3 3.7a.75.75 0 0 0 1.5 0l.3-3.7A1.05 1.05 0 0 0 12 8.4zm0 7.1a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3z" />,
-        info:    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3.9a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm1.2 11.6h-2.4a.9.9 0 0 1 0-1.8h.3v-3.4h-.3a.9.9 0 0 1 0-1.8h1.2a.9.9 0 0 1 .9.9v4.3h.3a.9.9 0 0 1 0 1.8z" />,
-      };
 
       return React.createElement(ToastContext.Provider, { value: { addToast } },
         children,
         <div className="fs-toast-wrap" role="region" aria-label="Notifications">
-          {toasts.map(t => {
-            const col = COLORS[t.type] || COLORS.info;
-            const close = () => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); };
-            return (
-              /* La carte entière ferme au clic : c'est le geste que les gens
-                 tentent d'instinct sur une notification, et il évitait jusqu'ici
-                 d'avoir à viser une croix de 11 px. */
-              <div key={t.id}
-                className={'fs-toast' + (t.exiting ? ' is-out' : '')}
-                role={t.type === 'error' || t.type === 'warning' ? 'alert' : 'status'}
-                aria-live={t.type === 'error' || t.type === 'warning' ? 'assertive' : 'polite'}
-                onClick={close}
-                style={{ '--toast-c': col }}>
-                <span className="fs-toast-ico" aria-hidden="true">
-                  <svg width={19} height={19} viewBox="0 0 24 24" fill="currentColor">
-                    {ICONS[t.type] || ICONS.info}
-                  </svg>
-                </span>
-                <span className="fs-toast-msg">{t.message}</span>
-                <span className="fs-toast-side">
-                  {t.action && (
-                    <button type="button" className="fs-toast-act"
-                      onClick={e => { e.stopPropagation(); handleAction(t.id, t.action.fn); }}>{t.action.label}</button>
-                  )}
-                  <button type="button" className="fs-toast-x" aria-label="Fermer la notification"
-                    onClick={e => { e.stopPropagation(); close(); }}>
-                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth={2.6} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-                  </button>
-                </span>
-              </div>
-            );
-          })}
+          {toasts.map(t => (
+            <FsToastCard key={t.id} t={t} col={COLORS[t.type] || COLORS.info}
+              onClose={() => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); }}
+              onAction={() => handleAction(t.id, t.action.fn)} />
+          ))}
         </div>
       );
     }
     window.ToastProvider = ToastProvider;
+
+    /* Glyphes en TRAIT (grille 24, bouts arrondis) — la langue du reste de
+       l'application. Les formes PLEINES précédentes étaient les seules icônes
+       remplies du produit, et reprenaient trait pour trait le jeu rond-coché /
+       rond-croix / triangle-point qu'on trouve dans n'importe quel framework.
+       Le creux neutre qui les entoure leur donne la lisibilité que la forme
+       pleine allait chercher, sans le vocabulaire d'alerte.
+       « warning » se passe volontairement de marque intérieure : à cette
+       taille, un triangle nu se lit mieux qu'un triangle encombré — et c'est
+       la COULEUR qui le distingue déjà de l'erreur. */
+    const FS_TOAST_ICONS = {
+      success: <path d="M5.2 12.6l4.6 4.6L18.9 6.8" />,
+      error:   <><path d="M12 4.8v8.6" /><circle cx="12" cy="18.6" r="1.3" fill="currentColor" stroke="none" /></>,
+      warning: <path d="M12 4.1L21.1 19.7H2.9z" />,
+      info:    <><circle cx="12" cy="5.6" r="1.3" fill="currentColor" stroke="none" /><path d="M12 10.7v8.6" /></>,
+    };
+
+    /* ══ LE GESTE MANQUANT ═══════════════════════════════════════════════════
+       Fermer d'un clic était déjà là. Mais sur téléphone — où la notification
+       s'affiche EN HAUT, sous le pouce de personne — le geste que tout le monde
+       tente est le BALAYAGE. Il n'existait pas : il fallait viser une croix de
+       11 px en haut de l'écran, d'une main.
+       Le glisser est horizontal (touch-action: pan-y garde le défilement de la
+       page), la carte suit le doigt au pixel, s'efface progressivement, et
+       revient élastiquement en dessous du seuil. Au-dessus, elle part.
+       La fermeture au simple appui reste : on distingue les deux sur le
+       relâchement, selon que le pointeur a bougé de plus de 5 px. */
+    function FsToastCard({ t, col, onClose, onAction }) {
+      const [dx, setDx] = React.useState(0);
+      const [pose, setPose] = React.useState(false);
+      const g = React.useRef({ id: null, x0: 0, bouge: false });
+      const SEUIL = 76;
+
+      const onDown = e => {
+        if (e.button != null && e.button > 0) return;
+        /* Un appui parti sur un bouton lui appartient : ni glisser, ni
+           fermeture de la carte. */
+        if (e.target.closest && e.target.closest('button')) return;
+        g.current = { id: e.pointerId, x0: e.clientX, bouge: false };
+        setPose(false);
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+      };
+      const onMove = e => {
+        if (g.current.id !== e.pointerId) return;
+        const d = e.clientX - g.current.x0;
+        if (!g.current.bouge && Math.abs(d) < 5) return;
+        g.current.bouge = true;
+        setDx(d);
+      };
+      const onUp = e => {
+        if (g.current.id !== e.pointerId) return;
+        const d = e.clientX - g.current.x0;
+        const aBouge = g.current.bouge;
+        g.current.id = null;
+        if (aBouge && Math.abs(d) > SEUIL) { onClose(); return; }
+        setPose(true);
+        setDx(0);
+        if (!aBouge) onClose();
+      };
+      const onCancel = e => {
+        if (g.current.id !== e.pointerId) return;
+        g.current.id = null;
+        setPose(true);
+        setDx(0);
+      };
+
+      const grave = t.type === 'error' || t.type === 'warning';
+      return (
+        <div className={'fs-toast-slot' + (t.exiting ? ' is-out' : '')}>
+          <div
+            className={'fs-toast' + (pose ? ' is-settle' : '')}
+            role={grave ? 'alert' : 'status'}
+            aria-live={grave ? 'assertive' : 'polite'}
+            onPointerDown={onDown} onPointerMove={onMove}
+            onPointerUp={onUp} onPointerCancel={onCancel}
+            style={{
+              '--toast-c': col,
+              transform: dx ? `translate3d(${dx}px,0,0)` : undefined,
+              opacity: dx ? Math.max(0.25, 1 - Math.abs(dx) / 240) : undefined,
+            }}>
+            <span className="fs-toast-ico" aria-hidden="true">
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                {FS_TOAST_ICONS[t.type] || FS_TOAST_ICONS.info}
+              </svg>
+            </span>
+            <span className="fs-toast-txt">
+              <span className="fs-toast-msg">{t.message}</span>
+              {t.detail && <span className="fs-toast-sub">{t.detail}</span>}
+            </span>
+            <span className="fs-toast-side">
+              {t.action && (
+                <button type="button" className="fs-toast-act"
+                  onClick={e => { e.stopPropagation(); onAction(); }}>{t.action.label}</button>
+              )}
+              <button type="button" className="fs-toast-x" aria-label="Fermer la notification"
+                onClick={e => { e.stopPropagation(); onClose(); }}>
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth={2.6} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </span>
+          </div>
+        </div>
+      );
+    }
   </script>
 
   <script type="text/babel" data-presets="react">
