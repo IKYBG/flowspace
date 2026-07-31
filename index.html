@@ -1992,7 +1992,9 @@
         max-height: calc(100dvh - 150px) !important;
         transform: none !important;
         border-radius: 18px !important;
-        animation: fsAccountSheetIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+        /* forwards, pas both : en both, l'opacité 0 de l'image de départ reste
+           appliquée si l'animation ne se joue pas — feuille invisible. */
+        animation: fsAccountSheetIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
       }
       @keyframes fsAccountSheetIn {
         from { opacity: 0; transform: translateY(14px) !important; }
@@ -11529,7 +11531,7 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 372px;
+      width: 392px;
       max-width: calc(100vw - 40px);
       max-height: min(88dvh, 780px);
       overflow-y: auto;
@@ -11546,8 +11548,36 @@
         0 0 90px rgba(var(--theme-c1-rgb),0.12);
       backdrop-filter: blur(24px) saturate(190%);
       -webkit-backdrop-filter: blur(24px) saturate(190%);
-      animation: fsAccountIn 0.32s cubic-bezier(0.34,1.56,0.64,1) both;
+      /* Le depassement (0.34, 1.56) faisait rebondir le panneau a l'ouverture.
+         C'est le registre du jouet, deja retire des notifications pour la
+         meme raison : sur un panneau de COMPTE, ca donne l'impression que
+         l'interface joue au lieu de repondre.
+         forwards et non both : en both, l'image de depart (opacity 0) reste
+         appliquee si l'animation ne se joue pas, et le panneau devient
+         invisible sans que rien ne le signale. */
+      animation: fsAccountIn 0.34s cubic-bezier(0.16,1,0.3,1) forwards;
     }
+    /* Il n'y avait AUCUN bouton de fermeture. Echap et le voile fonctionnaient,
+       mais aucun des deux ne se voit — et au doigt, Echap n'existe pas. */
+    .fs-account-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 3;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.13);
+      background: rgba(9,8,19,0.6);
+      color: rgba(248,246,252,0.8);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      transition: background 0.16s var(--mineral-ease), color 0.16s var(--mineral-ease);
+    }
+    .fs-account-close:hover { background: rgba(9,8,19,0.88); color: #fff; }
     /* L'entrée compose avec le centrage : les deux vivent sur la propriété
        transform, donc les keyframes doivent RÉPÉTER le translate(-50%,-50%),
        sinon la modale saute dans le coin haut-gauche le temps de l'animation. */
@@ -11757,8 +11787,12 @@
       border-radius: 11px;
       padding: 9px 12px;
     }
+    /* Le retrait lateral vaut 14 px, comme les cartes qui suivent (statistiques,
+       liste, actions). Il etait a 24 : l'avatar tombait 10 px a droite du bord
+       de toutes les cartes du dessous. Trop peu pour se lire comme un decalage
+       voulu, assez pour que le bord gauche du panneau ne soit jamais droit. */
     .fs-account-hero {
-      padding: 24px 24px 20px;
+      padding: 20px 14px 18px;
       display: grid;
       grid-template-columns: auto 1fr;
       gap: 18px;
@@ -11820,20 +11854,16 @@
       letter-spacing: 0.01em;
       backdrop-filter: blur(20px);
     }
-    .fs-account-kicker {
-      font-size:11px;
-      font-weight: 600;
-      letter-spacing: 0.13em;
-      text-transform: uppercase;
-      color: rgba(var(--theme-c1-rgb),0.92);
-      margin-bottom: 7px;
-    }
+    /* Le sur-titre « COMPTE LUMENOS », en capitales accentuees au-dessus du
+       nom, etiquetait l'evidence : on vient de cliquer sur « Mon profil ».
+       C'etait du chrome, et il volait la premiere ligne au NOM — la seule
+       chose qu'on vient reconnaitre en ouvrant son profil. */
     .fs-account-name {
       font-family: var(--font-display);
       font-size: 24px;
-      line-height: 1;
-      font-weight: 800;
-      letter-spacing: -0.04em;
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.035em;
       color: rgba(248,246,252,0.97);
       white-space: nowrap;
       overflow: hidden;
@@ -11847,126 +11877,174 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .fs-account-body {
-      padding: 0 14px 14px;
-    }
-    .fs-account-card {
-      border-radius: 22px;
-      padding: 14px;
-      background: rgba(255,255,255,0.045);
+    /* ══ CE QUI FAISAIT « CHEAP » : UN TABLEAU QUI NE DIT RIEN ════════════════
+       Le panneau affichait, sous l'en-tete, une fiche de trois lignes :
+         Nom     -> le nom, deja ecrit en 24 px juste au-dessus
+         Email   -> l'email, deja ecrit juste au-dessus
+         Profil  -> « Photo personnalisee » / « Initiale automatique »
+       Les deux premieres lignes REPETENT mot pour mot l'en-tete. La troisieme
+       est la description que le programme fait de son propre etat — une
+       information pour la machine, pas pour la personne. La fiche ne servait
+       donc qu'a remplir : elle donnait au panneau l'air d'avoir du contenu.
+       C'est exactement ce qui separe un panneau de compte d'un PROFIL. Un
+       profil montre ce que le compte a ACCUMULE. Trois chiffres le font, et
+       ce sont ceux que le produit compte deja partout ailleurs : cristaux,
+       serie, amis. La place est la meme ; ce qu'on y lit n'est plus une
+       redite. */
+    .fs-account-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin: 0 14px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.07);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
     }
-    .fs-account-row {
+    .fs-account-stat {
+      position: relative;
       display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 11px 2px;
-      border-bottom: 1px solid rgba(255,255,255,0.055);
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 14px 6px 13px;
     }
-    .fs-account-row:last-child { border-bottom: none; }
-    .fs-account-label {
+    /* Filets INTERIEURS, retreints en hauteur : une bordure pleine
+       decouperait trois boites, alors qu'il s'agit d'une seule rangee. */
+    .fs-account-stat + .fs-account-stat::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 24%; bottom: 24%;
+      width: 1px;
+      background: rgba(255,255,255,0.075);
+    }
+    .fs-account-stat b {
+      font-family: var(--font-display);
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      color: rgba(248,246,252,0.97);
+      /* Chiffres tabulaires : passer de 9 a 10 ne doit pas decaler la colonne. */
+      font-variant-numeric: tabular-nums;
+    }
+    .fs-account-stat span {
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.09em;
       text-transform: uppercase;
-      color: rgba(248,246,252,0.58);
+      color: rgba(248,246,252,0.5);
     }
-    .fs-account-value {
-      min-width: 0;
-      text-align: right;
-      font-size: 12px;
-      font-weight: 600;
-      color: rgba(248,246,252,0.88);
-      white-space: nowrap;
+    .fs-account-since {
+      margin: 11px 14px 0;
+      text-align: center;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: rgba(248,246,252,0.44);
+    }
+    /* ══ TROIS BOUTONS SOSIES ET UN RAIL MUET ════════════════════════════════
+       Le pied du panneau empilait « Personnaliser », « Installer LumenOS » et
+       « Parametres » — trois blocs de 44 px, meme forme, meme graisse, dont
+       deux au meme traitement teinte. Aucune hierarchie : rien ne disait a
+       quoi sert ce panneau. Et « Personnaliser » / « Parametres » veulent dire
+       la meme chose pour quelqu'un qui arrive.
+       A cote, la deconnexion etait une colonne de 46 px de large sur TROIS
+       rangees de haut, avec une icone et AUCUNE etiquette : il fallait deviner
+       le glyphe, sur un objet qui pesait visuellement autant que l'action
+       principale. Le calage (grid-row: 1 / span 3) supposait en plus qu'il y
+       ait exactement trois boutons en face — ajouter une ligne cassait la
+       colonne.
+       Trois registres distincts remplacent les trois sosies :
+         · UNE action principale, pleine et coloree ;
+         · les destinations secondaires en LISTE, avec chevron — l'idiome qui
+           dit « ceci mene ailleurs » sans crier ;
+         · la sortie, en bas, separee, ETIQUETEE, et rouge seulement au survol. */
+    .fs-account-list {
+      margin: 14px 14px 0;
+      border-radius: 18px;
       overflow: hidden;
-      text-overflow: ellipsis;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(255,255,255,0.065);
     }
-    .fs-account-actions {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      padding: 14px;
+    .fs-account-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-height: 48px;
+      padding: 0 14px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(248,246,252,0.92);
+      transition: background 0.16s var(--mineral-ease);
     }
-    .fs-account-primary,
-    .fs-account-secondary {
-      height: 44px;
+    .fs-account-item + .fs-account-item { border-top: 1px solid rgba(255,255,255,0.055); }
+    .fs-account-item:hover { background: rgba(255,255,255,0.055); }
+    .fs-account-item[disabled] { cursor: default; color: rgba(248,246,252,0.5); }
+    .fs-account-item[disabled]:hover { background: transparent; }
+    .fs-account-item-ico { display: grid; place-items: center; flex-shrink: 0; color: var(--theme-c1); }
+    .fs-account-item[disabled] .fs-account-item-ico { color: rgba(248,246,252,0.34); }
+    .fs-account-item-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fs-account-item-note {
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(248,246,252,0.44);
+    }
+    .fs-account-item-chev { flex-shrink: 0; color: rgba(248,246,252,0.32); }
+    .fs-account-actions { padding: 14px; }
+    .fs-account-primary {
+      width: 100%;
+      height: 46px;
       border-radius: 16px;
       border: none;
       cursor: pointer;
       font-family: var(--font-body);
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 12.5px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      transition: transform 180ms var(--fs-ease), background 180ms ease, box-shadow 180ms ease;
-    }
-    .fs-account-primary {
       color: #07070d;
       background: linear-gradient(135deg, rgb(var(--theme-c1-rgb)), rgb(var(--theme-c2-rgb)));
       box-shadow: 0 14px 34px rgba(var(--theme-c1-rgb),0.28), inset 0 1px 0 rgba(255,255,255,0.34);
+      transition: transform 180ms var(--fs-ease), box-shadow 180ms ease;
     }
-    .fs-account-install {
-      grid-column: 1 / 2;
-      height: 44px;
-      border-radius: 16px;
-      border: 1px solid rgba(var(--theme-c1-rgb),0.20);
-      background:
-        radial-gradient(ellipse 80% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.14), transparent 58%),
-        linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.03));
-      color: rgba(248,246,252,0.92);
-      cursor: pointer;
-      font-family: var(--font-body);
-      font-size: 12px;
-      font-weight: 600;
+    .fs-account-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 18px 40px rgba(var(--theme-c1-rgb),0.34), inset 0 1px 0 rgba(255,255,255,0.34);
+    }
+    /* La sortie porte enfin son nom. Neutre au repos — on ne peint pas en
+       rouge une action qu'on n'a pas encore choisie — et rouge au survol,
+       au moment ou la main s'y engage. */
+    .fs-account-exit {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.075), 0 12px 26px rgba(var(--theme-c1-rgb),0.08);
-      transition: transform 180ms var(--fs-ease), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-    }
-    .fs-account-install:hover {
-      transform: translateY(-1px);
-      border-color: rgba(var(--theme-c1-rgb),0.36);
-      background:
-        radial-gradient(ellipse 80% 140% at 0% 0%, rgba(var(--theme-c1-rgb),0.22), transparent 58%),
-        linear-gradient(180deg, rgba(255,255,255,0.085), rgba(255,255,255,0.04));
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 16px 34px rgba(var(--theme-c1-rgb),0.13);
-    }
-    .fs-account-primary:hover,
-    .fs-account-secondary:hover { transform: translateY(-1px); }
-    .fs-account-secondary {
-      width: 46px;
-      grid-column: 2;
-      grid-row: 1 / span 3;
-      height: auto;
-      color: rgba(248,246,252,0.62);
-      background: rgba(255,255,255,0.055);
+      gap: 9px;
+      width: 100%;
+      height: 44px;
+      margin-top: 10px;
+      border-radius: 16px;
+      cursor: pointer;
       border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.045);
+      color: rgba(248,246,252,0.7);
+      font-family: var(--font-body);
+      font-size: 12.5px;
+      font-weight: 600;
+      transition: background 0.17s var(--mineral-ease), color 0.17s var(--mineral-ease), border-color 0.17s var(--mineral-ease);
     }
-    .fs-account-secondary:hover {
+    .fs-account-exit:hover {
       color: #fb7185;
-      background: rgba(251,113,133,0.12);
-      box-shadow: 0 12px 24px rgba(251,113,133,0.12);
-    }
-    @media (max-width: 768px) {
-      .fs-account-actions {
-        grid-template-columns: 1fr;
-        gap: 9px;
-      }
-      .fs-account-install,
-      .fs-account-secondary {
-        grid-column: 1;
-        grid-row: auto;
-        width: 100%;
-        height: 44px;
-      }
-      .fs-account-secondary {
-        color: rgba(248,246,252,0.76);
-      }
+      background: rgba(251,113,133,0.11);
+      border-color: rgba(251,113,133,0.30);
     }
   `;
       document.head.appendChild(s);
@@ -12118,6 +12196,29 @@
         () => (window._fsFeatureUnlocked ? window._fsFeatureUnlocked(user?.id, 'banner') : false),
         [user?.id, accountOpen]
       );
+      /* Les trois chiffres du profil, lus aux MÊMES sources que le reste du
+         produit — aucun compteur parallèle, sinon deux endroits finiraient par
+         annoncer deux nombres différents. Recalculés à l'ouverture du panneau,
+         comme `bannerProgress` juste au-dessus et pour la même raison : c'est
+         le seul moment où ils sont lus. */
+      const profilStats = React.useMemo(() => {
+        const uid = user?.id;
+        let cristaux = 0, amis = 0, serie = 0, depuis = '';
+        try { cristaux = (JSON.parse(localStorage.getItem(uid ? 'fs_crystals_' + uid : 'fs_crystals') || '[]') || []).length; } catch (e) { }
+        try { amis = (JSON.parse(localStorage.getItem(uid ? 'fs_friends_' + uid : 'fs_friends') || '[]') || []).length; } catch (e) { }
+        try { serie = (window._gLoad ? window._gLoad(uid) : null)?.streaks?.daily || 0; } catch (e) { }
+        /* « Membre depuis » vient de la date de création du compte Supabase.
+           Absente (session locale, hors ligne), la ligne ne s'affiche pas : une
+           date inventée vaut moins que pas de date. */
+        try {
+          const iso = window._fsSbUser?.created_at;
+          if (iso) {
+            const d = new Date(iso);
+            if (!isNaN(d)) depuis = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+          }
+        } catch (e) { }
+        return { cristaux, amis, serie, depuis };
+      }, [user?.id, accountOpen]);
       React.useEffect(() => {
         const h = () => setProfileBanner(window._fsBannerRead ? window._fsBannerRead() : null);
         window.addEventListener('fs-banner-update', h);
@@ -12776,6 +12877,11 @@
           {accountOpen && (
             <div ref={accountRef} className="fs-account-panel" role="dialog" aria-modal="true" aria-label="Mon profil" onClick={e => e.stopPropagation()}>
               <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoFile} />
+              <button type="button" className="fs-account-close" onClick={() => setAccountOpen(false)} aria-label="Fermer">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
               {/* ══ BANNIÈRE, LÀ OÙ ELLE SE COMPREND ═══════════════════════════
                  Elle vit AU-DESSUS de la photo, dans le panneau du profil : le
                  seul endroit où l'on voit du premier coup d'œil ce que
@@ -12848,52 +12954,76 @@
                   </span>
                 </button>
                 <div style={{ minWidth:0 }}>
-                  <div className="fs-account-kicker">Compte LumenOS</div>
                   <div className="fs-account-name">{displayName}</div>
                   <div className="fs-account-email">{displayEmail}</div>
                 </div>
               </div>
-              <div className="fs-account-body">
-                <div className="fs-account-card">
-                  <div className="fs-account-row">
-                    <span className="fs-account-label">Nom</span>
-                    <span className="fs-account-value">{displayName}</span>
-                  </div>
-                  <div className="fs-account-row">
-                    <span className="fs-account-label">Email</span>
-                    <span className="fs-account-value">{displayEmail}</span>
-                  </div>
-                  <div className="fs-account-row">
-                    <span className="fs-account-label">Profil</span>
-                    <span className="fs-account-value">{profilePhoto ? 'Photo personnalisée' : 'Initiale automatique'}</span>
-                  </div>
+              {/* Ce que le compte a accumulé, à la place de la fiche qui
+                  répétait l'en-tête. Voir la note sur .fs-account-stats. */}
+              <div className="fs-account-stats">
+                <div className="fs-account-stat">
+                  <b>{profilStats.cristaux}</b><span>Cristaux</span>
                 </div>
+                <div className="fs-account-stat">
+                  <b>{profilStats.serie}</b><span>Jours</span>
+                </div>
+                <div className="fs-account-stat">
+                  <b>{profilStats.amis}</b><span>Amis</span>
+                </div>
+              </div>
+              {profilStats.depuis && (
+                <div className="fs-account-since">Membre depuis {profilStats.depuis}</div>
+              )}
+              <div className="fs-account-list">
+                <button type="button" className="fs-account-item"
+                  onClick={() => { setAccountOpen(false); onNavigate('settings'); }}>
+                  <span className="fs-account-item-ico" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 7h16" /><path d="M6 7v12h12V7" /><path d="M9 11h6" /><path d="M9 15h4" />
+                    </svg>
+                  </span>
+                  <span className="fs-account-item-txt">Paramètres</span>
+                  <span className="fs-account-item-chev" aria-hidden="true">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </button>
+                {/* Une fois l'app installée, la ligne reste VISIBLE mais inerte,
+                    avec la mention « Installé » : la faire disparaître laisserait
+                    croire qu'on a rêvé l'option. */}
+                <button type="button" className="fs-account-item" onClick={handleInstall} disabled={isInstalled}>
+                  <span className="fs-account-item-ico" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
+                    </svg>
+                  </span>
+                  <span className="fs-account-item-txt">Installer LumenOS</span>
+                  {isInstalled
+                    ? <span className="fs-account-item-note">Installé</span>
+                    : (
+                      <span className="fs-account-item-chev" aria-hidden="true">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    )}
+                </button>
               </div>
               <div className="fs-account-actions">
                 <button type="button" className="fs-account-primary" onClick={openPersonalization}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 20v-6" /><path d="M5 10V4" /><path d="M12 20v-9" /><path d="M12 7V4" /><path d="M19 20v-3" /><path d="M19 13V4" /><circle cx="5" cy="12" r="2" /><circle cx="12" cy="9" r="2" /><circle cx="19" cy="15" r="2" />
                   </svg>
-                  Personnaliser
+                  Personnaliser mon espace
                 </button>
-                <button type="button" className="fs-account-install" onClick={handleInstall}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
-                  </svg>
-                  {isInstalled ? 'LumenOS installé' : 'Installer LumenOS'}
-                </button>
-                <button type="button" className="fs-account-install" onClick={() => { setAccountOpen(false); onNavigate('settings'); }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 7h16" /><path d="M6 7v12h12V7" /><path d="M9 11h6" /><path d="M9 15h4" />
-                  </svg>
-                  Paramètres
-                </button>
-                <button type="button" className="fs-account-secondary" onClick={() => { setAccountOpen(false); onLogout(); }} title="Se déconnecter">
+                <button type="button" className="fs-account-exit" onClick={() => { setAccountOpen(false); onLogout(); }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                     <polyline points="16 17 21 12 16 7" />
                     <line x1="21" y1="12" x2="9" y2="12" />
                   </svg>
+                  Se déconnecter
                 </button>
               </div>
             </div>
