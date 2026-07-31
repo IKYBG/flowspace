@@ -1570,7 +1570,9 @@
       align-items: flex-end;
       gap: 10px;
       pointer-events: none;
-      width: min(400px, calc(100vw - 32px));
+      /* La carte se dimensionne sur son texte au lieu d'occuper une largeur
+         fixe : « Skin acheté » ne mérite pas la boîte d'une phrase longue. */
+      max-width: min(420px, calc(100vw - 32px));
     }
     /* ══ CE QUI FAISAIT « CHEAP » ════════════════════════════════════════════
        La couleur était employée QUATRE fois sur un objet de 60 px : filet
@@ -1590,48 +1592,63 @@
        Reste la matière : une surface plus dense, un liseré haut qui capte la
        lumière, et une ombre à deux plans pour poser la carte au-dessus de
        l'interface au lieu de la coller dessus. */
+    /* PASSE 3 — trois défauts restaient, tous de la même famille : de la
+       CHROME permanente autour d'un message éphémère.
+       a) Une croix de fermeture affichée en permanence sur chaque message. Un
+          bouton qu'on n'utilise presque jamais, posé à demeure à côté du texte,
+          transforme une notification en fenêtre. Elle n'apparaît qu'au survol
+          — et la carte entière devient cliquable pour se fermer, ce qui est le
+          geste que les gens tentent d'instinct.
+       b) Des glyphes en TRAIT à 18 px. À cette taille un contour de 2 px bave
+          et donne un rendu d'icône générique ; un glyphe PLEIN se lit d'un
+          coup, sans conteneur ni bordure pour le soutenir.
+       c) Une largeur fixe de 400 px, quel que soit le message. « Skin acheté »
+          occupait la même boîte qu'une phrase de trois lignes. La carte se
+          dimensionne maintenant sur son contenu, avec un plafond. */
     .fs-toast {
       pointer-events: auto;
-      width: 100%;
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: 18px minmax(0, 1fr) auto;
+      grid-template-columns: 19px minmax(0, 1fr) auto;
       align-items: start;
       column-gap: 13px;
-      padding: 15px 15px 15px 17px;
-      border-radius: 18px;
+      padding: 15px 17px;
+      border-radius: 17px;
       position: relative;
-      overflow: hidden;
+      cursor: pointer;
+      max-width: 100%;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 42%),
-        linear-gradient(180deg, rgba(22, 21, 38, 0.99), rgba(12, 11, 24, 0.99));
-      border: 1px solid rgba(255, 255, 255, 0.085);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 44%),
+        linear-gradient(180deg, rgba(24, 23, 41, 0.99), rgba(13, 12, 26, 0.99));
+      border: 1px solid rgba(255, 255, 255, 0.09);
       box-shadow:
-        0 1px 0 0 rgba(255, 255, 255, 0.055) inset,
-        0 8px 20px rgba(0, 0, 0, 0.42),
-        0 28px 64px rgba(0, 0, 0, 0.55);
-      backdrop-filter: blur(26px) saturate(180%);
-      -webkit-backdrop-filter: blur(26px) saturate(180%);
+        0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+        0 6px 16px rgba(0, 0, 0, 0.38),
+        0 26px 60px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(28px) saturate(185%);
+      -webkit-backdrop-filter: blur(28px) saturate(185%);
       animation: toastIn 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+      transition: border-color 0.18s ease;
     }
+    .fs-toast:hover { border-color: rgba(255, 255, 255, 0.14); }
     .fs-toast.is-out { animation: toastOut 0.2s cubic-bezier(0.4, 0, 1, 1) forwards; }
-    /* Le glyphe seul, optiquement aligné sur la première ligne de texte. */
+    /* Glyphe PLEIN, sans conteneur, optiquement aligné sur la première ligne. */
     .fs-toast-ico {
-      width: 18px; height: 18px;
+      width: 19px; height: 19px;
       display: grid;
       place-items: center;
       flex-shrink: 0;
-      margin-top: 1px;
+      margin-top: 0.5px;
       color: var(--toast-c, var(--theme-c1));
     }
     .fs-toast-msg {
       min-width: 0;
       font-family: var(--font-body);
       font-size: 13.5px;
-      font-weight: 600;
-      line-height: 1.5;
-      letter-spacing: -0.008em;
-      color: rgba(250, 249, 255, 0.97);
+      font-weight: 580;
+      line-height: 1.48;
+      letter-spacing: -0.009em;
+      color: rgba(252, 251, 255, 0.98);
       /* Jusqu'à trois lignes : une notification tronquée à mi-phrase ne dit
          rien, autant ne pas l'afficher. */
       display: -webkit-box;
@@ -1639,36 +1656,44 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .fs-toast-side { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin: -3px -4px 0 4px; }
+    .fs-toast-side { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin: -4px -6px 0 6px; }
     /* L'action est un bouton NEUTRE : elle se distingue par sa forme et son
        poids, pas par une couleur qui rivaliserait avec le glyphe. */
     .fs-toast-act {
-      min-height: 30px;
-      padding: 0 13px;
-      border-radius: 10px;
+      min-height: 29px;
+      padding: 0 12px;
+      border-radius: 9px;
       cursor: pointer;
       white-space: nowrap;
-      font: 750 12px var(--font-body);
+      font: 700 12px var(--font-body);
       letter-spacing: -0.005em;
-      color: rgba(250, 249, 255, 0.94);
-      background: rgba(255, 255, 255, 0.075);
-      border: 1px solid rgba(255, 255, 255, 0.10);
+      color: rgba(252, 251, 255, 0.95);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.11);
       transition: background 0.16s var(--mineral-ease), border-color 0.16s var(--mineral-ease);
     }
-    .fs-toast-act:hover { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.18); }
+    .fs-toast-act:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.2); }
     .fs-toast-act:focus-visible { outline: 2px solid var(--toast-c, var(--theme-c1)); outline-offset: 2px; }
+    /* La croix ne s'affiche qu'au survol : à demeure, elle faisait de chaque
+       message une fenêtre. La carte entière reste cliquable pour fermer. */
     .fs-toast-x {
-      width: 30px; height: 30px;
-      border-radius: 10px;
+      width: 28px; height: 28px;
+      border-radius: 9px;
       display: grid;
       place-items: center;
       cursor: pointer;
-      border: 1px solid transparent;
+      border: 0;
       background: transparent;
-      color: rgba(250, 249, 255, 0.3);
-      transition: color 0.16s ease, background 0.16s ease;
+      color: rgba(252, 251, 255, 0.4);
+      opacity: 0;
+      transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease;
     }
-    .fs-toast-x:hover { color: rgba(250, 249, 255, 0.92); background: rgba(255, 255, 255, 0.08); }
+    .fs-toast:hover .fs-toast-x,
+    .fs-toast-x:focus-visible { opacity: 1; }
+    .fs-toast-x:hover { color: rgba(252, 251, 255, 0.95); background: rgba(255, 255, 255, 0.09); }
+    /* Sans survol (tactile), la croix est toujours là : il n'existe aucun geste
+       pour survoler au doigt. */
+    @media (hover: none) { .fs-toast-x { opacity: 1; } }
     html.fs-reduce-motion .fs-toast,
     html.fs-reduce-motion .fs-toast.is-out { animation-duration: 0.01s; }
     @media (max-width: 640px) {
@@ -10787,25 +10812,48 @@
     .fs-label { font-size:14px; font-weight: 700; letter-spacing: -0.01em; color: inherit; overflow: hidden; text-overflow: ellipsis; }
     .fs-meta { font-size: 11px; color: var(--mineral-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
     /* Badge « ! » demandes d'ami — morphing organique (scale + rotation + blob) */
+    /* ══ LA PASTILLE DE DEMANDES D'AMI ═══════════════════════════════════════
+       Elle affichait un « ! » — un caractère de POLICE, pas une icône : dessin
+       différent d'une plateforme à l'autre, et le projet proscrit les glyphes
+       dans l'UI. Elle disait aussi moins que ce qu'elle savait : le nombre de
+       demandes était disponible, elle se contentait d'un « il se passe quelque
+       chose ». Elle affiche donc le COMPTE, comme toute pastille de
+       notification depuis toujours — et devient identique à celle du nombre
+       d'amis juste à côté, qui faisait le même travail dans un autre style.
+       L'animation gigotait aussi : mise à l'échelle, rotation, et un
+       border-radius qui se déformait en gelée à chaque cycle. Sur un badge de
+       17 px posté en permanence dans la barre latérale, c'est du bruit continu
+       dans la vision périphérique. Reste une respiration lente du halo, qui
+       signale sans agiter. */
     .fs-fr-bang {
-      position: absolute; top: -5px; right: -6px;
-      min-width: 17px; height: 17px; padding: 0 2px;
-      display: grid; place-items: center;
-      font-size: 11px; font-weight: 900; line-height: 1;
+      position: absolute; top: -4px; right: -5px;
+      min-width: 16px; height: 16px; padding: 0 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-body);
+      font-size: 10px; font-weight: 800; line-height: 1;
+      font-variant-numeric: tabular-nums;
       color: #07070d;
-      background: linear-gradient(135deg, var(--theme-c1), var(--theme-c2));
-      border-radius: 50%;
-      box-shadow: 0 0 14px rgba(var(--theme-c1-rgb), .72), inset 0 1px 0 rgba(255,255,255,.4);
-      animation: fsFrBang 2.4s cubic-bezier(.34,1.56,.64,1) infinite;
+      background: var(--theme-c1);
+      border-radius: 99px;
+      box-shadow: 0 0 10px rgba(var(--theme-c1-rgb), .55);
+      animation: fsFrBang 2.8s ease-in-out infinite;
     }
     @keyframes fsFrBang {
-      0%, 100% { transform: scale(1) rotate(0deg); border-radius: 50%; }
-      10%      { transform: scale(1.28) rotate(-12deg); border-radius: 46% 54% 58% 42%; }
-      22%      { transform: scale(.96) rotate(9deg); border-radius: 58% 42% 46% 54%; }
-      34%      { transform: scale(1.12) rotate(-4deg); border-radius: 42% 58% 52% 48%; }
-      46%      { transform: scale(1) rotate(0deg); border-radius: 50%; }
+      0%, 100% { box-shadow: 0 0 8px rgba(var(--theme-c1-rgb), .42); }
+      50%      { box-shadow: 0 0 16px rgba(var(--theme-c1-rgb), .8); }
     }
     html.fs-reduce-motion .fs-fr-bang { animation: none; }
+    /* Marqueur de nouveauté générique — un point qui respire, jamais un
+       caractère. Global parce qu'il sert dans plusieurs composants (en-tête de
+       section « Demandes reçues », carte d'invitation…). */
+    .fs-mark-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: block;
+      background: var(--theme-c1);
+      box-shadow: 0 0 10px rgba(var(--theme-c1-rgb), .7);
+      animation: fsMarkDot 2.4s ease-in-out infinite;
+    }
+    @keyframes fsMarkDot { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    html.fs-reduce-motion .fs-mark-dot { animation: none; }
     .fs-footer-card {
       position: relative;
       border-radius: 18px;
@@ -11040,46 +11088,52 @@
       72% { opacity: 1; transform: translateY(-1px) scale(1.012); filter: blur(0); }
       100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
     }
-    /* Lignes du menu : aucune bordure propre, un filet de séparation entre
-       elles. C'est la carte qui porte le contour, une seule fois. */
-    .fs-pop-actions { padding: 0; display: flex; flex-direction: column; }
+    /* ══ DEUX LIGNES QUI SE PRENAIENT POUR UN TABLEAU DE BORD ════════════════
+       Pour « Mon profil » et « Se déconnecter », ce menu empilait : une boîte
+       d'icône teintée de 30 px, un libellé en graisse 780, un chevron, et un
+       filet de séparation. Quatre éléments de décor pour deux mots — le même
+       défaut que les notifications avant leur refonte : de la chrome autour
+       d'un contenu minuscule.
+       · LES BOÎTES D'ICÔNES PARTENT. Un carré coloré derrière chaque glyphe,
+         c'est le vocabulaire de la liste de réglages d'application mobile
+         gratuite. Le glyphe seul, monochrome, suffit — et il hérite de la
+         couleur de sa ligne, donc l'état de survol se lit d'un bloc.
+       · LES CHEVRONS PARTENT. Ils annoncent « ceci ouvre un niveau de plus ».
+         Or « Se déconnecter » n'ouvre rien du tout : le chevron y mentait.
+       · LE FILET PART. Deux lignes dans une carte de 6 px de marge n'ont pas
+         besoin qu'on les sépare : l'espace le fait déjà.
+       Restent le geste et le mot, c'est tout ce qu'un menu de compte doit
+       montrer. La zone de survol devient un bloc plein aux coins arrondis, qui
+       épouse la carte au lieu de flotter dedans. */
+    .fs-pop-actions { padding: 0; display: flex; flex-direction: column; gap: 2px; }
     .fs-pop-action {
-      min-height: 46px;
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      width: 100%; padding: 0 10px; border-radius: 14px;
+      min-height: 40px;
+      display: flex; align-items: center; gap: 11px;
+      width: 100%; padding: 0 11px; border-radius: 13px;
       border: 0; background: transparent; cursor: pointer;
-      color: rgba(248,246,252,0.86); font-family: var(--font-body);
-      font-size: 13px; font-weight: 780; text-align: left;
-      transition: background 160ms ease, color 160ms ease;
+      color: rgba(248,246,252,0.82); font-family: var(--font-body);
+      font-size: 13.5px; font-weight: 600; letter-spacing: -0.011em; text-align: left;
+      transition: background 150ms ease, color 150ms ease;
     }
-    .fs-pop-action + .fs-pop-action { position: relative; }
-    .fs-pop-action + .fs-pop-action::before {
-      content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 1px;
-      background: rgba(255,255,255,0.07);
-    }
-    .fs-pop-action:hover { background: rgba(255,255,255,0.06); color: #fff; }
-    .fs-pop-action:hover .fs-pop-action-arrow { opacity: 0.9; transform: translateX(2px); }
+    .fs-pop-action:hover { background: rgba(255,255,255,0.07); color: #fff; }
     .fs-pop-action:focus-visible {
       outline: 2px solid rgba(var(--theme-c1-rgb),0.7); outline-offset: -2px;
-      background: rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.07);
     }
-    .fs-pop-action:active { background: rgba(255,255,255,0.10); }
+    .fs-pop-action:active { background: rgba(255,255,255,0.11); }
     /* Se déconnecter est une SORTIE : elle se distingue au survol au lieu
        d'être visuellement interchangeable avec « Mon profil ». */
-    .fs-pop-action.is-exit:hover { background: rgba(251,113,133,0.12); color: #fda4af; }
-    .fs-pop-action.is-exit:hover .fs-pop-action-icon {
-      background: rgba(251,113,133,0.16); color: #fda4af;
-    }
+    .fs-pop-action.is-exit:hover { background: rgba(251,113,133,0.13); color: #ffa8b8; }
+    /* Le glyphe hérite de la couleur de la ligne : un seul état à gérer, et
+       jamais de teinte qui survit à un survol qu'elle ne concerne plus. */
     .fs-pop-action-icon {
-      width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
-      background: rgba(var(--theme-c1-rgb),0.10); display: flex; align-items: center; justify-content: center;
-      color: rgba(var(--theme-c1-rgb),0.92);
-      transition: background 0.17s, color 0.17s;
+      width: 17px; height: 17px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: currentColor; opacity: 0.72;
+      transition: opacity 150ms ease;
     }
-    .fs-pop-action-copy { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .fs-pop-action-arrow { color: rgba(248,246,252,0.28); transition: color 180ms ease, transform 180ms var(--fs-ease); }
-    .fs-pop-action:hover .fs-pop-action-icon { background: rgba(var(--theme-c1-rgb),0.16); color: rgba(var(--theme-c1-rgb),1); }
-    .fs-pop-action:hover .fs-pop-action-arrow { color: rgba(var(--theme-c2-rgb),0.86); transform: translateX(1px); }
+    .fs-pop-action:hover .fs-pop-action-icon { opacity: 1; }
+    .fs-pop-action-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
     /* ══ LE PANNEAU DE PROFIL EST UNE MODALE, PAS UN MENU ════════════════════
        ATTENTION : cette feuille vit dans un littéral de gabarit JS — aucun
        accent grave dans les commentaires, il refermerait la chaîne.
@@ -12152,7 +12206,7 @@
                       <path d="M19 8v6M16 11h6" />
                     </svg>
                     {frPending > 0 ? (
-                      <span className="fs-fr-bang" aria-label={`${frPending} demande${frPending>1?'s':''} d'ami en attente`}>!</span>
+                      <span className="fs-fr-bang" aria-label={`${frPending} demande${frPending>1?'s':''} d'ami en attente`}>{frPending > 9 ? '9+' : frPending}</span>
                     ) : friends > 0 && (
                       <span style={{ position:'absolute', top:-3, right:-4, minWidth:16, height:16, borderRadius:99, background:'var(--theme-c1)', color:'#07070d', fontSize: 10, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', lineHeight:1, fontFamily:"'DM Sans',sans-serif", boxShadow:'0 0 10px rgba(var(--theme-c1-rgb),0.55)' }}>
                         {friends}
@@ -12299,33 +12353,25 @@
                        depuis le pied de barre menait à « Se déconnecter ».
                        C'est ici que vit désormais l'accès au profil, et donc à
                        la bannière. */}
-                    <button type="button" className="fs-pop-action" onClick={e => { setPopOpen(false); openAccountPanel(e); }} aria-label="Ouvrir mon profil">
-                      <span className="fs-pop-action-copy">
-                        <span className="fs-pop-action-icon" aria-hidden="true">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="8" r="3.6" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
-                          </svg>
-                        </span>
-                        <span>Mon profil</span>
+                    <button type="button" className="fs-pop-action" onClick={e => { setPopOpen(false); openAccountPanel(e); }}>
+                      <span className="fs-pop-action-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="8" r="3.6" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+                        </svg>
                       </span>
-                      <svg className="fs-pop-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
+                      Mon profil
                     </button>
-                    <button type="button" className="fs-pop-action is-exit" onClick={() => { setPopOpen(false); onLogout(); }} aria-label="Se déconnecter de LumenOS">
-                      <span className="fs-pop-action-copy">
-                        <span className="fs-pop-action-icon" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {/* « Se deconnecter » s'écrivait sans son accent — l'UI est
+                        en français, accents compris (convention du projet). */}
+                    <button type="button" className="fs-pop-action is-exit" onClick={() => { setPopOpen(false); onLogout(); }}>
+                      <span className="fs-pop-action-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                           <polyline points="16 17 21 12 16 7" />
                           <line x1="21" y1="12" x2="9" y2="12" />
                         </svg>
-                        </span>
-                        <span>Se deconnecter</span>
                       </span>
-                      <svg className="fs-pop-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
+                      Se déconnecter
                     </button>
                   </div>
                 </div>
@@ -17010,13 +17056,14 @@ void main(){
       }, []);
 
       const COLORS = { info: T.c1, success: T.green, warning: T.warm, error: T.rose };
-      /* Un dessin par type, à la même grille et au même trait que le reste du
-         set maison (grille 24, trait ~2). */
+      /* Glyphes PLEINS (grille 24). À 19 px, un contour de 2 px bave et donne
+         un rendu d'icône générique ; une forme pleine se lit d'un coup et se
+         passe du conteneur teinté qui servait à la soutenir. */
       const ICONS = {
-        success: <path d="M4.5 12.5l5 5 10-11" />,
-        error:   <path d="M6 6l12 12M18 6L6 18" />,
-        warning: <><path d="M12 4.5l8.5 15h-17z" /><path d="M12 10v4M12 17h.01" /></>,
-        info:    <><circle cx="12" cy="12" r="8.5" /><path d="M12 8h.01M12 11.5v5" /></>,
+        success: <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5.03 7.1-6.1 6.6a1.1 1.1 0 0 1-1.6.02L6.9 12.9a1.1 1.1 0 1 1 1.56-1.55l1.6 1.6 5.34-5.78a1.1 1.1 0 0 1 1.62 1.49z" />,
+        error:   <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.54 12.02a1.08 1.08 0 0 1-1.52 1.52L12 13.52l-2.02 2.02a1.08 1.08 0 0 1-1.52-1.52L10.48 12 8.46 9.98A1.08 1.08 0 0 1 9.98 8.46L12 10.48l2.02-2.02a1.08 1.08 0 0 1 1.52 1.52L13.52 12z" />,
+        warning: <path d="M10.63 3.4a1.6 1.6 0 0 1 2.74 0l8.1 14.02a1.6 1.6 0 0 1-1.37 2.4H3.9a1.6 1.6 0 0 1-1.37-2.4zM12 8.4a1.05 1.05 0 0 0-1.05 1.13l.3 3.7a.75.75 0 0 0 1.5 0l.3-3.7A1.05 1.05 0 0 0 12 8.4zm0 7.1a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3z" />,
+        info:    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 3.9a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm1.2 11.6h-2.4a.9.9 0 0 1 0-1.8h.3v-3.4h-.3a.9.9 0 0 1 0-1.8h1.2a.9.9 0 0 1 .9.9v4.3h.3a.9.9 0 0 1 0 1.8z" />,
       };
 
       return React.createElement(ToastContext.Provider, { value: { addToast } },
@@ -17024,15 +17071,19 @@ void main(){
         <div className="fs-toast-wrap" role="region" aria-label="Notifications">
           {toasts.map(t => {
             const col = COLORS[t.type] || COLORS.info;
+            const close = () => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); };
             return (
+              /* La carte entière ferme au clic : c'est le geste que les gens
+                 tentent d'instinct sur une notification, et il évitait jusqu'ici
+                 d'avoir à viser une croix de 11 px. */
               <div key={t.id}
                 className={'fs-toast' + (t.exiting ? ' is-out' : '')}
                 role={t.type === 'error' || t.type === 'warning' ? 'alert' : 'status'}
                 aria-live={t.type === 'error' || t.type === 'warning' ? 'assertive' : 'polite'}
-                style={{ '--toast-c': col, '--toast-tint': col + '1f' }}>
+                onClick={close}
+                style={{ '--toast-c': col }}>
                 <span className="fs-toast-ico" aria-hidden="true">
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={19} height={19} viewBox="0 0 24 24" fill="currentColor">
                     {ICONS[t.type] || ICONS.info}
                   </svg>
                 </span>
@@ -17040,10 +17091,10 @@ void main(){
                 <span className="fs-toast-side">
                   {t.action && (
                     <button type="button" className="fs-toast-act"
-                      onClick={() => handleAction(t.id, t.action.fn)}>{t.action.label}</button>
+                      onClick={e => { e.stopPropagation(); handleAction(t.id, t.action.fn); }}>{t.action.label}</button>
                   )}
                   <button type="button" className="fs-toast-x" aria-label="Fermer la notification"
-                    onClick={() => { clearTimeout(timersRef.current[t.id]); removeToast(t.id); }}>
+                    onClick={e => { e.stopPropagation(); close(); }}>
                     <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor"
                       strokeWidth={2.6} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
                   </button>
@@ -17826,8 +17877,21 @@ void main(){
             .fs-set-header-r{display:flex;align-items:center;gap:10px}
             .fs-set-saved{font-size:12px;font-weight:800;color:var(--sa);opacity:0;transform:translateY(2px);transition:all .3s var(--mineral-ease);margin-right:4px;white-space:nowrap}
             .fs-set-saved.show{opacity:1;transform:none}
-            .fs-set-btn{height:38px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.045);color:${T.muted};font:800 13px ${T.font};cursor:pointer;transition:all .17s var(--mineral-ease)}
-            .fs-set-btn:hover{background:rgba(255,255,255,0.08);color:${T.text};transform:translateY(-1px)}
+            /* ══ QUATRE BOUTONS QUI NE S'ACCORDAIENT PAS ═════════════════════
+               Attention : feuille dans un littéral de gabarit JS — pas d'accent
+               grave dans les commentaires.
+               Les réglages portaient quatre boutons de même nature — une action
+               secondaire dans une ligne — dessinés chacun à sa façon : hauteurs
+               38, 34, 40 et 40 ; rayons 12, 10, 12 et 12 ; corps 13, 12, 13 et
+               13 ; graisse 800 partout, ce qui est trop pour du secondaire et
+               les faisait tous crier. Deux d'entre eux se retrouvent parfois sur
+               la MEME page, à quelques centimètres : l'oeil lit un défaut
+               d'exécution avant de lire une hiérarchie.
+               Une seule échelle désormais — 38 px, rayon 12, corps 13, graisse
+               650 — et la couleur seule distingue le neutre du destructeur.
+               Les cibles tactiles restent à 44 px sur petit écran. */
+            .fs-set-btn{height:38px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.05);color:${T.text};font:650 13px ${T.font};letter-spacing:-0.008em;cursor:pointer;transition:background .17s var(--mineral-ease),border-color .17s var(--mineral-ease),color .17s var(--mineral-ease)}
+            .fs-set-btn:hover{background:rgba(255,255,255,0.09);border-color:rgba(255,255,255,0.16);color:#fff}
             .fs-set-btn.white{background:#f4f6fb;color:#0a0c14;border-color:#f4f6fb;box-shadow:0 12px 30px rgba(255,255,255,0.12)}
             .fs-set-btn.white:hover{background:#fff;color:#06080f}
             .fs-set-body{flex:1;min-height:0;display:grid;grid-template-columns:246px minmax(0,1fr)}
@@ -18020,24 +18084,28 @@ void main(){
             .fs-set-int:last-child{border-bottom:none}
             .fs-set-int-l{display:flex;align-items:center;gap:12px;min-width:0}
             .fs-set-int-ico{width:38px;height:38px;flex:none;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08)}
-            .fs-set-connect{height:34px;padding:0 14px;border-radius:10px;border:1px solid var(--s-line-n);background:rgba(255,255,255,0.045);color:${T.text};font:800 12px ${T.font};cursor:pointer;white-space:nowrap;transition:all .17s var(--mineral-ease)}
-            .fs-set-connect:hover{background:var(--s-veil-2);border-color:var(--s-line);color:var(--sa)}
+            /* Meme geometrie que .fs-set-btn — voir la note plus haut. */
+            .fs-set-connect{height:38px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.05);color:${T.text};font:650 13px ${T.font};letter-spacing:-0.008em;cursor:pointer;white-space:nowrap;transition:background .17s var(--mineral-ease),border-color .17s var(--mineral-ease),color .17s var(--mineral-ease)}
+            .fs-set-connect:hover{background:rgba(255,255,255,0.09);border-color:rgba(255,255,255,0.16);color:#fff}
             .fs-set-connect.off{border-color:rgba(255,107,138,0.3);background:rgba(255,107,138,0.08);color:${T.rose}}
             .fs-set-connect:disabled{opacity:.4;cursor:not-allowed;border-color:rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);color:${T.muted}}
             .fs-set-statusdot{width:8px;height:8px;border-radius:50%;flex:none;background:${T.green};box-shadow:0 0 10px ${T.green}}
-            .fs-set-danger-btn{height:40px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,107,138,0.34);background:rgba(255,107,138,0.10);color:${T.rose};font:800 13px ${T.font};cursor:pointer;transition:all .17s var(--mineral-ease)}
-            .fs-set-danger-btn:hover{background:rgba(255,107,138,0.18)}
-            .fs-set-logout-btn{display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 18px;border-radius:12px;
-              border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.045);color:var(--mineral-text);
-              font:800 13px ${T.font};cursor:pointer;white-space:nowrap;
-              box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);
-              transition:background .22s var(--mineral-ease),border-color .22s var(--mineral-ease),color .22s var(--mineral-ease),transform .17s var(--mineral-ease),box-shadow .22s var(--mineral-ease)}
-            .fs-set-logout-btn svg{flex:none;transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
-            .fs-set-logout-btn:hover{background:rgba(255,107,138,0.09);border-color:rgba(255,107,138,0.30);color:#ff8fa6;
-              box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),0 6px 18px rgba(255,107,138,0.10)}
-            .fs-set-logout-btn:hover svg{transform:translateX(2.5px)}
-            .fs-set-logout-btn:active{transform:scale(.97)}
+            .fs-set-danger-btn{height:38px;padding:0 16px;border-radius:12px;border:1px solid rgba(255,107,138,0.32);background:rgba(255,107,138,0.10);color:${T.rose};font:650 13px ${T.font};letter-spacing:-0.008em;cursor:pointer;transition:background .17s var(--mineral-ease),border-color .17s var(--mineral-ease)}
+            .fs-set-danger-btn:hover{background:rgba(255,107,138,0.18);border-color:rgba(255,107,138,0.46)}
+            /* La deconnexion est NEUTRE au repos : elle ne devient rouge qu'au
+               survol, quand elle est visee. Un bouton destructeur qui crie en
+               permanence use l'attention et finit par ne plus rien signaler. */
+            .fs-set-logout-btn{display:inline-flex;align-items:center;gap:9px;height:38px;padding:0 16px;border-radius:12px;
+              border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.05);color:var(--mineral-text);
+              font:650 13px ${T.font};letter-spacing:-0.008em;cursor:pointer;white-space:nowrap;
+              transition:background .18s var(--mineral-ease),border-color .18s var(--mineral-ease),color .18s var(--mineral-ease)}
+            .fs-set-logout-btn svg{flex:none;opacity:.7;transition:opacity .18s var(--mineral-ease)}
+            .fs-set-logout-btn:hover{background:rgba(255,107,138,0.11);border-color:rgba(255,107,138,0.32);color:#ff8fa6}
+            .fs-set-logout-btn:hover svg{opacity:1}
             .fs-set-logout-btn:focus-visible{outline:2px solid rgba(255,107,138,0.5);outline-offset:2px}
+            @media(max-width:640px){
+              .fs-set-btn,.fs-set-connect,.fs-set-danger-btn,.fs-set-logout-btn{height:44px}
+            }
             .fs-set-modal-bg{position:fixed;inset:0;z-index:999;display:grid;place-items:center;background:rgba(4,6,14,0.62);backdrop-filter:blur(8px);padding:20px}
             .fs-set-modal{width:min(420px,100%);border-radius:22px;border:1px solid rgba(255,107,138,0.28);background:linear-gradient(180deg,rgba(28,18,24,0.98),rgba(var(--mineral-bg-rgb),0.98));box-shadow:0 40px 100px rgba(0,0,0,0.6);padding:26px}
             .fs-reduce-motion *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
@@ -18524,16 +18592,19 @@ void main(){
               animation:fsInvIn .38s cubic-bezier(.2,1.1,.3,1) both}
             @keyframes fsInvIn{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:none}}
             html.fs-reduce-motion .fs-inv-card{animation:none}
-            .fs-inv-bang{position:absolute;top:-5px;left:-5px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
-              background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));color:#07070d;font-weight:900;font-size:13px;
-              box-shadow:0 0 18px rgba(var(--theme-c1-rgb),.65);animation:fsInvBang 1.6s ease-in-out infinite}
-            @keyframes fsInvBang{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+            /* Marqueur de nouveauté : un point, pas un « ! » de police. Il ne
+               porte aucune information chiffrée — juste « c'est nouveau » — et
+               un disque le dit mieux qu'un caractère au dessin variable. */
+            .fs-inv-bang{position:absolute;top:-3px;left:-3px;width:9px;height:9px;border-radius:50%;
+              background:var(--theme-c1);box-shadow:0 0 0 2.5px rgba(11,10,24,.95),0 0 12px rgba(var(--theme-c1-rgb),.8);
+              animation:fsInvBang 2.4s ease-in-out infinite}
+            @keyframes fsInvBang{0%,100%{opacity:1}50%{opacity:.45}}
             html.fs-reduce-motion .fs-inv-bang{animation:none}
           `}</style>
           {invites.map(inv => (
             <div key={inv.inviteId} className="fs-inv-card">
               <div style={{ position: 'relative', padding: '14px 15px 13px' }}>
-                <span className="fs-inv-bang" aria-hidden="true">!</span>
+                <span className="fs-inv-bang" aria-hidden="true" />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                   <span style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 900, color: '#07070d', background: 'linear-gradient(135deg,var(--theme-c1),var(--theme-c2))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.35)' }}>
                     {((inv.host?.name || '?')[0] || '?').toUpperCase()}
@@ -22334,7 +22405,10 @@ void main(){
               {requests.length > 0 && (
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:7, paddingLeft:4, marginBottom:2 }}>
-                    <span className="fs-fr-bang" style={{ position:'static' }} aria-hidden="true">!</span>
+                    {/* Ici le nombre est déjà écrit en toutes lettres juste à
+                        côté : la pastille n'a qu'à marquer la section, un point
+                        suffit — et l'ancien « ! » était un glyphe de police. */}
+                    <span className="fs-mark-dot" aria-hidden="true" />
                     <span style={{ fontSize: 10, fontWeight:800, letterSpacing:'0.1em', textTransform:'uppercase', color:T.c1 }}>
                       Demande{requests.length>1?'s':''} reçue{requests.length>1?'s':''}
                     </span>
