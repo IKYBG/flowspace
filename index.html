@@ -11574,8 +11574,19 @@
          --mineral-surface-rgb / --mineral-bg-rgb, que le selecteur de theme
          met a jour. Ce menu etait l'exception, pas la regle : il rejoint la
          regle. */
-      background: linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-bg-rgb),0.98));
-      border: 1px solid rgba(255,255,255,0.10);
+      /* ══ LA SURFACE SUIVAIT LE THEME, PAS CE QUI EST POSE DESSUS ═════════
+         Corriger le fond ne suffisait pas. Restaient un lavis d'accent
+         ABSENT, une bordure en blanc pur et un survol en blanc pur — or un
+         voile blanc sur une surface teintee ne l'eclaircit pas, il la
+         DESATURE : sur un theme crimson, le menu redevenait gris.
+         Tous les autres panneaux flottants de l'app (tiroir de widgets,
+         carte de pied de barre) portent deja ce lavis d'accent. Ce menu ne
+         l'avait jamais eu. Les valeurs restent basses : on cherche a ce que
+         la surface appartienne au theme, pas a la colorer. */
+      background:
+        radial-gradient(120% 90% at 18% -12%, rgba(var(--theme-c1-rgb),0.13), transparent 62%),
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-bg-rgb),0.98));
+      border: 1px solid rgba(var(--theme-c1-rgb),0.16);
       box-shadow: 0 26px 64px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.03),
                   inset 0 1px 0 rgba(255,255,255,0.07);
       backdrop-filter: blur(22px) saturate(170%);
@@ -11614,12 +11625,15 @@
       font-size: 13.5px; font-weight: 600; letter-spacing: -0.011em; text-align: left;
       transition: background 150ms ease, color 150ms ease;
     }
-    .fs-pop-action:hover { background: rgba(255,255,255,0.07); color: #fff; }
+    /* Le survol prend l'accent du theme au lieu du blanc : c'est le moment ou
+       la ligne s'allume, donc celui ou elle doit dire a quel espace elle
+       appartient. */
+    .fs-pop-action:hover { background: rgba(var(--theme-c1-rgb),0.15); color: #fff; }
     .fs-pop-action:focus-visible {
       outline: 2px solid rgba(var(--theme-c1-rgb),0.7); outline-offset: -2px;
-      background: rgba(255,255,255,0.07);
+      background: rgba(var(--theme-c1-rgb),0.15);
     }
-    .fs-pop-action:active { background: rgba(255,255,255,0.11); }
+    .fs-pop-action:active { background: rgba(var(--theme-c1-rgb),0.22); }
     /* Se déconnecter est une SORTIE : elle se distingue au survol au lieu
        d'être visuellement interchangeable avec « Mon profil ». */
     .fs-pop-action.is-exit:hover { background: rgba(251,113,133,0.13); color: #ffa8b8; }
@@ -11673,7 +11687,7 @@
       background:
         radial-gradient(circle at 24% 0%, rgba(var(--theme-c1-rgb),0.24), transparent 34%),
         linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.975), rgba(var(--mineral-bg-rgb),0.975));
-      border: 1px solid rgba(255,255,255,0.10);
+      border: 1px solid rgba(var(--theme-c1-rgb),0.16);
       box-shadow:
         0 36px 100px rgba(0,0,0,0.72),
         0 0 0 1px rgba(255,255,255,0.04),
@@ -12029,8 +12043,12 @@
       margin: 0 14px;
       border-radius: 20px;
       overflow: hidden;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.07);
+      /* Voile d'ACCENT et non de blanc. Un voile blanc sur une surface teintee
+         la desature : les deux cartes de ce panneau viraient au gris des que
+         le theme quittait le bleu par defaut, alors que le panneau qui les
+         porte, lui, suivait bien. */
+      background: rgba(var(--theme-c1-rgb),0.055);
+      border: 1px solid rgba(var(--theme-c1-rgb),0.13);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
     }
     .fs-account-stat {
@@ -12095,8 +12113,8 @@
       margin: 14px 14px 0;
       border-radius: 18px;
       overflow: hidden;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid rgba(255,255,255,0.065);
+      background: rgba(var(--theme-c1-rgb),0.05);
+      border: 1px solid rgba(var(--theme-c1-rgb),0.12);
     }
     .fs-account-item {
       display: flex;
@@ -12115,8 +12133,8 @@
       color: rgba(248,246,252,0.92);
       transition: background 0.16s var(--mineral-ease);
     }
-    .fs-account-item + .fs-account-item { border-top: 1px solid rgba(255,255,255,0.055); }
-    .fs-account-item:hover { background: rgba(255,255,255,0.055); }
+    .fs-account-item + .fs-account-item { border-top: 1px solid rgba(var(--theme-c1-rgb),0.11); }
+    .fs-account-item:hover { background: rgba(var(--theme-c1-rgb),0.11); }
     .fs-account-item[disabled] { cursor: default; color: rgba(248,246,252,0.5); }
     .fs-account-item[disabled]:hover { background: transparent; }
     .fs-account-item-ico { display: grid; place-items: center; flex-shrink: 0; color: var(--theme-c1); }
@@ -12165,9 +12183,9 @@
       margin-top: 10px;
       border-radius: 16px;
       cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.045);
-      color: rgba(248,246,252,0.7);
+      border: 1px solid rgba(var(--theme-c1-rgb),0.13);
+      background: rgba(var(--theme-c1-rgb),0.05);
+      color: rgba(248,246,252,0.72);
       font-family: var(--font-body);
       font-size: 12.5px;
       font-weight: 600;
@@ -17267,7 +17285,15 @@ void main(){
                   const rendu = window.WIDGET_COMPONENTS?.[String(w.label || '').toLowerCase()];
                   return (
                     <div key={w.id} style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0 }}>
-                      {rendu ? rendu(w.variant || 1, 'themeprev_' + w.id, { performanceMode: 'edit' }) : null}
+                      {/* L'identifiant RÉEL, pas un préfixé. Le widget Image
+                          en dérive sa clé de stockage (`fs_img_<id>`) : un
+                          préfixe la faisait pointer dans le vide, et la
+                          miniature affichait des cadres vides là où
+                          l'utilisateur a mis ses photos. Or c'est précisément
+                          sur ces photos qu'on juge un thème — c'est le seul
+                          contenu de l'écran dont les couleurs ne viennent pas
+                          du thème et peuvent donc jurer avec lui. */}
+                      {rendu ? rendu(w.variant || 1, w.id, { performanceMode: 'edit' }) : null}
                     </div>
                   );
                 })}
