@@ -22354,10 +22354,15 @@ void main(){
         '--theme-c1': `rgb(${window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g1.rgb) : friendTheme.g1.rgb})`,
         '--theme-c2': `rgb(${window._fsAccentSafeRgb ? window._fsAccentSafeRgb(friendTheme.g2.rgb) : friendTheme.g2.rgb})`,
         '--widget-opacity': String(friendWidgetStyle.opacity ?? 1),
-        '--widget-radius': `${friendWidgetStyle.radius ?? 24}px`,
+        /* Les valeurs par défaut doivent être CELLES DE L'APP, sinon l'espace
+           d'un ami qui n'a jamais rien réglé s'affiche autrement que chez lui.
+           Le rayon défaut valait 24 ici contre 22 à l'application, et la
+           couleur de halo #a5b8ff contre #8fdcff : deux écarts invisibles au
+           code, très visibles à l'écran. */
+        '--widget-radius': `${friendWidgetStyle.radius ?? 22}px`,
         '--widget-glow-size': friendWidgetStyle.glowIntensity > 0 ? `${(friendWidgetStyle.glowIntensity * 60).toFixed(1)}px` : '0px',
-        '--widget-glow': friendWidgetStyle.glowIntensity > 0 ? hexToRgba(friendWidgetStyle.glowColor || '#a5b8ff', friendWidgetStyle.glowIntensity * 0.50) : 'transparent',
-        '--widget-glow-ring': friendWidgetStyle.glowIntensity > 0 ? hexToRgba(friendWidgetStyle.glowColor || '#a5b8ff', friendWidgetStyle.glowIntensity * 0.78) : 'transparent',
+        '--widget-glow': friendWidgetStyle.glowIntensity > 0 ? hexToRgba(friendWidgetStyle.glowColor || '#8fdcff', friendWidgetStyle.glowIntensity * 0.50) : 'transparent',
+        '--widget-glow-ring': friendWidgetStyle.glowIntensity > 0 ? hexToRgba(friendWidgetStyle.glowColor || '#8fdcff', friendWidgetStyle.glowIntensity * 0.78) : 'transparent',
       } : {};
       const friendBg = friendTheme && window.buildGrad
         ? `${window.buildGrad(friendTheme)}, ${friendTheme.base}`
@@ -22505,9 +22510,28 @@ void main(){
                 </div>
               ) : (
                 <div className="fs-preview-grid" style={{ display:'grid', gridTemplateColumns:'repeat(12,1fr)', gridTemplateRows:'repeat(4,1fr)', gap:12, height:'100%', pointerEvents:'none', position:'relative', zIndex:1 }}>
+                  {/* ══ LE HALO S'INTERROMPAIT DANS LES ANGLES ═══════════════════
+                        Ce cadre est un filet en dégradé fabriqué à l'ancienne :
+                        un bloc extérieur peint, 1 px de padding, et un bloc
+                        intérieur opaque qui laisse dépasser le liseré. La
+                        technique impose une règle que le code violait deux fois.
+                        1) LES RAYONS DOIVENT ÊTRE CONCENTRIQUES. Pour un filet
+                           de 1 px, le rayon intérieur vaut le rayon extérieur
+                           MOINS 1. Les deux blocs étaient à 22 : dans les
+                           angles, la courbe intérieure mordait sur le liseré et
+                           le mangeait — d'où un halo net sur les côtés droits
+                           et absent dans les coins, exactement le symptôme.
+                        2) LE RAYON ÉTAIT FIGÉ À 22 ALORS QUE LE WIDGET SUIT
+                           --widget-radius. Cette variable porte le rayon choisi
+                           par l'AMI (8, 16, 32…), et son défaut ici était même
+                           de 24 quand l'app en applique 22 : le cadre et le
+                           widget qu'il encadre ne tombaient jamais d'accord,
+                           même sans personnalisation.
+                        Tout se dérive donc de la même variable, et le cadre se
+                        contente d'être 1 px plus grand que ce qu'il entoure. */}
                   {widgets.map((w, i) => (
-                    <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'visible', borderRadius:22, padding:1, boxSizing:'border-box', background:`linear-gradient(145deg, rgba(255,255,255,0.16), ${c1(0.20)}, rgba(255,255,255,0.04))`, boxShadow:`0 14px 34px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)`, animationDelay:`${140 + i * 76}ms` }}>
-                      <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:22, position:'relative' }}>
+                    <div key={w.id} className="fs-dashboard-widget-in" style={{ gridColumn:w.col, gridRow:w.row, overflow:'visible', borderRadius:'calc(var(--widget-radius, 22px) + 1px)', padding:1, boxSizing:'border-box', background:`linear-gradient(145deg, rgba(255,255,255,0.16), ${c1(0.20)}, rgba(255,255,255,0.04))`, boxShadow:`0 14px 34px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)`, animationDelay:`${140 + i * 76}ms` }}>
+                      <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:'var(--widget-radius, 22px)', position:'relative' }}>
                         {renderFriendWidget(w)}
                       </div>
                     </div>
