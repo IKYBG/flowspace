@@ -79,8 +79,21 @@
          muted ≈ 6.2:1, quiet ≈ 4.9:1 — quiet reste réservé aux micro-labels. */
       --mineral-muted: rgba(207, 216, 235, 0.66);
       --mineral-quiet: rgba(207, 216, 235, 0.55);
-      --mineral-cyan: #8fdcff;
-      --mineral-orchid: #b891ff;
+      /* ══ DEUX ACCENTS QUI NE SUIVAIENT PAS LE THÈME ════════════════════════
+         Ces deux variables portaient en dur le cyan et l'orchidée du thème PAR
+         DÉFAUT. Tout ce qui s'y accrochait — curseur de saisie des notes,
+         bouton « Installer l'app », repli de l'anneau de focus — restait donc
+         cyan sur un thème chaud, vert ou rose. L'utilisateur changeait de
+         thème et voyait des morceaux d'interface refuser de suivre, sans
+         qu'aucun réglage n'explique pourquoi.
+         Ce sont des ALIAS, pas des copies — même mécanique que --accent juste
+         au-dessus : le sélecteur de thème n'écrit que --theme-*, et tout se
+         reteinte au même instant. Les couleurs SÉMANTIQUES (rose = erreur,
+         vert = succès, teal) restent fixes : elles ne disent pas « la marque »,
+         elles disent « ça a marché » ou « ça a échoué », et ce sens ne doit pas
+         dépendre d'un goût de couleur. */
+      --mineral-cyan: var(--theme-c1);
+      --mineral-orchid: var(--theme-c2);
       --mineral-teal: #49f0d2;
       --mineral-rose: #ff6b8a;
       --mineral-green: #7af6a4;
@@ -1681,9 +1694,12 @@
       /* Le glisser part à l'horizontale : le défilement vertical de la page
          doit rester possible même avec le doigt posé sur la notification. */
       touch-action: pan-y;
+      /* Surface bâtie sur la palette du thème, pas sur un violet-noir figé :
+         une notification qui garde la teinte du thème par défaut au-dessus
+         d'un dashboard vert ou ambre se lit comme un corps étranger. */
       background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 46%),
-        linear-gradient(180deg, rgba(24, 23, 41, 0.99), rgba(13, 12, 26, 0.99));
+        linear-gradient(180deg, rgba(var(--mineral-surface-2-rgb), 0.985), rgba(var(--mineral-bg-2-rgb), 0.99));
       border: 1px solid rgba(255, 255, 255, 0.09);
       box-shadow:
         0 1px 0 0 rgba(255, 255, 255, 0.07) inset,
@@ -6244,7 +6260,7 @@
            attire. Cerne d'un liseré sombre pour tenir sur un fond clair. */
         .fs-tour-beacon{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;
           background:var(--theme-c1);
-          box-shadow:0 0 0 2px rgba(8,8,18,.45),0 0 10px rgba(var(--theme-c1-rgb),.9);
+          box-shadow:0 0 0 2px rgba(var(--mineral-bg-rgb),.5),0 0 10px rgba(var(--theme-c1-rgb),.9);
           pointer-events:none;z-index:2;
           animation:fsTourDot 2.4s ease-in-out infinite}
         @keyframes fsTourDot{0%,100%{transform:scale(.8);opacity:.72}50%{transform:scale(1);opacity:1}}
@@ -6313,7 +6329,7 @@
           width:min(560px,calc(100vw - 32px));box-sizing:border-box;
           background:
             linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,0) 40%),
-            linear-gradient(180deg,rgba(23,22,40,.99),rgba(12,11,24,.99));
+            linear-gradient(180deg,rgba(var(--mineral-surface-2-rgb),.985),rgba(var(--mineral-bg-2-rgb),.99));
           border:1px solid rgba(255,255,255,.09);
           box-shadow:0 1px 0 0 rgba(255,255,255,.07) inset,
             0 10px 26px rgba(0,0,0,.44),0 36px 82px rgba(0,0,0,.6);
@@ -9608,7 +9624,7 @@
                     style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '6px 13px', color: T.muted, fontSize: 12, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = T.muted; }}>
-                    ← Retour
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour
                   </button>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -10686,7 +10702,7 @@
             .ob-cta:active{transform:translateY(0) scale(.98)}
             .ob-reassure{margin-top:-4px;font-size:11px;font-weight:600;color:rgba(248,246,252,0.58);text-align:center}
             .ob-sub{display:flex;align-items:center;gap:18px}
-            .ob-link{background:none;border:none;cursor:pointer;font:700 12px var(--font-body);color:rgba(248,246,252,0.58);padding:4px 2px}
+            .ob-link{display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font:700 12px var(--font-body);color:rgba(248,246,252,0.58);padding:4px 2px}
             .ob-link:hover{color:rgba(248,246,252,.78)}
             .ob-hint{font-size:11px;font-weight:700;color:rgba(var(--theme-c1-rgb),.85);margin-top:-18px;margin-bottom:22px;
               display:inline-flex;align-items:center;gap:6px}
@@ -10783,7 +10799,7 @@
               </button>
               {last && <div className="ob-reassure">25 min de focus · tu personnaliseras tout après</div>}
               <div className="ob-sub">
-                {step > 0 && <button className="ob-link" onClick={prev}>← Retour</button>}
+                {step > 0 && <button className="ob-link" onClick={prev}><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour</button>}
                 {!last && <button className="ob-link" onClick={() => onDone(false)}>Passer l’intro</button>}
                 {last && <button className="ob-link" onClick={() => onDone(false)}>J’explore d’abord</button>}
               </div>
@@ -11445,7 +11461,16 @@
       padding: 6px;
       border-radius: 20px;
       overflow: hidden;
-      background: linear-gradient(180deg, rgba(17,16,32,0.97), rgba(9,8,20,0.97));
+      /* ══ LA SURFACE NE SUIVAIT PAS LE THEME ══════════════════════════════
+         Ce fond etait un violet-noir fige (17,16,32 -> 9,8,20). Sur un theme
+         chaud ou vert, le reste de l'application se reteintait et ce menu
+         restait froid : deux boutons dont la couleur n'avait plus rien a voir
+         avec l'espace autour d'eux.
+         Le tiroir de widgets et la feuille de compte utilisaient DEJA
+         --mineral-surface-rgb / --mineral-bg-rgb, que le selecteur de theme
+         met a jour. Ce menu etait l'exception, pas la regle : il rejoint la
+         regle. */
+      background: linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.97), rgba(var(--mineral-bg-rgb),0.98));
       border: 1px solid rgba(255,255,255,0.10);
       box-shadow: 0 26px 64px rgba(0,0,0,0.62), 0 0 0 1px rgba(255,255,255,0.03),
                   inset 0 1px 0 rgba(255,255,255,0.07);
@@ -11538,9 +11563,12 @@
       -webkit-overflow-scrolling: touch;
       border-radius: 28px;
       z-index: 10000;
+      /* Meme correction que .fs-popover : la surface etait un violet-noir
+         fige, seule de toute l'application a ne pas se reteinter avec le
+         theme. Le halo d'accent en haut, lui, suivait deja. */
       background:
         radial-gradient(circle at 24% 0%, rgba(var(--theme-c1-rgb),0.24), transparent 34%),
-        linear-gradient(180deg, rgba(13,12,27,0.98), rgba(7,6,16,0.965));
+        linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.975), rgba(var(--mineral-bg-rgb),0.975));
       border: 1px solid rgba(255,255,255,0.10);
       box-shadow:
         0 36px 100px rgba(0,0,0,0.72),
@@ -11571,13 +11599,13 @@
       place-items: center;
       cursor: pointer;
       border: 1px solid rgba(255,255,255,0.13);
-      background: rgba(9,8,19,0.6);
+      background: rgba(var(--mineral-bg-rgb),0.62);
       color: rgba(248,246,252,0.8);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       transition: background 0.16s var(--mineral-ease), color 0.16s var(--mineral-ease);
     }
-    .fs-account-close:hover { background: rgba(9,8,19,0.88); color: #fff; }
+    .fs-account-close:hover { background: rgba(var(--mineral-bg-rgb),0.9); color: #fff; }
     /* L'entrée compose avec le centrage : les deux vivent sur la propriété
        transform, donc les keyframes doivent RÉPÉTER le translate(-50%,-50%),
        sinon la modale saute dans le coin haut-gauche le temps de l'animation. */
@@ -11804,7 +11832,7 @@
     .fs-account-hero.with-banner { padding-top: 0; align-items: flex-end; }
     .fs-account-hero.with-banner .fs-account-photo-button {
       margin-top: -34px;
-      box-shadow: 0 18px 42px rgba(0,0,0,0.5), 0 0 0 4px rgba(11,10,24,0.94);
+      box-shadow: 0 18px 42px rgba(0,0,0,0.5), 0 0 0 4px rgba(var(--mineral-bg-2-rgb),0.96);
     }
     .fs-account-photo-button {
       width: 88px;
@@ -11847,7 +11875,7 @@
       align-items: center;
       justify-content: center;
       gap: 6px;
-      background: rgba(7,6,16,0.76);
+      background: rgba(var(--mineral-bg-rgb),0.78);
       color: rgba(248,246,252,0.94);
       font-size: 11px;
       font-weight: 700;
@@ -16123,7 +16151,7 @@ void main(){
                 <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13 }}>
                   <button onClick={() => goMode('login')}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(230,190,255)', fontWeight: 600, fontFamily: T.font, fontSize: 13 }}>
-                    ← Retour à la connexion
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour à la connexion
                   </button>
                 </div>
               )}
@@ -16911,7 +16939,7 @@ void main(){
               <div style={{fontSize:11,color:T.c1,background:ta1(0.08),border:`1px solid ${ta1(0.18)}`,borderRadius:8,padding:'5px 11px',letterSpacing:'0.01em'}}>
                 {appliedTheme?.name || 'Theme actif'} applique
               </div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.28)',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.055)',borderRadius:8,padding:'5px 11px'}}>Clic → applique</div>
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.28)',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.055)',borderRadius:8,padding:'5px 11px'}}>Clic pour appliquer</div>
             </div>
           </div>
           <div className="fs-note-design-body" style={{flex:1,overflowY:'auto',padding:'24px 28px 36px'}}>
@@ -17245,7 +17273,7 @@ void main(){
               style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '7px 15px', color: T.muted, fontSize: 12, cursor: 'pointer', fontFamily: T.font, transition: 'all 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = T.text; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = T.muted; }}>
-              ← Retour
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour
             </button>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted, marginBottom: 3 }}>Personnalisation</div>
@@ -26601,7 +26629,7 @@ void main(){
               html.fs-reduce-motion .fs-cv-collection-gem{animation:none}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
               .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:12px;border:1px solid rgba(140,220,255,.14);background:rgba(4,10,24,.7);backdrop-filter:blur(8px)}
-              .fs-cv-close{width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(8,16,32,.7);color:rgba(230,242,255,.85);font-size:16px;cursor:pointer}
+              .fs-cv-close{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(var(--mineral-surface-rgb),.7);color:rgba(230,242,255,.85);cursor:pointer}
               .fs-cv-hud{position:absolute;right:16px;bottom:16px;display:flex;gap:8px;z-index:70}
               .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(4,10,24,.8);color:#cfeaff;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
               .fs-cv-hud button:hover{background:rgba(14,28,52,.92)}
@@ -26833,7 +26861,7 @@ void main(){
                       </div>
                     </div>
                   )}
-                  {!embedded && <button className="fs-cv-close" onClick={onClose} aria-label="Fermer">✕</button>}
+                  {!embedded && <button className="fs-cv-close" onClick={onClose} aria-label="Fermer"><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>}
                 </div>
               </div>
 
@@ -26986,7 +27014,7 @@ void main(){
                       <div style={{ fontSize: 17, fontWeight: 920, color: '#f3f7ff', marginTop: 4 }}>{activeInfo.shapeName}</div>
                     </div>
                     {sel === active.id && (
-                      <button type="button" onClick={() => setSel(null)} aria-label="Fermer la fiche" style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid rgba(255,255,255,.10)', background: 'rgba(255,255,255,.05)', color: 'rgba(238,246,255,.74)', cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                      <button type="button" onClick={() => setSel(null)} aria-label="Fermer la fiche" style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid rgba(255,255,255,.10)', background: 'rgba(255,255,255,.05)', color: 'rgba(238,246,255,.74)', cursor: 'pointer', flexShrink: 0 }}><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
                     )}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
@@ -27031,7 +27059,7 @@ void main(){
                     <div style={{ fontFamily: T.display, fontWeight: 700, fontSize: 19, color: T.text, letterSpacing: '-0.02em' }}>Partage ta grotte</div>
                     <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Montre tes cristaux à tes amis</div>
                   </div>
-                  <button onClick={() => setShareUrl(null)} aria-label="Fermer" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: T.muted, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                  <button onClick={() => setShareUrl(null)} aria-label="Fermer" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: T.muted, cursor: 'pointer', flexShrink: 0 }}><svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
                 </div>
                 <img src={shareUrl} alt="Aperçu de ma grotte de cristaux" style={{ width: '100%', borderRadius: 16, display: 'block', boxShadow: '0 16px 44px rgba(0,0,0,0.45)' }} />
                 <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
@@ -30338,7 +30366,7 @@ void main(){
           <div style={{padding:'32px 36px 0',flexShrink:0}}>
             <button onClick={()=>onNavigate('dashboard')} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,padding:'7px 15px',color:T.muted,fontSize:12,cursor:'pointer',fontFamily:T.font,transition:'all 0.15s',marginBottom:24}}
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(255,255,255,0.09)';e.currentTarget.style.color=T.text;}}
-              onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}>← Retour</button>
+              onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,0.05)';e.currentTarget.style.color=T.muted;}}><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour</button>
             <div style={{fontSize: 11,fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:T.muted,marginBottom:8}}>LumenOS · Progression</div>
             <div style={{fontFamily:T.display,fontWeight:800,fontSize:32,letterSpacing:'-0.04em',lineHeight:1.05,marginBottom:6}}>Ta progression</div>
           </div>
@@ -31040,7 +31068,7 @@ void main(){
               <p className="rp">Chaque ami qui te rejoint débloque un cristal exclusif. Étudier ensemble, c’est aussi collectionner ensemble.</p>
               <div className="fs-refer-link">
                 <input readOnly value={refLink} onFocus={e => e.target.select()} aria-label="Ton lien de parrainage" />
-                <button className="fs-refer-copy" onClick={copyRef}>{copied ? 'Copié ✓' : 'Copier'}</button>
+                <button className="fs-refer-copy" onClick={copyRef}>{copied ? <><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 12.5l4.6 4.6L19.5 6.6" /></svg> Copié</> : 'Copier'}</button>
               </div>
               <div className="fs-refer-tiers">
                 {refTiers.map(t => {
