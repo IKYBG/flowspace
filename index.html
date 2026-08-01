@@ -665,6 +665,28 @@
     [data-cr-widget] > div {
       border-radius: var(--widget-radius, var(--mineral-radius-lg)) !important;
     }
+    /* Dernier maillon de la chaîne de hauteur : la racine du widget reçoit une
+       hauteur définie du corps de la coquille, au lieu de la réclamer par un
+       `height: 100%` qui ne se résout pas quand le parent est en `auto`.
+       `:only-child` est délibéré — un widget qui pose PLUSIEURS enfants
+       directs dans sa coquille gère lui-même leur répartition, et les étirer
+       tous à parts égales changerait sa mise en page. */
+    [data-fs-shell-body] > *:only-child {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    /* Miniature de thème : les widgets y sont GELÉS. Huit widgets qui
+       s'animent en boucle dans une vignette de 218 px, pendant qu'on survole
+       des thèmes, c'est du bruit — et un ventilateur qui s'emballe. Le fond,
+       lui, garde sa transition : c'est le seul mouvement qui informe. */
+    .fs-theme-mini *,
+    .fs-theme-mini *::before,
+    .fs-theme-mini *::after {
+      animation-play-state: paused !important;
+      transition: none !important;
+      will-change: auto !important;
+    }
+    .fs-theme-mini { pointer-events: none; }
     button, input, textarea, select {
       -webkit-tap-highlight-color: transparent;
     }
@@ -1171,13 +1193,21 @@
          gardent une présence, et un plafond pour qu'un widget bavard ne pousse
          pas les autres hors de vue — mais entre les deux, c'est le contenu qui
          décide. */
+      /* La cellule devient un conteneur flex : c'est ce qui donne au widget
+         une hauteur définie tout en gardant le principe de la pile (le
+         contenu décide, entre un plancher et un plafond).
+         Pas d'`overflow: hidden` ici — mesuré inutile une fois la chaîne
+         réparée, et il rognerait le halo que l'utilisateur règle lui-même. */
       .fs-dashboard-grid > * {
         grid-column: unset !important; grid-row: unset !important;
+        display: flex !important;
+        flex-direction: column !important;
         height: auto !important;
         min-height: 172px !important;
         max-height: 460px !important;
         flex-shrink: 0 !important;
       }
+      .fs-dashboard-grid > * > * { flex: 1 1 auto !important; min-height: 0 !important; }
       .fs-widget-tall { min-height: 244px !important; }
 
       /* ─── Focus / Session ──────────────────────────── */
@@ -4622,6 +4652,18 @@
             : elev(activeHov, glow) + ', 0 0 var(--widget-glow-size,0px) var(--widget-glow,transparent)',
           transform: activeHov ? 'translateY(-2px)' : 'none',
           transition: media ? 'none' : 'box-shadow 0.3s var(--mineral-ease), transform 0.22s var(--mineral-ease)',
+          /* ══ POURQUOI CE FLEX EXISTE ══════════════════════════════════════
+             La coquille se dimensionnait par une chaîne de `height: 100%`.
+             Un pourcentage se résout contre la hauteur CALCULÉE du parent ;
+             si celle-ci vaut `auto`, il devient `auto` à son tour et la
+             chaîne casse — même quand le parent a une hauteur UTILISÉE bien
+             réelle (issue d'un flex ou bornée par un max-height).
+             C'est exactement le cas de la pile mobile, où la cellule est en
+             `height:auto; max-height:460px`. Résultat mesuré avec 60 tâches :
+             le widget se rendait sur 2252 px dans une case de 460 et
+             recouvrait tout ce qui suivait. Une hauteur issue de flex, elle,
+             est DÉFINIE — la chaîne tient dans les deux cas. */
+          display: 'flex', flexDirection: 'column',
           position: 'relative', height: '100%', boxSizing: 'border-box', contain: media ? 'layout paint style' : undefined, isolation: media ? 'isolate' : undefined, ...style,
         }}>
           <div style={{
@@ -4635,7 +4677,9 @@
             transition: media ? 'none' : 'background 0.3s var(--mineral-ease)',
           }} />
           <div style={{ position: 'absolute', inset: 0, borderRadius: 'var(--widget-radius, 22px)', boxShadow: media ? 'inset 0 0 0 1px rgba(255,255,255,0.10)' : 'inset 0 0 0 1.5px var(--widget-glow-ring,transparent)', pointerEvents: 'none', zIndex: 2, transition: media ? 'none' : 'box-shadow 0.3s var(--mineral-ease)' }} />
-          <div style={{ position: 'relative', zIndex: 1, height: '100%', overflow: 'hidden', borderRadius: 'var(--widget-radius, 22px)', fontFamily: T.font, color: T.text, boxSizing: 'border-box' }}>
+          {/* `flex` remplace `height: 100%` : c'est le maillon qui rendait la
+              hauteur définie pour tout ce qui est en dessous. */}
+          <div data-fs-shell-body="" style={{ position: 'relative', zIndex: 1, flex: '1 1 auto', minHeight: 0, overflow: 'hidden', borderRadius: 'var(--widget-radius, 22px)', fontFamily: T.font, color: T.text, boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
             {children}
           </div>
         </div>
@@ -5856,6 +5900,23 @@
       const [focusIds, _setFoc] = _uS6(_gFoc);
       _uEff6(() => { const h = () => _setFoc(_gFoc()); window.addEventListener('fs-focus-tasks-update', h); return () => window.removeEventListener('fs-focus-tasks-update', h); }, []);
       const displayTasks = focusIds?.length > 0 ? orderedTasks.filter(t => focusIds.includes(t.id)) : orderedTasks;
+      /* ══ LA VUE FOCUS ENFERMAIT SUR UNE SEULE TÂCHE ═══════════════════════
+         La variante « maintenant · focus » affichait la PREMIÈRE tâche non
+         faite, et n'offrait qu'un seul geste : la marquer terminée. Si ce
+         n'était pas celle qu'on voulait faire maintenant — cas courant, c'est
+         justement à ça que sert une liste — il n'existait aucun moyen de
+         passer à la suivante. Le widget restait bloqué dessus indéfiniment, et
+         la seule échappatoire était de mentir en la cochant.
+         Un curseur sur la file des tâches restantes corrige ça. Il n'est PAS
+         persisté : « ce que je fais maintenant » est une intention de
+         l'instant, pas un réglage — la retrouver figée au prochain chargement
+         serait plus déroutant que de repartir du haut de la liste. */
+      const pending = displayTasks.filter(t => !t.done);
+      const [focusIdx, setFocusIdx] = _uS6(0);
+      /* Le modulo garde le curseur valide quoi qu'il arrive à la liste :
+         tâche cochée, tâche supprimée, filtre de session appliqué. */
+      const focusPos = pending.length ? focusIdx % pending.length : 0;
+      const passerTache = () => setFocusIdx(i => (pending.length ? (i + 1) % pending.length : 0));
 
       if (variant === 1) return (
         <Shell style={style}>
@@ -5911,21 +5972,64 @@
       );
 
       if (variant === 3) {
-        const next = tasks.find(t => !t.done);
+        const next = pending[focusPos] || null;
         return (
           <Shell glow={T.c1} style={style}>
-            <div style={{ padding: '28px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <Lbl ch="maintenant · focus" />
-                <div style={{ fontSize: 20, fontWeight: 700, marginTop: 12, lineHeight: 1.4 }}>{next?.text || 'Tout terminé !'}</div>
-              </div>
-              <div>
-                <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
-                  <Sub ch={`${done}/${tasks.length} terminées`} /><Sub ch={`${Math.round(pct * 100)}%`} />
+            <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 14, minHeight: 0, boxSizing: 'border-box' }}>
+              <div style={{ minHeight: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <Lbl ch="maintenant · focus" />
+                  {/* La position dans la file : sans elle, « passer » serait un
+                      geste dans le vide — on ne saurait ni où l'on est, ni
+                      combien il reste avant de revenir au début. */}
+                  {pending.length > 1 && (
+                    <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: T.muted, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                      {focusPos + 1}/{pending.length}
+                    </span>
+                  )}
                 </div>
-                <Bar value={pct} color={T.c1} h={2} />
+                {/* Trois lignes maximum : une tâche longue poussait le bouton
+                    hors de la carte, dans un widget dont la hauteur est fixée
+                    par la grille. */}
+                <div style={{ fontSize: 19, fontWeight: 700, marginTop: 12, lineHeight: 1.35, letterSpacing: '-0.02em', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {next?.text || 'Tout est fait.'}
+                </div>
               </div>
-              {next && <button onClick={() => tog(next.id)} style={{ background: T.c1, border: 'none', borderRadius: 12, padding: '12px', color: '#07070d', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: T.font }}>Marquer comme fait ✓</button>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flexShrink: 0 }}>
+                <div>
+                  <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                    <Sub ch={`${done}/${tasks.length} terminées`} /><Sub ch={`${Math.round(pct * 100)}%`} />
+                  </div>
+                  <Bar value={pct} color={T.c1} h={2} />
+                </div>
+                {next && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => tog(next.id)}
+                      style={{ flex: 1, minWidth: 0, minHeight: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        background: `linear-gradient(135deg, ${T.c1}, ${T.c2})`, border: 'none', borderRadius: 14,
+                        color: '#07070d', fontSize: 12.5, fontWeight: 700, letterSpacing: '-0.01em', fontFamily: T.font, cursor: 'pointer',
+                        boxShadow: '0 8px 22px rgba(var(--theme-c1-rgb),0.26), inset 0 1px 0 rgba(255,255,255,0.32)' }}>
+                      <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M4.5 12.5l4.6 4.6L19.5 6.6" />
+                      </svg>
+                      Marquer comme fait
+                    </button>
+                    {/* Le geste qui manquait. Il n'apparaît que s'il reste
+                        quelque chose vers quoi passer : un bouton qui ne peut
+                        rien faire est pire qu'un bouton absent. */}
+                    {pending.length > 1 && (
+                      <button onClick={passerTache} title="Passer à la tâche suivante" aria-label="Passer à la tâche suivante"
+                        style={{ width: 42, minHeight: 42, flexShrink: 0, display: 'grid', placeItems: 'center',
+                          background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14,
+                          color: T.muted, cursor: 'pointer', fontFamily: T.font }}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M7 5.6l8.4 6.4L7 18.4z" /><path d="M17.6 5.6v12.8" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </Shell>
         );
@@ -17107,6 +17211,73 @@ void main(){
        Apparence. Applique le thème en direct via onApply (même handler que
        l'écran Ambiance & Fond). showPreview affiche l'aperçu 140px (écran
        Personnalisation) ; compact réduit les cartes (carte Réglages). */
+    /* ══ L'« APERÇU EN DIRECT » NE MONTRAIT PAS L'ESPACE DE L'UTILISATEUR ═════
+       Il affichait le dégradé de fond et, par-dessus, neuf rectangles gris —
+       une maquette de dashboard, pas le dashboard. Or ce qu'on cherche à
+       vérifier en changeant de thème, ce n'est jamais le dégradé seul : c'est
+       si SES widgets, SES photos, SES couleurs tiennent ensemble dessus.
+       L'aperçu ne répondant pas à cette question, il fallait appliquer, aller
+       au dashboard, revenir, réappliquer. C'est le va-et-vient que
+       l'utilisateur décrit, et il était inscrit dans la conception.
+       La miniature rend donc les VRAIS widgets, dans leur vraie disposition,
+       sous les variables du thème survolé — accent ET palette de surfaces,
+       puisque le thème repeint les deux. Les variables sont posées sur le
+       conteneur, jamais sur :root : survoler ne doit rien appliquer. */
+    function ThemeLivePreview({ theme }) {
+      const widgets = React.useMemo(() => {
+        try {
+          const w = JSON.parse(localStorage.getItem('fs_widgets') || '[]');
+          return Array.isArray(w) ? w : [];
+        } catch (e) { return []; }
+      }, []);
+
+      const vars = React.useMemo(() => {
+        if (!theme) return {};
+        const sr = rgb => (window._fsAccentSafeRgb ? window._fsAccentSafeRgb(rgb) : rgb);
+        const s1 = sr(theme.g1.rgb), s2 = sr(theme.g2.rgb);
+        const p = buildThemePalette(theme);
+        const j = a => (Array.isArray(a) ? a.join(', ') : String(a));
+        return {
+          '--theme-c1-rgb': s1, '--theme-c2-rgb': s2,
+          '--theme-c1': `rgb(${s1})`, '--theme-c2': `rgb(${s2})`,
+          '--mineral-bg': p.bgHex, '--mineral-bg-2': p.bg2Hex,
+          '--mineral-surface': p.surfaceHex, '--mineral-surface-2': p.surface2Hex,
+          '--mineral-bg-rgb': j(p.bg), '--mineral-bg-2-rgb': j(p.bg2),
+          '--mineral-surface-rgb': j(p.surface), '--mineral-surface-2-rgb': j(p.surface2),
+          '--mineral-line': `rgba(${theme.g1.rgb},0.095)`,
+          '--mineral-line-strong': `rgba(${theme.g1.rgb},0.16)`,
+        };
+      }, [theme]);
+
+      return (
+        <div style={{ ...vars, height: 218, borderRadius: 22, overflow: 'hidden', position: 'relative', background: theme.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
+          <div style={{ position: 'absolute', inset: 0, background: buildGrad(theme), transition: 'background 0.45s ease' }} />
+          {widgets.length === 0 ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, textAlign: 'center', padding: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Ton dashboard est encore vide</div>
+              <div style={{ fontSize: 12, color: T.muted }}>Ajoute des widgets pour les voir ici sous chaque thème.</div>
+            </div>
+          ) : (
+            /* Même technique que les vignettes du tiroir de widgets : le vrai
+               widget rendu à sa taille réelle puis réduit, plutôt qu'un rendu
+               à petite taille qui casserait ses mises en page internes. */
+            <div className="fs-theme-mini" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+              <div style={{ width: '250%', height: '250%', transform: 'scale(0.4)', transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: 'repeat(4, 1fr)', gap: 14 }}>
+                {widgets.map(w => {
+                  const rendu = window.WIDGET_COMPONENTS?.[String(w.label || '').toLowerCase()];
+                  return (
+                    <div key={w.id} style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0 }}>
+                      {rendu ? rendu(w.variant || 1, 'themeprev_' + w.id, { performanceMode: 'edit' }) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     function ThemePicker({ bgThemeId, onApply, showPreview = false, compact = false }) {
       const { addToast } = window.useToast ? window.useToast() : { addToast: () => {} };
       const KEPT = BG_THEMES.filter(t => ['ocean', 'sakura', 'crimson'].includes(t.id));
@@ -17142,17 +17313,10 @@ void main(){
           {showPreview && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Aperçu en direct</span>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Ton dashboard sous ce thème</span>
                 <span style={{ fontSize: 11, color: T.muted }}>{prev.name} · {prev.desc}</span>
               </div>
-              <div style={{ height: 140, borderRadius: 22, overflow: 'hidden', position: 'relative', background: prev.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
-                <div style={{ position: 'absolute', inset: 0, background: buildGrad(prev), transition: 'background 0.45s ease' }} />
-                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-                <div style={{ position: 'absolute', inset: 0, padding: '16px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 10 }}>{[0, 1, 2, 3].map(i => <div key={i} style={{ flex: 1, height: 34, borderRadius: 12, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)' }} />)}</div>
-                  <div style={{ display: 'flex', gap: 10 }}>{[0, 1, 2, 3, 4].map(i => <div key={i} style={{ flex: 1, height: 20, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.05)' }} />)}</div>
-                </div>
-              </div>
+              <ThemeLivePreview theme={prev} />
             </div>
           )}
 
