@@ -2217,8 +2217,13 @@
        Auth + persistence for ALL user data: tasks, notes, widgets, theme,
        style, images, sessions.  Local-first with real-time cross-device sync
        via Supabase Realtime (postgres_changes).                               */
-    const SUPABASE_URL = 'https://qlukumjqgagrukbavtvg.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsdWt1bWpxZ2FncnVrYmF2dHZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMTk5NTEsImV4cCI6MjA5Mjc5NTk1MX0.fOgW1587adYgOUb2n3_0E-8XOYgOJNOI9b3bJ3VJRLs';
+    /* Projet Supabase migre le 2026-08-06 : qlukumjqgagrukbavtvg (avril 2026)
+       est remplace par pzbnwyqatgajoodwbjcw. La cle anon est PUBLIQUE par
+       conception — c'est la RLS qui protege les donnees, pas le secret de
+       cette chaine. Si l'URL change ici, elle doit changer AUSSI dans le
+       connect-src de vercel.json (https ET wss, le Realtime passe par wss). */
+    const SUPABASE_URL = 'https://pzbnwyqatgajoodwbjcw.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Ym53eXFhdGdham9vZHdiamN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMDMzOTAsImV4cCI6MjEwMTU3OTM5MH0.l4DfpeZod7dufjol1-RX1Rr-dC28Ya1mPXqeBJbyjO4';
 
     const _fsSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, storageKey: 'fs_sb_session' }
@@ -22855,11 +22860,21 @@ void main(){
           const allIds = [...ownList.map(f => f.id), ...reverseList.map(f => f.id)];
           if (!allIds.length) return { ownList, reverseList };
           try {
+            /* ══ CETTE REQUETE A FAIT SAUTER LE QUOTA D'EGRESS ═══════════════
+               Elle tirait la colonne images ENTIERE de chaque ami — tous
+               leurs widgets image en base64, jusqu'a 35 Mo par personne
+               (FS_IMAGE_REMOTE_LIMIT) — pour n'en lire qu'UNE valeur juste
+               en dessous : l'avatar fs_img_profile.
+               Ouvrir la liste d'amis avec cinq amis bien fournis, c'etait
+               donc transferer des dizaines de Mo pour afficher cinq vignettes
+               de 32 px. A chaque ouverture. Le filtrage se fait maintenant
+               cote Postgres (operateur ->>), pas apres coup dans le navigateur :
+               seule la valeur reellement lue traverse le reseau. */
             const { data: imgRows } = await window._fsSb
-              .from('user_data').select('user_id, images, updated_at')
+              .from('user_data').select('user_id, photo:images->>fs_img_profile, updated_at')
               .in('user_id', allIds);
             if (!imgRows) return { ownList, reverseList };
-            const photoMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.images?.['fs_img_profile'] || null]));
+            const photoMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.photo || null]));
             const seenMap = Object.fromEntries(imgRows.map(r => [r.user_id, r.updated_at || null]));
             return {
               ownList: ownList.map(f => ({ ...f, photo: photoMap[f.id] || f.photo || null, updatedAt: seenMap[f.id] || f.updatedAt || null })),
