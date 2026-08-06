@@ -15736,8 +15736,30 @@ void main(){
             : await sb.auth.signInWithPassword({ email: trimmedEmail, password: pass });
 
           if (authResult.error) throw authResult.error;
-          const sbUser = authResult.data.user;
-          const session = authResult.data.session;
+          let sbUser = authResult.data.user;
+          let session = authResult.data.session;
+
+          /* ══ CRÉER UN COMPTE DOIT FAIRE ENTRER, PAS ENVOYER LIRE SES MAILS ══
+             Toute inscription sans session renvoyait vers la boîte mail. Mais
+             « pas de session » ne veut pas dire « confirmation exigée » : c'est
+             aussi ce que renvoie Supabase quand l'adresse est déjà prise (il ne
+             le dit pas, pour ne pas transformer le formulaire en détecteur de
+             comptes existants). Dans ce cas l'utilisateur recevait un « vérifie
+             ton email » pour un email qui n'arrivait jamais — le pire des
+             messages, puisqu'il fait attendre quelque chose d'inexistant.
+             On tente donc la connexion immédiatement. C'est le SERVEUR qui
+             tranche, et c'est bien ainsi : aucun code client ne peut ni ne doit
+             contourner une confirmation exigée. Quand la confirmation est
+             désactivée (Authentication > Providers > Email > Confirm email),
+             ce chemin fait entrer directement. Quand elle est exigée, la
+             tentative échoue proprement et le message d'origine s'affiche. */
+          if (!session && mode === 'signup') {
+            const direct = await sb.auth.signInWithPassword({ email: trimmedEmail, password: pass });
+            if (!direct.error && direct.data?.session) {
+              session = direct.data.session;
+              sbUser = direct.data.user || sbUser;
+            }
+          }
 
           if (!session) {
             setStatus('idle');
