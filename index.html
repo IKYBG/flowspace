@@ -2263,7 +2263,8 @@
     /* All localStorage keys that trigger a sync push */
     const SYNC_KEYS = ['fs_tasks', 'fs_notes', 'fs_widgets', 'fs_onboarded',
                        'fs_bgtheme', 'fs_custom_bg', 'fs_widget_style', 'fs_note_map_style', 'fs_font_preset',
-                       'fs_showcase', 'fs_profile_banner', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked', 'fs_dash_presets'];
+                       'fs_showcase', 'fs_profile_banner', 'fs_text_widgets', 'fs_task_view', 'fs_friends_blocked', 'fs_dash_presets',
+                       'fs_premium_interest'];
     const FS_SYNC_LOCAL_WRITE_KEY = 'fs_sync_local_write_at';
     const FS_SYNC_REMOTE_APPLIED_KEY = 'fs_sync_remote_applied_at';
     const FS_WIDGETS_LOCAL_WRITE_KEY = 'fs_widgets_local_write_at';
@@ -3208,7 +3209,7 @@
       if (dirtyKeys.has('fs_onboarded')) p.onboarded = snapshot.onboarded === true;
       if (dirtyKeys.has('fs_bgtheme') && Object.prototype.hasOwnProperty.call(snapshot, 'bg_theme')) p.bg_theme = snapshot.bg_theme;
       if (dirtyKeys.has('fs_custom_bg') && Object.prototype.hasOwnProperty.call(snapshot, 'custom_bg')) p.custom_bg = snapshot.custom_bg;
-      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_profile_banner') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked') || dirtyKeys.has('fs_dash_presets')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
+      if ((dirtyKeys.has('fs_widget_style') || dirtyKeys.has('fs_note_map_style') || dirtyKeys.has('fs_font_preset') || dirtyKeys.has('fs_showcase') || dirtyKeys.has('fs_profile_banner') || dirtyKeys.has('fs_text_widgets') || dirtyKeys.has('fs_task_view') || dirtyKeys.has('fs_friends_blocked') || dirtyKeys.has('fs_dash_presets') || dirtyKeys.has('fs_premium_interest')) && Object.prototype.hasOwnProperty.call(snapshot, 'widget_style')) p.widget_style = snapshot.widget_style;
       /* gamif OU cristaux OU historique salis → on pousse le blob gamification
          complet (cristaux/historique y sont embarqués via _fsGamifWithLocalData). */
       if ([...dirtyKeys].some(k => /^fs_gamif_|^fs_crystals_|^fs_session_history_|^fs_prod_ratings_/.test(k)) && Object.prototype.hasOwnProperty.call(snapshot, 'gamification')) p.gamification = snapshot.gamification;
@@ -3372,6 +3373,16 @@
           if (_fsKeyShielded('fs_task_view')) { /* modif locale en file : on garde */ }
           else if (typeof widgetStyle.taskView === 'string' && widgetStyle.taskView) _fsRawSet('fs_task_view', widgetStyle.taskView);
           else if (!ownLocal) _fsRawRemove('fs_task_view');
+        } catch (_) { }
+        /* Intérêt Premium embarqué dans widget_style.premiumInterest.
+           Sans ce retour, quelqu'un qui s'inscrit sur son téléphone puis ouvre
+           l'app sur son ordinateur reverrait le bouton « Préviens-moi » comme
+           s'il n'avait rien demandé — et cliquerait une seconde fois. Le
+           signal doit suivre la personne, pas l'appareil. */
+        try {
+          if (_fsKeyShielded('fs_premium_interest')) { /* modif locale en file : on garde */ }
+          else if (widgetStyle.premiumInterest === '1' || widgetStyle.premiumInterest === true) _fsRawSet('fs_premium_interest', '1');
+          else if (!ownLocal) _fsRawRemove('fs_premium_interest');
         } catch (_) { }
         /* Amis retirés (pierres tombales) embarqués dans widget_style.friendsBlocked.
            Fusion par UNION et jamais par remplacement : la RLS nous interdit de
@@ -3648,6 +3659,17 @@
       put('fs_task_view', 'taskView', false);
       put('fs_friends_blocked', 'friendsBlocked', true);
       put('fs_dash_presets', 'dashPresets', true);
+      /* ══ LE SIGNAL DE DEMANDE PREMIUM ETAIT JETE ══════════════════════════
+         « Previens-moi au lancement » n'ecrivait que dans localStorage. La cle
+         n'etait dans aucune liste de synchro : chaque personne qui declarait
+         vouloir payer disparaissait au premier vidage de cache, et n'a jamais
+         existe cote serveur. On detruisait le seul chiffre capable de dire si
+         Premium vaut la peine d'etre construit.
+         Meme vehicule que la vitrine et les prereglages : widget_style est un
+         jsonb deja synchronise, donc aucune colonne a creer — ce qui compte
+         ici, la migration ayant justement montre ce que coute une colonne
+         absente (l'echec silencieux 42703 de gamification). */
+      put('fs_premium_interest', 'premiumInterest', false);
       return out;
     }
     window._fsWithStyleExtras = _fsWithStyleExtras;
@@ -16040,8 +16062,18 @@ void main(){
                   <div className="fs-auth-title">
                     Tes heures de travail deviennent une collection.
                   </div>
+                  {/* ══ LE TITRE ET LE SOUS-TITRE DISAIENT LA MEME CHOSE ═══════════
+                     Tous deux portaient la métaphore, et aucun ne disait ce que
+                     l'outil EST. Un visiteur pouvait lire les deux lignes en
+                     entier sans savoir s'il arrivait sur un gestionnaire de
+                     tâches, un minuteur, un fond d'écran ou un jeu — donc sans
+                     pouvoir répondre à « est-ce que ça résout mon problème ? ».
+                     Le titre garde le différenciateur (le raisonnement au-dessus
+                     reste juste : la collection n'appartient qu'à nous). Le
+                     sous-titre, lui, cesse de le répéter et nomme les quatre
+                     outils concrets AVANT de relancer le crochet. */}
                   <div className="fs-auth-subtitle">
-                    Chaque session de focus forge un cristal. 41 à découvrir — dont 3 que presque personne ne verra.
+                    Minuteur, tâches, notes et sons d'ambiance, dans un dashboard que tu composes. Chaque session forge un cristal — 41 à découvrir, dont 3 que presque personne ne verra.
                   </div>
                   {/* Démo jouable : on ne DÉCRIT pas la boucle de jeu, on la fait
                      vivre. Une promesse sur une page de connexion demande de
