@@ -13774,6 +13774,51 @@ void main(){
         setInputVal('');
         requestAnimationFrame(() => taskInputRef.current?.focus());
       };
+      /* ══ ARRIVER DE TODOIST SANS RETAPER 200 LIGNES ═══════════════════════
+         Quelqu'un qui vient d'un concurrent a déjà ses tâches ailleurs. Sans
+         import, la première action que le produit lui demande est une heure de
+         re-saisie — un mur que personne ne franchit. Il repousse, donc il ne
+         revient pas.
+         Plutôt qu'un écran d'import (une destination de plus à trouver, dans
+         une app qui en compte déjà trop), c'est le COLLER qui devient
+         intelligent : le geste que la personne fait déjà spontanément marche
+         enfin. Une ligne, une tâche.
+         Les puces sont retirées parce que tout le monde colle depuis une liste
+         formatée — « - Acheter du pain » doit donner « Acheter du pain », pas
+         un tiret orphelin. Les cases cochées des autres outils sont lues comme
+         telles : ce qui était fait arrive fait. */
+      const nettoyerLigne = (l) => l
+        .replace(/^\s*(?:[-*•·—–]|\d+[.)]|\[[ xX]\]|☐|☑|✓)\s*/, '')
+        .trim();
+      const importerLignes = (texte) => {
+        const lignes = String(texte).split(/\r?\n/);
+        const faites = new Set();
+        const propres = [];
+        lignes.forEach(l => {
+          const dejaFaite = /^\s*(?:\[[xX]\]|☑|✓)/.test(l);
+          const t = nettoyerLigne(l);
+          if (!t) return;
+          if (dejaFaite) faites.add(t);
+          propres.push(t);
+        });
+        if (propres.length < 2) return false;
+        const base = Date.now();
+        const nouvelles = propres.map((text, i) => ({
+          id: base + i, text: text.slice(0, 300), priority: newPri,
+          done: faites.has(text), tag: 'Task',
+        }));
+        const ids = new Set(nouvelles.map(t => t.id));
+        setTasks(ts => [...nouvelles, ...ts]);
+        setInputVal('');
+        addToast({
+          message: `${nouvelles.length} tâches importées`,
+          detail: 'Collées depuis ta liste — rien n’a été retapé.',
+          type: 'success', duration: 7000,
+          action: { label: 'Annuler', fn: () => setTasks(ts => ts.filter(t => !ids.has(t.id))) },
+        });
+        return true;
+      };
+
       const clearDone = () => {
         const cleared = tasks.filter(t => t.done);
         if (!cleared.length) return;
@@ -14223,6 +14268,14 @@ void main(){
                   value={inputVal}
                   onChange={e => setInputVal(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTask()}
+                  onPaste={e => {
+                    /* On n'intercepte QUE le collage multi-ligne. Coller une
+                       tâche unique doit rester un collage ordinaire — détourner
+                       un geste aussi banal serait plus déroutant qu'utile. */
+                    const texte = e.clipboardData?.getData('text') || '';
+                    if (!/\r?\n/.test(texte.trim())) return;
+                    if (importerLignes(texte)) e.preventDefault();
+                  }}
                   placeholder={"Qu'est-ce qui compte aujourd'hui ?"}
                 />
                 <span className="fs-task-kbd">↵</span>
