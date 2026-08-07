@@ -33,7 +33,10 @@ LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gra
 - `git push` — ⚠️ DÉPLOIE EN PROD instantanément sur lumenos.vercel.app (pas de staging).
 
 ## Règles absolues — ne jamais violer
-- Ne jamais commit ni push sans demande explicite de ma part (push = prod live immédiat).
+- **Commit et push autorisés en continu** (depuis le 2026-08-07 — remplace l'ancienne règle « jamais sans demande explicite »). Ne plus redemander la permission.
+  - Ce qui n'a PAS changé : `git push` = prod live immédiat sur lumenos.vercel.app, sans staging. On ne pousse donc que du **vérifié** — build passé, app démarrée, aucune erreur console, comportement contrôlé dans le navigateur. « Autorisé » veut dire « sans demander », pas « sans regarder ».
+  - Un commit par sujet, jamais de fourre-tout : c'est ce qui permet de revenir en arrière sur une seule chose (cf. les refontes de juillet, révocables individuellement).
+  - Rester à l'écart d'un push tant qu'une vérification est en cours ou qu'un test échoue.
 - Ne jamais mettre une clé Supabase `service_role` ou un secret serveur dans `index.html` — seule la clé `anon` publique est autorisée côté client.
 - Ne jamais retirer ni affaiblir le CSP / les en-têtes de `vercel.json`.
 - Toujours ajouter un nouveau domaine d'API à `connect-src` (vercel.json) avant de l'appeler, sinon il est bloqué.
