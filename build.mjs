@@ -52,7 +52,18 @@ let out = src.replace(
          Les envelopper casse ce contrat en silence — l'application démarre,
          puis un composant manque au moment où on l'ouvre. Aucun format : la
          sortie reste du script de haut niveau, exactement comme l'entrée. */
-      minify: false,
+      /* Minification PARTIELLE, et le detail compte. Mesure en production :
+         413 Ko transferes (Brotli fait deja son travail) mais 1900 ms passes a
+         ANALYSER et executer — le goulot n'est plus le reseau, c'est la
+         quantite de code que le moteur doit lire.
+         minifyIdentifiers reste a false, et ce n'est pas de la prudence
+         excessive : renommer les identifiants de haut niveau casserait le
+         partage entre blocs, exactement comme l'aurait fait format 'iife'.
+         `function Shell` renomme en `a` dans un bloc resterait `Shell` dans
+         celui qui l'appelle. Espaces et syntaxe se compressent sans risque. */
+      minifyWhitespace: true,
+      minifySyntax: true,
+      minifyIdentifiers: false,
     });
     apres += js.length;
     return `<script>\n${js}</script>`;
