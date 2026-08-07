@@ -21097,6 +21097,35 @@ void main(){
         setRoutedScreen(s);
       };
 
+      /* ══ RACCOURCIS T ET N ════════════════════════════════════════════════
+         Attendus par quiconque vient de Todoist, Things ou Linear : ces
+         produits ont appris à leurs utilisateurs qu'une lettre suffit. Espace
+         et Entrée démarraient déjà une session (useStartHotkey) — la logique
+         de neutralisation est la même, on la réplique plutôt que d'inventer.
+         Les garde-fous comptent autant que le raccourci : un raccourci à une
+         seule lettre qui se déclenche pendant qu'on ÉCRIT est un sabotage, pas
+         un gain. On ignore donc les champs de saisie, le contenteditable, les
+         modificateurs (Cmd+T ouvre un onglet, ça reste au navigateur) et les
+         répétitions de touche maintenue. */
+      _uEC(() => {
+        if (!user?.id) return;
+        const onKey = (e) => {
+          if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+          const el = document.activeElement;
+          const tag = el && el.tagName;
+          if (el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')) return;
+          /* Une modale ouverte a sa propre logique de clavier : on ne lui
+             passe pas devant. */
+          if (document.querySelector('.fs-account-scrim, .fs-wl-scrim, .fs-shop-scrim, .fs-acct-scrim')) return;
+          const k = (e.key || '').toLowerCase();
+          if (k !== 't' && k !== 'n') return;
+          e.preventDefault();
+          go(k === 't' ? 'tasks' : 'notes');
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [user?.id]);
+
       _uEC(() => {
         if (!user?.id) return;
         const onRouteChange = () => {
