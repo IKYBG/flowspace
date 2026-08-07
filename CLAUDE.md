@@ -10,7 +10,11 @@ LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gra
 - Pas de backend custom : Supabase reste la seule couche données/auth.
 
 ## Stack technique non négociable
-- Front : **un seul fichier `index.html`** (~15k lignes). React 18.3.1 + ReactDOM en UMD (unpkg), GSAP, supabase-js — tous via CDN. JSX transpilé **dans le navigateur** par Babel Standalone (`<script type="text/babel">`). Aucun build step actuellement.
+- Front : **un seul fichier `index.html`** (~31k lignes). React 18.3.1 + ReactDOM en UMD (unpkg), GSAP, supabase-js — tous via CDN.
+- **Build de précompilation (depuis 2026-08-07)** : `node build.mjs` transpile le JSX des 29 blocs `text/babel` avec esbuild et écrit `dist/`. Babel Standalone n'est plus chargé par le navigateur. Vercel exécute ce build (`buildCommand`, `outputDirectory: dist`). Mesuré : premier pixel 892 ms → 88 ms, DOM complet 2401 ms → 202 ms.
+  - On développe TOUJOURS dans `index.html` à la racine, en JSX, exactement comme avant. Le build ne change ni la structure des blocs, ni leur ordre, ni le partage d'état par globals.
+  - `dist/` est un artefact, jamais commité, jamais édité à la main.
+  - **Ne jamais ajouter `format: 'iife'` dans `build.mjs`** : cela enfermerait chaque bloc dans une fonction et les déclarations top-level cesseraient d'être globales — les blocs ne se verraient plus. L'app démarre quand même, puis un composant manque à l'ouverture d'un écran.
 - Backend : Supabase (auth + données). Sons d'ambiance : synthétisés à la volée via la Web Audio API (aucun fichier, aucun réseau, offline) — plus d'intégration Spotify.
 - Déploiement : Vercel depuis la racine du repo. PWA : `manifest.json` + `sw.js`.
 - Migration vers un vrai bundler prévue un jour → ne pas écrire de code qui la rende plus difficile (scopes nets, pas de dépendances cachées entre blocs).
@@ -23,7 +27,8 @@ LumenOS (repo « flowspace », déployé sur lumenos.vercel.app) est un SaaS gra
 - Détails architecture & pièges : @.claude/rules/architecture.md
 
 ## Commandes
-- `npx serve .` — sert l'app en local (depuis la racine).
+- `npx serve .` — sert l'app en local depuis la racine (JSX transpilé à la volée : pratique pour développer, mais ce n'est PAS ce qui part en prod).
+- `node build.mjs` — précompile vers `dist/`. À lancer avant de mesurer une performance ou de vérifier ce que verra un utilisateur.
 - `node generate-icons.js` — régénère les icônes PWA.
 - `git push` — ⚠️ DÉPLOIE EN PROD instantanément sur lumenos.vercel.app (pas de staging).
 
