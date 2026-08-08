@@ -15651,6 +15651,18 @@ void main(){
     }
     .fs-auth-demo-cta:active { transform:translateY(0); }
     .fs-auth-demo-cta svg { opacity:1; flex-shrink:0; }
+    /* Ton volontairement discret : une preuve sociale qui crie sonne comme
+       une reclame, donc comme un chiffre invente. Elle se contente d'etre la. */
+    .fs-auth-social {
+      display:flex; align-items:center; gap:8px; margin-top:16px;
+      font-size:12.5px; font-weight:600; letter-spacing:-.005em;
+      color:rgba(240,244,255,.62);
+    }
+    .fs-auth-social b { color:rgba(240,244,255,.92); font-weight:700; }
+    .fs-auth-social-dot {
+      width:6px; height:6px; border-radius:50%; flex-shrink:0;
+      background:#4ade80; box-shadow:0 0 0 3px rgba(74,222,128,.16);
+    }
     .fs-auth-feature-grid {
       position:relative; z-index:3; display:none; grid-template-columns:repeat(3,minmax(0,1fr));
       gap:10px; max-width:560px;
@@ -15743,6 +15755,37 @@ void main(){
       });
       const [ripple, setRipple] = _uSAuth(null);
       const [demoOpen, setDemoOpen] = _uSAuth(false);
+      /* ══ PREUVE SOCIALE : UN CHIFFRE VRAI, OU RIEN ═══════════════════════
+         La page ne disait nulle part que quelqu'un d'autre s'en sert. Pour un
+         étudiant qui envisage de payer, le silence se lit « projet solo,
+         abandonné dans trois mois » — et c'est le doute qui coûte le plus
+         cher, parce qu'il ne se formule jamais à voix haute.
+         Le compte vient de la vue `stats_publiques`, qui n'expose QU'UN
+         entier : la RLS ferme tout le reste aux visiteurs non connectés, et
+         c'est très bien ainsi — pas un nom, pas un email ne sort d'ici.
+         Deux garde-fous, et ils comptent plus que l'affichage lui-même :
+           · en cas d'échec réseau, on n'affiche RIEN. Un chiffre inventé ou
+             figé en dur trahirait exactement la confiance qu'il cherche à
+             construire, et vieillirait mal.
+           · sous 5 membres, on se tait aussi. « 3 membres » est une preuve
+             sociale NÉGATIVE : elle dit « personne n'est là » plus fort que
+             le silence. */
+      const [membres, setMembres] = _uSAuth(null);
+      React.useEffect(() => {
+        let vivant = true;
+        (async () => {
+          try {
+            const r = await fetch(`${SUPABASE_URL}/rest/v1/stats_publiques?select=membres`, {
+              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+            });
+            if (!r.ok) return;
+            const j = await r.json();
+            const n = Number(j?.[0]?.membres);
+            if (vivant && Number.isFinite(n) && n >= 5) setMembres(n);
+          } catch (_) { /* silence volontaire : voir ci-dessus */ }
+        })();
+        return () => { vivant = false; };
+      }, []);
       /* Cet appareil a-t-il DÉJÀ servi ? On ne peut pas savoir si le compte
          existe avant que l'utilisateur tape son email — mais on n'en a pas
          besoin : ce qui choisit le ton d'accueil, c'est de savoir si on parle à
@@ -16151,6 +16194,12 @@ void main(){
                     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
                     Voir en 60 secondes
                   </button>
+                  {membres && (
+                    <div className="fs-auth-social">
+                      <span className="fs-auth-social-dot" aria-hidden="true" />
+                      <span><b>{membres}</b> personnes forgent déjà leurs cristaux</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="fs-auth-hero">
