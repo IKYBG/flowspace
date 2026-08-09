@@ -2336,7 +2336,12 @@
         Object.entries(safe.images).slice(0, 80).forEach(([k, v]) => {
           const key = _fsSafeText(k, 90);
           if (!key) return;
-          if (typeof v === 'string' && (/^data:image\//i.test(v) || /^__fs_idb_image__:/i.test(v))) images[key] = v.slice(0, FS_IMAGE_REMOTE_LIMIT);
+          /* Le motif https:// n'est PAS optionnel : ce filtre décide de ce qui
+             monte au cloud, et une URL Storage n'appartenant à aucun des deux
+             autres motifs aurait été écartée sans le moindre message. L'image
+             se serait affichée localement, puis aurait disparu sur un autre
+             appareil — la panne la plus difficile à diagnostiquer. */
+          if (typeof v === 'string' && (/^data:image\//i.test(v) || /^__fs_idb_image__:/i.test(v) || /^https:\/\//i.test(v))) images[key] = v.slice(0, FS_IMAGE_REMOTE_LIMIT);
           else if (v && typeof v === 'object') images[key] = _fsSafeJson(v, 120000);
         });
         safe.images = images;
@@ -2513,6 +2518,48 @@
       });
     }
 
+    /* ══ LES IMAGES QUITTENT LA BASE DE DONNÉES ═══════════════════════════════
+       Mesuré sur le dump de migration : 8 Mo de données publiques pour 43
+       lignes. Les images étaient stockées en base64 DANS user_data.images, et
+       chaque lecture de cette colonne transportait donc des mégaoctets. C'est
+       ce qui a fait sauter le quota d'egress — la requête de la liste d'amis
+       n'en était que le symptôme le plus coûteux.
+       Une image dans Storage est servie par un CDN, mise en cache par le
+       navigateur, et ne pèse plus qu'une URL de 120 octets dans la base.
+
+       Le chemin DOIT commencer par l'identifiant de l'utilisateur : c'est
+       exactement ce que vérifie la politique RLS
+       `(storage.foldername(name))[1] = auth.uid()::text`. Sans ce préfixe,
+       l'envoi est rejeté — et surtout, n'importe qui pourrait écraser la
+       photo de n'importe qui d'autre.
+
+       En cas d'échec (hors ligne, session expirée, politique absente) on
+       RETOMBE exactement sur l'ancien comportement. Une image ne doit jamais
+       être perdue parce qu'un envoi réseau a échoué. */
+    const FS_IMAGE_BUCKET = 'avatars';
+    async function _fsUploadImageToStorage(imageKey, src) {
+      try {
+        if (!window._fsSb || !window._fsSbUser?.id) return null;
+        if (typeof src !== 'string' || !src.startsWith('data:image/')) return null;
+        const mime = (src.match(/^data:([^;]+)/) || [])[1] || 'image/png';
+        const ext = (mime.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+        const bin = atob(src.split(',')[1] || '');
+        if (!bin.length) return null;
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const chemin = `${window._fsSbUser.id}/${imageKey}.${ext}`;
+        const { error } = await window._fsSb.storage.from(FS_IMAGE_BUCKET)
+          .upload(chemin, new Blob([bytes], { type: mime }), { contentType: mime, upsert: true });
+        if (error) { console.warn('[fs] envoi Storage refusé —', error.message || error); return null; }
+        const { data } = window._fsSb.storage.from(FS_IMAGE_BUCKET).getPublicUrl(chemin);
+        if (!data?.publicUrl) return null;
+        /* upsert écrase le fichier au MÊME chemin : sans ce marqueur, le CDN
+           et le navigateur continueraient de servir l'ancienne image. */
+        return `${data.publicUrl}?v=${Date.now().toString(36)}`;
+      } catch (_) { return null; }
+    }
+    window._fsUploadImageToStorage = _fsUploadImageToStorage;
+
     async function _fsStoreLocalImage(imageKey, src) {
       window._fsImageMemory = window._fsImageMemory || {};
       if (!imageKey || typeof src !== 'string') return false;
@@ -2520,8 +2567,14 @@
       const isGif = /^data:image\/gif(?:;|,)/i.test(src);
       const shouldUseDbRef = isGif || src.length > FS_IMAGE_LOCAL_LIMIT;
       const savedToDb = await _fsImageDbSet(imageKey, src);
+      /* L'envoi passe AVANT le marquage de synchro : c'est ce qui décide si le
+         cloud recevra une URL de 120 octets ou des mégaoctets de base64.
+         L'affichage de cette session, lui, reste instantané — le base64 est
+         déjà dans _fsImageMemory, lu en priorité par _fsReadLocalImage. */
+      const urlDistante = await _fsUploadImageToStorage(imageKey, src);
       try {
-        if (shouldUseDbRef && savedToDb) _fsRawSet(imageKey, `${FS_IMAGE_IDB_REF}${imageKey}`);
+        if (urlDistante) _fsRawSet(imageKey, urlDistante);
+        else if (shouldUseDbRef && savedToDb) _fsRawSet(imageKey, `${FS_IMAGE_IDB_REF}${imageKey}`);
         else _fsRawSet(imageKey, src);
       } catch (_) {
         if (savedToDb) {
@@ -2596,7 +2649,10 @@
           ? widgets.filter(w => String(w?.label || w?.id || '').toLowerCase().split('_')[0] === 'image')
           : [];
         const publishableImages = Object.entries(images)
-          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && /^data:image\//i.test(v));
+          /* Idem : une image hébergée dans Storage est tout aussi publiable
+             qu'un base64 — l'exclure ferait disparaître les widgets image de
+             l'espace visible par les amis. */
+          .filter(([k, v]) => k && k.startsWith('fs_img_') && k !== 'fs_img_profile' && typeof v === 'string' && /^(?:data:image\/|https:\/\/)/i.test(v));
         const publishableGifs = publishableImages.filter(([, v]) => /^data:image\/gif(?:;|,)/i.test(String(v)));
         const missingExactWidgets = imageWidgets.filter(w => !images[`fs_img_${w.id}`]);
         for (const w of imageWidgets) {
@@ -2757,7 +2813,11 @@
     function _fsLocalProfilePhoto() {
       try {
         const v = localStorage.getItem('fs_img_profile');
-        return (typeof v === 'string' && /^data:image\//i.test(v)) ? v : null;
+        /* https:// accepté depuis que les photos vivent dans Storage. Sans ça,
+           cette fonction renverrait null pour une photo parfaitement valide et
+           l'avatar disparaîtrait au profit des initiales — sans erreur, sans
+           trace, et seulement pour les comptes récents. */
+        return (typeof v === 'string' && /^(?:data:image\/|https:\/\/)/i.test(v)) ? v : null;
       } catch (_) { return null; }
     }
     window._fsLocalProfilePhoto = _fsLocalProfilePhoto;
