@@ -31204,6 +31204,20 @@ void main(){
           .fs-evo2-card{padding:18px 20px;border-radius:22px;border:1px solid rgba(255,255,255,.07);
             background:rgba(255,255,255,.025);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
 
+          /* Statistiques hebdomadaires — quatre chiffres, pas un tableau de
+             bord. auto-fit descend a deux colonnes sur telephone sans media
+             query : les cellules se reorganisent d'elles-memes. */
+          .fs-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:14px}
+          .fs-stats-cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+          /* tabular-nums : sans ca, la largeur des chiffres change d'une
+             semaine a l'autre et la grille tremble a chaque visite. */
+          .fs-stats-cell b{font-family:var(--font-display);font-size:21px;font-weight:700;
+            letter-spacing:-.03em;color:var(--mineral-text);font-variant-numeric:tabular-nums}
+          .fs-stats-cell span{font-size:11.5px;font-weight:600;color:var(--mineral-muted);line-height:1.3}
+          .fs-stats-delta{margin-top:15px;padding-top:13px;border-top:1px solid rgba(255,255,255,.06);
+            font-size:12.5px;font-weight:600;color:var(--mineral-muted)}
+          .fs-stats-delta.up{color:#7af6a4}
+
           /* Quêtes de la semaine */
           .fs-evo2-quests{display:grid;gap:9px}
           .fs-quest{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;
@@ -31399,6 +31413,85 @@ void main(){
                 </div>
               </div>
             </div>
+
+            {/* ══ CETTE SEMAINE ══════════════════════════════════════════════
+                L'app enregistrait chaque session — startedAt, actualMinutes,
+                completed — et n'en restituait jamais RIEN. On accumulait des
+                cristaux sans jamais savoir si la semaine avait été bonne.
+                Quatre chiffres seulement, et surtout la comparaison à la
+                semaine passée : un total isolé ne dit rien (« 4 h 20, c'est
+                bien ? »), un écart raconte une trajectoire.
+                Calculé à l'affichage plutôt que stocké : quelques centaines
+                d'entrées se parcourent en une fraction de milliseconde, et un
+                agrégat stocké finit toujours par diverger de sa source. */}
+            {(() => {
+              let hist = [];
+              try { hist = JSON.parse(localStorage.getItem(`fs_session_history_${user?.id || 'g'}`) || '[]') || []; } catch (_) { }
+              if (!Array.isArray(hist) || hist.length === 0) return null;
+
+              const maintenant = Date.now();
+              const JOUR = 86400000;
+              const fenetre = (debut, fin) => hist.filter(s => {
+                const t = new Date(s.endedAt || s.startedAt || 0).getTime();
+                return t >= debut && t < fin;
+              });
+              const semaine = fenetre(maintenant - 7 * JOUR, maintenant + JOUR);
+              const precedente = fenetre(maintenant - 14 * JOUR, maintenant - 7 * JOUR);
+              if (semaine.length === 0) return null;
+
+              const minutes = l => l.reduce((n, s) => n + (Number(s.actualMinutes) || 0), 0);
+              const minSem = minutes(semaine), minPrec = minutes(precedente);
+              const finies = semaine.filter(s => s.completed).length;
+              const tauxFin = Math.round((finies / semaine.length) * 100);
+
+              /* Le meilleur créneau : on compte les sessions TERMINÉES par
+                 tranche horaire. Compter les sessions lancées récompenserait
+                 les heures où l'on abandonne le plus. */
+              const parHeure = {};
+              semaine.filter(s => s.completed).forEach(s => {
+                const h = new Date(s.startedAt || s.endedAt || 0).getHours();
+                if (Number.isFinite(h)) parHeure[h] = (parHeure[h] || 0) + 1;
+              });
+              const meilleure = Object.entries(parHeure).sort((a, b) => b[1] - a[1])[0];
+              const creneau = meilleure ? `${String(meilleure[0]).padStart(2, '0')}h–${String((+meilleure[0] + 1) % 24).padStart(2, '0')}h` : '—';
+
+              const fmtDuree = m => m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
+              const ecart = minSem - minPrec;
+              const signe = ecart > 0 ? '+' : '';
+
+              return (
+                <div className="fs-evo2-sec">
+                  <div className="fs-evo2-sec-h"><b>Cette semaine</b><u>7 derniers jours</u><i /></div>
+                  <div className="fs-evo2-card">
+                    <div className="fs-stats-grid">
+                      <div className="fs-stats-cell">
+                        <b>{semaine.length}</b><span>session{semaine.length > 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="fs-stats-cell">
+                        <b>{fmtDuree(minSem)}</b><span>de focus</span>
+                      </div>
+                      <div className="fs-stats-cell">
+                        <b>{tauxFin}%</b><span>menées au bout</span>
+                      </div>
+                      <div className="fs-stats-cell">
+                        <b>{creneau}</b><span>ton meilleur créneau</span>
+                      </div>
+                    </div>
+                    {/* La comparaison n'apparaît que s'il y a une semaine
+                        précédente : « +4 h 20 » face à zéro n'est pas un
+                        progrès, c'est un premier pas — et le présenter comme
+                        une hausse serait flatteur et faux. */}
+                    {precedente.length > 0 && (
+                      <div className={'fs-stats-delta' + (ecart >= 0 ? ' up' : '')}>
+                        {ecart === 0
+                          ? 'Exactement autant que la semaine dernière.'
+                          : `${signe}${fmtDuree(Math.abs(ecart))} par rapport à la semaine dernière.`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 3. Régularité — les mécaniques qui entretiennent la série */}
             <div className="fs-evo2-sec">
