@@ -17477,6 +17477,13 @@ void main(){
        sous les variables du thème survolé — accent ET palette de surfaces,
        puisque le thème repeint les deux. Les variables sont posées sur le
        conteneur, jamais sur :root : survoler ne doit rien appliquer. */
+    /* Taille de la toile virtuelle : les proportions d'un écran, et la largeur
+       à laquelle la grille 12 colonnes du dashboard respire vraiment. Les
+       widgets se rendent donc à une taille RÉALISTE avant d'être réduits —
+       c'est ce qui fait que la miniature ressemble au dashboard plutôt qu'à
+       une version tassée de lui. */
+    const TOILE_L = 1280, TOILE_H = 720;
+
     function ThemeLivePreview({ theme }) {
       const widgets = React.useMemo(() => {
         try {
@@ -17503,8 +17510,41 @@ void main(){
         };
       }, [theme]);
 
+      /* ══ L'APERÇU SE DÉFORMAIT AVEC LA LARGEUR DU PANNEAU ═══════════════════
+         La toile virtuelle était dimensionnée en POURCENTAGE du cadre
+         (250 % × 250 %) puis réduite d'un facteur codé en dur (0,4). Une
+         échelle fixe ne peut pas connaître la largeur réelle du conteneur :
+         la hauteur restait clouée à 540 px pendant que la largeur suivait le
+         panneau. Mesuré : ratio de 1,56 à 340 px, 2,58 à 560 px, 4,06 à
+         880 px — soit une déformation de 2,6× selon la fenêtre. Un vrai
+         dashboard vaut ~1,78, donc à 880 px les widgets devenaient des rubans.
+         Un aperçu qui ment sur les proportions est pire qu'absent : il fait
+         juger un thème sur une mise en page qui n'existe pas.
+         La toile a désormais une taille FIXE en pixels — 1280 × 720, les
+         proportions d'un écran — et c'est l'ÉCHELLE qui s'adapte, mesurée au
+         pixel près par un ResizeObserver. Le cadre porte le même ratio, donc
+         la miniature reste fidèle à toute largeur. */
+      const cadreRef = React.useRef(null);
+      const [echelle, setEchelle] = React.useState(null);
+      React.useEffect(() => {
+        const el = cadreRef.current;
+        if (!el) return;
+        const mesurer = () => {
+          const l = el.clientWidth;
+          if (l > 0) setEchelle(l / TOILE_L);
+        };
+        mesurer();
+        /* ResizeObserver et non un écouteur `resize` : le panneau change aussi
+           de largeur sans que la fenêtre bouge — ouverture de la barre
+           latérale, apparition d'une barre de défilement. */
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(mesurer);
+        ro.observe(el);
+        return () => ro.disconnect();
+      }, []);
+
       return (
-        <div style={{ ...vars, height: 218, borderRadius: 22, overflow: 'hidden', position: 'relative', background: theme.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
+        <div ref={cadreRef} style={{ ...vars, width: '100%', aspectRatio: `${TOILE_L} / ${TOILE_H}`, borderRadius: 22, overflow: 'hidden', position: 'relative', background: theme.base, border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 40px rgba(0,0,0,0.4)' }}>
           <div style={{ position: 'absolute', inset: 0, background: buildGrad(theme), transition: 'background 0.45s ease' }} />
           {widgets.length === 0 ? (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, textAlign: 'center', padding: 20 }}>
@@ -17516,7 +17556,10 @@ void main(){
                widget rendu à sa taille réelle puis réduit, plutôt qu'un rendu
                à petite taille qui casserait ses mises en page internes. */
             <div className="fs-theme-mini" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-              <div style={{ width: '250%', height: '250%', transform: 'scale(0.4)', transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: 'repeat(4, 1fr)', gap: 14 }}>
+              {/* Tant que l'échelle n'est pas mesurée, on ne rend RIEN : rendre
+                  à une échelle devinée puis corriger produirait un sursaut
+                  visible à chaque ouverture de l'écran. */}
+              <div style={{ width: TOILE_L, height: TOILE_H, transform: `scale(${echelle ?? 0})`, transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14 }}>
                 {widgets.map(w => {
                   const rendu = window.WIDGET_COMPONENTS?.[String(w.label || '').toLowerCase()];
                   return (
