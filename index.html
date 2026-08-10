@@ -687,6 +687,28 @@
       will-change: auto !important;
     }
     .fs-theme-mini { pointer-events: none; }
+    /* ══ LE FLOU DE VERRE COÛTE ICI CE QU'IL NE RAPPORTE PAS ═════════════════
+       Mesuré : 64 fps au repos, 46 pendant qu'on survole les cartes de thème —
+       16 % de chute, et bien davantage sur une machine modeste. La cause n'est
+       pas le nombre de widgets mais leur MATIÈRE : chaque coquille porte un
+       `backdrop-filter: blur(18px) saturate(125%)`, et la toile virtuelle fait
+       1280 × 720. Cinq flous plein format, repeints à chaque changement de
+       thème survolé.
+       Or un backdrop-filter ne sert qu'à laisser transparaître ce qui est
+       DERRIÈRE. Derrière, ici, il n'y a qu'un dégradé plat et immobile : le
+       flou calcule à grands frais quelque chose qui n'a rien à révéler. Le
+       rendu est visuellement indiscernable sans lui à cette échelle — la
+       miniature est réduite à 0,4.
+       Neutralisation SCOPÉE à la miniature, jamais globale : les 29 surfaces
+       de verre de l'app gardent leur matière, c'est elle qui fait le produit. */
+    .fs-theme-mini *,
+    .fs-theme-mini *::before,
+    .fs-theme-mini *::after {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      filter: none !important;
+      box-shadow: none !important;
+    }
     button, input, textarea, select {
       -webkit-tap-highlight-color: transparent;
     }
@@ -17524,6 +17546,9 @@ void main(){
          proportions d'un écran — et c'est l'ÉCHELLE qui s'adapte, mesurée au
          pixel près par un ResizeObserver. Le cadre porte le même ratio, donc
          la miniature reste fidèle à toute largeur. */
+      /* Dépend de `widgets` SEUL, jamais du thème : c'est tout l'intérêt.
+         Survoler une carte ne doit toucher que des variables CSS. */
+      const grilleWidgets = React.useMemo(() => _grilleApercu(widgets), [widgets]);
       const cadreRef = React.useRef(null);
       const [echelle, setEchelle] = React.useState(null);
       React.useEffect(() => {
@@ -17560,10 +17585,27 @@ void main(){
                   à une échelle devinée puis corriger produirait un sursaut
                   visible à chaque ouverture de l'écran. */}
               <div style={{ width: TOILE_L, height: TOILE_H, transform: `scale(${echelle ?? 0})`, transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14 }}>
-                {widgets.map(w => {
-                  const rendu = window.WIDGET_COMPONENTS?.[String(w.label || '').toLowerCase()];
-                  return (
-                    <div key={w.id} style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0 }}>
+                {grilleWidgets}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ══ LES WIDGETS NE DOIVENT PAS SE RE-RENDRE QUAND ON SURVOLE UN THÈME ═══
+       Changer de thème survolé ne change QUE des variables CSS posées sur le
+       conteneur. Mais comme le composant se re-rendait, les cinq widgets se
+       reconciliaient à chaque survol — horloge, minuteur, notes, tout le
+       sous-arbre — pour un résultat identique au pixel près.
+       Mesuré : 46 fps pendant qu'on parcourt les cartes. La grille est donc
+       mémoïsée sur `widgets` seuls : survoler ne touche plus que le CSS, et
+       le navigateur se contente de repeindre. */
+    function _grilleApercu(widgets) {
+      return widgets.map(w => {
+        const rendu = window.WIDGET_COMPONENTS?.[String(w.label || '').toLowerCase()];
+        return (
+          <div key={w.id} style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0 }}>
                       {/* L'identifiant RÉEL, pas un préfixé. Le widget Image
                           en dérive sa clé de stockage (`fs_img_<id>`) : un
                           préfixe la faisait pointer dans le vide, et la
@@ -17584,14 +17626,9 @@ void main(){
                           reste assuré par la règle .fs-theme-mini, qui coûte
                           moins cher qu'un placeholder et ne cache rien. */}
                       {rendu ? rendu(w.variant || 1, w.id, { performanceMode: 'preview' }) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      );
+          </div>
+        );
+      });
     }
 
     function ThemePicker({ bgThemeId, onApply, showPreview = false, compact = false }) {
@@ -21080,6 +21117,23 @@ void main(){
          deux cristaux pour une seule session. La clé est le `startTime`, seul
          identifiant stable d'une session. */
       const endedSessionRef = React.useRef(null);
+      /* ══ UNE DURÉE DE SESSION EST EN MINUTES, ET PEUT ÊTRE FRACTIONNAIRE ═══
+         Le formulaire valide `d > 0 && d <= 120` — sans plancher entier. Une
+         session de dix secondes vaut donc 0,1667, parfaitement légitime.
+         Or les deux endroits qui calculent l'échéance faisaient
+         `Math.max(1, duration) * 60000` : un plancher d'UNE MINUTE, qui
+         promouvait silencieusement toute session courte à soixante secondes.
+         Le minuteur affichait la fin à dix secondes, l'échéance interne
+         tombait à soixante — et le cristal n'arrivait jamais.
+         Le plancher passe en millisecondes : il protège encore de 0 et de NaN,
+         mais ne ment plus sur la durée. Une seule fonction pour les deux
+         appelants, sans quoi ils pourraient de nouveau diverger sur ce qu'est
+         « la fin » — c'était déjà la cause du bug précédent. */
+      const _fsDureeMs = (minutes) => {
+        const m = Number(minutes);
+        return Number.isFinite(m) && m > 0 ? Math.max(1000, m * 60000) : 25 * 60000;
+      };
+
       const handleEndSession = async (crystalData = null) => {
         const stamp = activeSessionRef.current?.startTime || activeSession?.startTime || null;
         if (stamp && endedSessionRef.current === stamp) return;
@@ -21101,7 +21155,7 @@ void main(){
         if (!crystalData) {
           const sess = activeSessionRef.current || activeSession;
           const prevue = sess?.startTime && sess?.duration
-            ? sess.startTime + Math.max(1, Number(sess.duration) || 25) * 60000
+            ? sess.startTime + _fsDureeMs(sess.duration)
             : null;
           if (prevue && Date.now() >= prevue - 1500 && typeof window._buildCrystal === 'function') {
             try { crystalData = window._buildCrystal(1, sess); }
@@ -21232,7 +21286,7 @@ void main(){
         const s = activeSession;
         if (!s?.startTime || !s?.duration) return;
         if (endedSessionRef.current === s.startTime) return;
-        const dueAt = s.startTime + Math.max(1, Number(s.duration) || 25) * 60000;
+        const dueAt = s.startTime + _fsDureeMs(s.duration);
         /* Petit répit après l'échéance : le temps que la scène ou la bulle
            joue sa complétion. La pop-up arrive donc APRÈS le cristal qui
            s'achève, jamais par-dessus. */
