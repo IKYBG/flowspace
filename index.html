@@ -17572,7 +17572,18 @@ void main(){
                           sur ces photos qu'on juge un thème — c'est le seul
                           contenu de l'écran dont les couleurs ne viennent pas
                           du thème et peuvent donc jurer avec lui. */}
-                      {rendu ? rendu(w.variant || 1, w.id, { performanceMode: 'edit' }) : null}
+                      {/* `edit` remplaçait les GIF par une carte « GIF pause ».
+                          C'est juste dans l'écran d'édition — on y déplace des
+                          widgets, pas besoin qu'ils s'animent — mais absurde
+                          ici : on juge un THÈME, et les couleurs d'un GIF sont
+                          précisément ce qu'il faut voir contre le fond. Un
+                          aperçu qui masque le contenu qu'on veut comparer ne
+                          sert à rien.
+                          `preview` n'est reconnu par aucun widget, donc tous
+                          rendent leur contenu réel ; le gel des animations CSS
+                          reste assuré par la règle .fs-theme-mini, qui coûte
+                          moins cher qu'un placeholder et ne cache rien. */}
+                      {rendu ? rendu(w.variant || 1, w.id, { performanceMode: 'preview' }) : null}
                     </div>
                   );
                 })}
@@ -21073,6 +21084,30 @@ void main(){
         const stamp = activeSessionRef.current?.startTime || activeSession?.startTime || null;
         if (stamp && endedSessionRef.current === stamp) return;
         if (stamp) endedSessionRef.current = stamp;
+        /* ══ LE CRISTAL SE MÉRITE AU TEMPS ÉCOULÉ, PAS À L'IDENTITÉ DE
+             L'APPELANT ═══════════════════════════════════════════════════════
+           Quatre chemins appellent `onEnd(null)` — barre de session, scène de
+           focus, bulle réduite, barre du dashboard. Le premier qui passe fixe
+           `endedSessionRef` et la session est close ; le minuteur de fin, qui
+           est le SEUL à construire le cristal, repart alors sans rien faire.
+           Résultat : la récompense dépendait de la vue affichée au moment
+           précis de l'échéance, et non du travail accompli. Le commentaire du
+           minuteur, plus bas, raconte que cette bataille a déjà été livrée une
+           fois — elle se rejouait par une autre porte.
+           On ne corrige donc pas un appelant, on retire la décision aux
+           appelants : si la session a couru sa durée, elle produit son cristal,
+           quel que soit le chemin qui la conclut. La marge de 1,5 s absorbe les
+           dérives d'horloge et les onglets réveillés en retard. */
+        if (!crystalData) {
+          const sess = activeSessionRef.current || activeSession;
+          const prevue = sess?.startTime && sess?.duration
+            ? sess.startTime + Math.max(1, Number(sess.duration) || 25) * 60000
+            : null;
+          if (prevue && Date.now() >= prevue - 1500 && typeof window._buildCrystal === 'function') {
+            try { crystalData = window._buildCrystal(1, sess); }
+            catch (e) { console.warn('[fs] forge du cristal impossible', e); }
+          }
+        }
         const hasCrystalData = crystalData
           && typeof crystalData === 'object'
           && Object.prototype.hasOwnProperty.call(crystalData, 'completedAt');
@@ -21097,7 +21132,20 @@ void main(){
             const skinned = g?.activeSkin && g.activeSkin !== 'default' ? { ...crystalData, skin: g.activeSkin } : crystalData;
             localStorage.setItem(k, JSON.stringify([skinned, ...prev.slice(0, 99)]));
             window.dispatchEvent(new CustomEvent('fs-crystal-update'));
-          } catch(e) {}
+          } catch(e) {
+            /* Ce `catch` était VIDE. Il avalait la perte d'un cristal gagné en
+               vingt-cinq minutes : la pop-up de célébration s'affichait quand
+               même — elle est déclenchée plus haut — et la collection restait
+               vide. L'utilisateur voyait sa récompense, puis ne la retrouvait
+               nulle part, sans le moindre message.
+               Une récompense qu'on ne peut pas enregistrer doit se dire. */
+            console.warn('[fs] sauvegarde du cristal impossible', e);
+            addToast({
+              message: 'Ton cristal n’a pas pu être enregistré',
+              detail: 'Ta session est bien comptée. Recharge la page — si ça se reproduit, ton espace de stockage est peut-être saturé.',
+              type: 'error', duration: 9000,
+            });
+          }
           /* Process gamification (streaks, XP, heatmap) */
           if (window._gProcessSession) {
             window._gProcessSession(user.id, { duration: crystalData.duration || 25 }, msg => {
