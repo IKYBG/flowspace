@@ -8616,6 +8616,40 @@
       window.useStartHotkey(!session, () => onNavigate('session'));
       /* Réglages Dashboard (page Paramètres) — tous branchés en live. */
       const dashPrefs = window.useFsPrefs ? window.useFsPrefs() : {};
+      const [taskEpoch, setTaskEpoch] = React.useState(0);
+      React.useEffect(() => {
+        const refresh = () => setTaskEpoch(v => v + 1);
+        window.addEventListener('fs-store', refresh);
+        window.addEventListener('fs-remote-update', refresh);
+        window.addEventListener('fs-focus-tasks-update', refresh);
+        return () => {
+          window.removeEventListener('fs-store', refresh);
+          window.removeEventListener('fs-remote-update', refresh);
+          window.removeEventListener('fs-focus-tasks-update', refresh);
+        };
+      }, []);
+      const nextTask = React.useMemo(() => {
+        try {
+          const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+          if (!Array.isArray(tasks)) return null;
+          const focusIds = JSON.parse(localStorage.getItem('fs_session_focus_tasks') || 'null');
+          const active = tasks.filter(t => t && !t.done);
+          if (Array.isArray(focusIds) && focusIds.length) {
+            return active.find(t => focusIds.includes(t.id)) || active[0] || null;
+          }
+          const rank = { high: 0, medium: 1, low: 2 };
+          return [...active].sort((a, b) => (rank[a.priority] ?? 1) - (rank[b.priority] ?? 1))[0] || null;
+        } catch (_) { return null; }
+      }, [taskEpoch]);
+      const completeNextTask = () => {
+        if (!nextTask) return;
+        try {
+          const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+          localStorage.setItem('fs_tasks', JSON.stringify(tasks.map(t => t.id === nextTask.id ? { ...t, done: true } : t)));
+          window.dispatchEvent(new CustomEvent('fs-store', { detail: { key: 'fs_tasks' } }));
+          window._fsFlushPush?.();
+        } catch (_) { }
+      };
       const hour = new Date().getHours();
       const greeting = hour < 5 ? 'Encore debout ?' : hour < 12 ? 'Bonjour' : hour < 17 ? 'Bon après-midi' : 'Bonsoir';
       const dateStr = (() => {
@@ -8680,6 +8714,23 @@
             .fs-dash-start-more:active{transform:scale(.96)}
             html.fs-reduce-motion .fs-dhx-anim{animation:none!important}
             html.fs-reduce-motion .fs-dash-start-btn::after{animation:none!important;opacity:0!important}
+            .fs-now-rail{margin:0 28px 2px;padding:14px 16px;border-radius:18px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(var(--theme-c1-rgb),.11),rgba(var(--theme-c2-rgb),.045)),rgba(var(--mineral-surface-rgb),.58);border:1px solid rgba(var(--theme-c1-rgb),.19);box-shadow:inset 0 1px 0 rgba(255,255,255,.065),0 12px 34px rgba(0,0,0,.12)}
+            .fs-now-check{width:34px;height:34px;border-radius:12px;border:1px solid rgba(var(--theme-c1-rgb),.30);background:rgba(var(--theme-c1-rgb),.10);color:var(--theme-c1);display:grid;place-items:center;cursor:pointer;flex-shrink:0;transition:transform .18s var(--mineral-ease),background .18s var(--mineral-ease)}
+            .fs-now-check:hover{background:rgba(var(--theme-c1-rgb),.18);transform:scale(1.035)}
+            .fs-now-kicker{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(var(--theme-c1-rgb),.9);margin-bottom:4px}
+            .fs-now-title{font-size:13px;font-weight:650;color:var(--mineral-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .fs-now-actions{display:flex;align-items:center;gap:8px}
+            .fs-now-secondary,.fs-now-primary{height:36px;border-radius:12px;padding:0 13px;font:600 11px var(--font-body);cursor:pointer;white-space:nowrap;transition:transform .17s var(--mineral-ease),filter .17s,background .17s}
+            .fs-now-secondary{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.045);color:var(--mineral-muted)}
+            .fs-now-primary{border:none;background:linear-gradient(135deg,var(--theme-c1),var(--theme-c2));color:#070810;box-shadow:0 9px 24px rgba(var(--theme-c1-rgb),.2)}
+            .fs-now-secondary:hover{color:var(--mineral-text);background:rgba(255,255,255,.075)}
+            .fs-now-primary:hover{filter:brightness(1.05);transform:translateY(-1px)}
+            .fs-now-primary:active,.fs-now-secondary:active{transform:scale(.98)}
+            @media(max-width:768px){
+              .fs-now-rail{margin:0 14px 4px;padding:12px;grid-template-columns:auto minmax(0,1fr);gap:10px}
+              .fs-now-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}
+              .fs-now-primary,.fs-now-secondary{height:44px}
+            }
             /* Les hauteurs/largeurs mobiles de cette grappe vivent dans la
                feuille globale (bloc « + / crayon »). Les redéclarer ici les
                mettait en conflit — 40 px contre 44, 42 px contre min-width 44 —
@@ -8784,6 +8835,26 @@
               )}
             </div>
           </div>
+          {!session && (
+            <section className="fs-now-rail" aria-label="Prochaine action">
+              <button className="fs-now-check" onClick={nextTask ? completeNextTask : () => onNavigate('tasks')}
+                aria-label={nextTask ? `Terminer ${nextTask.text}` : 'Ajouter une tâche'} title={nextTask ? 'Marquer comme terminée' : 'Ajouter une tâche'}>
+                {nextTask
+                  ? <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.2 4.2L19 7" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  : <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" /></svg>}
+              </button>
+              <div style={{minWidth:0}}>
+                <div className="fs-now-kicker">Maintenant</div>
+                <div className="fs-now-title">{nextTask ? nextTask.text : 'Choisis la priorité qui fera avancer ta journée.'}</div>
+              </div>
+              <div className="fs-now-actions">
+                <button className="fs-now-secondary" onClick={() => onNavigate('tasks')}>{nextTask ? 'Voir les tâches' : 'Ajouter une tâche'}</button>
+                <button className="fs-now-primary" onClick={() => (onQuickStart ? onQuickStart() : onNavigate('session'))}>
+                  {nextTask ? 'Commencer le focus' : 'Focus libre'}
+                </button>
+              </div>
+            </section>
+          )}
           <div className="fs-dashboard-grid" style={{ flex: 1, padding: '18px 32px 28px', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14, overflow: 'hidden', minHeight: 0 }}>
             {widgets.map((w, i) => {
               const rowSpan = w.row ? parseInt(w.row.split('/')[1]) - parseInt(w.row.split('/')[0]) : 1;
@@ -10183,6 +10254,8 @@
             .fs-launch-blender-aura{position:absolute;left:50%;top:50%;width:230px;height:250px;border-radius:45% 55% 50% 50%;background:radial-gradient(ellipse at 50% 44%,rgba(var(--theme-c1-rgb),.38),rgba(var(--theme-c2-rgb),.18) 44%,rgba(var(--theme-c1-rgb),.06) 68%,transparent 76%);filter:blur(18px) saturate(1.08);mix-blend-mode:screen;animation:fsLaunchBlenderAura 7s cubic-bezier(.4,0,.2,1) infinite;pointer-events:none}
             .fs-launch-3d-scene .fsBlenderCrystalCanvas{position:absolute;inset:-16%;width:132%;height:132%;display:block;z-index:3;pointer-events:none;filter:drop-shadow(0 28px 46px rgba(var(--theme-c1-rgb),.28)) drop-shadow(0 0 34px rgba(var(--theme-c2-rgb),.2))}
             .fs-launch-blender-floor{position:absolute;bottom:27px;width:188px;height:36px;border-radius:50%;background:radial-gradient(ellipse,rgba(var(--theme-c1-rgb),.34),rgba(var(--theme-c2-rgb),.12) 48%,transparent 72%);filter:blur(8px);animation:fsLaunchBlenderFloor 4.4s ease-in-out infinite}
+            html.fs-perf-lite .fs-launch-orbit,html.fs-perf-lite .fs-launch-blender-aura,html.fs-perf-lite .fs-launch-blender-floor{display:none!important}
+            html.fs-perf-lite .fs-session-launch-shell:before,html.fs-perf-lite .fs-session-launch-preview:before{animation:none!important;opacity:.24}
             @media (max-width: 760px){
               .fs-session-launch-shell{border-radius:26px!important;max-height:calc(100vh - 22px)!important}
               .fs-session-launch-grid{grid-template-columns:1fr!important}
@@ -10526,11 +10599,6 @@
                   <svg width={17} height={17} viewBox="0 0 16 16" fill="none"><path d="M6 3.5 11 8l-5 4.5v-9Z" fill="currentColor"/></svg>
                   Démarrer une session
                 </button>
-                <div className="fs-focus-proof-row" style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:18,justifyContent:'center'}}>
-                  {['Timer guidé','Mode solo','Cristaux sauvés'].map(label => (
-                    <span key={label} style={{borderRadius:99,padding:'7px 10px',background:'rgba(255,255,255,0.045)',border:'1px solid rgba(255,255,255,0.065)',fontSize:11,fontWeight:600,color:T.muted}}>{label}</span>
-                  ))}
-                </div>
               </div>
 
               <div className="fs-focus-3d-scene" aria-hidden="true">
@@ -10539,7 +10607,7 @@
                 <div className="fs-focus-3d-ring two" />
                 <div className="fs-focus-3d-ring three" />
                 {typeof BlenderCrystalScene === 'function'
-                  ? React.createElement(BlenderCrystalScene, { shape: 'quartz' })
+                  ? React.createElement(BlenderCrystalScene, { shape: window._gDefaultShape ? window._gDefaultShape(user?.id) : 'diamond' })
                   : <div className="fs-focus-3d-crystal" />}
                 <div className="fs-focus-3d-base" />
                 {[
@@ -10765,8 +10833,9 @@
 
     function OnboardingScreen({ onDone }) {
       const [step, setStep] = _uSB(0);
+      const [firstTask, setFirstTask] = _uSB('');
 
-      const STEPS = [
+      const ALL_STEPS = [
         {
           kicker: 'Bienvenue',
           title: 'Ton espace,\ntes règles.',
@@ -10865,13 +10934,29 @@
           ),
         },
       ];
+      const STEPS = [
+        ALL_STEPS[0],
+        { ...ALL_STEPS[4], kicker: 'Commence', title: 'Une priorité.\nDix minutes.', body: 'Lance ton premier focus. Ton espace se construira autour de ce que tu accomplis.' },
+      ];
 
       const last = step === STEPS.length - 1;
       const cur = STEPS[step];
       /* Onboarding orienté ACTION : la dernière étape ne « fait pas entrer »
          dans un dashboard à configurer — elle LANCE la première session, qui
          forge le premier cristal. La perso vient après la récompense. */
-      const next = () => (last ? onDone(true) : setStep(s => s + 1));
+      const next = () => {
+        if (!last) { setStep(s => s + 1); return; }
+        const text = firstTask.trim();
+        if (text) {
+          try {
+            const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+            const nextTasks = [{ id: Date.now(), text, priority: 'high', done: false, tag: 'Premier focus' }, ...(Array.isArray(tasks) ? tasks : [])];
+            localStorage.setItem('fs_tasks', JSON.stringify(nextTasks));
+            window.dispatchEvent(new CustomEvent('fs-store', { detail: { key: 'fs_tasks' } }));
+          } catch (_) { }
+        }
+        onDone(true);
+      };
       const prev = () => setStep(s => Math.max(0, s - 1));
 
       /* Clavier : Entrée / → avancent, ← recule, Échap passe l'intro. */
@@ -11004,13 +11089,22 @@
             <div className="ob-kicker">{cur.kicker}</div>
             <h1 className="ob-title">{cur.title}</h1>
             <p className="ob-body">{cur.body}</p>
+            {last && (
+              <label style={{width:'100%',maxWidth:360,marginTop:18,display:'block'}}>
+                <span style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(248,246,252,.58)',marginBottom:7,textAlign:'left'}}>Ta priorité maintenant</span>
+                <input value={firstTask} onChange={e => setFirstTask(e.target.value)} maxLength={120} autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); next(); } }}
+                  placeholder="Ex. Réviser le chapitre 4"
+                  style={{width:'100%',height:50,boxSizing:'border-box',borderRadius:15,border:'1px solid rgba(var(--theme-c1-rgb),.28)',background:'rgba(255,255,255,.055)',color:'var(--mineral-text)',padding:'0 15px',outline:'none',font:'600 13px var(--font-body)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.06)'}} />
+              </label>
+            )}
             {cur.interactiveHint && <div className="ob-hint" style={{ marginTop: 16, marginBottom: 0 }}>{cur.interactiveHint}</div>}
 
             <div className="ob-actions">
               <button className="ob-cta" onClick={next}>
-                {last ? 'Lance ta première session' : 'Continuer'}
+                {last ? 'Commencer 10 min' : 'Continuer'}
               </button>
-              {last && <div className="ob-reassure">25 min de focus · tu personnaliseras tout après</div>}
+              {last && <div className="ob-reassure">Une session courte · aucun réglage nécessaire</div>}
               <div className="ob-sub">
                 {step > 0 && <button className="ob-link" onClick={prev}><svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0}}><path d="M15 5l-7 7 7 7" /></svg> Retour</button>}
                 {!last && <button className="ob-link" onClick={() => onDone(false)}>Passer l’intro</button>}
@@ -12817,7 +12911,7 @@
       };
       const NAV = [
         {
-          target: 'dashboard', label: 'Dashboard', meta: 'Vue principale',
+          target: 'dashboard', label: 'Aujourd’hui', meta: 'Ta prochaine action',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10.5V20h14v-9.5" /></svg>,
         },
         {
@@ -12829,11 +12923,11 @@
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5V4Z" /><path d="M15 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" /></svg>,
         },
         {
-          target: 'session', label: 'Focus', meta: 'Sessions & cristaux',
+          target: 'session', label: 'Focus', meta: 'Travailler',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
         },
         {
-          target: 'perso', label: 'Personnalisation', meta: 'Préférences',
+          target: 'perso', label: 'Personnalisation', meta: 'Thème & interface',
           icon: <svg className="fs-icon" viewBox="0 0 24 24"><path d="M5 20v-6" /><path d="M5 10V4" /><path d="M12 20v-9" /><path d="M12 7V4" /><path d="M19 20v-3" /><path d="M19 13V4" /><circle cx="5" cy="12" r="2" /><circle cx="12" cy="9" r="2" /><circle cx="19" cy="15" r="2" /></svg>,
         },
       ];
@@ -12878,7 +12972,6 @@
               <nav className="fs-nav-group" ref={navGroupRef}>
                 <div className="fs-nav-section fs-nav-section-primary">
                   {renderNavButton(navByTarget('dashboard'))}
-                  {renderNavButton(navByTarget('perso'))}
                 </div>
 
                 <div className="fs-nav-divider" aria-hidden="true" />
@@ -12920,6 +13013,7 @@
                 <div className="fs-nav-divider" aria-hidden="true" />
 
                 <div className="fs-nav-section">
+                {renderNavButton(navByTarget('perso'))}
                 {/* ── Friends nav item ── */}
                 <button
                   type="button"
@@ -18719,7 +18813,6 @@ void main(){
       const [showcaseOpen, setShowcaseOpen] = React.useState(false);
       const [email] = React.useState(user?.email || '');
       const emailLocked = !!user?.email;
-      const [confirmWipe, setConfirmWipe] = React.useState(false);
       const fileRef = React.useRef(null);
 
       const readProfilePhoto = () => {
@@ -18836,19 +18929,6 @@ void main(){
         flashSave();
         addToast({ message: 'Réglages réinitialisés', type: 'success', icon: '↺' });
       };
-      const wipeAll = () => {
-        try {
-          const keys = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && (k.startsWith('fs_') || k.startsWith('sp_'))) keys.push(k);
-          }
-          keys.forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
-        } catch (_) {}
-        setConfirmWipe(false);
-        addToast({ message: 'Toutes les données ont été supprimées', type: 'warning', icon: '!' });
-        setTimeout(() => { try { window.location.reload(); } catch (_) { onNavigate('dashboard'); } }, 500);
-      };
       /* ══ SUPPRESSION DE COMPTE — RGPD art. 17 ═══════════════════════════════
          Le droit à l'effacement n'est pas une option de confort : sans lui on
          ne peut pas légalement facturer un service à des utilisateurs
@@ -18944,15 +19024,18 @@ void main(){
         </button>
       );
       const Soon = () => <span className="fs-set-soon">Bientôt</span>;
-      const Row = ({ title, desc, k, last, soon }) => (
-        <div className="fs-set-row" style={last ? { borderBottom: 'none' } : null}>
-          <div style={{ minWidth: 0 }}>
-            <div className="fs-set-row-t">{title}{soon && <Soon />}</div>
-            {desc && <div className="fs-set-row-d">{desc}</div>}
+      const Row = ({ title, desc, k, last, soon }) => {
+        if (soon) return null;
+        return (
+          <div className="fs-set-row" style={last ? { borderBottom: 'none' } : null}>
+            <div style={{ minWidth: 0 }}>
+              <div className="fs-set-row-t">{title}</div>
+              {desc && <div className="fs-set-row-d">{desc}</div>}
+            </div>
+            <Toggle value={!!prefs[k]} onChange={v => set(k, v)} />
           </div>
-          <Toggle value={soon ? false : !!prefs[k]} onChange={v => set(k, v)} disabled={soon} />
-        </div>
-      );
+        );
+      };
       /* ── Repli « Avancé » ────────────────────────────────────────────────
          Chaque onglet de Paramètres montre d'abord les réglages qu'un étudiant
          touche vraiment, et range le reste ici : le réglage fin (autosauvegarde,
@@ -19688,8 +19771,8 @@ void main(){
                     <Row title="Sauvegardes cloud automatiques" desc={prefs.cloudBackups === false ? 'Synchronisation en pause — tes modifications restent sur cet appareil et repartiront à la réactivation.' : 'Tes données suivent ton compte sur tous tes appareils.'} k="cloudBackups" />
                     <div className="fs-set-row">
                       <div style={{ minWidth: 0 }}>
-                        <div className="fs-set-row-t">Exporter mes données</div>
-                        <div className="fs-set-row-d">Une sauvegarde JSON : profil, notes, tâches, widgets, préférences.</div>
+                        <div className="fs-set-row-t">Exporter les données texte</div>
+                        <div className="fs-set-row-d">Profil, notes, tâches, disposition et préférences. Les images ne sont pas incluses.</div>
                       </div>
                       <button className="fs-set-connect" onClick={exportData}>Exporter</button>
                     </div>
@@ -19755,62 +19838,12 @@ void main(){
                       </div>
                     </div>, document.body)}
 
-                  {/* Une carte entière dont TOUT est « Bientôt » n'informe pas :
-                     elle occupe la même surface qu'un réglage réel et laisse
-                     croire que l'app est à moitié branchée. Repliée. */}
-                  <Card title="Intégrations" desc="Bientôt disponibles.">
-                    <Advanced count={2}>
-                    <div className="fs-set-int">
-                      <div className="fs-set-int-l">
-                        <span className="fs-set-int-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8fb3ff" strokeWidth="1.7"><rect x="3" y="4.5" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 2.5v4M16 2.5v4" strokeLinecap="round" /></svg></span>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="fs-set-row-t">Google Calendar <Soon /></div>
-                          <div className="fs-set-row-d">Tes événements dans tes sessions.</div>
-                        </div>
-                      </div>
-                      <button className="fs-set-connect" disabled>Connecter</button>
-                    </div>
-                    <div className="fs-set-int">
-                      <div className="fs-set-int-l">
-                        <span className="fs-set-int-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="1.7"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" strokeLinecap="round" /></svg></span>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="fs-set-row-t">Notion <Soon /></div>
-                          <div className="fs-set-row-d">Importe tes pages en notes.</div>
-                        </div>
-                      </div>
-                      <button className="fs-set-connect" disabled>Importer</button>
-                    </div>
-                    </Advanced>
-                  </Card>
-
-                  <Card title="Zone sensible" desc="Cette action ne peut pas être annulée." danger>
-                    <div className="fs-set-row" style={{ borderBottom: 'none' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="fs-set-row-t" style={{ color: T.rose }}>Supprimer toutes les données</div>
-                        <div className="fs-set-row-d">Efface profil, notes, tâches et widgets de cet appareil.</div>
-                      </div>
-                      <button className="fs-set-danger-btn" onClick={() => setConfirmWipe(true)}>Supprimer</button>
-                    </div>
-                  </Card>
                 </>)}
               </div>
             </main>
 
           </div>
 
-          {confirmWipe && (
-            <div className="fs-set-modal-bg" onClick={() => setConfirmWipe(false)}>
-              <div className="fs-set-modal" onClick={e => e.stopPropagation()}>
-                <div className="fs-set-lbl" style={{ color: T.rose }}>Action irréversible</div>
-                <div style={{ fontFamily: T.display, fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', marginTop: 6 }}>Supprimer toutes les données ?</div>
-                <div style={{ fontSize: 13, lineHeight: 1.6, color: T.muted, marginTop: 10 }}>Profil, notes, tâches, widgets et préférences seront effacés de cet appareil. Cette action ne peut pas être annulée.</div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22 }}>
-                  <button className="fs-set-btn" onClick={() => setConfirmWipe(false)}>Annuler</button>
-                  <button className="fs-set-danger-btn" onClick={wipeAll}>Tout supprimer</button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
@@ -20034,6 +20067,15 @@ void main(){
         try { return JSON.parse(localStorage.getItem('fs_user') || 'null'); } catch (e) { return null; }
       });
       const [showSession, setShowSession] = _uSC(false);
+      _uEC(() => {
+        if (screen !== 'boot') return;
+        const timer = window.setTimeout(() => {
+          window.__fsDiagLog?.('boot-timeout', 'opening safe local shell');
+          setRoutedScreen(user ? readStartScreen() : 'auth', true);
+          addToast({ message: user ? 'Dernière version locale ouverte' : 'Connexion prête', detail: 'La synchronisation continuera en arrière-plan.', type: 'info', duration: 4200 });
+        }, 5500);
+        return () => window.clearTimeout(timer);
+      }, [screen, user?.id]);
       /* Pré-remplissage du lanceur (mode + amis déjà cochés). */
       const [sessionSeed, setSessionSeed] = _uSC(null);
       /* Boutique cosmétique : ouverte via l'événement global fs-open-boutique
@@ -20731,7 +20773,15 @@ void main(){
           crystalShape: (window._gDefaultShape ? window._gDefaultShape(user?.id) : 'diamond'),
           crystalGradient: grad,
           crystalRarity: rarity,
-          focusTaskIds: null, startTime: Date.now(),
+          focusTaskIds: (() => {
+            try {
+              const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+              const active = Array.isArray(tasks) ? tasks.filter(t => t && !t.done) : [];
+              const rank = { high: 0, medium: 1, low: 2 };
+              const next = [...active].sort((a, b) => (rank[a.priority] ?? 1) - (rank[b.priority] ?? 1))[0];
+              return next ? [next.id] : null;
+            } catch (_) { return null; }
+          })(), startTime: Date.now(),
         });
       };
       /* Ouvre le lanceur (mode Ensemble, durée précise, tâches liées). */
@@ -21603,6 +21653,7 @@ void main(){
            au desktop, où la séquence est sûre — elle reste purement déco. */
         const skipGate = (() => {
           try {
+            if (localStorage.getItem(`fs_entry_seen_${authUser?.id || 'local'}`) === '1') return true;
             if (window.matchMedia('(max-width: 768px)').matches) return true;
             if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return true;
           } catch (_) {}
@@ -21616,6 +21667,7 @@ void main(){
           /* Séquence d'entrée : le gate couvre l'écran d'auth pendant que le
              cristal s'allume, puis le dashboard monte juste avant l'ouverture
              de l'iris pour que sa cascade de widgets soit visible au reveal. */
+          try { localStorage.setItem(`fs_entry_seen_${authUser?.id || 'local'}`, '1'); } catch (_) { }
           setEntryFx(true);
           setTimeout(() => { window.__fsDiagLog('setScreen', nextScreen); setScreen(nextScreen); }, 460);
         }
@@ -21792,13 +21844,13 @@ void main(){
         /* Onboarding orienté action : on ouvre directement le lanceur de session
            pour que le tout premier geste soit de travailler (et forger un
            cristal), pas de configurer. Le dashboard monte d'abord. */
-        if (startSession) setTimeout(() => { try { requestStartSession(); } catch (_) { } }, 460);
+        if (startSession) setTimeout(() => { try { quickStartSession(); } catch (_) { } }, 320);
         /* L'intro raconte, la visite fait faire. On l'amorce IMMÉDIATEMENT et
            non dans un `setTimeout` : différer l'écriture, c'était accepter de
            perdre la visite si l'utilisateur rechargeait ou fermait l'onglet
            pendant le délai. L'affichage, lui, se règle tout seul — la barre
            s'efface pendant une session et pendant la célébration. */
-        try { window._fsTourStart?.(user?.id || window._fsSbUser?.id); } catch (_) { }
+        /* Les conseils sont désormais contextuels dans les écrans concernés. */
       };
 
       const isApp = screen !== 'auth' && screen !== 'onboarding' && screen !== 'boot';
@@ -25730,6 +25782,20 @@ void main(){
     function SessionCompleteModal({ result, onClose, onOpenCave }) {
       const crystal = result?.crystal || null;
       const focusMin = result?.focusMinutes || crystal?.duration || 0;
+      const [nextStep, setNextStep] = React.useState('');
+      const continueFlow = () => {
+        const text = nextStep.trim();
+        if (text) {
+          try {
+            const tasks = JSON.parse(localStorage.getItem('fs_tasks') || '[]');
+            const nextTasks = [{ id: Date.now(), text, priority: 'medium', done: false, tag: 'Prochaine étape' }, ...(Array.isArray(tasks) ? tasks : [])];
+            localStorage.setItem('fs_tasks', JSON.stringify(nextTasks));
+            window.dispatchEvent(new CustomEvent('fs-store', { detail: { key: 'fs_tasks' } }));
+            window._fsFlushPush?.();
+          } catch (_) { }
+        }
+        onClose && onClose();
+      };
       /* Cristal gagné hors session (quête / parrainage) : même pop-up, mais
          libellé « Quête accomplie » et pas de durée de concentration. */
       const isQuest = result?.source === 'quest';
@@ -25754,7 +25820,7 @@ void main(){
       const rarLabel = isSecret ? 'Secret' : isLeg ? 'Légendaire' : rarity === 'gold' ? 'Doré' : rarity === 'rare' ? 'Rare' : 'Cristal forgé';
       const rarColor = isSecret ? '#ffffff' : isLeg ? '#f0abfc' : accent;
       return (
-        <div onClick={onClose} className={celebrate ? undefined : 'fs-scm-nocine'} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
+        <div onClick={continueFlow} className={celebrate ? undefined : 'fs-scm-nocine'} style={{ position: 'fixed', inset: 0, zIndex: 6200, display: 'grid', placeItems: 'center', padding: 20,
           background: 'rgba(4,4,11,0.72)', backdropFilter: 'blur(20px) saturate(1.1)', WebkitBackdropFilter: 'blur(20px) saturate(1.1)',
           animation: celebrate ? 'fsScmVeil .34s ease both' : 'none' }}>
           <style>{`
@@ -25831,12 +25897,21 @@ void main(){
               )}
             </div>
 
-            <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 22 }}>
-              <button type="button" className="fs-scm-btn fs-scm-ghost" onClick={onOpenCave}>Voir ma grotte</button>
+            {!isQuest && (
+              <label style={{position:'relative',display:'block',marginTop:18,textAlign:'left'}}>
+                <span style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(207,216,235,.58)',marginBottom:7}}>Préparer la reprise</span>
+                <input value={nextStep} onChange={e => setNextStep(e.target.value)} maxLength={120}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); continueFlow(); } }}
+                  placeholder="Prochaine étape (facultatif)"
+                  style={{width:'100%',height:44,boxSizing:'border-box',borderRadius:14,border:'1px solid rgba(255,255,255,.09)',background:'rgba(255,255,255,.045)',color:'#f4f6fb',padding:'0 13px',outline:'none',font:'600 12px var(--font-body)'}} />
+              </label>
+            )}
+            <div style={{ position: 'relative', display: 'flex', gap: 10, marginTop: 18 }}>
+              <button type="button" className="fs-scm-btn fs-scm-ghost" onClick={onOpenCave}>Voir mon île</button>
               {/* Aura du bouton : halo SYMÉTRIQUE (0 0 22px) + ombre d'élévation
                  neutre. L'ancien « 0 14px 32px <glow> » décalait tout le halo
                  coloré de 14 px vers le bas — perçu comme une aura décentrée. */}
-              <button type="button" className="fs-scm-btn fs-scm-primary" onClick={onClose}
+              <button type="button" className="fs-scm-btn fs-scm-primary" onClick={continueFlow}
                 style={{ background: `linear-gradient(135deg, ${accent}, ${accent2})`, boxShadow: `0 8px 20px rgba(0,0,0,0.35), 0 0 22px ${grad ? grad.glow : 'rgba(165,184,255,0.3)'}` }}>Continuer</button>
             </div>
           </div>
@@ -31730,8 +31805,6 @@ void main(){
     const owned = g.unlocks || ['default'];
     const active = g.activeSkin || 'default';
     const skins = window.SKINS || [];
-    const premiumItems = window.FS_PREMIUM_COSMETICS || [];
-    const [notified, setNotified] = React.useState(() => { try { return localStorage.getItem('fs_premium_interest') === '1'; } catch (_) { return false; } });
     const [curShape, setCurShape] = React.useState(() => (window._gDefaultShape ? window._gDefaultShape(user?.id) : 'diamond'));
     /* Parrainage */
     const refTiers = window.FS_REFERRAL_TIERS || [];
@@ -31760,7 +31833,6 @@ void main(){
        notifier. L'ACHAT, lui, garde sa notification — il coûte des Éclats, et
        une dépense doit toujours être confirmée explicitement. */
     const equip = id => { window._gSetActiveSkin(user?.id, id); };
-    const notifyMe = () => { try { localStorage.setItem('fs_premium_interest', '1'); } catch (_) {} setNotified(true); addToast({ message: 'On te préviendra au lancement de Premium.', type: 'success', icon: '✓', duration: 4200 }); };
 
     /* Chaque skin de boutique correspond à un VRAI cristal de la grotte : on
        mappe vers son gradient et on rend le même ShapedCrystalGem. */
@@ -31968,29 +32040,6 @@ void main(){
               </div>
             </div>
 
-            <div className="fs-shop-prem">
-              <div className="fs-shop-prem-top">
-                <span className="fs-shop-prem-badge"><FsShardIcon size={10} /> Premium</span>
-                <h3>Des cristaux que personne d’autre n’a.</h3>
-                <p>Auras légendaires exclusives, skins signature, statistiques approfondies et salles d’étude privées. Le gratuit te rend productif ; Premium te rend unique.</p>
-              </div>
-              <div className="fs-shop-prem-gems">
-                {premiumItems.map(p => (
-                  <div key={p.id} className="fs-shop-prem-gem">
-                    {gemG(p.grad, 40, false)}
-                    <span>{p.name}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="fs-shop-prem-cta">
-                {/* Pas de prix affiché tant que le paiement n'existe pas : annoncer
-                   « 3,99 €/mois » sans pouvoir encaisser transforme une promesse en
-                   soupçon (« encore un free trial déguisé »). On promet le contraire :
-                   ce qui est déjà gratuit le reste. */}
-                <div className="fs-shop-prem-price">Bientôt — <span style={{ color: T.c1 }}>tout ce qui est gratuit aujourd’hui le restera</span></div>
-                <button className="fs-shop-prem-btn" disabled={notified} onClick={notifyMe}>{notified ? 'Tu seras prévenu' : 'Préviens-moi au lancement'}</button>
-              </div>
-            </div>
           </div>
         </div>
       </>
