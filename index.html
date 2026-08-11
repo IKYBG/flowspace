@@ -26077,12 +26077,12 @@ void main(){
        poussière/chauves-souris réduites en perf-lite, coupées en
        reduce-motion. Cristaux : plantés (base clippée + éclats de roche au
        premier plan), positions persistées (cave v2, inchangé). */
-    const CAVE_F = 860;
-    const CAVE_OY = 0.44;
+    const CAVE_F = 980;
+    const CAVE_OY = 0.47;
     const CAVE_ZMAX = 1250;
     const CAVE_CAM_MAX = 1000;
-    const CAVE_FLOOR = 0.868, CAVE_CEIL = 0.125;
-    const CAVE_RING_Z = [120, 260, 420, 610, 830, 1080, 1360, 1670];
+    const CAVE_FLOOR = 0.89, CAVE_CEIL = 0.105;
+    const CAVE_RING_Z = [140, 340, 590, 900, 1260, 1660];
 
     function _caveRng(seed) {
       let t = (Math.floor(Math.abs(seed)) || 1) >>> 0;
@@ -26103,11 +26103,11 @@ void main(){
     const _CAVE_RINGS = CAVE_RING_Z.map((z, i) => {
       const rng = _caveRng(4177 + i * 911);
       const verts = [];
-      const VN = 20;
+      const VN = 28;
       for (let v = 0; v < VN; v++) {
         const ang = (v / VN) * Math.PI * 2 - Math.PI;
-        let nr = 0.84 + rng() * 0.34;
-        if (rng() < 0.14) nr += 0.22; /* éperon rocheux */
+        let nr = 0.82 + rng() * 0.31;
+        if (rng() < 0.17) nr += 0.18; /* éperon rocheux */
         verts.push({ ang: ang + (rng() - 0.5) * 0.1, nr });
       }
       const stalac = [], stalag = [];
@@ -26217,6 +26217,31 @@ void main(){
     /* Dégradés fond/vignette : dépendent uniquement de (w,h) → cachés entre
        frames au lieu d'être refabriqués 60×/s. */
     let _caveGradCache = null;
+    let _caveRockPattern = null;
+    function _caveTexture(ctx) {
+      if (_caveRockPattern) return _caveRockPattern;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 96;
+      const cx = cv.getContext('2d');
+      const img = cx.createImageData(96, 96);
+      const rng = _caveRng(88421);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const grain = Math.floor(rng() * 28);
+        img.data[i] = 34 + grain;
+        img.data[i + 1] = 31 + grain;
+        img.data[i + 2] = 29 + grain;
+        img.data[i + 3] = 34 + Math.floor(rng() * 28);
+      }
+      cx.putImageData(img, 0, 0);
+      cx.strokeStyle = 'rgba(210,198,180,.055)';
+      cx.lineWidth = 1;
+      for (let i = 0; i < 7; i++) {
+        const x = rng() * 96, y = rng() * 96;
+        cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + (rng() - .5) * 34, y + 12 + rng() * 30); cx.stroke();
+      }
+      _caveRockPattern = ctx.createPattern(cv, 'repeat');
+      return _caveRockPattern;
+    }
     function _caveDraw(ctx, w, h, camZ, dust, t, glows, bats, reduce) {
       ctx.clearRect(0, 0, w, h);
       const ox = w * 0.5, oy = h * CAVE_OY, oyc = h * 0.47;
@@ -26225,12 +26250,12 @@ void main(){
 
       if (!_caveGradCache || _caveGradCache.w !== w || _caveGradCache.h !== h) {
         const bg = ctx.createLinearGradient(0, 0, 0, h);
-        bg.addColorStop(0, '#04091a'); bg.addColorStop(0.55, '#030713'); bg.addColorStop(1, '#01040c');
+        bg.addColorStop(0, '#090a0d'); bg.addColorStop(0.52, '#05070a'); bg.addColorStop(1, '#020305');
         const vg = ctx.createRadialGradient(w / 2, h * 0.5, h * 0.34, w / 2, h * 0.5, h * 1.02);
         vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,2,7,0.68)');
         _caveGradCache = { w, h, bg, vg };
       }
-      /* fond : noir bleuté + respiration froide au bout de la galerie */
+      /* Chambre minérale sombre : la couleur vient des cristaux, pas d'un filtre bleu. */
       ctx.fillStyle = _caveGradCache.bg; ctx.fillRect(0, 0, w, h);
       const kd = K(1900);
       const breath = reduce ? 0.75 : 0.68 + Math.sin(t * 0.0005) * 0.14;
@@ -26250,7 +26275,8 @@ void main(){
       };
       const drawGlow = gl => {
         const k = K(gl.z);
-        const px2 = ox + (gl.xf * w - ox) * k, py2 = oy + (gl.yf * h - oy) * k;
+        const px2 = ox + (gl.xf * w - ox) * k + (gl.xOff || 0) * k;
+        const py2 = oy + (gl.yf * h - oy) * k + (gl.yOff || 0) * k;
         const rr = Math.max(8, gl.r * k);
         const tw = reduce ? 1 : 0.86 + 0.14 * Math.sin(t * 0.0042 + gl.ph);
         const alpha = Math.max(0.05, 0.30 * Math.min(1, k * 1.4)) * tw;
@@ -26270,9 +26296,9 @@ void main(){
         const k = K(ring.z);
         const rwd = _caveWander(ring.z);
         const fade = Math.max(0, Math.min(1, 1 - rel / 1850));
-        const rr2 = Math.round(7 + (17 - 7) * fade + ring.shade * 14);
-        const gg = Math.round(12 + (27 - 12) * fade + ring.shade * 16);
-        const bb = Math.round(26 + (52 - 26) * fade + ring.shade * 22);
+        const rr2 = Math.round(10 + 22 * fade + ring.shade * 16);
+        const gg = Math.round(10 + 19 * fade + ring.shade * 13);
+        const bb = Math.round(12 + 22 * fade + ring.shade * 14);
         /* mur percé du passage (evenodd) */
         ctx.fillStyle = 'rgb(' + rr2 + ',' + gg + ',' + bb + ')';
         ctx.beginPath();
@@ -26285,12 +26311,26 @@ void main(){
         }
         ctx.closePath();
         ctx.fill('evenodd');
-        /* arête éclairée par l'ambiance cristalline */
-        ctx.strokeStyle = 'rgba(120,215,255,' + Math.max(0.02, 0.11 - i * 0.012).toFixed(3) + ')';
-        ctx.lineWidth = Math.max(0.6, 1.5 * k);
+        /* Grain mat et facettes : du volume rocheux sans image lourde. */
+        ctx.save();
+        ctx.globalAlpha = Math.max(.12, .28 - i * .025);
+        ctx.fillStyle = _caveTexture(ctx);
+        ctx.fill('evenodd');
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(198,190,180,' + Math.max(0.018, 0.075 - i * 0.009).toFixed(3) + ')';
+        ctx.lineWidth = Math.max(0.6, 1.2 * k);
         ctx.stroke();
+        ctx.save();
+        ctx.globalAlpha = Math.max(.04, .14 - i * .015);
+        for (let f = 0; f < pts.length; f += 4) {
+          const a = pts[f], b = pts[(f + 2) % pts.length], c = pts[(f + 4) % pts.length];
+          const mx = (a.x + b.x + c.x) / 3, my = (a.y + b.y + c.y) / 3;
+          ctx.fillStyle = f % 8 ? 'rgba(255,248,236,.18)' : 'rgba(0,0,0,.34)';
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(mx, my); ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
         /* concrétions accrochées à cette strate */
-        ctx.fillStyle = 'rgb(' + Math.max(4, rr2 - 3) + ',' + Math.max(8, gg - 4) + ',' + Math.max(16, bb - 6) + ')';
+        ctx.fillStyle = 'rgb(' + Math.max(5, rr2 - 5) + ',' + Math.max(5, gg - 5) + ',' + Math.max(7, bb - 5) + ')';
         for (const s of ring.stalac) {
           const base = ringPt(ring, s, k, rwd.x, rwd.y);
           ctx.beginPath();
@@ -26312,7 +26352,7 @@ void main(){
       }
 
       /* fissures sur la roche du premier plan */
-      ctx.strokeStyle = 'rgba(130,200,255,0.05)';
+      ctx.strokeStyle = 'rgba(205,194,176,0.065)';
       ctx.lineWidth = 1;
       const crk = _caveRng(31);
       for (let c = 0; c < 5; c++) {
@@ -26323,25 +26363,6 @@ void main(){
         ctx.stroke();
       }
 
-      /* chauves-souris (silhouettes battantes) */
-      if (bats.flocks.length) {
-        ctx.fillStyle = '#05080f';
-        for (const fl of bats.flocks) {
-          for (const m of fl.members) {
-            const prog = fl.prog + m.lag;
-            if (prog < 0 || prog > 1.16) continue;
-            const xf = fl.dir > 0 ? prog - 0.08 : 1.08 - prog;
-            const yf = fl.y0 + Math.sin(t * 0.0032 + m.ph) * 0.035 + m.dy;
-            const k = K(fl.z + m.dz);
-            const p = { x: ox + (xf * w - ox) * k, y: oy + (yf * h - oy) * k };
-            const flap = Math.sin(t * 0.016 + m.ph * 3);
-            ctx.globalAlpha = 0.86 * Math.min(1, k * 1.6);
-            _caveBatWing(ctx, p.x, p.y, Math.max(0.5, m.s * k * (w / 900)), flap);
-          }
-        }
-        ctx.globalAlpha = 1;
-      }
-
       /* brume vers le fond */
       const fr = Math.max(80, h * 0.9 * Math.max(0.22, kd * 4));
       ctx.globalAlpha = 0.28;
@@ -26349,7 +26370,7 @@ void main(){
       ctx.globalAlpha = 1;
 
       /* poussière */
-      ctx.fillStyle = 'rgba(190,240,255,0.5)';
+      ctx.fillStyle = 'rgba(230,220,204,0.34)';
       for (const d of dust) {
         if (!reduce) {
           d.yf -= d.sp; d.xf += Math.sin(t * 0.0006 + d.ph) * 0.00016;
@@ -26562,7 +26583,8 @@ void main(){
         <button
           ref={nodeRef}
           data-cid={c.id}
-          className={'fs-cv-crystal' + (isDrag ? ' is-drag' : '') + (isActive ? ' is-active' : '') + (isFused ? ' is-fused-now' : '')}
+          data-surface={spot.surf}
+          className={'fs-cv-crystal surf-' + spot.surf + (isDrag ? ' is-drag' : '') + (isActive ? ' is-active' : '') + (isFused ? ' is-fused-now' : '')}
           style={{
             left: (an.xf * 100) + '%',
             top: (an.yf * 100) + '%',
@@ -26683,7 +26705,7 @@ void main(){
       const wakeRef = React.useRef(null);
       const mkDust = React.useCallback(() => {
         const rng = _caveRng(97);
-        return Array.from({ length: perfLite ? 12 : 32 }, () => ({
+        return Array.from({ length: perfLite ? 7 : 20 }, () => ({
           xf: 0.04 + rng() * 0.92, yf: 0.2 + rng() * 0.6, z: 60 + rng() * 1300,
           r: 0.8 + rng() * 1.8, sp: 0.00012 + rng() * 0.00042, ph: rng() * 6.3, a: 0.1 + rng() * 0.3,
         }));
@@ -26795,10 +26817,19 @@ void main(){
           const si = isGold ? 4 : Math.min(c.stateIdx ?? 3, 3);
           const pal = CRYSTAL_PALETTES[si] || CRYSTAL_PALETTES[3];
           const grad = (window.CRYSTAL_GRADIENTS || []).find(g => g.id === c.crystalGradient);
+          const isSecret = c.rarity === 'secret' || !!(grad && grad.secret);
+          const mass = Math.max(1, Number(c.mass) || (Array.isArray(c.fusedIds) ? c.fusedIds.length : 1));
+          const sz = Math.round(46 + Math.min(Number(c.duration) || 25, 120) / 120 * 50 + (isGold ? 8 : 0) + (isSecret ? 16 : 0) + (mass > 1 ? Math.min(30, (mass - 1) * 10) : 0));
+          const ang = (Number(spot.rot) || 0) * Math.PI / 180;
+          /* Le halo vise le CENTRE OPTIQUE de la pierre. L'ancien calcul
+             visait son point d'implantation, donc le halo restait au sol. */
+          const centerDist = sz * 0.48 * Math.min(1.45, 1 + (mass - 1) * 0.12);
           let bucket = -2;
           for (let r = 0; r < CAVE_RING_Z.length; r++) { if (CAVE_RING_Z[r] >= spot.z) { bucket = r; break; } }
           return {
             xf: an.xf, yf: an.yf, z: spot.z, bucket,
+            xOff: Math.sin(ang) * centerDist,
+            yOff: -Math.cos(ang) * centerDist,
             ph: ((Number(c.seed) || i * 37) % 628) / 100,
             glow: isGold ? 'rgba(255,202,75,0.9)' : (grad?.glow || pal.glow),
             r: 110 + Math.min(Number(c.duration) || 25, 120) * 1.1,
@@ -26818,7 +26849,7 @@ void main(){
          canvas depuis `glowsRef`. On y gagne aussi en lecture — une grotte de
          100 pierres empilées était illisible — et en mystère : le fond n'est
          plus un mur d'objets, c'est une profondeur qui s'éclaire en avançant. */
-      const CULL_MAX = perfLite ? 10 : 16;
+      const CULL_MAX = perfLite ? 8 : 14;
       const CULL_FAR = 1700;
       const spotList = React.useMemo(() => crystals.map((c, i) => {
         const spot = _caveSpotOf(c, i);
@@ -26889,7 +26920,7 @@ void main(){
         if (!open) return;
         const view = viewRef.current, canvas = canvasRef.current;
         if (!view || !canvas) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const dpr = perfLite || window.innerWidth < 720 ? 1 : Math.min(window.devicePixelRatio || 1, 1.25);
         const resize = () => {
           const r = view.getBoundingClientRect();
           sizeRef.current = { w: r.width, h: r.height };
@@ -26914,7 +26945,7 @@ void main(){
            l'utilisateur s'attarde le plus vidait la batterie sans rien
            animer. Le contexte 2D, lui, était redemandé à chaque frame. */
         const ctx2d = canvas.getContext('2d');
-        let raf = 0, running = false, onScreen = true;
+        let raf = 0, running = false, onScreen = true, lastPaint = 0;
         const io = new IntersectionObserver(es => {
           onScreen = es.some(e => e.isIntersecting);
           if (onScreen) start(); else stop();
@@ -26937,15 +26968,15 @@ void main(){
             cam.z = clampZ(cam.z + dzc * Math.min(1, dtMs * 0.0082));
             applyCam();
           }
-          /* vols de chauves-souris */
           const bats = batsRef.current;
-          if (!red) {
-            if (t > bats.next) { spawnFlock(t); bats.next = t + 9000 + Math.random() * 15000; }
-            bats.flocks.forEach(fl => { fl.prog += (t - fl.lastT) * fl.speed; fl.lastT = t; });
-            bats.flocks = bats.flocks.filter(fl => fl.prog < 1.3);
+          /* Le monde DOM suit la caméra à 60 Hz. Le décor procédural, beaucoup
+             plus coûteux, est plafonné à 30 Hz (24 en mode allégé) : même
+             fluidité perçue, moitié moins de peinture GPU/CPU. */
+          const paintEvery = perfLite ? 42 : 33;
+          if (ctx2d && t - lastPaint >= paintEvery) {
+            _caveDraw(ctx2d, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, bats, red);
+            lastPaint = t;
           }
-          canvas.__fsBats = bats.flocks.length;
-          if (ctx2d) _caveDraw(ctx2d, sizeRef.current.w, sizeRef.current.h, cam.z, dustRef.current, t, glowsRef.current, bats, red);
           /* En « animations réduites », la poussière est vide et les
              chauves-souris désactivées : plus rien ne bouge une fois la
              caméra posée. On rend la main au lieu de repeindre un plan fixe
@@ -26984,7 +27015,6 @@ void main(){
         /* on ne déplace que la CIBLE : la boucle rAF amortit le mouvement */
         camRef.current.vz = 0;
         camRef.current.target = clampZ(camRef.current.target + dz);
-        if (!reduceRef.current && dz > 0 && Math.random() < 0.25) spawnFlock(performance.now());
         if (wakeRef.current) wakeRef.current();
         markHinted();
       };
@@ -27256,14 +27286,14 @@ void main(){
           {!embedded && <div className="fs-cristaux-backdrop" onClick={onClose} />}
           <div className={'fs-cristaux-panel' + (embedded ? ' embedded' : '')}>
             <style>{`
-              .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#01040c;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+              .fs-cv-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#020304;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;isolation:isolate}
               .fs-cv-stage.is-panning{cursor:grabbing}
-              .fs-cv-canvas{position:absolute;inset:0;display:block}
+              .fs-cv-canvas{position:absolute;inset:0;display:block;filter:contrast(1.055) saturate(.86)}
               .fs-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
               .fs-cv-stage:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:-3px}
               .fs-cv-3d{position:absolute;inset:0;perspective:${CAVE_F}px;perspective-origin:50% ${CAVE_OY * 100}%}
               .fs-cv-world{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
-              .fs-cv-crystal{position:absolute;background:none;border:0;padding:0;margin:0;cursor:grab;transform-origin:50% 100%;width:var(--sz);height:calc(var(--sz)*1.18);-webkit-tap-highlight-color:transparent;transition:opacity .3s linear,filter .22s linear}
+              .fs-cv-crystal{position:absolute;background:none;border:0;padding:0;margin:0;cursor:grab;transform-origin:50% 100%;width:var(--sz);height:calc(var(--sz)*1.18);-webkit-tap-highlight-color:transparent;transition:opacity .24s linear,filter .2s linear;contain:layout style}
               /* ══ CIBLE TACTILE ══
                  30 cristaux sur 40 tombaient sous les 44 px, le plus petit à
                  21 px — et ce sont les objets interactifs principaux de
@@ -27275,15 +27305,19 @@ void main(){
                 width:max(44px,100%);height:max(44px,100%)}
               .fs-cv-crystal:focus-visible{outline:2px solid var(--theme-c1,#8fdcff);outline-offset:4px;border-radius:10px}
               .fs-cv-crystal.is-drag{cursor:grabbing;filter:brightness(1.3) drop-shadow(0 0 26px var(--glow))!important}
-              .fs-cv-crystal.is-active .fs-cv-gem{filter:brightness(1.26) drop-shadow(0 0 18px var(--glow))}
-              .fs-cv-glowpad{position:absolute;left:50%;bottom:calc(var(--sz)*-0.14);width:calc(var(--sz)*2.1);height:calc(var(--sz)*0.66);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse at 50% 50%,var(--glow),transparent 66%);opacity:.46;filter:blur(7px);pointer-events:none;animation:fsCvGlowBreath 4.4s ease-in-out infinite;animation-delay:var(--gd,0s)}
-              @keyframes fsCvGlowBreath{0%,100%{opacity:.36}50%{opacity:.56}}
+              .fs-cv-crystal.is-active .fs-cv-gem{filter:brightness(1.18) saturate(1.08) drop-shadow(0 0 14px var(--glow))}
+              /* Aura volumétrique centrée sur la pierre. Le halo au sol est
+                 rendu par le canvas, derrière la lèvre rocheuse. */
+              .fs-cv-glowpad{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.65);height:calc(var(--sz)*1.55);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 50% 48%,var(--glow),transparent 68%);opacity:.16;filter:blur(8px);pointer-events:none;animation:fsCvGlowBreath 5.2s ease-in-out infinite;animation-delay:var(--gd,0s)}
+              @keyframes fsCvGlowBreath{0%,100%{opacity:.11;scale:.97}50%{opacity:.2;scale:1.04}}
               html.fs-reduce-motion .fs-cv-glowpad{animation:none}
-              .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.045);width:calc(var(--sz)*1.14);height:calc(var(--sz)*0.2);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.66),transparent 70%);pointer-events:none}
+              html.fs-perf-lite .fs-cv-glowpad{animation:none;filter:none;opacity:.09}
+              html.fs-perf-lite .fs-cv-gem{filter:brightness(.98) contrast(1.06) drop-shadow(0 4px 7px rgba(0,0,0,.68))}
+              .fs-cv-shadow{position:absolute;left:50%;bottom:calc(var(--sz)*-0.035);width:calc(var(--sz)*1.28);height:calc(var(--sz)*0.22);transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.94),transparent 72%);pointer-events:none}
               /* --fy : allongement des cristaux FUSIONNÉS (1 par défaut, donc
                  aucun effet sur les cristaux simples). Origine au sol : la
                  gemme grandit vers le haut, elle est « plus longue ». */
-              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%) scaleY(var(--fy,1));transform-origin:50% 100%;display:block;pointer-events:none;clip-path:inset(0 0 19% 0);filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+              .fs-cv-gem{position:absolute;left:50%;bottom:0;transform:translateX(-50%) scaleY(var(--fy,1));transform-origin:50% 100%;display:block;pointer-events:none;clip-path:inset(0 0 23% 0);filter:brightness(.96) contrast(1.08) drop-shadow(0 7px 12px rgba(0,0,0,.7)) drop-shadow(0 0 4px var(--glow))}
               /* ── AURA DE FUSION ── Anneaux concentriques qui montent le long du
                  monolithe : plus il a absorbé de cristaux, plus ils sont vifs. */
               .fs-cv-fuse-aura{position:absolute;left:50%;bottom:2%;width:calc(var(--sz)*1.25);height:calc(var(--sz)*1.5*var(--fy,1));transform:translateX(-50%);pointer-events:none;
@@ -27306,14 +27340,15 @@ void main(){
                 display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;white-space:nowrap;
                 font:700 11px var(--font-body);letter-spacing:.04em;color:#06101c;
                 background:linear-gradient(135deg,#fff,var(--glow));box-shadow:0 4px 12px rgba(0,0,0,.45)}
-              .fs-cv-base{position:absolute;left:50%;bottom:calc(var(--sz)*-0.06);width:calc(var(--sz)*1.24);height:calc(var(--sz)*0.34);transform:translateX(-50%);pointer-events:none}
-              .fs-cv-base i{position:absolute;bottom:0;background:linear-gradient(168deg,#2a4066 0%,#101d34 58%,#070e1d 100%);box-shadow:inset 0 1px 0 rgba(170,225,255,.2)}
+              .fs-cv-base{position:absolute;left:50%;bottom:calc(var(--sz)*-0.055);width:calc(var(--sz)*1.36);height:calc(var(--sz)*0.38);transform:translateX(-50%);pointer-events:none;z-index:3;filter:drop-shadow(0 4px 5px rgba(0,0,0,.72))}
+              .fs-cv-base i{position:absolute;bottom:0;background:linear-gradient(158deg,#383631 0%,#1c1d1c 48%,#090b0c 100%);box-shadow:inset 0 1px 0 rgba(226,214,194,.13)}
               .fs-cv-base i:nth-child(1){left:2%;width:30%;height:74%;clip-path:polygon(44% 0,100% 58%,88% 100%,0 100%,8% 46%);transform:rotate(-5deg)}
               .fs-cv-base i:nth-child(2){left:22%;width:34%;height:100%;clip-path:polygon(52% 0,100% 62%,86% 100%,12% 100%,0 52%)}
               .fs-cv-base i:nth-child(3){left:47%;width:32%;height:88%;clip-path:polygon(46% 0,94% 50%,100% 100%,8% 100%,0 62%);transform:rotate(4deg)}
               .fs-cv-base i:nth-child(4){right:0;width:24%;height:60%;clip-path:polygon(50% 0,100% 70%,88% 100%,4% 100%,0 58%);transform:rotate(9deg)}
-              .fs-cv-base::after{content:"";position:absolute;left:8%;right:8%;bottom:-8%;height:36%;border-radius:50%;background:radial-gradient(ellipse,rgba(2,5,12,.92),transparent 72%)}
-              .fs-cv-gold-aura{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.9);height:calc(var(--sz)*1.9);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,214,106,.4),rgba(255,190,64,.13) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 2.6s ease-in-out infinite}
+              .fs-cv-base::before{content:"";position:absolute;z-index:5;left:14%;right:14%;top:18%;height:30%;border-radius:50%;background:linear-gradient(180deg,rgba(6,7,8,.2),rgba(4,5,6,.92));box-shadow:0 3px 6px rgba(0,0,0,.74)}
+              .fs-cv-base::after{content:"";position:absolute;left:6%;right:6%;bottom:-8%;height:38%;border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.96),transparent 72%)}
+              .fs-cv-gold-aura{position:absolute;left:50%;top:44%;width:calc(var(--sz)*1.72);height:calc(var(--sz)*1.72);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,222,126,.32),rgba(255,190,64,.09) 52%,transparent 72%);pointer-events:none;animation:fsCvGoldPulse 3.4s ease-in-out infinite}
               /* ── SECRET dans la grotte : aucun autre cristal ne fait ça ──
                  Deux couronnes prismatiques contrarotatives + un socle de
                  lumière. Repérable de l'autre bout de la grotte. */
@@ -27399,46 +27434,45 @@ void main(){
               @keyframes fsCvGoldPulse{0%,100%{opacity:.7;scale:.94}50%{opacity:1;scale:1.08}}
               html.fs-reduce-motion .fs-cv-gold-aura{animation:none}
               .fs-cv-new{position:absolute;top:-12%;left:62%;z-index:5;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;border-radius:99px;padding:3px 7px;color:#07070d;box-shadow:0 0 16px var(--glow);white-space:nowrap}
-              .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 26px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(1,5,14,.85),rgba(1,5,14,0))}
+              .fs-cv-header{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 30px;z-index:60;pointer-events:none;background:linear-gradient(180deg,rgba(2,3,4,.92),rgba(2,3,4,.58) 55%,rgba(2,3,4,0))}
               .fs-cv-header>*{pointer-events:auto}
               /* Retour : accordé à la palette froide de la grotte. */
-              .fs-cv-back{border-color:rgba(140,220,255,.2)!important;background:rgba(4,10,24,.72)!important;
-                color:rgba(207,234,255,.82)!important;backdrop-filter:blur(8px)}
-              .fs-cv-back:hover{background:rgba(14,28,52,.9)!important;color:#eaf7ff!important}
+              .fs-cv-back{border-color:rgba(220,210,194,.14)!important;background:rgba(12,13,14,.72)!important;color:rgba(236,229,218,.78)!important;backdrop-filter:blur(8px)}
+              .fs-cv-back:hover{background:rgba(28,27,25,.9)!important;color:#fff!important}
               /* Accès à la collection. Ancien défaut : une pilule discrète parmi
                  d'autres contrôles, que personne ne trouvait. Elle porte
                  maintenant la progression du codex et une barre de complétion —
                  c'est ce qui fait qu'on la remarque et qu'on l'ouvre. */
               .fs-cv-collection{position:relative;display:inline-flex;align-items:center;gap:10px;
                 height:46px;padding:0 16px;border-radius:16px;cursor:pointer;overflow:hidden;
-                font-family:var(--font-body);white-space:nowrap;color:#eaf8ff;
-                border:1px solid rgba(140,220,255,.34);
-                background:linear-gradient(180deg,rgba(20,46,80,.9),rgba(5,12,28,.86));
+                font-family:var(--font-body);white-space:nowrap;color:#f1ece4;
+                border:1px solid rgba(var(--theme-c1-rgb),.25);
+                background:linear-gradient(180deg,rgba(32,31,29,.91),rgba(8,9,10,.88));
                 backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
                 box-shadow:0 12px 28px rgba(0,0,0,.38),0 0 20px rgba(119,240,255,.10),inset 0 1px 0 rgba(255,255,255,.09);
                 transition:transform .22s cubic-bezier(.34,1.56,.64,1),border-color .22s,box-shadow .22s,background .22s}
-              .fs-cv-collection:hover{transform:translateY(-2px);border-color:rgba(140,220,255,.62);
-                background:linear-gradient(180deg,rgba(28,60,100,.94),rgba(8,18,38,.9));
+              .fs-cv-collection:hover{transform:translateY(-2px);border-color:rgba(var(--theme-c1-rgb),.5);
+                background:linear-gradient(180deg,rgba(44,42,38,.95),rgba(12,13,14,.92));
                 box-shadow:0 18px 38px rgba(0,0,0,.44),0 0 30px rgba(119,240,255,.24),inset 0 1px 0 rgba(255,255,255,.12)}
               .fs-cv-collection:active{transform:translateY(0) scale(.97)}
               .fs-cv-collection-txt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1}
               .fs-cv-collection-lbl{font-size:12px;font-weight:700;letter-spacing:-.01em}
-              .fs-cv-collection-num{font-size:11px;font-weight:600;color:rgba(180,226,255,.78);font-variant-numeric:tabular-nums}
+              .fs-cv-collection-num{font-size:11px;font-weight:600;color:rgba(222,214,202,.68);font-variant-numeric:tabular-nums}
               .fs-cv-collection-bar{position:absolute;left:0;right:0;bottom:0;height:2.5px;background:rgba(255,255,255,.07)}
               .fs-cv-collection-bar i{display:block;height:100%;
-                background:linear-gradient(90deg,#8ef6ff,#e7b7ff);
-                box-shadow:0 0 10px rgba(142,246,255,.7);
+                background:linear-gradient(90deg,var(--theme-c1),var(--theme-c2));
+                box-shadow:0 0 10px rgba(var(--theme-c1-rgb),.48);
                 transition:width .6s cubic-bezier(.22,1,.36,1)}
               .fs-cv-collection-gem{width:13px;height:16px;flex-shrink:0;
                 clip-path:polygon(50% 0%,100% 30%,78% 100%,22% 100%,0% 30%);
-                background:linear-gradient(158deg,#fff,#8ef6ff 40%,#e7b7ff);
-                filter:drop-shadow(0 0 7px rgba(119,240,255,.85));
+                background:linear-gradient(158deg,#fff,var(--theme-c1) 40%,var(--theme-c2));
+                filter:drop-shadow(0 0 7px rgba(var(--theme-c1-rgb),.72));
                 animation:fsCvGem 2.8s ease-in-out infinite}
               @keyframes fsCvGem{0%,100%{filter:drop-shadow(0 0 6px rgba(119,240,255,.6))}
                 50%{filter:drop-shadow(0 0 12px rgba(231,183,255,.95))}}
               html.fs-reduce-motion .fs-cv-collection-gem{animation:none}
               .fs-cv-stats{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-              .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:12px;border:1px solid rgba(140,220,255,.14);background:rgba(4,10,24,.7);backdrop-filter:blur(8px)}
+              .fs-cv-stat{min-width:52px;text-align:center;padding:7px 10px;border-radius:12px;border:1px solid rgba(220,210,194,.12);background:rgba(10,11,12,.72);backdrop-filter:blur(8px)}
               .fs-cv-close{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(var(--mineral-surface-rgb),.7);color:rgba(230,242,255,.85);cursor:pointer}
               .fs-cv-hud{position:absolute;right:16px;bottom:16px;display:flex;gap:8px;z-index:70}
               .fs-cv-hud button{height:38px;min-width:38px;border-radius:12px;border:1px solid rgba(140,220,255,.2);background:rgba(4,10,24,.8);color:#cfeaff;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px);padding:0 12px}
@@ -27518,6 +27552,10 @@ void main(){
                 background:rgba(140,220,255,.14);padding:2px 6px;border-radius:99px}
               @media (max-width:680px){
                 .fs-cv-stats{display:none}
+                .fs-cv-subtitle{display:none}
+                .fs-cv-header{padding:14px 14px 22px}
+                .fs-cv-canvas{filter:contrast(1.035) saturate(.82)}
+                .fs-cv-crystal{transition:opacity .18s linear}
                 /* Mobile : les stats cèdent la place, le bouton garde sa
                    progression — c'est elle qui porte l'envie d'entrer. */
                 .fs-cv-collection{height:42px;padding:0 13px;gap:8px}
@@ -27630,11 +27668,11 @@ void main(){
                   )}
                   {/* « FOCUS GROTTO » : anglais dans une UI française, contraire
                       au glossaire tranché du projet. */}
-                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(161,232,255,0.72)', marginBottom: 6 }}>grotte de focus</div>
-                  <div className="fs-cv-title" style={{ fontFamily: T.display, fontWeight: 800, fontSize: 26, letterSpacing: '-0.04em', lineHeight: 1, color: '#f3f7ff', textShadow: '0 0 22px rgba(119,240,255,0.32)' }}>Grotte aux cristaux</div>
-                  <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.66)', marginTop: 7, maxWidth: 340 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(var(--theme-c1-rgb),0.78)', marginBottom: 6 }}>sanctuaire minéral</div>
+                  <div className="fs-cv-title" style={{ fontFamily: T.display, fontWeight: 750, fontSize: 25, letterSpacing: 0, lineHeight: 1, color: '#f3f0eb' }}>Grotte aux cristaux</div>
+                  <div className="fs-cv-subtitle" style={{ fontSize: 11, color: 'rgba(226,220,211,0.62)', marginTop: 7, maxWidth: 360, lineHeight:1.5 }}>
                     {crystals.length > 0
-                      ? 'Tout est là. Avance dans la grotte pour approcher les cristaux du fond.'
+                      ? 'Glisse pour explorer. Chaque pierre correspond à une session accomplie.'
                       : 'Termine une session pour faire naître ton premier cristal.'}
                   </div>
                 </div>
@@ -27662,11 +27700,11 @@ void main(){
                   {crystals.length > 0 && (
                     <div className="fs-cv-stats">
                       <div className="fs-cv-stat">
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#8ef6ff' }}>{crystals.length}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--theme-c1)' }}>{crystals.length}</div>
                         <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cristaux</div>
                       </div>
                       <div className="fs-cv-stat">
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#e7b7ff' }}>{totalMinutes}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--theme-c2)' }}>{totalMinutes}</div>
                         <div style={{ fontSize: 11, color: 'rgba(220,231,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Minutes</div>
                       </div>
                     </div>
