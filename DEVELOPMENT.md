@@ -36,6 +36,8 @@ npm run preview
 
 `check` compile la syntaxe des scripts produits, vérifie les fichiers du précache et du manifest PWA ainsi que la présence des protections Vercel. Cela ne valide pas l’authentification, les politiques RLS ou la sauvegarde des données.
 
+`npm run check:services` vérifie en lecture la disponibilité HTTP du service Auth Supabase référencé par le front. Ce contrôle utilise uniquement la clé publique existante, sans l’afficher ; il ne lit pas les lignes des tables. La tâche GitHub existante utilise le même contrôle pour éviter de surveiller un ancien projet.
+
 ## Avant un push
 
 1. Lire `AGENTS.md`, le contexte Obsidian accessible, puis `git status`.
