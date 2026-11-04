@@ -5847,14 +5847,10 @@
     const INIT_TASKS = [];
     const PC = { high: T.rose, medium: T.warm, low: T.green };
 
-    function TasksWidget({ variant = 1, style }) {
-      const [tasks, setTasks] = _uS6(() => {
-        try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || INIT_TASKS; } catch (e) { return INIT_TASKS; }
-      });
-      const [draft, setDraft] = _uS6('');
+    function useTaskDictation(draft, setDraft) {
       const recognitionRef = React.useRef(null);
-      const [listening, setListening] = _uS6(false);
-      const [voiceStatus, setVoiceStatus] = _uS6('');
+      const [listening, setListening] = React.useState(false);
+      const [voiceStatus, setVoiceStatus] = React.useState('');
       const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
       const cancelDictation = () => {
         const rec = recognitionRef.current;
@@ -5862,7 +5858,7 @@
         if (rec) { rec.onresult = rec.onend = rec.onerror = null; try { rec.abort(); } catch (_) {} }
         setListening(false);
       };
-      _uEff6(() => () => {
+      React.useEffect(() => () => {
         const rec = recognitionRef.current;
         if (rec) { rec.onresult = rec.onend = rec.onerror = null; try { rec.abort(); } catch (_) {} }
       }, []);
@@ -5896,6 +5892,15 @@
         try { rec.start(); } catch (_) { cancelDictation(); setVoiceStatus('Impossible de démarrer la dictée. Réessaie.'); }
       };
 
+      return { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate };
+    }
+
+    function TasksWidget({ variant = 1, style }) {
+      const [tasks, setTasks] = _uS6(() => {
+        try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || INIT_TASKS; } catch (e) { return INIT_TASKS; }
+      });
+      const [draft, setDraft] = _uS6('');
+      const { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate } = useTaskDictation(draft, setDraft);
       _uEff6(() => { try { localStorage.setItem('fs_tasks', JSON.stringify(tasks)); } catch (e) { } }, [tasks]);
       _uEff6(() => {
         const sync = e => {
@@ -13741,6 +13746,7 @@ void main(){
       /* id de la tâche dont la priorité vient de changer → animation de ressort */
       const [priBump, setPriBump] = _uST(null);
       const [inputVal, setInputVal] = _uST('');
+      const { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate } = useTaskDictation(inputVal, setInputVal);
       const [newPri, setNewPri] = _uST('medium');
       const [animId, setAnimId] = _uST(null);
       const taskInputRef = _uRT(null);
@@ -13816,6 +13822,7 @@ void main(){
           setTimeout(() => setComposerPulse(false), 520);
           return;
         }
+        cancelDictation(); setVoiceStatus('');
         setTasks(ts => [{ id: Date.now(), text: inputVal.trim(), priority: newPri, done: false, tag: 'Task' }, ...ts]);
         setInputVal('');
         requestAnimationFrame(() => taskInputRef.current?.focus());
@@ -13981,7 +13988,11 @@ void main(){
               background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.055), rgba(255,255,255,0.02));
               box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.10), 0 16px 36px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.07);
             }
-            .fs-task-input-wrap input { flex:1; background:none; border:none; outline:none; color: var(--mineral-text); font-size:14px; font-family:inherit; }
+            .fs-task-dictate { flex-shrink:0; width:44px; height:44px; display:grid; place-items:center;
+              border:0; border-radius:12px; background:transparent; color:var(--theme-c1); cursor:pointer; }
+            .fs-task-dictate:hover,.fs-task-dictate[aria-pressed="true"] { background:rgba(var(--theme-c1-rgb),0.14); }
+            .fs-task-dictate:focus-visible { outline:2px solid var(--theme-c1); outline-offset:-2px; }
+            .fs-task-input-wrap input { flex:1; min-width:0; background:none; border:none; outline:none; color: var(--mineral-text); font-size:14px; font-family:inherit; }
             .fs-task-input-wrap input::placeholder { color: rgba(248,246,252,0.30); }
             .fs-task-input-icon { flex-shrink:0; width:24px; height:24px; border-radius:10px; display:grid; place-items:center;
               background: rgba(var(--theme-c1-rgb),0.12); color: var(--theme-c1); transition: transform .22s var(--mineral-ease); }
@@ -14312,19 +14323,24 @@ void main(){
                 <input
                   ref={taskInputRef}
                   value={inputVal}
-                  onChange={e => setInputVal(e.target.value)}
+                  onChange={e => { cancelDictation(); setVoiceStatus(''); setInputVal(e.target.value); }}
                   onKeyDown={e => e.key === 'Enter' && addTask()}
                   onPaste={e => {
                     /* On n'intercepte QUE le collage multi-ligne. Coller une
                        tâche unique doit rester un collage ordinaire — détourner
                        un geste aussi banal serait plus déroutant qu'utile. */
+                    cancelDictation(); setVoiceStatus('');
                     const texte = e.clipboardData?.getData('text') || '';
                     if (!/\r?\n/.test(texte.trim())) return;
                     if (importerLignes(texte)) e.preventDefault();
                   }}
                   placeholder={"Qu'est-ce qui compte aujourd'hui ?"}
                 />
-                <span className="fs-task-kbd">↵</span>
+                <button type="button" className="fs-task-dictate" onClick={dictate}
+                  aria-label={listening ? 'Arrêter la dictée' : 'Dicter une tâche'} aria-pressed={listening}
+                  title={SpeechAPI ? 'Dicter une tâche' : 'Dictée indisponible sur ce navigateur'}>
+                  <FsWidgetIcon type="microphone" size={19} />
+                </button>
               </div>
               <div className="fs-task-priority-row">
                 {Object.entries(PRI).map(([key, p]) => (
@@ -14340,6 +14356,8 @@ void main(){
                 {'Ajouter'}
               </button>
             </div>
+
+            <div role="status" aria-live="polite" style={{ color: T.muted, fontSize: 12, lineHeight: 1.5, marginBottom: voiceStatus ? 12 : 0 }}>{voiceStatus}</div>
 
             {/* ── Filtres (priorité uniquement) ──
                Masqués en Kanban et Focus : le Kanban EST déjà un tri par
