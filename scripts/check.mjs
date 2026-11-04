@@ -1,0 +1,26 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { Script } from 'node:vm';
+import assert from 'node:assert/strict';
+import { projectRoot } from './esbuild.mjs';
+
+const read = file => readFileSync(join(projectRoot, file), 'utf8');
+const source = read('index.html');
+const built = read('dist/index.html');
+assert(!/<script[^>]*text\/babel|<script[^>]*src=["'][^"']*babel\/standalone/i.test(built), 'Babel runtime reste dans le build.');
+const blocks = [...built.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter(([, attrs]) => !/\bsrc\s*=|application\/ld\+json/.test(attrs));
+for (const [index, [, , code]] of blocks.entries()) new Script(code, { filename: `dist/index.html:script-${index + 1}` });
+new Script(read('sw.js'), { filename: 'sw.js' });
+const sw = read('sw.js');
+const precache = sw.match(/const PRECACHE = \[([\s\S]*?)\];/)?.[1];
+assert(precache, 'Précache PWA introuvable.');
+const assets = [...precache.matchAll(/['"](\/[^'"]+)['"]/g)].map(m => m[1]);
+const manifest = JSON.parse(read('manifest.json'));
+for (const file of [...assets, ...manifest.icons.map(i => i.src)]) assert(existsSync(join(projectRoot, 'dist', file.replace(/^\//, ''))), `Asset PWA absent : ${file}`);
+assert(manifest.icons.some(i => i.type === 'image/png' && i.sizes === '192x192'), 'Icône Android 192 manquante.');
+assert(manifest.icons.some(i => i.type === 'image/png' && i.sizes === '512x512'), 'Icône Android 512 manquante.');
+const headers = JSON.parse(read('vercel.json')).headers.flatMap(h => h.headers);
+assert(headers.some(h => h.key === 'Content-Security-Policy' && h.value.includes("frame-ancestors 'none'")), 'CSP de production absente ou affaiblie.');
+assert(headers.some(h => h.key === 'X-Frame-Options' && h.value === 'DENY'), 'Protection framing manquante.');
+console.log(`Vérifications réussies : ${blocks.length} scripts JS compilables, ${assets.length} assets précachés présents, icônes Android, manifest et protections Vercel.`);
+console.log('Ce contrôle ne valide pas les comptes, les RLS ni la synchronisation cloud.');

@@ -3,3 +3,6 @@ flowspace-main/_push_work/
 node_modules/
 # Artefact de construction (genere par build.mjs, reconstruit par Vercel)
 dist/
+
+# Dépendances natives par OS, jamais publiées
+.local-deps/

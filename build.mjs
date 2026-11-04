@@ -19,7 +19,8 @@
    migration réversible : supprimer ce fichier et servir index.html remet
    l'ancien fonctionnement.                                                  */
 
-import { transformSync } from 'esbuild';
+import { loadEsbuild } from './scripts/esbuild.mjs';
+const { transformSync } = await loadEsbuild();
 import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, rmSync } from 'node:fs';
 
 const SORTIE = 'dist';
