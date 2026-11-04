@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumenos-v27';
+const CACHE_NAME = 'lumenos-v28';
 
 // Static assets to cache on install
 // logo.png est affiché dès le splash (avant toute compilation) : le précacher
