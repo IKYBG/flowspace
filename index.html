@@ -2077,6 +2077,33 @@
         max-width: 100% !important;
       }
     }
+    /* Shared microphone states: animate only while recognition is recording. */
+    .fs-task-voice { position:relative; width:44px; height:44px; flex-shrink:0; display:grid; place-items:center;
+      padding:0; border:1px solid rgba(var(--theme-c1-rgb),.22); border-radius:14px;
+      color:var(--theme-c1); background:rgba(var(--theme-c1-rgb),.035); cursor:pointer;
+      transition:background .2s,border-color .2s,box-shadow .2s; touch-action:manipulation; }
+    .fs-task-voice:hover { background:rgba(var(--theme-c1-rgb),.1); }
+    .fs-task-voice:focus-visible { outline:2px solid var(--theme-c1); outline-offset:3px; }
+    .fs-task-voice-icon { display:grid; place-items:center; transition:opacity .15s; }
+    .fs-task-voice[data-phase="listening"] { background:rgba(var(--theme-c1-rgb),.17);
+      border-color:rgba(var(--theme-c1-rgb),.7); animation:fsVoiceHalo 1.8s ease-in-out infinite; }
+    .fs-task-voice-bars { position:absolute; display:none; align-items:center; justify-content:center; gap:3px; height:20px; }
+    .fs-task-voice-bars i { display:block; width:3px; height:15px; border-radius:3px; background:currentColor;
+      animation:fsVoiceWave .9s ease-in-out infinite alternate; }
+    .fs-task-voice-bars i:nth-child(2) { height:20px; animation-delay:-.3s; }
+    .fs-task-voice-bars i:nth-child(3) { animation-delay:-.6s; }
+    .fs-task-voice[data-phase="listening"] .fs-task-voice-bars { display:flex; }
+    .fs-task-voice[data-phase="listening"] .fs-task-voice-icon { opacity:0; }
+    .fs-task-voice-spinner { position:absolute; inset:3px; border-radius:50%; border:1px solid transparent;
+      border-top-color:currentColor; animation:fsVoiceSpin 1s linear infinite; }
+    @keyframes fsVoiceWave { from { transform:scaleY(.35); } to { transform:scaleY(1); } }
+    @keyframes fsVoiceHalo { 0%,100% { box-shadow:0 0 0 0 rgba(var(--theme-c1-rgb),.05); }
+      50% { box-shadow:0 0 0 5px rgba(var(--theme-c1-rgb),.12); } }
+    @keyframes fsVoiceSpin { to { transform:rotate(360deg); } }
+    @media(prefers-reduced-motion:reduce) { .fs-task-voice,.fs-task-voice-bars i,.fs-task-voice-spinner { animation:none!important; transition:none!important; } }
+    html.fs-reduce-motion .fs-task-voice,html.fs-reduce-motion .fs-task-voice-bars i,html.fs-reduce-motion .fs-task-voice-spinner { animation:none!important; }
+    @media(max-width:768px) { input.fs-task-draft { font-size:16px!important; } }
+
   </style>
   <script>
     (function () {
@@ -5886,52 +5913,110 @@
     const INIT_TASKS = [];
     const PC = { high: T.rose, medium: T.warm, low: T.green };
 
-    function useTaskDictation(draft, setDraft) {
+    function useTaskDictation(draft, setDraft, onSubmit, inputRef) {
       const recognitionRef = React.useRef(null);
-      const [listening, setListening] = React.useState(false);
+      const draftRef = React.useRef(draft);
+      const submitRef = React.useRef(onSubmit);
+      const pendingSubmit = React.useRef(false);
+      const stopRequested = React.useRef(false);
+      const stopTimer = React.useRef(null);
+      draftRef.current = draft; submitRef.current = onSubmit;
+      const [voicePhase, setVoicePhase] = React.useState('idle');
       const [voiceStatus, setVoiceStatus] = React.useState('');
       const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const focusInput = () => { try { inputRef?.current?.focus({ preventScroll: true }); } catch (_) {} };
+      const detach = rec => { rec.onstart = rec.onresult = rec.onspeechend = rec.onend = rec.onerror = null; };
       const cancelDictation = () => {
-        const rec = recognitionRef.current;
-        recognitionRef.current = null;
-        if (rec) { rec.onresult = rec.onend = rec.onerror = null; try { rec.abort(); } catch (_) {} }
-        setListening(false);
+        clearTimeout(stopTimer.current); pendingSubmit.current = false; stopRequested.current = false;
+        const rec = recognitionRef.current; recognitionRef.current = null;
+        if (rec) { detach(rec); try { rec.abort(); } catch (_) {} }
+        setVoicePhase('idle');
       };
       React.useEffect(() => () => {
-        const rec = recognitionRef.current;
-        if (rec) { rec.onresult = rec.onend = rec.onerror = null; try { rec.abort(); } catch (_) {} }
+        clearTimeout(stopTimer.current);
+        const rec = recognitionRef.current; recognitionRef.current = null;
+        if (rec) { detach(rec); try { rec.abort(); } catch (_) {} }
       }, []);
+      const stopRecognition = () => {
+        const rec = recognitionRef.current;
+        if (!rec || stopRequested.current) return;
+        stopRequested.current = true;
+        setVoicePhase('processing'); setVoiceStatus('Transcription…');
+        clearTimeout(stopTimer.current);
+        stopTimer.current = setTimeout(() => {
+          if (recognitionRef.current !== rec) return;
+          cancelDictation(); focusInput();
+          setVoiceStatus('La dictée tarde à répondre. Vérifie le texte puis appuie sur Entrée.');
+        }, 6000);
+        try { rec.stop(); } catch (_) { cancelDictation(); focusInput(); setVoiceStatus('Vérifie le texte puis appuie sur Entrée.'); }
+      };
+      const submitDraft = () => {
+        if (pendingSubmit.current) return;
+        if (recognitionRef.current) { pendingSubmit.current = true; stopRecognition(); }
+        else submitRef.current?.(draftRef.current);
+      };
+      const onComposerKeyDown = event => {
+        if (event.key !== 'Enter' || event.isComposing || event.nativeEvent?.isComposing) return;
+        event.preventDefault(); event.stopPropagation();
+        if (!event.repeat) submitDraft();
+      };
       const dictate = () => {
-        if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch (_) { cancelDictation(); } return; }
-        if (!SpeechAPI) { setVoiceStatus('Dictée indisponible ici. Utilise le micro du clavier de ton téléphone.'); return; }
-        const rec = new SpeechAPI();
-        const prefix = draft.trim();
+        if (recognitionRef.current) { stopRecognition(); return; }
+        if (!SpeechAPI) { setVoiceStatus('Dictée indisponible ici. Utilise le micro du clavier de ton téléphone.'); focusInput(); return; }
+        let rec;
+        try { rec = new SpeechAPI(); } catch (_) { setVoiceStatus('La dictée est indisponible. Tu peux écrire au clavier.'); return; }
+        const prefix = draftRef.current.trim();
+        let heard = false;
         rec.lang = 'fr-FR'; rec.interimResults = true; rec.continuous = false;
-        recognitionRef.current = rec;
-        setListening(true); setVoiceStatus('Écoute… dis ta tâche.');
+        recognitionRef.current = rec; stopRequested.current = false;
+        setVoicePhase('starting'); setVoiceStatus('Activation du micro…');
+        rec.onstart = () => {
+          if (recognitionRef.current !== rec || pendingSubmit.current) return;
+          setVoicePhase('listening'); setVoiceStatus('Écoute en cours · Entrée pour ajouter.');
+        };
+        rec.onspeechend = () => {
+          if (recognitionRef.current !== rec) return;
+          setVoicePhase('processing'); setVoiceStatus('Transcription…');
+        };
         rec.onresult = event => {
           if (recognitionRef.current !== rec) return;
           const words = Array.from(event.results).map(r => r[0].transcript).join(' ').trim();
-          setDraft([prefix, words].filter(Boolean).join(' '));
-          setVoiceStatus('Texte transcrit : vérifie-le puis ajoute ta tâche.');
+          heard = heard || !!words;
+          const value = [prefix, words].filter(Boolean).join(' ');
+          draftRef.current = value; setDraft(value);
         };
         rec.onerror = event => {
           if (recognitionRef.current !== rec) return;
-          rec.onresult = rec.onend = rec.onerror = null;
-          try { rec.abort(); } catch (_) {}
           const messages = { 'not-allowed': 'Autorise le micro dans les réglages du navigateur.', 'service-not-allowed': 'La dictée est désactivée par ce navigateur.', 'audio-capture': 'Aucun microphone disponible.', 'no-speech': 'Aucune parole détectée. Réessaie.', network: 'Connexion nécessaire pour la dictée. Réessaie.' };
+          cancelDictation(); focusInput();
           setVoiceStatus(messages[event.error] || 'Dictée interrompue. Tu peux continuer au clavier.');
-          recognitionRef.current = null; setListening(false);
         };
         rec.onend = () => {
           if (recognitionRef.current !== rec) return;
-          recognitionRef.current = null; setListening(false);
-          setVoiceStatus(v => v === 'Écoute… dis ta tâche.' ? 'Écoute terminée. Tu peux réessayer.' : v);
+          clearTimeout(stopTimer.current); recognitionRef.current = null; detach(rec);
+          setVoicePhase('idle');
+          const shouldSubmit = pendingSubmit.current; pendingSubmit.current = false;
+          if (shouldSubmit) { setVoiceStatus(''); submitRef.current?.(draftRef.current); }
+          else setVoiceStatus(heard ? 'Micro arrêté · Entrée pour ajouter.' : 'Micro arrêté · aucune parole détectée.');
+          focusInput();
         };
+        focusInput();
         try { rec.start(); } catch (_) { cancelDictation(); setVoiceStatus('Impossible de démarrer la dictée. Réessaie.'); }
       };
+      return { voicePhase, listening: voicePhase === 'listening', voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate, submitDraft, onComposerKeyDown };
+    }
 
-      return { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate };
+    function TaskDictationButton({ phase, hasDraft, onClick, onKeyDown }) {
+      const active = phase === 'listening';
+      const busy = phase === 'starting' || phase === 'processing';
+      const labels = { idle: 'Dicter une tâche', starting: 'Annuler l’activation du micro', listening: 'Arrêter la dictée', processing: 'Arrêter la dictée' };
+      return <button type="button" className="fs-task-voice" data-phase={phase} onClick={onClick} onKeyDown={e => { if (phase !== 'idle' || hasDraft) onKeyDown(e); }}
+        aria-label={labels[phase]} aria-pressed={active} title={labels[phase]}
+        onPointerDown={e => e.stopPropagation()}>
+        <span className="fs-task-voice-icon"><FsWidgetIcon type="microphone" size={19} /></span>
+        <span className="fs-task-voice-bars" aria-hidden="true"><i /><i /><i /></span>
+        {busy && <span className="fs-task-voice-spinner" aria-hidden="true" />}
+      </button>;
     }
 
     function TasksWidget({ variant = 1, style }) {
@@ -5939,7 +6024,8 @@
         try { return JSON.parse(localStorage.getItem('fs_tasks') || 'null') || INIT_TASKS; } catch (e) { return INIT_TASKS; }
       });
       const [draft, setDraft] = _uS6('');
-      const { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate } = useTaskDictation(draft, setDraft);
+      const taskInputRef = React.useRef(null);
+      const { voicePhase, voiceStatus, setVoiceStatus, cancelDictation, dictate, submitDraft, onComposerKeyDown } = useTaskDictation(draft, setDraft, value => add(value), taskInputRef);
       _uEff6(() => { try { localStorage.setItem('fs_tasks', JSON.stringify(tasks)); } catch (e) { } }, [tasks]);
       _uEff6(() => {
         const sync = e => {
@@ -5955,9 +6041,9 @@
       /* Le champ garde le focus après l'ajout : sur mobile, refermer le clavier
          entre deux tâches transforme « j'en note trois » en trois allers-retours.
          On enchaîne, comme dans Rappels ou Things. */
-      const taskInputRef = React.useRef(null);
+
       const tog = id => setTasks(ts => ts.map(t => t.id === id ? { ...t, done: !t.done } : t));
-      const add = () => { if (!draft.trim()) return; cancelDictation(); setVoiceStatus(''); setTasks(ts => [...ts, { id: Date.now(), text: draft.trim(), done: false, priority: 'medium', tag: 'Task' }]); setDraft(''); try { taskInputRef.current?.focus(); } catch (_) {} };
+      const add = value => { const text = typeof value === 'string' ? value : draft; if (!text.trim()) return; cancelDictation(); setVoiceStatus(''); setTasks(ts => [...ts, { id: Date.now(), text: text.trim(), done: false, priority: 'medium', tag: 'Task' }]); setDraft(''); try { taskInputRef.current?.focus(); } catch (_) {} };
       const done = tasks.filter(t => t.done).length;
       const pct = tasks.length ? done / tasks.length : 0;
       const orderedTasks = [...tasks].sort((a, b) => a.done - b.done);
@@ -6020,22 +6106,14 @@
                   touche de validation du clavier dise « OK » plutôt que
                   « retour », et le champ garde le focus après l'ajout pour
                   enchaîner plusieurs tâches sans refermer le clavier. */}
-              <input ref={taskInputRef} value={draft} onChange={e => { cancelDictation(); setVoiceStatus(''); setDraft(e.target.value); }}
-                onKeyDown={e => { if (e.key === 'Enter') { add(); } }}
+              <input className="fs-task-draft" aria-label="Ajouter une tâche" ref={taskInputRef} value={draft} onChange={e => { cancelDictation(); setVoiceStatus(''); setDraft(e.target.value); }}
+                onKeyDown={onComposerKeyDown}
                 placeholder="Ajouter une tâche…"
                 enterKeyHint="done" autoCapitalize="sentences" autoCorrect="on"
                 style={{ flex: 1, minWidth: 0, minHeight: 44, background: 'transparent', border: 'none', outline: 'none', color: T.text, fontSize: 13, fontFamily: T.font }} />
-              <button type="button" onClick={dictate} aria-label={listening ? 'Arrêter la dictée' : 'Dicter une tâche'} aria-pressed={listening}
-                title={SpeechAPI ? 'Dicter une tâche · reconnaissance vocale du navigateur' : 'Dictée indisponible sur ce navigateur'}
-                onPointerDown={e => e.stopPropagation()}
-                style={{ width: 44, height: 44, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: 14,
-                  border: '1px solid rgba(var(--theme-c1-rgb),0.24)', color: listening ? T.c1 : T.muted,
-                  background: listening ? 'rgba(var(--theme-c1-rgb),0.16)' : 'transparent', cursor: 'pointer',
-                  boxShadow: listening ? '0 0 0 3px rgba(var(--theme-c1-rgb),0.08)' : 'none' }}>
-                <FsWidgetIcon type="microphone" size={19} />
-              </button>
+              <TaskDictationButton phase={voicePhase} hasDraft={!!draft.trim()} onClick={dictate} onKeyDown={onComposerKeyDown} />
               {draft && (
-                <button onClick={add} aria-label="Ajouter la tâche"
+                <button onClick={submitDraft} aria-label="Ajouter la tâche"
                   style={{ background: 'none', border: 'none', color: T.c1, cursor: 'pointer', width: 44, height: 44, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                   <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
@@ -13785,10 +13863,11 @@ void main(){
       /* id de la tâche dont la priorité vient de changer → animation de ressort */
       const [priBump, setPriBump] = _uST(null);
       const [inputVal, setInputVal] = _uST('');
-      const { listening, voiceStatus, setVoiceStatus, SpeechAPI, cancelDictation, dictate } = useTaskDictation(inputVal, setInputVal);
+      const taskInputRef = _uRT(null);
+      const { voicePhase, voiceStatus, setVoiceStatus, cancelDictation, dictate, submitDraft, onComposerKeyDown } = useTaskDictation(inputVal, setInputVal, value => addTask(value), taskInputRef);
       const [newPri, setNewPri] = _uST('medium');
       const [animId, setAnimId] = _uST(null);
-      const taskInputRef = _uRT(null);
+
       const [composerPulse, setComposerPulse] = _uST(false);
 
       /* Affichage choisi (null = première visite → sélecteur automatique) */
@@ -13854,15 +13933,16 @@ void main(){
         });
         /* La tâche se déplace sous les yeux : rien à annoncer. */
       };
-      const addTask = () => {
-        if (!inputVal.trim()) {
+      const addTask = value => {
+        const text = typeof value === 'string' ? value : inputVal;
+        if (!text.trim()) {
           taskInputRef.current?.focus();
           setComposerPulse(true);
           setTimeout(() => setComposerPulse(false), 520);
           return;
         }
         cancelDictation(); setVoiceStatus('');
-        setTasks(ts => [{ id: Date.now(), text: inputVal.trim(), priority: newPri, done: false, tag: 'Task' }, ...ts]);
+        setTasks(ts => [{ id: Date.now(), text: text.trim(), priority: newPri, done: false, tag: 'Task' }, ...ts]);
         setInputVal('');
         requestAnimationFrame(() => taskInputRef.current?.focus());
       };
@@ -14027,10 +14107,6 @@ void main(){
               background: linear-gradient(180deg, rgba(var(--theme-c1-rgb),0.055), rgba(255,255,255,0.02));
               box-shadow: 0 0 0 3px rgba(var(--theme-c1-rgb),0.10), 0 16px 36px rgba(var(--theme-c1-rgb),0.10), inset 0 1px 0 rgba(255,255,255,0.07);
             }
-            .fs-task-dictate { flex-shrink:0; width:44px; height:44px; display:grid; place-items:center;
-              border:0; border-radius:12px; background:transparent; color:var(--theme-c1); cursor:pointer; }
-            .fs-task-dictate:hover,.fs-task-dictate[aria-pressed="true"] { background:rgba(var(--theme-c1-rgb),0.14); }
-            .fs-task-dictate:focus-visible { outline:2px solid var(--theme-c1); outline-offset:-2px; }
             .fs-task-input-wrap input { flex:1; min-width:0; background:none; border:none; outline:none; color: var(--mineral-text); font-size:14px; font-family:inherit; }
             .fs-task-input-wrap input::placeholder { color: rgba(248,246,252,0.30); }
             .fs-task-input-icon { flex-shrink:0; width:24px; height:24px; border-radius:10px; display:grid; place-items:center;
@@ -14361,9 +14437,10 @@ void main(){
                 </span>
                 <input
                   ref={taskInputRef}
+                  className="fs-task-draft" aria-label="Ajouter une tâche" enterKeyHint="done"
                   value={inputVal}
                   onChange={e => { cancelDictation(); setVoiceStatus(''); setInputVal(e.target.value); }}
-                  onKeyDown={e => e.key === 'Enter' && addTask()}
+                  onKeyDown={onComposerKeyDown}
                   onPaste={e => {
                     /* On n'intercepte QUE le collage multi-ligne. Coller une
                        tâche unique doit rester un collage ordinaire — détourner
@@ -14375,11 +14452,7 @@ void main(){
                   }}
                   placeholder={"Qu'est-ce qui compte aujourd'hui ?"}
                 />
-                <button type="button" className="fs-task-dictate" onClick={dictate}
-                  aria-label={listening ? 'Arrêter la dictée' : 'Dicter une tâche'} aria-pressed={listening}
-                  title={SpeechAPI ? 'Dicter une tâche' : 'Dictée indisponible sur ce navigateur'}>
-                  <FsWidgetIcon type="microphone" size={19} />
-                </button>
+                <TaskDictationButton phase={voicePhase} hasDraft={!!inputVal.trim()} onClick={dictate} onKeyDown={onComposerKeyDown} />
               </div>
               <div className="fs-task-priority-row">
                 {Object.entries(PRI).map(([key, p]) => (
@@ -14390,7 +14463,7 @@ void main(){
                   </button>
                 ))}
               </div>
-              <button className="fs-task-add-btn" onClick={addTask}>
+              <button className="fs-task-add-btn" onClick={submitDraft}>
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
                 {'Ajouter'}
               </button>
