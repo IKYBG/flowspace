@@ -4773,7 +4773,7 @@
              recouvrait tout ce qui suivait. Une hauteur issue de flex, elle,
              est DÉFINIE — la chaîne tient dans les deux cas. */
           display: 'flex', flexDirection: 'column',
-          position: 'relative', height: '100%', boxSizing: 'border-box', contain: media ? 'layout paint style' : undefined, isolation: media ? 'isolate' : undefined, ...style,
+          position: 'relative', height: '100%', minHeight: 0, minWidth: 0, boxSizing: 'border-box', contain: media ? 'layout paint style' : undefined, isolation: media ? 'isolate' : undefined, ...style,
         }}>
           <div style={{
             position: 'absolute', inset: 0, borderRadius: 'var(--widget-radius, 22px)',
@@ -5947,7 +5947,7 @@
       if (variant === 1) return (
         <Shell style={style}>
           <div style={{ padding: '24px', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, marginBottom: 20 }}>
               <Lbl ch="tâches du jour" />
               {/* Police MONO pour ce compteur, pas la display. Le zéro de Syne
                   est un ovale sans marque distinctive : à 12 px, « 0/0 » se
@@ -5974,7 +5974,7 @@
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ marginTop: 12, flexShrink: 0, display: 'flex', gap: 8, alignItems: 'center', paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               {/* Le champ faisait 16 px de HAUT. Pas 44, pas 32 : seize — soit
                   un tiers du plancher tactile, sur l'action la plus fréquente
                   d'un widget de tâches. minHeight 44 + enterKeyHint pour que la
@@ -7167,11 +7167,11 @@
                 <button onClick={saveEdit} style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.10)', color: T.text, borderRadius: 10, padding: '6px 10px', fontSize: 11, fontWeight: 600, fontFamily: T.font, cursor: 'pointer' }}>OK</button>
               </div>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
               {draft.map((link, i) => {
                 const parsed = fsNormalizeLinkUrl(link.url, link.title);
                 return (
-                  <div key={link.id} style={{ borderRadius: 16, padding: 10, background: 'rgba(255,255,255,0.045)', border: `1px solid ${parsed.ok ? 'rgba(255,255,255,0.07)' : 'rgba(251,113,133,0.32)'}`, display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                  <div key={link.id} style={{ flexShrink: 0, borderRadius: 16, padding: 10, background: 'rgba(255,255,255,0.045)', border: `1px solid ${parsed.ok ? 'rgba(255,255,255,0.07)' : 'rgba(251,113,133,0.32)'}`, display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
                     <input value={link.title} onChange={e => updateDraft(link.id, { title: e.target.value })} placeholder={`Lien ${i + 1}`} style={{ minWidth: 0, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)', color: T.text, borderRadius: 10, padding: '8px 9px', fontSize: 12, fontFamily: T.font, outline: 'none' }} />
                     <input value={link.url} onChange={e => updateDraft(link.id, { url: e.target.value })} placeholder="https://site.com" style={{ minWidth: 0, background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)', color: parsed.ok ? T.text : T.rose, borderRadius: 10, padding: '8px 9px', fontSize: 12, fontFamily: T.font, outline: 'none' }} />
                     <button onClick={e => removeLink(e, link.id)} disabled={draft.length <= 1} style={{ width: 30, height: 30, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.045)', color: draft.length <= 1 ? T.faint : T.muted, cursor: draft.length <= 1 ? 'default' : 'pointer', fontSize: 15 }}>x</button>
@@ -8155,7 +8155,7 @@
               <Lbl ch="note rapide" />
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: T.c1, boxShadow: `0 0 8px ${T.c1}` }} />
             </div>
-            <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Écrivez quelque chose..." style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: T.text, fontSize: 12, fontFamily: T.mono, resize: 'none', lineHeight: 1.8, padding: 0 }} />
+            <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Écrivez quelque chose..." style={{ flex: 1, minHeight: 0, minWidth: 0, background: 'none', border: 'none', outline: 'none', color: T.text, fontSize: 12, fontFamily: T.mono, resize: 'none', lineHeight: 1.8, padding: 0 }} />
           </div>
         </Shell>
       );
@@ -8167,7 +8167,7 @@
               <div style={{ width: 3, height: 14, borderRadius: 99, background: T.c1, flexShrink: 0 }} />
               <Lbl ch="notes" />
             </div>
-            <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Commence à écrire…" style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: T.text, fontSize: 13, fontFamily: T.font, resize: 'none', lineHeight: 1.6, padding: 0 }} />
+            <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Commence à écrire…" style={{ flex: 1, minHeight: 0, minWidth: 0, background: 'none', border: 'none', outline: 'none', color: T.text, fontSize: 13, fontFamily: T.font, resize: 'none', lineHeight: 1.6, padding: 0 }} />
           </div>
         </Shell>
       );
@@ -8718,11 +8718,11 @@
               )}
             </div>
           </div>
-          <div className="fs-dashboard-grid" style={{ flex: 1, padding: '18px 32px 28px', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14, overflow: 'hidden', minHeight: 0 }}>
+          <div className="fs-dashboard-grid" style={{ flex: 1, padding: '18px 32px 28px', display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gridTemplateRows: 'minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)', gap: 14, overflow: 'hidden', minHeight: 0 }}>
             {widgets.map((w, i) => {
               const rowSpan = w.row ? parseInt(w.row.split('/')[1]) - parseInt(w.row.split('/')[0]) : 1;
               return (
-                <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, animationDelay: `${90 + i * 72}ms`, contain: 'layout paint style', contentVisibility: 'auto', transform: 'translateZ(0)' }}>
+                <div key={w.id} className={(animateWidgets ? 'fs-dashboard-widget-in' : 'fs-dashboard-widget-wait') + (rowSpan >= 2 ? ' fs-widget-tall' : '')} data-cr-widget="" style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0, animationDelay: `${90 + i * 72}ms`, contain: 'layout paint style', contentVisibility: 'auto', transform: 'translateZ(0)' }}>
                   {WIDGET_COMPONENTS[w.label.toLowerCase()] ? WIDGET_COMPONENTS[w.label.toLowerCase()](w.variant || 1, w.id, { user, performanceMode: 'dashboard' }) : null}
                 </div>
               );
@@ -9424,10 +9424,10 @@
                 <div style={{ fontSize:12, color:'rgba(248,246,252,0.72)', lineHeight:1.55 }}>Clique sur un widget pour voir ses poignées. Glisse le bloc pour le déplacer, ou tire les coins blancs pour changer sa taille.</div>
               </div>
             )}
-            <div style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(4,1fr)', gap: 14, pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,minmax(0,1fr))', gridTemplateRows: 'repeat(4,minmax(0,1fr))', gap: 14, pointerEvents: 'none' }}>
               {[...Array(48)].map((_, i) => <div key={i} style={{ borderRadius: 16, border: '1px dashed rgba(255,255,255,0.045)' }} />)}
             </div>
-            <div ref={gridRef} className={gridFull ? 'fs-grid-reject' : undefined} style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gridTemplateRows: 'repeat(4,1fr)', gap: 14 }}>
+            <div ref={gridRef} className={gridFull ? 'fs-grid-reject' : undefined} style={{ position: 'absolute', inset: '16px 32px', display: 'grid', gridTemplateColumns: 'repeat(12,minmax(0,1fr))', gridTemplateRows: 'repeat(4,minmax(0,1fr))', gap: 14 }}>
               {/* Fantôme de cible : là où le widget atterrira au lâcher —
                  positionné impérativement (60 fps sans re-render), il glisse
                  de cellule en cellule via les transitions CSS. */}
@@ -9446,7 +9446,7 @@
                 const st = snapTransform?.id === w.id ? snapTransform : null;
                 return (
                   <div key={w.id}
-                    style={{ gridColumn: w.col, gridRow: w.row, position: 'relative', zIndex: drag?.id === w.id ? 10 : selected === w.id ? 5 : 1, transform: st ? `translate(${st.dx}px,${st.dy}px)` : undefined, transition: st?.live ? 'transform 0.42s cubic-bezier(0.34,1.56,0.64,1)' : undefined, contain: 'layout style' }}>
+                    style={{ gridColumn: w.col, gridRow: w.row, minWidth: 0, minHeight: 0, position: 'relative', zIndex: drag?.id === w.id ? 10 : selected === w.id ? 5 : 1, transform: st ? `translate(${st.dx}px,${st.dy}px)` : undefined, transition: st?.live ? 'transform 0.42s cubic-bezier(0.34,1.56,0.64,1)' : undefined, contain: 'layout style' }}>
                     {isMoving ? (
                       /* Déplacement : pointillé discret au point de DÉPART (le
                          clone flotte sous la souris, le fantôme montre la cible). */
@@ -17554,7 +17554,7 @@ void main(){
               {/* Tant que l'échelle n'est pas mesurée, on ne rend RIEN : rendre
                   à une échelle devinée puis corriger produirait un sursaut
                   visible à chaque ouverture de l'écran. */}
-              <div style={{ width: TOILE_L, height: TOILE_H, transform: `scale(${echelle ?? 0})`, transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gridTemplateRows: '1.1fr 1.1fr 1fr 1fr', gap: 14 }}>
+              <div style={{ width: TOILE_L, height: TOILE_H, transform: `scale(${echelle ?? 0})`, transformOrigin: 'top left', padding: 26, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gridTemplateRows: 'minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)', gap: 14 }}>
                 {grilleWidgets}
               </div>
             </div>
