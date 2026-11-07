@@ -418,6 +418,22 @@
       }
     }
 
+
+    /* Motion signature: session invitations/lobby are the reference.
+       Keep transitions separate from crystal art, timers and functional feedback. */
+    :root {
+      --fs-motion-spring: cubic-bezier(.22,1.28,.36,1);
+      --fs-motion-ease: cubic-bezier(.16,1,.3,1);
+      --fs-motion-panel: .6s;
+      --fs-motion-bar: .4s;
+      --fs-motion-exit: .22s;
+      --fs-motion-distance: 20px;
+      --fs-motion-blur: 6px;
+    }
+    @media(max-width:768px) {
+      :root { --fs-motion-distance: 12px; --fs-motion-blur: 3px; }
+    }
+
     @keyframes scaleIn {
       from {
         opacity: 0;
@@ -1485,8 +1501,8 @@
       border-radius: 26px; border: 1px solid rgba(255,255,255,0.10);
       background: linear-gradient(180deg, rgba(var(--mineral-surface-rgb),0.99), rgba(var(--mineral-bg-rgb),0.99));
       box-shadow: 0 40px 100px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07);
-      animation: fsAcctSheet .32s cubic-bezier(.22,1,.36,1) both; }
-    @keyframes fsAcctSheet { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: none } }
+      animation: fsAcctSheet var(--fs-motion-panel) var(--fs-motion-spring) none; }
+    @keyframes fsAcctSheet{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
     .fs-acct-grab { width: 38px; height: 4px; border-radius: 99px; background: rgba(255,255,255,0.16); margin: 4px auto 14px; }
     .fs-acct-id { display: flex; align-items: center; gap: 13px; padding: 0 4px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 8px; }
     .fs-acct-ava { width: 46px; height: 46px; border-radius: 16px; overflow: hidden; display: grid; place-items: center; flex-shrink: 0;
@@ -1654,22 +1670,10 @@
        d) ELLE ARRIVAIT EN GLISSANT À PLAT. Une translation seule, c'est une
           diapositive. Une échelle qui se referme en même temps, c'est un objet
           qui s'approche — la carte a une épaisseur, autant s'en servir. */
-    @keyframes toastIn {
-      from { transform: translate3d(22px, 0, 0) scale(0.965); opacity: 0; }
-      to   { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
-    }
-    @keyframes toastOut {
-      from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; max-height: 220px; }
-      to   { transform: translate3d(16px, 0, 0) scale(0.97); opacity: 0; max-height: 0; }
-    }
-    @keyframes toastInTop {
-      from { transform: translate3d(0, -20px, 0) scale(0.965); opacity: 0; }
-      to   { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
-    }
-    @keyframes toastOutTop {
-      from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; max-height: 220px; }
-      to   { transform: translate3d(0, -14px, 0) scale(0.97); opacity: 0; max-height: 0; }
-    }
+    @keyframes toastIn{from{opacity:0;transform:translate3d(0,-12px,0) scale(.96);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+    @keyframes toastOut{from{opacity:1;transform:none;max-height:220px}to{opacity:0;transform:translate3d(0,-8px,0) scale(.97);max-height:0}}
+    @keyframes toastInTop{from{opacity:0;transform:translate3d(0,-12px,0) scale(.96);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+    @keyframes toastOutTop{from{opacity:1;transform:none;max-height:220px}to{opacity:0;transform:translate3d(0,-8px,0) scale(.97);max-height:0}}
     .fs-toast-wrap {
       position: fixed;
       z-index: 99999;
@@ -1724,13 +1728,11 @@
       justify-content: flex-end;
       width: 100%;
       pointer-events: none;
-      /* forwards, jamais both : en both, l'image de départ (opacity 0)
-         resterait appliquée si l'animation ne se jouait pas — une
-         notification définitivement invisible. Voir la note détaillée sur
-         .fs-tour-bar. */
-      animation: toastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      /* Les styles de base reprennent après l’entrée : aucun flou ni
+         contexte de transformation ne reste attaché à la notification. */
+      animation: toastIn var(--fs-motion-bar) var(--fs-motion-spring) none;
     }
-    .fs-toast-slot.is-out { animation: toastOut 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; }
+    .fs-toast-slot.is-out { animation: toastOut var(--fs-motion-exit) var(--fs-motion-ease) forwards; }
     .fs-toast {
       pointer-events: auto;
       box-sizing: border-box;
@@ -1866,8 +1868,8 @@
         align-items: stretch;
         flex-direction: column-reverse;
       }
-      .fs-toast-slot { justify-content: stretch; animation: toastInTop 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-      .fs-toast-slot.is-out { animation: toastOutTop 0.22s cubic-bezier(0.4, 0, 1, 1) forwards; }
+      .fs-toast-slot { justify-content: stretch; animation: toastInTop var(--fs-motion-bar) var(--fs-motion-spring) none; }
+      .fs-toast-slot.is-out { animation: toastOutTop var(--fs-motion-exit) var(--fs-motion-ease) forwards; }
       .fs-toast { width: 100%; padding: 15px 16px 16px; }
       .fs-toast-msg { font-size: 14px; -webkit-line-clamp: 4; }
       .fs-toast-sub { font-size: 13px; }
@@ -2104,6 +2106,9 @@
     html.fs-reduce-motion .fs-task-voice,html.fs-reduce-motion .fs-task-voice-bars i,html.fs-reduce-motion .fs-task-voice-spinner { animation:none!important; }
     @media(max-width:768px) { input.fs-task-draft { font-size:16px!important; } }
 
+
+    html.fs-reduce-motion :is(.fs-dhx-anim,.fs-sb-zone,.fs-session-bar,.fs-tour-bar,.fs-textw-card,.fs-wl-panel,.fs-shop,.fs-d60,.fs-crop-panel,.fs-acct-sheet,.fs-account-sheet,.fs-friends-panel,.fs-toast-slot,.fs-inv-card,.fs-wait-card,.fs-wait-pill,.fs-wait-badge,.fs-wait-dot,.fs-wait-ring,.fs-inv-bang){animation:none!important;transition:none!important;filter:none!important;opacity:1!important;}
+    @media(prefers-reduced-motion:reduce){:is(.fs-dhx-anim,.fs-sb-zone,.fs-session-bar,.fs-tour-bar,.fs-textw-card,.fs-wl-panel,.fs-shop,.fs-d60,.fs-crop-panel,.fs-acct-sheet,.fs-account-sheet,.fs-friends-panel,.fs-toast-slot,.fs-inv-card,.fs-wait-card,.fs-wait-pill,.fs-wait-badge,.fs-wait-dot,.fs-wait-ring,.fs-inv-bang){animation:none!important;transition:none!important;filter:none!important;opacity:1!important;}}
   </style>
   <script>
     (function () {
@@ -6602,7 +6607,7 @@
              En forwards, l'etat de base est l'etat VISIBLE : si l'animation
              ne part pas, le contenu est simplement la, sans fondu. On perd
              une transition, jamais le contenu. */
-          animation:fsTourBarIn .44s cubic-bezier(.16,1,.3,1) forwards}
+          animation:fsTourBarIn var(--fs-motion-panel) var(--fs-motion-spring) forwards}
         @keyframes fsTourBarIn{from{opacity:0;transform:translateX(-50%) translateY(16px) scale(.98)}
           to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
         .fs-tour-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
@@ -7450,10 +7455,10 @@
           linear-gradient(180deg, rgba(19,18,32,0.99), rgba(11,10,22,0.99));
         border:1px solid rgba(255,255,255,0.10);
         box-shadow:0 36px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03), 0 0 70px rgba(var(--theme-c1-rgb),0.08);
-        animation:fsTextwPop .3s cubic-bezier(0.34,1.4,0.64,1) both;
+        animation:fsTextwPop var(--fs-motion-panel) var(--fs-motion-spring) none;
         overflow:hidden;
       }
-      @keyframes fsTextwPop { from { opacity:0; transform:translateY(14px) scale(.97); } to { opacity:1; transform:none; } }
+      @keyframes fsTextwPop{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
       .fs-textw-body { overflow-y:auto; padding:4px 20px 18px; display:flex; flex-direction:column; gap:15px; }
       .fs-textw-sec { font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:rgba(248,246,252,0.58); margin-bottom:8px; }
       .fs-textw-chips { display:flex; gap:6px; flex-wrap:wrap; }
@@ -8708,8 +8713,8 @@
             /* Cartes compactes (réglage Dashboard) : plus de widgets à l'écran */
             html.fs-compact-cards .fs-dashboard-grid{gap:8px!important;padding:10px 22px 18px!important}
             html.fs-compact-cards .fs-dashboard-header{padding:12px 22px 8px!important}
-            .fs-dhx-anim{animation:fsDhxIn .55s var(--mineral-ease) both}
-            @keyframes fsDhxIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+            .fs-dhx-anim{animation:fsDhxIn var(--fs-motion-bar) var(--fs-motion-spring) none}
+            @keyframes fsDhxIn{from{opacity:0;transform:translateY(-10px) scale(.97);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
             .fs-dhx-brandchip{position:relative;width:34px;height:34px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;
               background:linear-gradient(150deg,var(--theme-c1),var(--theme-c2));
               box-shadow:inset 0 1px 0 rgba(255,255,255,.46),0 8px 22px rgba(var(--theme-c1-rgb),.22)}
@@ -9380,8 +9385,8 @@
                       background:radial-gradient(120% 80% at 12% -10%,rgba(var(--theme-c1-rgb),0.13),transparent 58%),
                         linear-gradient(180deg,rgba(var(--mineral-surface-rgb),0.97),rgba(var(--mineral-bg-rgb),0.98));
                       box-shadow:0 40px 120px rgba(0,0,0,0.62),inset 0 1px 0 rgba(255,255,255,0.07);
-                      animation:fsWlPanel .34s cubic-bezier(.22,1,.36,1) both}
-                    @keyframes fsWlPanel{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+                      animation:fsWlPanel var(--fs-motion-panel) var(--fs-motion-spring) none}
+                    @keyframes fsWlPanel{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
                     .fs-wl-head{padding:22px 26px 16px;border-bottom:1px solid rgba(255,255,255,0.06);flex:none}
                     .fs-wl-title{font-family:var(--font-display);font-size:20px;font-weight:800;letter-spacing:-0.03em}
                     .fs-wl-sub{font-size:12px;color:var(--mineral-muted);margin-top:5px;line-height:1.5}
@@ -22463,10 +22468,7 @@ void main(){
       const s = document.createElement('style');
       s.id = 'fs-friends-css';
       s.textContent = `
-      @keyframes friendsSlideIn {
-        from { opacity:0; transform:translateX(-16px) scale(0.97); }
-        to   { opacity:1; transform:translateX(0)    scale(1);    }
-      }
+      @keyframes friendsSlideIn{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
       @keyframes friendCardIn {
         from { opacity:0; transform:translateY(8px); }
         to   { opacity:1; transform:translateY(0); }
@@ -22487,7 +22489,7 @@ void main(){
         -webkit-backdrop-filter:blur(24px) saturate(160%);
         box-shadow:0 32px 80px rgba(0,0,0,0.75),0 0 0 1px rgba(255,255,255,0.04),0 0 80px rgba(var(--theme-c1-rgb),0.08);
         display:flex; flex-direction:column; overflow:hidden;
-        animation: friendsSlideIn 0.36s cubic-bezier(0.34,1.56,0.64,1) both;
+        animation: friendsSlideIn var(--fs-motion-panel) var(--fs-motion-spring) none;
       }
       .fs-friends-panel::before {
         content:''; position:absolute; top:0; left:25%; right:25%; height:1px;
@@ -22747,10 +22749,7 @@ void main(){
         .fs-friend-session { padding:0; width:32px; justify-content:center; }
         .fs-friend-session span { display:none; }
       }
-      @keyframes friendsSheetUp {
-        from { opacity:0; transform:translateY(48px); }
-        to   { opacity:1; transform:translateY(0); }
-      }
+      @keyframes friendsSheetUp{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
       @media (max-width: 768px) {
         .fs-preview-modal {
           padding:10px;
@@ -22770,7 +22769,7 @@ void main(){
           border-radius:28px 28px 0 0;
           border-bottom:none;
           padding-bottom:env(safe-area-inset-bottom, 0px);
-          animation: friendsSheetUp 0.32s cubic-bezier(0.32,0.72,0.28,1) both;
+          animation: friendsSheetUp var(--fs-motion-panel) var(--fs-motion-spring) none;
         }
         /* Poignée de préhension à la place du liseré */
         .fs-friends-panel::before {
@@ -24179,8 +24178,8 @@ void main(){
           background:linear-gradient(180deg,rgba(19,18,35,.99),rgba(10,10,21,.99));
           border:1px solid rgba(255,255,255,.10);
           box-shadow:0 34px 90px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04);
-          animation:fsCropPanel .3s cubic-bezier(.22,1,.36,1) both}
-        @keyframes fsCropPanel{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+          animation:fsCropPanel var(--fs-motion-panel) var(--fs-motion-spring) none}
+        @keyframes fsCropPanel{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
         .fs-crop-head{padding:20px 22px 14px}
         .fs-crop-title{font:700 17px var(--font-display);letter-spacing:-.025em;color:#fff}
         .fs-crop-sub{font:600 12.5px var(--font-body);color:rgba(248,246,252,.55);line-height:1.5;margin-top:5px;max-width:46ch}
@@ -28191,7 +28190,8 @@ void main(){
       _uE8(() => {
         const gsap = window.gsap;
         if (!barRef.current) return;
-        if (gsap) {
+        const reduce = document.documentElement.classList.contains('fs-reduce-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (gsap && !reduce) {
           gsap.fromTo(barRef.current,
             { opacity: 0, y: -18, scale: 0.97, filter: 'blur(6px)' },
             { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 0.8, ease: 'expo.out', clearProps: 'filter' }
@@ -28278,7 +28278,7 @@ void main(){
       return (
         <div className={`fs-session-wrap${focusNudgeOpen ? ' fs-session-nudge-open' : ''}${embedded ? ' fs-session-embedded' : ''}`} style={{ position:'relative', flexShrink:0, display:'flex', justifyContent:embedded ? 'center' : 'center', padding:embedded ? 0 : '14px 24px 8px', zIndex:100, width:embedded ? 'min(720px, 100%)' : undefined, minWidth:0, margin:embedded ? '0 auto' : undefined }}>
           <style>{`
-            .fs-session-bar{opacity:0;}
+            .fs-session-bar{opacity:1;}
             /* Attention : quand user tente de lancer une 2e session, la barre
                tressaille et s'illumine → « une session est DÉJÀ en cours ici ». */
             @keyframes fsSbNudge{0%,100%{transform:translateX(0)}12%{transform:translateX(-7px)}28%{transform:translateX(6px)}44%{transform:translateX(-4px)}60%{transform:translateX(3px)}76%{transform:translateX(-1px)}}
@@ -28306,8 +28306,8 @@ void main(){
               background:linear-gradient(90deg,rgba(var(--theme-c1-rgb),.8),var(--theme-c2));}
             .fs-sb-railfill::after{content:'';position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:6px;height:6px;border-radius:50%;background:inherit;filter:blur(2px);}
             /* Zones : entrée en décalé. */
-            .fs-sb-zone{animation:fsSbZoneIn .55s var(--mineral-ease) both;}
-            @keyframes fsSbZoneIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+            .fs-sb-zone{animation:fsSbZoneIn var(--fs-motion-bar) var(--fs-motion-spring) none;}
+            @keyframes fsSbZoneIn{from{opacity:0;transform:translateY(6px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
             /* Terminer : capsule sans bordure, à la Apple — la couleur n'arrive qu'à l'intention. */
             .fs-session-action{display:flex;align-items:center;gap:7px;height:34px;padding:0 16px;border-radius:99px;cursor:pointer;
               border:none;background:rgba(255,255,255,.06);color:rgba(244,246,251,.74);
@@ -32012,8 +32012,8 @@ void main(){
             background:radial-gradient(130% 80% at 10% -10%,rgba(var(--theme-c1-rgb),.14),transparent 58%),
               linear-gradient(180deg,rgba(var(--mineral-surface-rgb),.98),rgba(var(--mineral-bg-rgb),.98));
             box-shadow:0 44px 120px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08);
-            animation:fsShopCard .34s cubic-bezier(.22,1,.36,1) both}
-          @keyframes fsShopCard{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+            animation:fsShopCard var(--fs-motion-panel) var(--fs-motion-spring) none}
+          @keyframes fsShopCard{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
           .fs-shop-head{padding:22px 24px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
           .fs-shop-title{font-family:${T.display};font-size:23px;font-weight:800;letter-spacing:-.035em}
           .fs-shop-sub{font-size:12px;color:${T.muted};margin-top:4px}
@@ -32262,8 +32262,8 @@ void main(){
             background:radial-gradient(120% 74% at 50% -8%,rgba(var(--theme-c1-rgb),.16),transparent 60%),
               linear-gradient(180deg,rgba(var(--mineral-surface-rgb),.98),rgba(var(--mineral-bg-rgb),.99));
             box-shadow:0 48px 130px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.08);
-            animation:fsD60Card .34s cubic-bezier(.22,1,.36,1) both}
-          @keyframes fsD60Card{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+            animation:fsD60Card var(--fs-motion-panel) var(--fs-motion-spring) none}
+          @keyframes fsD60Card{from{opacity:0;transform:translateY(var(--fs-motion-distance)) scale(.96);filter:blur(var(--fs-motion-blur))}to{opacity:1;transform:none;filter:none}}
           .fs-d60-x{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:10px;cursor:pointer;
             display:grid;place-items:center;color:rgba(248,246,252,0.58);
             border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);transition:color .17s,background .17s}
